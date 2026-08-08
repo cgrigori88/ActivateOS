@@ -17,14 +17,22 @@ const MODELS: Record<ModelTier, string> = {
 
 let client: Anthropic | null = null;
 
+/**
+ * Credentials resolve in the SDK's standard order: ANTHROPIC_API_KEY →
+ * ANTHROPIC_AUTH_TOKEN → an OAuth profile stored by `ant auth login`
+ * (Claude-subscription auth). No key needs to be configured in this codebase.
+ */
 export function getAnthropic(): Anthropic {
   if (!client) {
-    if (!process.env.ANTHROPIC_API_KEY) {
+    try {
+      client = new Anthropic();
+    } catch (err) {
       throw new Error(
-        "ANTHROPIC_API_KEY is not set — agent workflows need it (deterministic pipelines run without it)",
+        "No Anthropic credentials found. Either run `ant auth login` (uses your Claude " +
+          "subscription) or set ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN. " +
+          `Underlying error: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    client = new Anthropic();
   }
   return client;
 }

@@ -22,13 +22,29 @@ tests/                Unit tests (node:test)
 
 ```bash
 npm install
-export DATABASE_URL=postgres://...       # Supabase or local Postgres (needs pgvector)
+cp .env.example .env.local               # fill in DATABASE_URL (Supabase pooler)
 npm run db:migrate                       # apply supabase/migrations/*.sql
 npm run db:seed                          # seed ontology + play templates
 npm run ingest -- samples/accounts.sample.csv "My Org"
+npm run map-signals -- "My Org"          # deterministic; add --llm for model classification
+npm run score -- "My Org" infrastructure-automation
 npm test
-npm run dev
+npm run dev                              # ranked accounts + WHY NOW panel
 ```
+
+### Credentials
+
+- **Anthropic (agents):** preferred is your Claude subscription — run `ant auth login`
+  once; the SDK picks up the stored profile with no env var. Alternatives:
+  `ANTHROPIC_AUTH_TOKEN` (from `ant auth print-credentials --env`) or an
+  `ANTHROPIC_API_KEY`. Deterministic pipelines (ingest, map-signals, score) need
+  no Anthropic credentials at all.
+- **Database:** any Postgres with pgvector. For Supabase, use the session-pooler
+  connection string (IPv4). From environments that block raw Postgres traffic,
+  apply SQL over HTTPS instead: `npm run db:seed-sql` regenerates
+  `supabase/seed/0001_knowledge.sql`, then
+  `npm run db:remote -- supabase/migrations/*.sql supabase/seed/*.sql`
+  (needs `SUPABASE_PROJECT_REF` + `SUPABASE_ACCESS_TOKEN`).
 
 ## Engineering principles (short form)
 
