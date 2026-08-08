@@ -129,9 +129,10 @@ Design the Revenue Motion.`;
   const citation = validateCitations(draft.cited_evidence_ids, availableIds);
 
   // Decision log — recorded whether or not validation passed (audit trail).
-  await db.query(
+  const { rows: runRows } = await db.query<{ id: string }>(
     `insert into agent_runs (org_id, workflow, workflow_version, model, input_evidence_ids, input_summary, raw_output, validated)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+     values ($1, $2, $3, $4, $5, $6, $7, $8)
+     returning id`,
     [
       args.orgId,
       WORKFLOW,
@@ -165,6 +166,11 @@ Design the Revenue Motion.`;
       draft.confidence,
     ],
   );
+
+  await db.query(`update agent_runs set motion_id = $2 where id = $1`, [
+    runRows[0].id,
+    motions[0].id,
+  ]);
 
   await db.query(
     `insert into outcome_events (org_id, motion_id, company_id, event_type, payload)

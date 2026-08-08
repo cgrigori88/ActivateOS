@@ -153,3 +153,13 @@ test("validateCitations enforces known ids and minimum count", async () => {
   assert.equal(validateCitations(["e1"], available).ok, false);
   assert.equal(validateCitations(["e1", "bogus"], available).ok, false);
 });
+
+test("computeMotionDiff captures only real edits", async () => {
+  const { computeMotionDiff } = await import("../src/lib/motions/approve");
+  const original = { thesis: "old thesis", cta: "workshop", trigger_summary: "t", primary_persona: "a", secondary_persona: "b" };
+  const diff = computeMotionDiff(original, { thesis: "new thesis", cta: "workshop" });
+  assert.deepEqual(Object.keys(diff), ["thesis"]);
+  assert.equal(diff.thesis.from, "old thesis");
+  assert.equal(diff.thesis.to, "new thesis");
+  assert.deepEqual(computeMotionDiff(original, {}), {});
+});

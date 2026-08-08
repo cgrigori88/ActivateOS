@@ -55,11 +55,22 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
   }
 
   const { rows: motions } = await pool.query(
-    `select m.status, m.thesis, m.trigger_summary, m.primary_persona, m.secondary_persona,
+    `select m.id, m.status, m.thesis, m.trigger_summary, m.primary_persona, m.secondary_persona,
             m.cta, m.confidence, m.created_at
      from revenue_motions m where m.company_id = $1 order by m.created_at desc limit 1`,
     [id],
   );
+
+  let assets: { asset_type: string; title: string; content: string }[] = [];
+  if (motions.length > 0) {
+    const result = await pool.query(
+      `select a.asset_type, a.title, a.content
+       from campaign_assets a join campaigns cp on cp.id = a.campaign_id
+       where cp.motion_id = $1 order by a.created_at`,
+      [motions[0].id],
+    );
+    assets = result.rows;
+  }
 
   return (
     <main style={{ maxWidth: 720, margin: "6vh auto", padding: "0 1.5rem" }}>
@@ -124,6 +135,28 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
             <strong>CTA:</strong> {motions[0].cta}{" "}
             <span style={{ color: "#999" }}>(confidence: {motions[0].confidence})</span>
           </p>
+          {assets.length > 0 && (
+            <div style={{ marginTop: "1rem" }}>
+              <h4 style={{ fontSize: "0.95rem", margin: "0 0 0.5rem" }}>Campaign assets</h4>
+              {assets.map((a) => (
+                <details key={a.asset_type} style={{ margin: "0.5rem 0" }}>
+                  <summary style={{ cursor: "pointer" }}>{a.title}</summary>
+                  <pre
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      fontFamily: "inherit",
+                      fontSize: "0.9rem",
+                      background: "#fafafa",
+                      padding: "0.75rem",
+                      borderRadius: 6,
+                    }}
+                  >
+                    {a.content}
+                  </pre>
+                </details>
+              ))}
+            </div>
+          )}
         </section>
       )}
     </main>
