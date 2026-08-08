@@ -31,7 +31,9 @@ async function main() {
     const stats = await ingestAccounts(client, orgId, rows);
     console.log(
       `ingested ${rows.length} rows: ${stats.created} companies created, ` +
-        `${stats.matched} matched, ${stats.aliasesAdded} aliases, ${stats.evidenceAdded} evidence rows` +
+        `${stats.matched} matched, ${stats.aliasesAdded} aliases, ` +
+        `${stats.evidenceAdded} evidence rows (${stats.evidenceVerified} verified, ` +
+        `${stats.evidenceHeld} held by quality gates)` +
         (errors.length ? `, ${errors.length} rows skipped` : ""),
     );
   } finally {

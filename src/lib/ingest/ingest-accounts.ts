@@ -1,6 +1,7 @@
 import type pg from "pg";
 import { extractDomain, normalizeCompanyName } from "../identity/normalize";
 import { resolveCompany, type CompanyCandidate } from "../identity/resolve";
+import { verifyEvidence } from "../quality/verify";
 import type { AccountRow } from "./csv";
 
 export interface IngestStats {
@@ -8,7 +9,12 @@ export interface IngestStats {
   matched: number;
   aliasesAdded: number;
   evidenceAdded: number;
+  evidenceVerified: number;
+  evidenceHeld: number; // quarantined or rejected by the quality gates
 }
+
+/** First-party customer data starts at high (not perfect) trust. */
+const CUSTOMER_CSV_TRUST = 0.85;
 
 /**
  * Upsert accounts into the identity graph. Existing-product claims from the
@@ -20,7 +26,21 @@ export async function ingestAccounts(
   orgId: string,
   rows: AccountRow[],
 ): Promise<IngestStats> {
-  const stats: IngestStats = { created: 0, matched: 0, aliasesAdded: 0, evidenceAdded: 0 };
+  const stats: IngestStats = {
+    created: 0,
+    matched: 0,
+    aliasesAdded: 0,
+    evidenceAdded: 0,
+    evidenceVerified: 0,
+    evidenceHeld: 0,
+  };
+
+  await db.query(
+    `insert into signal_sources (name, kind, trust_score, audit_sample_rate)
+     values ('customer_csv', 'first_party', $1, 0.05)
+     on conflict (name) do nothing`,
+    [CUSTOMER_CSV_TRUST],
+  );
 
   const { rows: existing } = await db.query<{
     id: string;
@@ -66,12 +86,27 @@ export async function ingestAccounts(
     stats.aliasesAdded += aliasResult.rowCount ?? 0;
 
     for (const product of row.existingProducts) {
-      const evidenceResult = await db.query(
-        `insert into evidence (org_id, company_id, source_type, claim, confidence, observed_at)
-         values ($1, $2, 'customer_csv', $3, 0.9, now())`,
-        [orgId, companyId, `Customer-reported installed product: ${product}`],
+      const claim = `Customer-reported installed product: ${product}`;
+      const { rows: inserted } = await db.query<{ id: string }>(
+        `insert into evidence (org_id, company_id, source_type, claim, raw_excerpt, confidence, observed_at)
+         values ($1, $2, 'customer_csv', $3, $4, 0.9, now())
+         returning id`,
+        [orgId, companyId, claim, claim],
       );
-      stats.evidenceAdded += evidenceResult.rowCount ?? 0;
+      stats.evidenceAdded++;
+
+      const outcome = await verifyEvidence(db, {
+        id: inserted[0].id,
+        orgId,
+        companyId,
+        sourceName: "customer_csv",
+        claim,
+        rawExcerpt: claim,
+        observedAt: new Date(),
+        extractionConfidence: 0.9,
+      });
+      if (outcome.status === "verified") stats.evidenceVerified++;
+      else stats.evidenceHeld++;
     }
   }
 
