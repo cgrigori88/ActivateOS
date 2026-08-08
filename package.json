@@ -11,15 +11,18 @@
     "test": "tsx --test tests/*.test.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed-knowledge.ts",
-    "ingest": "tsx scripts/ingest-accounts.ts"
+    "ingest": "tsx scripts/ingest-accounts.ts",
+    "map-signals": "tsx scripts/map-signals.ts",
+    "score": "tsx scripts/score.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
     "csv-parse": "^5.5.6",
     "next": "^15.3.0",
     "pg": "^8.13.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "zod": "^3.24.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -1,0 +1,17 @@
+{
+  "$comment": "Deterministic product-name → ontology-node mapping for well-known products. Checked before any LLM call; unknown products fall through to the taxonomy-mapper agent. Matching is case-insensitive substring.",
+  "patterns": [
+    { "match": ["vmware", "vsphere", "esxi", "hyper-v", "nutanix ahv"], "node": "virtualization" },
+    { "match": ["kubernetes", "openshift", "eks", "aks", "gke", "rancher"], "node": "kubernetes" },
+    { "match": ["rhel", "red hat enterprise linux", "windows server", "ubuntu server", "suse"], "node": "operating-systems" },
+    { "match": ["cisco ucs", "dell poweredge", "hpe proliant", "supermicro"], "node": "compute" },
+    { "match": ["netapp", "pure storage", "veeam", "dell emc", "cohesity", "rubrik"], "node": "storage" },
+    { "match": ["aws", "amazon web services", "azure", "google cloud", "gcp", "public cloud"], "node": "public-cloud" },
+    { "match": ["ansible", "terraform", "puppet", "chef", "saltstack"], "node": "infrastructure-automation" },
+    { "match": ["cisco catalyst", "cisco nexus", "juniper", "arista", "meraki"], "node": "networking" },
+    { "match": ["datadog", "dynatrace", "new relic", "grafana", "prometheus"], "node": "monitoring" },
+    { "match": ["splunk", "elastic", "elk"], "node": "logging" },
+    { "match": ["okta", "entra", "active directory", "ping identity"], "node": "iam" },
+    { "match": ["crowdstrike", "sentinelone", "defender for endpoint"], "node": "endpoint-security" }
+  ]
+}
