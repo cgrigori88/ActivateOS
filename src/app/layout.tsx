@@ -8,25 +8,33 @@ export const metadata: Metadata = {
   description: "The AI decision and orchestration layer for partner-led revenue.",
 };
 
+const NAV = [
+  { href: "/", label: "Today" },
+  { href: "/accounts", label: "Accounts" },
+  { href: "/motions", label: "Motions" },
+  { href: "/review", label: "Review" },
+  { href: "/sources", label: "Sources" },
+];
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ fontFamily: "system-ui, sans-serif", margin: 0 }}>
-        <nav
-          style={{
-            display: "flex",
-            gap: "1.25rem",
-            padding: "0.75rem 1.5rem",
-            borderBottom: "1px solid #eee",
-            fontSize: "0.95rem",
-          }}
-        >
-          <strong>ActivateOS</strong>
-          <Link href="/">Accounts</Link>
-          <Link href="/motions">Motions</Link>
-          <Link href="/review">Review</Link>
+      <body className="min-h-screen font-sans">
+        <nav className="sticky top-0 z-10 border-b border-neutral-200 bg-white/90 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
+          <div className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-3">
+            <Link href="/" className="font-semibold tracking-tight">
+              Activate<span className="text-blue-700 dark:text-blue-400">OS</span>
+            </Link>
+            <div className="flex gap-4 text-sm text-neutral-600 dark:text-neutral-300">
+              {NAV.map((item) => (
+                <Link key={item.href} href={item.href} className="hover:text-black dark:hover:text-white">
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
         </nav>
-        {children}
+        <div className="mx-auto max-w-5xl px-6 py-8">{children}</div>
       </body>
     </html>
   );
