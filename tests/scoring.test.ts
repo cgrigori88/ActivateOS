@@ -145,3 +145,11 @@ test("product map matches known products case-insensitively", () => {
   assert.equal(matchProductToNode("Red Hat OpenShift", map), "kubernetes");
   assert.equal(matchProductToNode("Unknown Product", map), null);
 });
+
+test("validateCitations enforces known ids and minimum count", async () => {
+  const { validateCitations } = await import("../src/lib/agents/motion-designer");
+  const available = new Set(["e1", "e2", "e3"]);
+  assert.equal(validateCitations(["e1", "e2"], available).ok, true);
+  assert.equal(validateCitations(["e1"], available).ok, false);
+  assert.equal(validateCitations(["e1", "bogus"], available).ok, false);
+});

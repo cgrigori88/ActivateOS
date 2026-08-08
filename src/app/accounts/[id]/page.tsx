@@ -54,6 +54,13 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  const { rows: motions } = await pool.query(
+    `select m.status, m.thesis, m.trigger_summary, m.primary_persona, m.secondary_persona,
+            m.cta, m.confidence, m.created_at
+     from revenue_motions m where m.company_id = $1 order by m.created_at desc limit 1`,
+    [id],
+  );
+
   return (
     <main style={{ maxWidth: 720, margin: "6vh auto", padding: "0 1.5rem" }}>
       <p>
@@ -96,6 +103,28 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
             </div>
           ))}
         </>
+      )}
+
+      {motions.length > 0 && (
+        <section style={{ marginTop: "2rem", padding: "1rem", border: "1px solid #ddd", borderRadius: 8 }}>
+          <h3 style={{ fontSize: "1rem", marginTop: 0 }}>
+            Revenue Motion{" "}
+            <span style={{ fontSize: "0.8rem", color: "#b60", textTransform: "uppercase" }}>
+              {motions[0].status}
+            </span>
+          </h3>
+          <p style={{ lineHeight: 1.55 }}>{motions[0].thesis}</p>
+          <p style={{ color: "#444" }}>
+            <strong>Trigger:</strong> {motions[0].trigger_summary}
+          </p>
+          <p style={{ color: "#444" }}>
+            <strong>Personas:</strong> {motions[0].primary_persona} · {motions[0].secondary_persona}
+          </p>
+          <p style={{ color: "#444" }}>
+            <strong>CTA:</strong> {motions[0].cta}{" "}
+            <span style={{ color: "#999" }}>(confidence: {motions[0].confidence})</span>
+          </p>
+        </section>
       )}
     </main>
   );

@@ -17,7 +17,8 @@
     "db:seed-sql": "tsx scripts/generate-seed-sql.ts",
     "db:remote": "tsx scripts/db-remote.ts",
     "research": "tsx scripts/research.ts",
-    "review": "tsx scripts/review.ts"
+    "review": "tsx scripts/review.ts",
+    "design-motion": "tsx scripts/design-motion.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

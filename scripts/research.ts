@@ -1,19 +1,22 @@
 import { readFileSync } from "node:fs";
 import { getPool } from "../src/db/client";
-import { extractAndIngest } from "../src/lib/agents/extractor";
+import { extractAndIngest, type ResearchDocument } from "../src/lib/agents/extractor";
+import { filingText, filingUrl, lookupCIK, recentFilings } from "../src/lib/research/edgar";
+import { researchQueries, tavilyAvailable, tavilySearch } from "../src/lib/research/tavily";
 
 /**
- * Run the Extractor agent on a research document for one company.
+ * Run the Extractor agent on research documents for one company.
  *
- * Fixture mode (today): --file <path> supplies the document text, so the
- * agent pipeline can be exercised deterministically and cheaply.
- * Live source connectors (Tavily search, SEC EDGAR) plug in here next —
- * they only change where the document text comes from; extraction,
- * cross-check, and the quality gates are identical.
+ * Modes:
+ *   --file <path>   fixture mode — deterministic, cheap, used in testing
+ *   --live          gather documents from live sources: SEC EDGAR (free,
+ *                   public companies) and Tavily web search (if
+ *                   TAVILY_API_KEY is set). Same extraction, cross-check,
+ *                   and quality gates either way.
  *
  * Usage:
- *   npm run research -- --org "Org Name" --company "Company Name" \
- *     --file path/to/doc.txt [--source-type press] [--source-url https://...]
+ *   npm run research -- --org "Org" --company "Company" --file doc.txt
+ *   npm run research -- --org "Org" --company "Company" --live
  */
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -24,12 +27,13 @@ async function main() {
   const orgName = arg("org") ?? "ActivateOS Dev";
   const companyName = arg("company");
   const file = arg("file");
+  const live = process.argv.includes("--live");
   const sourceType = arg("source-type") ?? "press";
   const sourceUrl = arg("source-url");
 
-  if (!companyName || !file) {
+  if (!companyName || (!file && !live)) {
     console.error(
-      'usage: npm run research -- --org "Org" --company "Company" --file doc.txt [--source-type press]',
+      'usage: npm run research -- --org "Org" --company "Company" (--file doc.txt | --live)',
     );
     process.exit(1);
   }
@@ -52,15 +56,59 @@ async function main() {
     if (companies.length === 0) throw new Error(`company not found: ${companyName}`);
     if (companies.length > 1) throw new Error(`ambiguous company name: ${companyName}`);
 
-    const stats = await extractAndIngest(db, {
-      orgId: orgs[0].id,
-      companyId: companies[0].id,
-      companyName: companies[0].legal_name,
-      doc: { sourceType, sourceUrl, text: readFileSync(file, "utf8") },
-    });
+    const docs: ResearchDocument[] = [];
+    if (file) {
+      docs.push({ sourceType, sourceUrl, text: readFileSync(file, "utf8") });
+    }
+    if (live) {
+      // SEC EDGAR — free, public companies only.
+      try {
+        const hit = await lookupCIK(companies[0].legal_name);
+        if (hit) {
+          console.log(`EDGAR match: ${hit.title} (CIK ${hit.cik})`);
+          for (const filing of await recentFilings(hit.cik, ["8-K", "10-K"], 2)) {
+            docs.push({
+              sourceType: "sec_filing",
+              sourceUrl: filingUrl(hit.cik, filing),
+              text: (await filingText(hit.cik, filing)).slice(0, 60000),
+              observedAt: new Date(filing.filingDate),
+            });
+          }
+        } else {
+          console.log("EDGAR: no public-company match (private companies have no filings)");
+        }
+      } catch (err) {
+        console.warn(`EDGAR unavailable: ${err instanceof Error ? err.message : err}`);
+      }
+      // Tavily web search — optional.
+      if (tavilyAvailable()) {
+        for (const query of researchQueries(companies[0].legal_name, "infrastructure automation")) {
+          for (const r of await tavilySearch(query, 3)) {
+            docs.push({ sourceType: "web_search", sourceUrl: r.url, text: r.content.slice(0, 24000) });
+          }
+        }
+      } else {
+        console.log("Tavily skipped (set TAVILY_API_KEY to enable web research)");
+      }
+    }
+
+    if (docs.length === 0) {
+      console.log("no research documents gathered");
+      return;
+    }
+    let claims = 0, verified = 0, held = 0;
+    for (const doc of docs) {
+      const stats = await extractAndIngest(db, {
+        orgId: orgs[0].id,
+        companyId: companies[0].id,
+        companyName: companies[0].legal_name,
+        doc,
+      });
+      claims += stats.claims; verified += stats.verified; held += stats.held;
+    }
     console.log(
-      `${companies[0].legal_name}: ${stats.claims} claims extracted, ` +
-        `${stats.verified} verified, ${stats.held} held by quality gates`,
+      `${companies[0].legal_name}: ${docs.length} documents, ${claims} claims extracted, ` +
+        `${verified} verified, ${held} held by quality gates`,
     );
   } finally {
     db.release();
