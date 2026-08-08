@@ -1,0 +1,68 @@
+{
+  "$comment": "Activate Technology Ontology — seed branch tuned for the infrastructure automation / modernization motion. Human-curated; agents map external taxonomies INTO these nodes. Edge types: adjacent (often bought near each other), complementary (strengthen each other), replacement (displaces).",
+  "nodes": [
+    { "slug": "infrastructure", "name": "Infrastructure", "parent": null },
+    { "slug": "compute", "name": "Compute", "parent": "infrastructure" },
+    { "slug": "storage", "name": "Storage", "parent": "infrastructure" },
+    { "slug": "networking", "name": "Networking", "parent": "infrastructure" },
+    { "slug": "virtualization", "name": "Virtualization", "parent": "infrastructure" },
+    { "slug": "operating-systems", "name": "Operating Systems", "parent": "infrastructure" },
+
+    { "slug": "containers", "name": "Containers", "parent": null },
+    { "slug": "kubernetes", "name": "Kubernetes", "parent": "containers" },
+    { "slug": "container-management", "name": "Container Management", "parent": "containers" },
+
+    { "slug": "automation", "name": "Automation", "parent": null },
+    { "slug": "infrastructure-automation", "name": "Infrastructure Automation", "parent": "automation" },
+    { "slug": "network-automation", "name": "Network Automation", "parent": "automation" },
+    { "slug": "security-automation", "name": "Security Automation", "parent": "automation" },
+    { "slug": "itsm-automation", "name": "ITSM Automation", "parent": "automation" },
+    { "slug": "configuration-management", "name": "Configuration Management", "parent": "automation" },
+
+    { "slug": "cloud", "name": "Cloud", "parent": null },
+    { "slug": "public-cloud", "name": "Public Cloud", "parent": "cloud" },
+    { "slug": "hybrid-cloud", "name": "Hybrid Cloud", "parent": "cloud" },
+    { "slug": "cloud-management", "name": "Cloud Management", "parent": "cloud" },
+    { "slug": "finops", "name": "FinOps", "parent": "cloud" },
+
+    { "slug": "security", "name": "Security", "parent": null },
+    { "slug": "iam", "name": "Identity & Access Management", "parent": "security" },
+    { "slug": "siem", "name": "SIEM", "parent": "security" },
+    { "slug": "endpoint-security", "name": "Endpoint Security", "parent": "security" },
+    { "slug": "vulnerability-management", "name": "Vulnerability Management", "parent": "security" },
+
+    { "slug": "observability", "name": "Observability", "parent": null },
+    { "slug": "monitoring", "name": "Monitoring", "parent": "observability" },
+    { "slug": "logging", "name": "Logging", "parent": "observability" },
+
+    { "slug": "data", "name": "Data", "parent": null },
+    { "slug": "databases", "name": "Databases", "parent": "data" },
+    { "slug": "analytics", "name": "Analytics", "parent": "data" },
+
+    { "slug": "ai", "name": "AI", "parent": null },
+    { "slug": "gpu-infrastructure", "name": "GPU Infrastructure", "parent": "ai" },
+    { "slug": "ai-platforms", "name": "AI Platforms", "parent": "ai" }
+  ],
+  "edges": [
+    { "from": "virtualization", "to": "infrastructure-automation", "type": "adjacent", "weight": 0.65 },
+    { "from": "virtualization", "to": "kubernetes", "type": "replacement", "weight": 0.45 },
+    { "from": "virtualization", "to": "public-cloud", "type": "replacement", "weight": 0.4 },
+    { "from": "virtualization", "to": "hybrid-cloud", "type": "adjacent", "weight": 0.5 },
+    { "from": "kubernetes", "to": "infrastructure-automation", "type": "adjacent", "weight": 0.7 },
+    { "from": "kubernetes", "to": "container-management", "type": "complementary", "weight": 0.8 },
+    { "from": "kubernetes", "to": "gpu-infrastructure", "type": "adjacent", "weight": 0.45 },
+    { "from": "operating-systems", "to": "infrastructure-automation", "type": "adjacent", "weight": 0.55 },
+    { "from": "infrastructure-automation", "to": "network-automation", "type": "adjacent", "weight": 0.7 },
+    { "from": "infrastructure-automation", "to": "security-automation", "type": "adjacent", "weight": 0.6 },
+    { "from": "infrastructure-automation", "to": "itsm-automation", "type": "adjacent", "weight": 0.5 },
+    { "from": "infrastructure-automation", "to": "configuration-management", "type": "complementary", "weight": 0.8 },
+    { "from": "public-cloud", "to": "finops", "type": "adjacent", "weight": 0.7 },
+    { "from": "public-cloud", "to": "cloud-management", "type": "complementary", "weight": 0.7 },
+    { "from": "public-cloud", "to": "infrastructure-automation", "type": "adjacent", "weight": 0.55 },
+    { "from": "monitoring", "to": "infrastructure-automation", "type": "adjacent", "weight": 0.4 },
+    { "from": "siem", "to": "security-automation", "type": "adjacent", "weight": 0.6 },
+    { "from": "vulnerability-management", "to": "security-automation", "type": "adjacent", "weight": 0.55 },
+    { "from": "ai-platforms", "to": "gpu-infrastructure", "type": "complementary", "weight": 0.8 },
+    { "from": "ai-platforms", "to": "infrastructure-automation", "type": "adjacent", "weight": 0.5 }
+  ]
+}

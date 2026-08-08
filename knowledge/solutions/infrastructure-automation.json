@@ -1,0 +1,53 @@
+{
+  "$comment": "Solution profile: category-level, vendor-agnostic knowledge the agent layer retrieves when designing motions. Human-curated. Never a source of invented numbers — economics are ranges to be validated with customer data.",
+  "slug": "infrastructure-automation",
+  "taxonomy_node": "infrastructure-automation",
+  "name": "Infrastructure Automation",
+  "definition": "Platforms and tooling that automate provisioning, configuration, orchestration, and day-2 operations across servers, networks, cloud, and hybrid infrastructure.",
+  "buyer_personas": {
+    "economic": ["VP Infrastructure", "VP Platform Engineering", "CIO (midmarket)"],
+    "technical": ["Director of Infrastructure", "Director of Platform Engineering", "Principal SRE / Automation Architect"],
+    "influencers": ["Security & compliance leadership", "Cloud CoE lead", "IT operations managers"]
+  },
+  "value_drivers": [
+    "Reduce manual provisioning and configuration effort",
+    "Consistency and drift elimination across hybrid environments",
+    "Faster incident remediation and self-healing operations",
+    "Compliance and security policy enforced as code",
+    "Accelerate cloud migration and virtualization-exit programs",
+    "Free scarce senior engineers from repetitive work"
+  ],
+  "competitive_conditions": [
+    "Fragmented in-house scripting (shell/python cron estates)",
+    "Legacy job schedulers and runbook tooling",
+    "Point automation locked inside a single vendor stack",
+    "Competing platform team building on raw IaC only"
+  ],
+  "common_triggers": [
+    "Virtualization renewal / licensing cost pressure",
+    "Infrastructure modernization or datacenter-exit initiative",
+    "Automation / platform engineering hiring acceleration",
+    "Cloud expansion increasing operational surface",
+    "Audit or compliance findings on configuration drift",
+    "M&A integration of divergent infrastructure estates"
+  ],
+  "qualification_criteria": [
+    "≥ 200 employees or meaningful server/cloud estate",
+    "Named infrastructure or platform engineering leadership",
+    "Active modernization, migration, or cost initiative",
+    "Existing virtualization, container, or multi-cloud footprint"
+  ],
+  "typical_economics": {
+    "$comment": "Ranges only; cite when used and validate with customer data.",
+    "deal_size_band": "mid five to low seven figures depending on estate size",
+    "sales_cycle_band": "1-3 quarters",
+    "expansion_path": "start with one automation domain, expand to network/security/ITSM automation"
+  },
+  "discovery_questions": [
+    "How many distinct teams provision or change infrastructure today, and with what tooling?",
+    "What does your virtualization renewal timeline and cost trajectory look like?",
+    "Where does configuration drift or manual toil create incidents or audit findings?",
+    "What is the platform engineering team's mandate over the next 12 months?",
+    "Which workloads are moving (cloud, containers), and what automates that path today?"
+  ]
+}

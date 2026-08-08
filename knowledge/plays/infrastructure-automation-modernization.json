@@ -1,0 +1,59 @@
+{
+  "$comment": "Play template v1. The Motion Designer agent instantiates this against a scored account: it may fill placeholders only with evidence-backed facts (cited), never invent them.",
+  "slug": "infrastructure-automation-modernization",
+  "version": 1,
+  "name": "Infrastructure Automation Modernization",
+  "taxonomy_node": "infrastructure-automation",
+  "objective": "Convert virtualization/renewal cost pressure and modernization initiatives into an automation platform evaluation via a low-friction assessment offer.",
+  "trigger_signals": {
+    "required_any": [
+      "TECH_INSTALLED:virtualization",
+      "CONTRACT_EXPIRING:virtualization",
+      "INFRA_MODERNIZATION_INITIATIVE",
+      "HIRING_TECH_SKILL:automation",
+      "HIRING_TECH_SKILL:platform-engineering"
+    ],
+    "supporting": [
+      "CLOUD_EXPANSION",
+      "HIRING_ACCELERATION",
+      "COST_REDUCTION",
+      "M_AND_A",
+      "EXECUTIVE_CHANGE:infrastructure"
+    ]
+  },
+  "negative_signals": [
+    "HIRING_FREEZE",
+    "LAYOFFS",
+    "BUDGET_REDUCTION",
+    "RECENT_COMPETING_PURCHASE:automation",
+    "PROJECT_CANCELLATION:infrastructure"
+  ],
+  "personas": {
+    "primary": "VP Infrastructure / VP Platform Engineering",
+    "secondary": "Director Platform Engineering / Director IT Operations"
+  },
+  "thesis_template": "{{company}} is under {{trigger_summary}} while operating {{installed_estate}}. Consolidating fragmented automation onto a single platform can {{value_driver}}, timed against {{timing_event}}.",
+  "cta": {
+    "offer": "Automation maturity assessment (30-45 min workshop)",
+    "fallback": "Benchmark briefing: how peers are automating the virtualization-exit path"
+  },
+  "seller_cadence": [
+    { "step": 1, "action": "Partner seller sends evidence-grounded opening email (approved draft)", "day": 0 },
+    { "step": 2, "action": "Vendor seller engages technical persona with assessment offer", "day": 3 },
+    { "step": 3, "action": "Call attempt referencing the specific trigger, not the product", "day": 5 },
+    { "step": 4, "action": "Value-recap follow-up with one relevant proof point", "day": 10 },
+    { "step": 5, "action": "Manager-level partner-to-customer touch or close-file", "day": 18 }
+  ],
+  "objections": [
+    { "objection": "We already script everything in-house", "response_angle": "Toil, drift, and bus-factor cost of bespoke scripting vs. platform; keep scripts, orchestrate them" },
+    { "objection": "Renewal decision is already made", "response_angle": "Automation is renewal-agnostic: it de-risks whichever platform decision was made" },
+    { "objection": "No budget this year", "response_angle": "Assessment is free; output is a business case sized for next cycle" }
+  ],
+  "qualification_framework": [
+    "Confirmed infrastructure/platform leadership engagement",
+    "Named modernization or cost initiative with a timeline",
+    "Estate size sufficient for platform economics",
+    "Partner has (or can create) a commercial path into the account"
+  ],
+  "escalation_criteria": "Positive reply from economic or technical persona, or meeting booked → escalate to business-value assessment workflow."
+}
