@@ -34,8 +34,14 @@ export async function resolveReview(
   if (verdict === "unsure") return;
   const accurate = verdict === "accurate";
 
-  // Inaccurate evidence is quarantined immediately regardless of prior status.
-  if (!accurate) {
+  // Human judgment is ground truth: an accurate verdict promotes quarantined
+  // evidence to verified; an inaccurate one quarantines regardless of status.
+  if (accurate) {
+    await db.query(
+      `update evidence set status = 'verified' where id = $1 and status = 'quarantined'`,
+      [item.evidence_id],
+    );
+  } else {
     await db.query(`update evidence set status = 'quarantined' where id = $1`, [
       item.evidence_id,
     ]);

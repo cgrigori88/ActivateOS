@@ -15,7 +15,9 @@
     "map-signals": "tsx scripts/map-signals.ts",
     "score": "tsx scripts/score.ts",
     "db:seed-sql": "tsx scripts/generate-seed-sql.ts",
-    "db:remote": "tsx scripts/db-remote.ts"
+    "db:remote": "tsx scripts/db-remote.ts",
+    "research": "tsx scripts/research.ts",
+    "review": "tsx scripts/review.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

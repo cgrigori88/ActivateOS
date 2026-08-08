@@ -1,0 +1,22 @@
+[SYNTHETIC FIXTURE — fictional company, for pipeline testing only]
+
+Initech Financial Announces Multi-Year Infrastructure Modernization Program
+
+DES MOINES — Initech Financial, a regional financial services firm, today
+announced a three-year infrastructure modernization program aimed at reducing
+datacenter operating costs by 30 percent and accelerating its move to a hybrid
+cloud operating model. "Our virtualization estate has served us well, but
+renewal economics have changed materially, and we are evaluating our options
+across the stack," said the company's Chief Information Officer.
+
+As part of the program, Initech said it will expand its platform engineering
+organization, and the company's careers page currently lists eleven open
+positions for automation engineers and site reliability engineers, including
+roles focused on infrastructure-as-code and Kubernetes operations.
+
+The company also confirmed that its enterprise agreement for its server
+virtualization platform comes up for renewal in the second quarter of next
+year, and that a cross-functional team is assessing both renewal and
+migration scenarios. Separately, Initech completed the acquisition of a
+smaller regional lender in June, and integration of the acquired company's
+IT systems is expected to begin this fall.

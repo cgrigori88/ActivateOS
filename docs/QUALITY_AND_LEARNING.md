@@ -33,8 +33,13 @@ raw extraction
      │                             and flag both for review.
      ▼
 [4] Computed confidence            extraction_confidence × source_trust ×
-     │                             corroboration factor. Confidence is
-     ▼                             COMPUTED, never asserted by one model call.
+     │                             corroboration factor × cross-check factor.
+     ▼                             Confidence is COMPUTED, never asserted by
+                                   one model call. An affirming cross-check
+                                   boosts modestly (max +15%) — enough that a
+                                   perfect extraction from a brand-new source
+                                   can clear the bar, so new sources have no
+                                   cold-start deadlock.
 status: verified | quarantined | rejected
 ```
 

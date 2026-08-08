@@ -94,6 +94,37 @@ test("computeConfidence combines extraction, trust, and corroboration", () => {
   assert.ok(contradicted < base / 1.9);
 });
 
+test("affirming cross-check lets a perfect new-source extraction clear the bar", () => {
+  // New source (trust 0.5), perfect extraction, strongly affirming checker.
+  const withCheck = computeConfidence({
+    extractionConfidence: 1,
+    sourceTrust: 0.5,
+    corroborations: 0,
+    contradictions: 0,
+    crossCheckConfidence: 0.99,
+  });
+  assert.ok(withCheck >= VERIFY_THRESHOLD);
+
+  // Without the cross-check the same item stays quarantined (trust must be earned).
+  const withoutCheck = computeConfidence({
+    extractionConfidence: 1,
+    sourceTrust: 0.5,
+    corroborations: 0,
+    contradictions: 0,
+  });
+  assert.ok(withoutCheck < VERIFY_THRESHOLD);
+
+  // A weaker extraction doesn't sneak through even with an affirming checker.
+  const weaker = computeConfidence({
+    extractionConfidence: 0.85,
+    sourceTrust: 0.5,
+    corroborations: 0,
+    contradictions: 0,
+    crossCheckConfidence: 0.9,
+  });
+  assert.ok(weaker < VERIFY_THRESHOLD);
+});
+
 test("computeConfidence caps corroboration boost and clamps to [0,1]", () => {
   const many = computeConfidence({
     extractionConfidence: 1,

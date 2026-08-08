@@ -66,6 +66,7 @@ export async function verifyEvidence(
 
   // Stage [2]: model cross-check, when available.
   let checkerDisagreed = false;
+  let crossCheckConfidence: number | null = null;
   if (!hardFail && opts.crossCheck && evidence.rawExcerpt) {
     const verdict = await opts.crossCheck(evidence.claim, evidence.rawExcerpt);
     checks.push({
@@ -75,6 +76,7 @@ export async function verifyEvidence(
       detail: `checker_confidence=${verdict.confidence.toFixed(2)}`,
     });
     checkerDisagreed = !verdict.supported;
+    if (verdict.supported) crossCheckConfidence = verdict.confidence;
   }
 
   // Stage [3]: corroboration via claim fingerprint — independent sources only;
@@ -94,6 +96,7 @@ export async function verifyEvidence(
     sourceTrust: Number(source.trust_score),
     corroborations,
     contradictions: 0, // contradiction detection lands with the extractor workflow
+    crossCheckConfidence,
   });
 
   let status: VerifyOutcome["status"];
