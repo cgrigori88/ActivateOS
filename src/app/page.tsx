@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
 import { rankNextActions, type PortfolioState } from "@/lib/portfolio/next-best";
-import { BandBadge, Card, PageHeader, StatChip, StatusBadge } from "@/components/ui";
+import { BandBadge, Card, CountChip, PageHeader, StatusBadge } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -106,11 +106,11 @@ export default async function TodayPage() {
         subtitle="What needs your decision, and where the next revenue is."
       />
 
-      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatChip label="Motions awaiting approval" value={c.draft_motions} href="/motions" tone="attention" />
-        <StatChip label="Evidence to review" value={c.pending_review} href="/review" tone="attention" />
-        <StatChip label="Scored accounts" value={c.scored_accounts} href="/accounts" />
-        <StatChip label="Verified evidence" value={c.verified_evidence} />
+      <div className="mb-6 flex flex-wrap gap-2">
+        <CountChip label="Awaiting approval" value={c.draft_motions} href="/motions" tone={Number(c.draft_motions) > 0 ? "amber" : "neutral"} />
+        <CountChip label="Evidence to review" value={c.pending_review} href="/review" tone={Number(c.pending_review) > 0 ? "amber" : "neutral"} />
+        <CountChip label="Scored accounts" value={c.scored_accounts} href="/accounts" tone="sky" />
+        <CountChip label="Verified evidence" value={c.verified_evidence} tone="green" />
       </div>
 
       {nextActions.length > 0 && (

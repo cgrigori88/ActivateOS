@@ -94,6 +94,155 @@ export function StatChip({
   return href ? <Link href={href}>{body}</Link> : body;
 }
 
+/**
+ * Count chip that doubles as a filter (the stat-row pattern: every number
+ * is clickable and filters the table below). `active` renders the selected
+ * state; `href` toggles it.
+ */
+export function CountChip({
+  label,
+  value,
+  href,
+  active = false,
+  tone,
+}: {
+  label: string;
+  value: number | string;
+  href?: string;
+  active?: boolean;
+  tone?: "green" | "sky" | "amber" | "neutral" | "red";
+}) {
+  const toneBar: Record<string, string> = {
+    green: "bg-green-600",
+    sky: "bg-sky-600",
+    amber: "bg-amber-500",
+    red: "bg-red-600",
+    neutral: "bg-neutral-400",
+  };
+  const body = (
+    <div
+      className={`relative min-w-[5.5rem] overflow-hidden rounded-lg border px-3 py-2 transition-colors ${
+        active
+          ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900"
+          : "border-neutral-200 bg-white hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700"
+      }`}
+    >
+      {tone && !active && (
+        <span className={`absolute inset-x-0 top-0 h-0.5 ${toneBar[tone]}`} />
+      )}
+      <div className="tnum text-lg font-semibold leading-tight">{value}</div>
+      <div
+        className={`text-[10px] font-medium uppercase tracking-wider ${
+          active ? "text-neutral-300 dark:text-neutral-600" : "text-neutral-500"
+        }`}
+      >
+        {label}
+      </div>
+    </div>
+  );
+  return href ? <Link href={href}>{body}</Link> : body;
+}
+
+/** Toolbar row above a data table: filters left, actions right. */
+export function Toolbar({ children, actions }: { children?: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      {children}
+      {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+/** GET-form search box that preserves other query params via hidden inputs. */
+export function SearchBox({
+  placeholder,
+  name = "q",
+  defaultValue,
+  hidden = {},
+}: {
+  placeholder: string;
+  name?: string;
+  defaultValue?: string;
+  hidden?: Record<string, string | undefined>;
+}) {
+  return (
+    <form method="get" className="relative">
+      {Object.entries(hidden).map(([k, v]) =>
+        v ? <input key={k} type="hidden" name={k} value={v} /> : null,
+      )}
+      <svg
+        viewBox="0 0 16 16"
+        className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      >
+        <circle cx="7" cy="7" r="4.5" />
+        <path d="M10.5 10.5L14 14" strokeLinecap="round" />
+      </svg>
+      <input
+        type="search"
+        name={name}
+        defaultValue={defaultValue}
+        placeholder={placeholder}
+        className="w-56 rounded-md border border-neutral-200 bg-white py-1.5 pl-8 pr-3 text-sm placeholder:text-neutral-400 focus:border-blue-500 focus:outline-none dark:border-neutral-800 dark:bg-neutral-900"
+      />
+    </form>
+  );
+}
+
+/** Active-filter pill with an ✕ that removes just this filter. */
+export function FilterPill({ label, clearHref }: { label: string; clearHref: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+      {label}
+      <Link href={clearHref} className="text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200">
+        ✕
+      </Link>
+    </span>
+  );
+}
+
+/** Sortable column header: click toggles between this key asc/desc. */
+export function SortHeader({
+  label,
+  sortKey,
+  current,
+  makeHref,
+}: {
+  label: string;
+  sortKey: string;
+  current: string; // e.g. "score" or "-score"
+  makeHref: (sort: string) => string;
+}) {
+  const activeAsc = current === sortKey;
+  const activeDesc = current === `-${sortKey}`;
+  const next = activeDesc ? sortKey : `-${sortKey}`;
+  return (
+    <Link href={makeHref(next)} className="inline-flex items-center gap-1 hover:text-neutral-800 dark:hover:text-neutral-200">
+      {label}
+      <span className={`text-[9px] leading-none ${activeAsc || activeDesc ? "" : "opacity-30"}`}>
+        {activeAsc ? "▲" : "▼"}
+      </span>
+    </Link>
+  );
+}
+
+/** Tiny 7-bar dimension sparkline for table rows. */
+export function DimensionBars({ values }: { values: number[] }) {
+  return (
+    <span className="inline-flex h-4 items-end gap-[2px]" title="dimensions">
+      {values.map((v, i) => (
+        <span
+          key={i}
+          className="w-[3px] rounded-sm bg-blue-600/70 dark:bg-blue-400/70"
+          style={{ height: `${Math.max(12, v)}%` }}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function EvidenceLine({
   claim,
   meta,
