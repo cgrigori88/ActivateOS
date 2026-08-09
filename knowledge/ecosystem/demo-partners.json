@@ -1,0 +1,62 @@
+{
+  "note": "Demo ecosystem for the Design Partner Demo org. Fictional partners — same clean-room rule as accounts: no real reseller data.",
+  "partners": [
+    {
+      "name": "Northbridge Systems",
+      "partner_type": "solution_provider",
+      "capacity": 1,
+      "industries": ["Financial Services", "Healthcare"],
+      "countries": [],
+      "capabilities": [
+        { "node": "infrastructure-automation", "strength": 0.9, "certified": true },
+        { "node": "kubernetes", "strength": 0.7, "certified": true },
+        { "node": "virtualization", "strength": 0.8, "certified": false }
+      ],
+      "relationships": [
+        { "company": "Initech Financial", "strength": 75, "tenure_months": 48 }
+      ],
+      "sellers": [
+        {
+          "name": "Dana Whitfield",
+          "territory": "US-East",
+          "accounts": [{ "company": "Initech Financial", "strength": 70 }]
+        }
+      ]
+    },
+    {
+      "name": "Meridian Digital",
+      "partner_type": "reseller",
+      "capacity": 4,
+      "industries": [],
+      "countries": [],
+      "capabilities": [
+        { "node": "infrastructure-automation", "strength": 0.6, "certified": false },
+        { "node": "operating-systems", "strength": 0.9, "certified": true }
+      ],
+      "relationships": [
+        { "company": "Globex Manufacturing Inc.", "strength": 85, "tenure_months": 72 },
+        { "company": "Stark Industries LLC", "strength": 40, "tenure_months": 12 }
+      ],
+      "sellers": [
+        {
+          "name": "Priya Raman",
+          "territory": "US-Central",
+          "accounts": [{ "company": "Globex Manufacturing Inc.", "strength": 90 }]
+        }
+      ]
+    },
+    {
+      "name": "Cobalt Peak Consulting",
+      "partner_type": "msp",
+      "industries": ["Aerospace", "Manufacturing"],
+      "countries": [],
+      "capabilities": [
+        { "node": "kubernetes", "strength": 0.9, "certified": true }
+      ],
+      "relationships": [
+        { "company": "Stark Industries LLC", "strength": 60, "tenure_months": 24 }
+      ],
+      "sellers": []
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* PursuitOS design tokens (docs/DESIGN.md §3) */
+@theme {
+  --color-band-very-high: #15803d;
+  --color-band-high: #0369a1;
+  --color-band-medium: #b45309;
+  --color-band-low: #6b7280;
+  --color-positive: #15803d;
+  --color-negative: #b91c1c;
+  --color-accent: #1d4ed8;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html { color-scheme: light dark; }
+body { @apply bg-neutral-50 text-neutral-900 antialiased; }
+@media (prefers-color-scheme: dark) {
+  body { @apply bg-neutral-950 text-neutral-100; }
+}
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* Dense data tables */
+.data-table { @apply w-full text-sm; }
+.data-table thead th {
+  @apply sticky top-0 z-[1] whitespace-nowrap border-b border-neutral-200 bg-white px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400;
+}
+.data-table tbody td {
+  @apply whitespace-nowrap border-b border-neutral-100 px-3 py-2.5 align-middle dark:border-neutral-800/60;
+}
+.data-table tbody tr { @apply transition-colors hover:bg-blue-50/40 dark:hover:bg-blue-950/20; }
+
+/* Thin scrollbars for dense panes */
+.scroll-thin { scrollbar-width: thin; }
+.scroll-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+.scroll-thin::-webkit-scrollbar-thumb { @apply rounded bg-neutral-300 dark:bg-neutral-700; }

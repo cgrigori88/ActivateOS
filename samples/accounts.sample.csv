@@ -1,0 +1,6 @@
+Company Name,Domain,Industry,Employee Count,Partner,Existing Products,Target Product
+Globex Manufacturing Inc.,globex.example.com,Manufacturing,4200,Example Reseller,VMware vSphere;Cisco UCS,Infrastructure Automation
+Initech Financial,initech.example.com,Financial Services,1800,Example Reseller,VMware vSphere;RHEL,Infrastructure Automation
+Umbrella Health Systems,umbrella-health.example.com,Healthcare,9500,Example Reseller,VMware vSphere;NetApp,Infrastructure Automation
+Stark Industries LLC,stark.example.com,Aerospace,12000,Example Reseller,Kubernetes;Public Cloud,Infrastructure Automation
+Globex Manufacturing,globex.example.com,Manufacturing,4200,Example Reseller,Veeam,Infrastructure Automation

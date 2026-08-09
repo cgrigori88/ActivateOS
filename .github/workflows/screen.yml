@@ -1,0 +1,47 @@
+name: Screening sweep
+
+# Front of the autonomous loop: re-screens each org's portfolio (cheap SCREEN
+# providers), re-maps + re-scores, and enqueues deep research for accounts that
+# now cross an escalation gate — keeping research_jobs filled for the research
+# runner to drain. Cheap by construction: content-hash change detection means
+# unchanged sources cost nothing, so a daily sweep only spends where something
+# actually moved. Shares a Postgres advisory lock with the research runner, so
+# the two never race on scoreOrg.
+
+on:
+  schedule:
+    - cron: "0 7 * * *" # daily at 07:00 UTC
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max accounts to screen per org"
+        required: false
+        default: "25"
+
+concurrency:
+  group: screening-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Screen portfolio
+        run: npm run screen -- --limit "${{ github.event.inputs.limit || '25' }}"
+        env:
+          # Required — the screen runner and its LLM extraction.
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Optional providers — skip gracefully when their key is absent.
+          PDL_API_KEY: ${{ secrets.PDL_API_KEY }}
+          IPINFO_TOKEN: ${{ secrets.IPINFO_TOKEN }}
+          CENSYS_PAT: ${{ secrets.CENSYS_PAT }}
+          CENSYS_ORG_ID: ${{ secrets.CENSYS_ORG_ID }}
+          BUILTWITH_API_KEY: ${{ secrets.BUILTWITH_API_KEY }}
