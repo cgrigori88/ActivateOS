@@ -1,7 +1,9 @@
-# ActivateOS
+# PursuitOS
+
+**PursuitOS** (formerly ActivateOS — renamed after securing pursuitos.io / pursuitos.xyz).
 
 **The AI decision and orchestration layer for partner-led revenue.**
-ActivateOS decides what the channel should do next.
+PursuitOS decides what the channel should do next.
 
 - [Project brief & founding technical direction](docs/PROJECT_BRIEF.md)
 - [Agent layer design](docs/AGENT_LAYER.md)

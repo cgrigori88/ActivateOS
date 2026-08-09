@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "ActivateOS",
+  title: "PursuitOS",
   description: "The AI decision and orchestration layer for partner-led revenue.",
 };
 
@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <nav className="sticky top-0 z-10 border-b border-neutral-200 bg-white/90 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
           <div className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-3">
             <Link href="/" className="font-semibold tracking-tight">
-              Activate<span className="text-blue-700 dark:text-blue-400">OS</span>
+              Pursuit<span className="text-blue-700 dark:text-blue-400">OS</span>
             </Link>
             <div className="flex gap-4 text-sm text-neutral-600 dark:text-neutral-300">
               {NAV.map((item) => (
