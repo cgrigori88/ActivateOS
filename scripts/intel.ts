@@ -1,6 +1,6 @@
 import { getPool } from "../src/db/client";
 import { mapSignals } from "../src/lib/agents/taxonomy-mapper";
-import { enqueueDeepResearch, screenCompany } from "../src/lib/intel/screen";
+import { deepResearchCompany, enqueueDeepResearch, screenCompany } from "../src/lib/intel/screen";
 import { scoreOrg } from "../src/lib/scoring/score";
 
 /**
@@ -79,6 +79,23 @@ async function main() {
           `new=${r.newObservations} evidence=${r.evidenceCreated} signals=${r.signalsCreated}` +
           (r.error ? ` error=${r.error.slice(0, 80)}` : ""),
       );
+    }
+
+    // Specialized deep-stage providers (Censys), gated on category relevance.
+    const deep = await deepResearchCompany(
+      db,
+      { orgId, companyId: company.id, companyName: company.legal_name, domain: domain ?? company.primary_domain },
+      targetSlug,
+    );
+    if (Object.keys(deep).length > 0) {
+      console.log("─ Deep stage: specialized providers");
+      for (const [id, r] of Object.entries(deep)) {
+        console.log(
+          `  ${id.padEnd(12)} ${r.status.padEnd(10)} records=${r.recordsReceived} ` +
+            `evidence=${r.evidenceCreated} signals=${r.signalsCreated}` +
+            (r.error ? ` error=${r.error.slice(0, 80)}` : ""),
+        );
+      }
     }
 
     const mapStats = await mapSignals(db, orgId, {

@@ -52,6 +52,34 @@ export async function screenCompany(
   return results;
 }
 
+/**
+ * Deep/manual-stage specialized providers, run per pursuit. Censys is the
+ * first: it fires only when the target solution is infra-relevant AND the
+ * account has a resolvable public asset (both gates enforced in the
+ * provider). The targetSlug rides in via handles so the provider can check
+ * category relevance.
+ */
+export async function deepResearchCompany(
+  db: pg.PoolClient,
+  target: IntelligenceTarget,
+  targetSlug: string,
+): Promise<Record<string, ProviderRunResult>> {
+  registerBuiltinProviders();
+  const results: Record<string, ProviderRunResult> = {};
+  const withSlug: IntelligenceTarget = {
+    ...target,
+    handles: { ...(target.handles ?? {}), targetSlug },
+  };
+  for (const provider of allProviders()) {
+    await ensureProviderRow(db, provider);
+    if (provider.allowedForScreening !== false) continue; // screen providers already ran
+    if (provider.disabledReason) continue;
+    if (provider.costClass === "PREMIUM") continue;
+    results[provider.providerId] = await runProvider(db, provider, withSlug, { stage: "deep" });
+  }
+  return results;
+}
+
 /** Escalation rules (§21, §34) — pure and auditable. */
 export interface EscalationInput {
   score: number;

@@ -133,8 +133,14 @@ export const SIGNAL_DEFS: Record<string, SignalDef> = {
   CLOUD_NETWORK_EVIDENCE: { halfLifeDays: 365, family: "technology", direction: 1, canonical: "TECHNOLOGY" },
   NETWORK_PROVIDER_CHANGE: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
   NETWORK_INFRASTRUCTURE_CHANGE: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
-  // Internet-facing infrastructure (DIRECTIVE P2-B): specialized, opt-in.
+  // Internet-facing infrastructure (DIRECTIVE P2-B / Censys): specialized,
+  // opt-in, conservative. Never internal-use or vulnerability claims.
   PUBLIC_INFRASTRUCTURE_EVIDENCE: { halfLifeDays: 365, family: "technology", direction: 1, canonical: "TECHNOLOGY" },
+  PUBLIC_SERVICE_DETECTED: { halfLifeDays: 270, family: "technology", direction: 1, canonical: "TECHNOLOGY" },
+  INTERNET_FACING_INFRASTRUCTURE_EVIDENCE: { halfLifeDays: 365, family: "technology", direction: 1, canonical: "TECHNOLOGY" },
+  CLOUD_INFRASTRUCTURE_EVIDENCE: { halfLifeDays: 365, family: "technology", direction: 1, canonical: "TECHNOLOGY" },
+  CERTIFICATE_INFRASTRUCTURE_EVIDENCE: { halfLifeDays: 365, family: "technology", direction: 1, canonical: "TECHNOLOGY" },
+  PUBLIC_INFRASTRUCTURE_CHANGE: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
   // Negative
   HIRING_FREEZE: { halfLifeDays: 120, family: "negative", direction: -1 },
   LAYOFFS: { halfLifeDays: 180, family: "negative", direction: -1 },

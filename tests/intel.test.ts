@@ -375,42 +375,62 @@ test("wappalyzer registers DISABLED_NO_PLAN_ACCESS and never runs", async () => 
 
 // -- Censys (P2-B): fixtures mirror the LIVE platform API shape ----------
 
-test("censys: specialized posture, careful claims, ontology-filtered software", async () => {
-  const { CensysProvider, summarizeHost } = await import("../src/lib/intel/providers/censys");
+test("censys: relevance gate, finer signal vocabulary, careful claims", async () => {
+  const { CensysProvider, summarizeHost, certIssuerOrg, detectInfraChange, isCensysRelevant } =
+    await import("../src/lib/intel/providers/censys");
   const p = new CensysProvider();
-  // Never in the universal screen; monthly cadence.
-  assert.equal(p.allowedForScreening, false);
+  assert.equal(p.allowedForScreening, false); // never in the universal screen
   assert.equal(p.minRefreshHours, 24 * 30);
+
+  // Category gate: infra-relevant slugs pass; unrelated ones don't.
+  assert.equal(isCensysRelevant("infrastructure-automation"), true);
+  assert.equal(isCensysRelevant("security"), true);
+  assert.equal(isCensysRelevant("analytics"), false);
+
+  assert.equal(certIssuerOrg({ parsed: { issuer_dn: "C=US, O=Let's Encrypt, CN=R3" } }), "Let's Encrypt");
+  assert.equal(certIssuerOrg({}), null);
 
   const host = {
     ip: "203.0.113.10",
-    autonomous_system: { asn: 64500, name: "EXAMPLE-NET" },
+    autonomous_system: { asn: 16509, name: "AMAZON-02 - Amazon.com, Inc." },
     service_count: 3,
     services: [
-      { port: 443, protocol: "HTTP", transport_protocol: "tcp", software: [{ product: "OpenShift", vendor: "Red Hat" }] },
+      {
+        port: 443, protocol: "HTTP", transport_protocol: "tcp",
+        software: [{ product: "OpenShift", vendor: "Red Hat" }],
+        cert: { parsed: { issuer_dn: "C=US, O=DigiCert Inc, CN=DigiCert TLS" } },
+      },
       { port: 22, protocol: "SSH", transport_protocol: "tcp" },
-      { port: 443, protocol: "UNKNOWN", transport_protocol: "quic" }, // UNKNOWN filtered
+      { port: 443, protocol: "UNKNOWN", transport_protocol: "quic" }, // filtered
     ],
   };
   const s = summarizeHost(host);
-  assert.equal(s.serviceCount, 3);
   assert.deepEqual(s.protocols, ["HTTP", "SSH"]);
   assert.deepEqual(s.software, ["OpenShift"]);
+  assert.deepEqual(s.certIssuers, ["DigiCert Inc"]);
+  assert.equal(s.cloudProvider, "AMAZON-02 - Amazon.com, Inc.");
 
   const candidates = p.normalize(
     [{ payload: { domain: "acme.com", hosts: [host] }, isNew: true }],
     [],
     { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
   );
-  // Posture claim + ontology-mapped software claim (OpenShift → kubernetes).
-  assert.equal(candidates.length, 2);
+  const types = candidates.map((c) => c.suggestedSignalType);
+  assert.ok(types.includes("INTERNET_FACING_INFRASTRUCTURE_EVIDENCE"));
+  assert.ok(types.includes("CLOUD_INFRASTRUCTURE_EVIDENCE"));
+  assert.ok(types.includes("CERTIFICATE_INFRASTRUCTURE_EVIDENCE"));
+  assert.ok(types.includes("PUBLIC_SERVICE_DETECTED"));
+  const svc = candidates.find((c) => c.suggestedSignalType === "PUBLIC_SERVICE_DETECTED")!;
+  assert.equal(svc.suggestedNodeSlug, "kubernetes");
+  // NEVER internal-use, vulnerability, or exposure language.
   for (const c of candidates) {
-    assert.equal(c.suggestedSignalType, "PUBLIC_INFRASTRUCTURE_EVIDENCE");
-    assert.match(c.claim, /internet-facing/);
-    // No vulnerability/security-posture language, no location.
-    assert.ok(!/vulnerab|insecure|exposed|risk|CVE/i.test(c.claim));
+    assert.ok(!/uses .* internally|vulnerab|insecure|exposed|risk|CVE/i.test(c.claim));
   }
-  assert.equal(candidates[1].suggestedNodeSlug, "kubernetes");
+
+  // Change detection: a new service since the prior snapshot.
+  const prev = { domain: "acme.com", hosts: [{ ip: "203.0.113.10", services: [{ port: 443, protocol: "HTTP" }] }] };
+  const change = detectInfraChange(prev, { domain: "acme.com", hosts: [host] });
+  assert.match(change ?? "", /new: 22\/SSH/);
 
   // No PAT = absence, not error.
   const saved = process.env.CENSYS_PAT;

@@ -118,6 +118,14 @@ export async function runProvider(
 
     const observations = await provider.fetch(target);
 
+    // An empty fetch — no domain, gated out by category, no public asset, or
+    // no data — is NOT a throttle-worthy refresh. Record it as skipped so a
+    // later, genuinely-relevant pursuit isn't blocked by minRefreshHours.
+    if (observations.length === 0) {
+      await finish({ status: "skipped" });
+      return { runId, status: "skipped", recordsReceived: 0, newObservations: 0, evidenceCreated: 0, signalsCreated: 0 };
+    }
+
     // Persist raw FIRST; the unique index makes unchanged content a no-op —
     // this is the change-detection backbone (§25-26): unchanged = stop.
     const withNovelty: { payload: unknown; observedAt: Date; isNew: boolean }[] = [];
