@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { createMotionActions } from "./cadence";
 
 /**
  * Motion lifecycle (BLUEPRINT Phase 3): draft → approved → active → closed.
@@ -75,4 +76,9 @@ export async function transitionMotion(
       JSON.stringify({ from: motion.status, outcome: opts.outcome ?? null }),
     ],
   );
+
+  // Activation means scheduled work: the play cadence becomes dated actions.
+  if (to === "active") {
+    await createMotionActions(db, motionId);
+  }
 }

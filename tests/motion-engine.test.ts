@@ -85,3 +85,32 @@ test("next-best actions respect the limit and handle empty state", () => {
   };
   assert.equal(rankNextActions(many, 5).length, 5);
 });
+
+test("cadence: day offsets become dates, weekends shift to Monday", async () => {
+  const { instantiateCadence, nextBusinessDay } = await import("../src/lib/motions/cadence");
+  // 2026-08-10 is a Monday.
+  const monday = new Date("2026-08-10T09:00:00Z");
+  const actions = instantiateCadence(
+    [
+      { step: 2, action: "second", day: 3 },
+      { step: 1, action: "first", day: 0 },
+      { step: 3, action: "weekend", day: 5 }, // Saturday → Monday
+    ],
+    monday,
+  );
+  // Sorted by step regardless of input order.
+  assert.deepEqual(actions.map((a) => a.step), [1, 2, 3]);
+  assert.equal(actions[0].dueAt.toISOString().slice(0, 10), "2026-08-10");
+  assert.equal(actions[1].dueAt.toISOString().slice(0, 10), "2026-08-13");
+  assert.equal(actions[2].dueAt.toISOString().slice(0, 10), "2026-08-17"); // shifted off Saturday
+  // Sunday shifts one day.
+  assert.equal(
+    nextBusinessDay(new Date("2026-08-16T09:00:00Z")).toISOString().slice(0, 10),
+    "2026-08-17",
+  );
+  // Weekdays untouched.
+  assert.equal(
+    nextBusinessDay(new Date("2026-08-12T09:00:00Z")).toISOString().slice(0, 10),
+    "2026-08-12",
+  );
+});

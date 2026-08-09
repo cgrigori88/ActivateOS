@@ -8,6 +8,7 @@ import {
   PageHeader,
   StatusBadge,
 } from "@/components/ui";
+import { setTeamStatusAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
   }
 
   let team: {
+    id: string;
     partner_id: string;
     seller: string | null;
     status: string;
@@ -69,7 +71,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
   } | null = null;
   {
     const result = await pool.query(
-      `select t.partner_id, s.name as seller, t.status, t.reason
+      `select t.id, t.partner_id, s.name as seller, t.status, t.reason
        from pursuit_teams t
        left join sellers s on s.id = t.seller_id
        where t.company_id = $1 and t.status in ('recommended','accepted')
@@ -293,6 +295,26 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
                     <p className="mt-1 text-xs text-neutral-500">
                       <span className="font-medium">Routing:</span> {team.reason}
                     </p>
+                  )}
+                  {isRouted && team?.status === "recommended" && (
+                    <div className="mt-2 flex gap-2">
+                      <form action={setTeamStatusAction.bind(null, team.id, "accepted")}>
+                        <button
+                          type="submit"
+                          className="rounded-md bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800"
+                        >
+                          Accept routing
+                        </button>
+                      </form>
+                      <form action={setTeamStatusAction.bind(null, team.id, "declined")}>
+                        <button
+                          type="submit"
+                          className="rounded-md px-3 py-1 text-xs font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
+                        >
+                          Decline
+                        </button>
+                      </form>
+                    </div>
                   )}
                 </div>
               );

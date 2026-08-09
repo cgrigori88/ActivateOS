@@ -60,6 +60,12 @@ export default async function MotionsPage() {
                   </Link>{" "}
                   <span className="text-neutral-400">— {m.slug}</span>
                   <span className="ml-2 text-xs text-neutral-400">({m.confidence} confidence)</span>
+                  <Link
+                    href={`/briefs/${m.id}`}
+                    className="ml-2 text-xs font-medium text-blue-700 hover:underline dark:text-blue-400"
+                  >
+                    Brief →
+                  </Link>
                   {m.outcome && (
                     <span
                       className={`ml-2 text-xs font-semibold uppercase ${
