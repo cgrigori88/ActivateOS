@@ -76,6 +76,12 @@ async function ensureResendDomain(name: string): Promise<{ id: string; records: 
     id = ((await res.json()) as { id: string }).id;
     console.log(`resend: registered domain ${name} (${id})`);
   }
+  // Threads live on this domain too: enable inbound receiving so the
+  // inbound MX record is part of the required set.
+  await resend(`/domains/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ capabilities: { receiving: "enabled" } }),
+  });
   const detail = (await (await resend(`/domains/${id}`)).json()) as { records?: ResendRecord[] };
   return { id, records: detail.records ?? [] };
 }
