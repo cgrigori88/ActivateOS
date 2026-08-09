@@ -4,6 +4,7 @@ import { commsConfig } from "@/lib/comms/provider";
 import { resendConfigured } from "@/lib/comms/resend";
 import { threadAddress } from "@/lib/comms/alias";
 import { Card, EvidenceLine, PageHeader, StatusBadge } from "@/components/ui";
+import { promoteMotionAction } from "@/app/pipeline/actions";
 import { generateDraftAction, sendDraftAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -146,6 +147,16 @@ export default async function BriefPage({
           <span className="font-medium text-neutral-800 dark:text-neutral-200">The ask: </span>
           {m.cta}
         </p>
+        {m.status === "active" && (
+          <form action={promoteMotionAction.bind(null, motionId)} className="mt-3">
+            <button
+              type="submit"
+              className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
+            >
+              Promote to opportunity
+            </button>
+          </form>
+        )}
       </Card>
 
       {cited.length > 0 && (
