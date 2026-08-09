@@ -14,6 +14,7 @@ export interface EvidenceRow {
   sourceType: string | null;
   providerId: string | null;
   status: string;
+  stance: string;
   confidence: number | null;
   firstParty: boolean | null;
   collectedAt: Date;
@@ -48,7 +49,7 @@ function familiesFromSignalTypes(types: string[]): Set<string> {
 export async function loadCompanyIntel(pool: pg.Pool, companyId: string): Promise<CompanyIntel> {
   const [evidenceRes, coverageRes, signalRes] = await Promise.all([
     pool.query(
-      `select claim, source_type, provider_id, status, computed_confidence, first_party, collected_at
+      `select claim, source_type, provider_id, status, stance, computed_confidence, first_party, collected_at
        from evidence where company_id = $1
        order by collected_at desc limit 40`,
       [companyId],
@@ -73,6 +74,7 @@ export async function loadCompanyIntel(pool: pg.Pool, companyId: string): Promis
     sourceType: r.source_type,
     providerId: r.provider_id,
     status: r.status,
+    stance: r.stance ?? "supports",
     confidence: r.computed_confidence == null ? null : Number(r.computed_confidence),
     firstParty: r.first_party,
     collectedAt: r.collected_at,

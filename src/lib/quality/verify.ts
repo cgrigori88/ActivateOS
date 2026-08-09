@@ -39,6 +39,8 @@ export interface StoredEvidence extends EvidenceDraft {
   orgId: string | null;
   companyId: string;
   sourceName: string;
+  /** 'supports' (default) asserts the claim; 'refutes' disputes it. */
+  stance?: "supports" | "refutes";
 }
 
 export async function verifyEvidence(
@@ -79,23 +81,30 @@ export async function verifyEvidence(
     if (verdict.supported) crossCheckConfidence = verdict.confidence;
   }
 
-  // Stage [3]: corroboration via claim fingerprint — independent sources only;
-  // the same source repeating itself is not corroboration.
+  // Stage [3]: corroboration & contradiction via claim fingerprint —
+  // independent sources only (a source repeating itself is neither). Sources
+  // that take the SAME stance corroborate; the OPPOSITE stance contradicts.
+  const stance = evidence.stance ?? "supports";
+  const opposite = stance === "supports" ? "refutes" : "supports";
   const fingerprint = claimFingerprint(evidence.companyId, evidence.claim);
-  const { rows: corr } = await db.query<{ n: string }>(
-    `select count(distinct source_type) as n from evidence
+  const { rows: counts } = await db.query<{ corroborations: string; contradictions: string }>(
+    `select
+       count(distinct source_type) filter (where stance = $4) as corroborations,
+       count(distinct source_type) filter (where stance = $5) as contradictions
+     from evidence
      where claim_fingerprint = $1 and id <> $2 and source_type <> $3
        and status <> 'rejected'`,
-    [fingerprint, evidence.id, evidence.sourceName],
+    [fingerprint, evidence.id, evidence.sourceName, stance, opposite],
   );
-  const corroborations = Number(corr[0]?.n ?? 0);
+  const corroborations = Number(counts[0]?.corroborations ?? 0);
+  const contradictions = Number(counts[0]?.contradictions ?? 0);
 
   // Stage [4]: computed confidence and verdict.
   const computedConfidence = computeConfidence({
     extractionConfidence: evidence.extractionConfidence,
     sourceTrust: Number(source.trust_score),
     corroborations,
-    contradictions: 0, // contradiction detection lands with the extractor workflow
+    contradictions,
     crossCheckConfidence,
   });
 
@@ -123,7 +132,7 @@ export async function verifyEvidence(
       evidence.id,
       status,
       computedConfidence,
-      JSON.stringify({ checks, corroborations, sourceTrust: Number(source.trust_score) }),
+      JSON.stringify({ checks, corroborations, contradictions, sourceTrust: Number(source.trust_score) }),
       fingerprint,
     ],
   );

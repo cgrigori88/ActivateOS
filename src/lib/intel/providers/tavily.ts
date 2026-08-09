@@ -152,10 +152,16 @@ export class TavilyProvider implements IntelligenceProvider {
 const RADAR_PROVIDERS = ["gdelt", "common_crawl"];
 
 const verdictSchema = z.object({
-  corroborated: z.boolean().describe("Do the search results independently confirm the claim?"),
+  verdict: z
+    .enum(["corroborated", "refuted", "inconclusive"])
+    .describe(
+      "corroborated = results independently confirm the claim; refuted = results " +
+        "contradict it (the event did not happen / the opposite is true); inconclusive = " +
+        "results are unrelated or insufficient",
+    ),
   confidence: z.number().min(0).max(1),
-  best_url: z.string().describe("The single most credible confirming URL, or empty if none"),
-  justification: z.string().describe("One verbatim sentence from a result that confirms the claim"),
+  best_url: z.string().describe("The single most credible confirming OR refuting URL, or empty"),
+  justification: z.string().describe("One verbatim sentence from a result supporting the verdict"),
 });
 
 /** Keywords from a candidate claim to build a focused investigation query. */
@@ -175,6 +181,7 @@ export function investigationQuery(companyName: string, claim: string): string {
 export interface InvestigationResult {
   investigated: number;
   corroborated: number;
+  refuted: number;
   evidenceCreated: number;
 }
 
@@ -189,7 +196,7 @@ export async function investigateCandidates(
   target: IntelligenceTarget,
   opts: { limit?: number } = {},
 ): Promise<InvestigationResult> {
-  const result: InvestigationResult = { investigated: 0, corroborated: 0, evidenceCreated: 0 };
+  const result: InvestigationResult = { investigated: 0, corroborated: 0, refuted: 0, evidenceCreated: 0 };
   if (!tavilyAvailable()) return result;
 
   const limit = opts.limit ?? 5;
@@ -228,10 +235,10 @@ export async function investigateCandidates(
       verdict = await completeStructured({
         tier: "cheap",
         system:
-          "You are verifying whether web search results independently CONFIRM a specific claim about a " +
-          "company. Only answer corroborated=true when a result clearly supports the claim; if the results " +
-          "are unrelated, generic, or only tangentially mention it, answer false. Quote a verbatim " +
-          "confirming sentence when true.",
+          "You are checking a specific claim about a company against web search results. Decide whether " +
+          "the results CORROBORATE it (clearly confirm), REFUTE it (contradict it — the event did not " +
+          "happen or the opposite is true), or are INCONCLUSIVE (unrelated, generic, or insufficient). " +
+          "Quote a verbatim sentence supporting your verdict.",
         user: `Claim: ${cand.claim}\n\nResults:\n${corpus}`,
         schema: verdictSchema,
         maxTokens: 512,
@@ -239,12 +246,13 @@ export async function investigateCandidates(
     } catch {
       continue;
     }
-    if (!verdict.corroborated || verdict.confidence < 0.5 || !verdict.best_url) continue;
-    result.corroborated++;
+    if (verdict.verdict === "inconclusive" || verdict.confidence < 0.5 || !verdict.best_url) continue;
+    const stance = verdict.verdict === "corroborated" ? "supports" : "refutes";
 
-    // Tavily evidence for the SAME event → shares the candidate's fingerprint,
-    // so the two independent sources corroborate. Its own trust + cross-check
-    // let it clear verification even when the radar lead could not.
+    // Tavily evidence for the SAME event, fingerprint-aligned so it either
+    // corroborates (supports) or contradicts (refutes) the radar lead. Its own
+    // trust + cross-check let a confirmation clear verification the lead could
+    // not; a refutation drives the lead's contradiction count up.
     const fp = claimFingerprint(target.companyId, cand.claim);
     const { rows: existing } = await db.query<{ id: string }>(
       `select id from evidence where company_id = $1 and provider_id = 'tavily' and claim_fingerprint = $2 limit 1`,
@@ -254,10 +262,10 @@ export async function investigateCandidates(
 
     const { rows: evRows } = await db.query<{ id: string }>(
       `insert into evidence (org_id, company_id, source_type, source_url, claim, raw_excerpt,
-          confidence, observed_at, provider_id, first_party, published_at)
-       values ($1, $2, 'tavily', $3, $4, $5, $6, now(), 'tavily', false, null)
+          confidence, observed_at, provider_id, first_party, published_at, stance)
+       values ($1, $2, 'tavily', $3, $4, $5, $6, now(), 'tavily', false, null, $7)
        returning id`,
-      [target.orgId, target.companyId, verdict.best_url, cand.claim, verdict.justification, verdict.confidence],
+      [target.orgId, target.companyId, verdict.best_url, cand.claim, verdict.justification, verdict.confidence, stance],
     );
 
     const outcome = await verifyEvidence(
@@ -271,12 +279,14 @@ export async function investigateCandidates(
         rawExcerpt: verdict.justification,
         observedAt: new Date(),
         extractionConfidence: verdict.confidence,
+        stance,
       },
       { crossCheck: crossCheckLLM },
     );
     result.evidenceCreated++;
 
-    // Re-verify the radar candidate so its corroboration count now sees Tavily.
+    // Re-verify the radar candidate so its corroboration/contradiction count
+    // now sees Tavily (a confirmation lifts it, a refutation penalizes it).
     await verifyEvidence(
       db,
       {
@@ -292,18 +302,31 @@ export async function investigateCandidates(
       { random: () => 1 }, // no re-sampling into the review queue
     );
 
-    // Promote a signal for the now-verified event, mirroring the pipeline.
-    const inferred = inferSignalType(cand.claim);
-    if (outcome.status === "verified" && inferred) {
-      const def = SIGNAL_DEFS[inferred];
-      if (def) {
-        await db.query(
-          `insert into signals (org_id, company_id, signal_type, direction, magnitude, confidence,
-              observed_at, half_life_days, evidence_id, first_seen, last_seen)
-           values ($1, $2, $3, $4, 1, (select computed_confidence from evidence where id = $5), now(), $6, $5, now(), now())`,
-          [target.orgId, target.companyId, inferred, def.direction, evRows[0].id, def.halfLifeDays],
-        );
+    if (stance === "supports") {
+      result.corroborated++;
+      // Promote a signal for the now-verified event, mirroring the pipeline.
+      const inferred = inferSignalType(cand.claim);
+      if (outcome.status === "verified" && inferred) {
+        const def = SIGNAL_DEFS[inferred];
+        if (def) {
+          await db.query(
+            `insert into signals (org_id, company_id, signal_type, direction, magnitude, confidence,
+                observed_at, half_life_days, evidence_id, first_seen, last_seen)
+             values ($1, $2, $3, $4, 1, (select computed_confidence from evidence where id = $5), now(), $6, $5, now(), now())`,
+            [target.orgId, target.companyId, inferred, def.direction, evRows[0].id, def.halfLifeDays],
+          );
+        }
       }
+    } else {
+      result.refuted++;
+      // Record the refutation for audit/observability. status='resolved': the
+      // investigation SETTLED the rumor, so it should not re-escalate the
+      // account as an open contradiction.
+      await db.query(
+        `insert into contradictions (org_id, company_id, basis, status)
+         values ($1, $2, 'research_refuted', 'resolved')`,
+        [target.orgId, target.companyId],
+      );
     }
   }
   return result;

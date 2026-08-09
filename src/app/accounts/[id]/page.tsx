@@ -308,6 +308,11 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
               <div key={i} className="flex items-start gap-2 text-sm">
                 <StatusBadge status={e.status} />
                 <span className="flex-1 leading-relaxed text-neutral-700 dark:text-neutral-300">
+                  {e.stance === "refutes" && (
+                    <span className="mr-1 rounded bg-red-50 px-1 text-[10px] font-semibold uppercase text-red-700 dark:bg-red-950 dark:text-red-300">
+                      refutes
+                    </span>
+                  )}
                   {e.claim}
                   <span className="ml-1 text-xs text-neutral-400">
                     ({e.providerId ?? e.sourceType ?? "n/a"}
