@@ -24,7 +24,7 @@ const CATEGORY_PROVIDERS: Record<CoverageCategory, string[]> = {
   identity: ["pdl_company"],
   strategic: ["sec_edgar", "website", "gdelt"],
   hiring: ["greenhouse", "lever", "careers"],
-  technology: ["builtwith", "dns", "http_fingerprint", "wappalyzer", "censys"],
+  technology: ["builtwith_free", "builtwith_domain", "dns", "http_fingerprint", "wappalyzer", "censys"],
   engineering: ["github"],
   relationship: ["partner_transactions", "customer_outcomes"],
   timing: ["sec_edgar", "installed_base", "renewals"],

@@ -80,7 +80,7 @@ export const PROVIDER_POLICY: Record<string, ProviderPolicy> = {
     stages: ["screen", "deep"],
     categoryRelevant: (slug) => GITHUB_RELEVANT.has(slug),
   },
-  builtwith: { tier: "TIER2_SIGNAL", purpose: "technographic evidence", priority: 9, stages: ["screen", "deep"] },
+  builtwith_free: { tier: "TIER2_SIGNAL", purpose: "free web-technographic categories", priority: 9, stages: ["screen"] },
   dns: { tier: "TIER2_SIGNAL", purpose: "inexpensive technology fingerprint", priority: 9, stages: ["screen"] },
   http_fingerprint: { tier: "TIER2_SIGNAL", purpose: "web-tech fingerprint", priority: 9, stages: ["screen"] },
   ipinfo: { tier: "TIER2_SIGNAL", purpose: "network context", priority: 13, stages: ["screen"] },
@@ -100,6 +100,8 @@ export const PROVIDER_POLICY: Record<string, ProviderPolicy> = {
     stages: ["deep"],
     requiresResearchTrigger: true,
   },
+  builtwith_domain: { tier: "TIER3_DEEP", purpose: "full technology inventory (credits)", priority: 9, stages: ["deep"] },
+  builtwith_change: { tier: "TIER3_DEEP", purpose: "technology-change monitoring (credits)", priority: 9, stages: ["deep"] },
   wappalyzer: { tier: "TIER3_DEEP", purpose: "technographic corroboration", priority: 12, stages: ["deep"] },
   censys: {
     tier: "TIER3_DEEP",

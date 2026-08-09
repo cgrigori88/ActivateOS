@@ -33,7 +33,10 @@ export interface ProviderRunResult {
 export async function ensureProviderRow(db: pg.PoolClient, p: IntelligenceProvider): Promise<void> {
   await db.query(
     `insert into providers (id, provider_type, cost_class, enabled, allowed_for_screening, config)
-     values ($1, $2, $3, $4, $5, $6) on conflict (id) do nothing`,
+     values ($1, $2, $3, $4, $5, $6)
+     on conflict (id) do update set
+       enabled = excluded.enabled,
+       config = excluded.config`,
     [
       p.providerId,
       p.providerType,

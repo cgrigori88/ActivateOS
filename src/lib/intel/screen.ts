@@ -2,7 +2,11 @@ import type pg from "pg";
 import { ensureProviderRow, runProvider, type ProviderRunResult } from "./pipeline";
 import { shouldRunProvider } from "./policy";
 import { allProviders, registerProvider, type IntelligenceTarget } from "./provider";
-import { BuiltWithProvider } from "./providers/builtwith";
+import {
+  BuiltWithChangeProvider,
+  BuiltWithDomainProvider,
+  BuiltWithFreeProvider,
+} from "./providers/builtwith";
 import { CensysProvider } from "./providers/censys";
 import { DnsProvider } from "./providers/dns";
 import { GithubProvider } from "./providers/github";
@@ -35,7 +39,9 @@ export function registerBuiltinProviders(): void {
   registerProvider(new WebsiteProvider());
   registerProvider(new DnsProvider());
   registerProvider(new HttpFingerprintProvider());
-  registerProvider(new BuiltWithProvider());
+  registerProvider(new BuiltWithFreeProvider());
+  registerProvider(new BuiltWithDomainProvider());
+  registerProvider(new BuiltWithChangeProvider());
   registerProvider(new IpinfoProvider());
   registerProvider(new WappalyzerProvider());
   registerProvider(new CensysProvider());

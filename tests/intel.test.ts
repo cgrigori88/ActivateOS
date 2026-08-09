@@ -192,93 +192,60 @@ test("contentHash is stable and order-independent via caller sorting", () => {
 // -- BuiltWith (P1-B): fixtures mirror BuiltWith's DOCUMENTED response
 // shapes — test fixtures only, never real account intelligence. ----------
 
-test("builtwith baseline: only ontology-mapped technologies become evidence", async () => {
-  const { BuiltWithProvider, extractTechnologies } = await import(
-    "../src/lib/intel/providers/builtwith"
-  );
-  const fixture = {
-    Results: [
-      {
-        Lookup: "acme.com",
-        Result: {
-          Paths: [
-            {
-              Technologies: [
-                { Name: "Kubernetes", Tag: "hosting", Categories: ["Container Orchestration"] },
-                { Name: "Google Analytics", Tag: "analytics" }, // unmapped → skipped
-                { Name: "Ansible", Tag: "hosting" },
-              ],
-            },
-          ],
-        },
-      },
-    ],
-  };
-  assert.equal(extractTechnologies(fixture).length, 3);
-
-  const provider = new BuiltWithProvider();
-  const candidates = provider.normalize(
-    [
-      {
-        payload: {
-          mode: "baseline",
-          domain: "acme.com",
-          technologies: extractTechnologies(fixture),
-        },
-        isNew: true,
-      },
-    ],
-    [],
-    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
-  );
-  // Kubernetes + Ansible map into the ontology; Google Analytics does not.
-  assert.equal(candidates.length, 2);
-  for (const c of candidates) {
-    assert.match(c.claim, /public web presence/); // web-facing phrasing, never installed-base proof
-    assert.equal(c.suggestedSignalType, "TECH_INSTALLED");
-    assert.ok(c.suggestedNodeSlug);
-  }
+test("domain normalization strips scheme/path/www/email; rejects junk", async () => {
+  const { normalizeDomain } = await import("../src/lib/intel/domain");
+  assert.equal(normalizeDomain("https://www.acme.com/path?q=1"), "acme.com");
+  assert.equal(normalizeDomain("www.acme.com"), "acme.com");
+  assert.equal(normalizeDomain("acme.com"), "acme.com");
+  assert.equal(normalizeDomain("http://sub.acme.co.uk:8080/x"), "sub.acme.co.uk");
+  assert.equal(normalizeDomain("jane@acme.com"), "acme.com"); // email → its domain
+  assert.equal(normalizeDomain("ACME.COM."), "acme.com");
+  assert.equal(normalizeDomain(""), null);
+  assert.equal(normalizeDomain("not a domain"), null);
+  assert.equal(normalizeDomain("localhost"), null); // no TLD
+  assert.equal(normalizeDomain(null), null); // → SKIP_NO_DOMAIN
 });
 
-test("builtwith changes: additions/removals/stack-change signals", async () => {
-  const { BuiltWithProvider, extractChanges } = await import(
+test("builtwith_free: category profile → conservative ontology evidence", async () => {
+  const { BuiltWithFreeProvider, relevantCategories } = await import(
     "../src/lib/intel/providers/builtwith"
   );
+  // Shape mirrors the LIVE free1 API: group/category counts with recency.
   const fixture = {
-    Lookup: "acme.com",
-    Changes: [
-      { Technology: "Ansible", Type: "Added", Date: "2026-07-20" },
-      { Technology: "VMware", Type: "Removed", Date: "2026-07-22" },
+    domain: "acme.com",
+    groups: [
+      {
+        name: "operations",
+        live: 5,
+        categories: [
+          { name: "Kubernetes", live: 3, latest: 1786233600000 },
+          { name: "Bookmarking", live: 0 }, // dead → skipped
+        ],
+      },
+      { name: "hosting", live: 2, categories: [{ name: "Cloud Hosting", live: 4, latest: 1786233600000 }] },
+      { name: "widgets", live: 9, categories: [{ name: "Social Sharing", live: 9 }] }, // irrelevant group
     ],
   };
-  const changes = extractChanges(fixture);
-  assert.deepEqual(changes.map((c) => c.type), ["added", "removed"]);
+  const cats = relevantCategories(fixture);
+  assert.ok(cats.some((c) => c.category === "Kubernetes"));
+  assert.ok(!cats.some((c) => c.group === "widgets")); // irrelevant group excluded
+  assert.ok(!cats.some((c) => c.category === "Bookmarking")); // dead category excluded
 
-  const provider = new BuiltWithProvider();
+  const provider = new BuiltWithFreeProvider();
+  assert.equal(provider.providerId, "builtwith_free");
+  assert.equal(provider.costClass, "FREE");
   const candidates = provider.normalize(
-    [{ payload: { mode: "change", domain: "acme.com", changes }, isNew: true }],
+    [{ payload: { domain: "acme.com", categories: cats }, isNew: true }],
     [],
     { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
   );
-  assert.equal(candidates.length, 2); // <5 changes → no stack-change event
-  assert.equal(candidates[0].suggestedSignalType, "TECHNOLOGY_ADDED");
-  assert.equal(candidates[1].suggestedSignalType, "TECH_REMOVED");
+  const k8s = candidates.find((c) => c.suggestedNodeSlug === "kubernetes");
+  assert.ok(k8s);
+  // Category-level phrasing — explicitly NOT a product-install claim.
+  assert.match(k8s.claim, /free category profile.*shows active/);
+  assert.ok(!/uses|installed/i.test(k8s.claim));
 
-  // ≥5 simultaneous changes add a TECHNOLOGY_STACK_CHANGE event.
-  const many = Array.from({ length: 6 }, (_, i) => ({
-    name: `Tech${i}`, type: "added" as const, date: null,
-  }));
-  const withStack = provider.normalize(
-    [{ payload: { mode: "change", domain: "acme.com", changes: many }, isNew: true }],
-    [],
-    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
-  );
-  assert.ok(withStack.some((c) => c.suggestedSignalType === "TECHNOLOGY_STACK_CHANGE"));
-});
-
-test("builtwith disabled/absent states: no key or no domain = absence, not error", async () => {
-  const { BuiltWithProvider } = await import("../src/lib/intel/providers/builtwith");
-  const provider = new BuiltWithProvider();
+  // No key or no domain = SKIP_NO_DOMAIN (absence), never a guess.
   const saved = process.env.BUILTWITH_API_KEY;
   delete process.env.BUILTWITH_API_KEY;
   try {
@@ -286,14 +253,42 @@ test("builtwith disabled/absent states: no key or no domain = absence, not error
       await provider.fetch({ orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" }),
       [],
     );
-    const health = await provider.healthCheck();
-    assert.equal(health.ok, false);
-    assert.match(health.detail, /not set/);
   } finally {
     if (saved) process.env.BUILTWITH_API_KEY = saved;
   }
-  // Metered guard is declared: weekly per-company throttle.
-  assert.equal(provider.minRefreshHours, 24 * 7);
+  assert.deepEqual(
+    await provider.fetch({ orgId: null, companyId: "c1", companyName: "Acme", domain: "not-a-domain" }),
+    [],
+  );
+});
+
+test("builtwith_domain / builtwith_change: credit-gated, deep, disabled by default", async () => {
+  const { BuiltWithDomainProvider, BuiltWithChangeProvider, extractTechnologies, extractChanges } =
+    await import("../src/lib/intel/providers/builtwith");
+  const domain = new BuiltWithDomainProvider();
+  const change = new BuiltWithChangeProvider();
+
+  // Deep-stage, and disabled until BUILTWITH_CREDITS=true.
+  assert.equal(domain.allowedForScreening, false);
+  assert.equal(change.allowedForScreening, false);
+  const savedCredits = process.env.BUILTWITH_CREDITS;
+  delete process.env.BUILTWITH_CREDITS;
+  assert.equal(domain.disabledReason, "DISABLED_NO_CREDITS");
+  assert.equal(change.disabledReason, "DISABLED_NO_CREDITS");
+  process.env.BUILTWITH_CREDITS = "true";
+  assert.equal(domain.disabledReason, undefined); // flips on when credits exist
+  if (savedCredits) process.env.BUILTWITH_CREDITS = savedCredits;
+  else delete process.env.BUILTWITH_CREDITS;
+
+  // Extraction helpers still work for when credits arrive.
+  const techs = extractTechnologies({
+    Results: [{ Result: { Paths: [{ Technologies: [{ Name: "Kubernetes" }, { Name: "Ansible" }] }] } }],
+  });
+  assert.equal(techs.length, 2);
+  const changes = extractChanges({
+    Changes: [{ Technology: "Ansible", Type: "Added", Date: "2026-07-20" }],
+  });
+  assert.deepEqual(changes.map((c) => c.type), ["added"]);
 });
 
 // -- IPinfo Lite (P1-D): fixtures mirror the LIVE response shape ---------
@@ -508,7 +503,7 @@ test("source priority order is highest-value first, first-party on top", async (
   const { sourcePriorityOrder } = await import("../src/lib/intel/policy");
   const order = sourcePriorityOrder();
   assert.equal(order[0], "customer_outcomes"); // first-party wins/losses
-  assert.ok(order.indexOf("sec_edgar") < order.indexOf("builtwith")); // strategy > technographics
+  assert.ok(order.indexOf("sec_edgar") < order.indexOf("builtwith_free")); // strategy > technographics
   assert.ok(order.indexOf("tavily") < order.indexOf("censys")); // corroboration > specialized
   assert.equal(order[order.length - 1], "common_crawl"); // historical research last
 });
@@ -528,7 +523,7 @@ test("data completeness is per-category and separate from propensity (§24)", as
 
   // Broadly researched account scores high completeness.
   const broad = computeCompleteness({
-    providersRun: new Set(["pdl_company", "sec_edgar", "greenhouse", "builtwith", "github", "pdl_people"]),
+    providersRun: new Set(["pdl_company", "sec_edgar", "greenhouse", "builtwith_free", "github", "pdl_people"]),
     familiesPresent: new Set(["STRATEGIC_CHANGE", "HIRING", "TECHNOLOGY", "COMMERCIAL_TIMING"]),
   });
   assert.ok(broad.overall >= 75);
