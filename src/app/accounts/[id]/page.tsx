@@ -3,11 +3,13 @@ import { getPool } from "@/db/client";
 import {
   BandBadge,
   Card,
+  CompletenessGrid,
   EvidenceLine,
   FEATURE_LABELS,
   PageHeader,
   StatusBadge,
 } from "@/components/ui";
+import { loadCompanyIntel } from "@/lib/intel/company-intel";
 import { setTeamStatusAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -149,6 +151,10 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
     [id],
   );
 
+  // Intelligence surface (§43): evidence provenance, data completeness, and
+  // provider coverage — what we actually know and how well we know it.
+  const intel = await loadCompanyIntel(pool, id);
+
   return (
     <main>
       <p className="mb-4 text-sm">
@@ -246,6 +252,72 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
               </ul>
             </div>
           ))}
+        </Card>
+      )}
+
+      <Card className="mb-6">
+        <div className="mb-3 flex items-center gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            Data completeness
+          </h2>
+          <span className="text-xs text-neutral-400">how thoroughly researched — not propensity</span>
+        </div>
+        <CompletenessGrid byCategory={intel.completeness.byCategory} overall={intel.completeness.overall} />
+        {intel.completeness.gaps.length > 0 && (
+          <p className="mt-3 text-xs text-neutral-500">
+            Research gaps: {intel.completeness.gaps.join(", ")}. A gap is missing data, not low intent.
+          </p>
+        )}
+        {intel.coverage.length > 0 && (
+          <div className="mt-4 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Provider coverage
+            </h3>
+            <div className="flex flex-wrap gap-1.5">
+              {intel.coverage.map((c) => (
+                <span
+                  key={c.providerId}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-800"
+                  title={`${c.runs} run(s), ${c.succeeded} succeeded, ${c.evidence} evidence${
+                    c.lastRunAt ? ` · last ${new Date(c.lastRunAt).toISOString().slice(0, 10)}` : ""
+                  }`}
+                >
+                  <StatusBadge status={c.status} />
+                  <span className="font-medium">{c.providerId}</span>
+                  {c.evidence > 0 && <span className="tnum text-neutral-400">{c.evidence}</span>}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {intel.evidence.length > 0 && (
+        <Card className="mb-6">
+          <div className="mb-3 flex items-center gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              Evidence
+            </h2>
+            <span className="text-xs text-neutral-400">
+              {intel.counts.verified} verified · {intel.counts.quarantined} quarantined ·{" "}
+              {intel.counts.rejected} rejected
+            </span>
+          </div>
+          <div className="max-h-96 space-y-1.5 overflow-y-auto scroll-thin pr-1">
+            {intel.evidence.map((e, i) => (
+              <div key={i} className="flex items-start gap-2 text-sm">
+                <StatusBadge status={e.status} />
+                <span className="flex-1 leading-relaxed text-neutral-700 dark:text-neutral-300">
+                  {e.claim}
+                  <span className="ml-1 text-xs text-neutral-400">
+                    ({e.providerId ?? e.sourceType ?? "n/a"}
+                    {e.confidence != null && `, conf ${e.confidence.toFixed(2)}`}
+                    {e.firstParty ? ", first-party" : ""})
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 

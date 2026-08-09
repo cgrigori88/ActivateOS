@@ -52,6 +52,15 @@ const STATUS_STYLES: Record<string, string> = {
   active: "bg-sky-50 text-sky-800 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300",
   completed: "bg-neutral-100 text-neutral-600 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-400",
   abandoned: "bg-neutral-100 text-neutral-500 ring-neutral-500/20 line-through dark:bg-neutral-800",
+  // Evidence quality-gate outcomes + provider-run states (intelligence surface).
+  verified: "bg-green-50 text-green-800 ring-green-600/20 dark:bg-green-950 dark:text-green-300",
+  succeeded: "bg-green-50 text-green-800 ring-green-600/20 dark:bg-green-950 dark:text-green-300",
+  quarantined: "bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-950 dark:text-amber-300",
+  skipped: "bg-neutral-100 text-neutral-500 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-400",
+  running: "bg-sky-50 text-sky-800 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300",
+  rejected: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-950 dark:text-red-300",
+  failed: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-950 dark:text-red-300",
+  disabled: "bg-neutral-100 text-neutral-500 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-500",
 };
 
 export function StatusBadge({ status }: { status: string }) {
@@ -254,6 +263,43 @@ export function EvidenceLine({
     <li className="text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
       {claim} <span className="text-xs text-neutral-400 dark:text-neutral-500">({meta})</span>
     </li>
+  );
+}
+
+/**
+ * Data-completeness by category (§24): coverage, kept strictly separate from
+ * propensity. Covered categories are solid; gaps are the research to-do list —
+ * a gap is NOT low intent. Renders the 8 coverage categories as a chip row.
+ */
+export function CompletenessGrid({
+  byCategory,
+  overall,
+}: {
+  byCategory: Record<string, boolean>;
+  overall: number;
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-baseline gap-2">
+        <span className="tnum text-2xl font-semibold">{overall}%</span>
+        <span className="text-xs text-neutral-500">categories with coverage</span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {Object.entries(byCategory).map(([cat, covered]) => (
+          <span
+            key={cat}
+            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+              covered
+                ? "bg-green-50 text-green-800 ring-green-600/20 dark:bg-green-950 dark:text-green-300"
+                : "bg-neutral-50 text-neutral-400 ring-neutral-300/40 dark:bg-neutral-900 dark:text-neutral-600"
+            }`}
+          >
+            <span aria-hidden>{covered ? "●" : "○"}</span>
+            {cat}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 

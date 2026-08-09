@@ -74,6 +74,11 @@ const icons = {
       <path d="M8 8V3.5M8 8l3 2.5" />
     </svg>
   ),
+  providerHealth: (
+    <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+      <path d="M2 8h3l1.5-3.5L9 12l1.5-4H14" />
+    </svg>
+  ),
 };
 
 const NAV: NavGroup[] = [
@@ -83,6 +88,7 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/accounts", label: "Accounts", icon: icons.accounts },
       { href: "/sources", label: "Sources", icon: icons.sources },
+      { href: "/provider-health", label: "Provider health", icon: icons.providerHealth },
       { href: "/review", label: "Review", icon: icons.review },
     ],
   },
