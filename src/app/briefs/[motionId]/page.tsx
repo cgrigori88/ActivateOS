@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
+import { commsConfig } from "@/lib/comms/provider";
+import { resendConfigured } from "@/lib/comms/resend";
+import { threadAddress } from "@/lib/comms/alias";
 import { Card, EvidenceLine, PageHeader, StatusBadge } from "@/components/ui";
+import { generateDraftAction, sendDraftAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +60,43 @@ export default async function BriefPage({
      where motion_id = $1 order by step`,
     [motionId],
   );
+
+  const { rows: threads } = await pool.query(
+    `select id, thread_alias from communication_threads
+     where motion_id = $1 and status = 'open' order by created_at desc limit 1`,
+    [motionId],
+  );
+  const thread = threads[0] ?? null;
+  let threadMessages: {
+    id: string;
+    direction: string;
+    from_name: string | null;
+    from_email: string;
+    subject: string | null;
+    text_body: string | null;
+    ai_draft: string | null;
+    status: string;
+    to_emails: string[];
+    created_at: Date;
+  }[] = [];
+  if (thread) {
+    const result = await pool.query(
+      `select id, direction, from_name, from_email, subject, text_body, ai_draft,
+              status, to_emails, created_at
+       from messages where thread_id = $1 order by created_at`,
+      [thread.id],
+    );
+    threadMessages = result.rows;
+  }
+  const draft = threadMessages.find(
+    (x) => x.direction === "outbound" && x.status === "draft" && x.from_email === "pending",
+  );
+  const packaged = threadMessages.filter(
+    (x) => x.status === "draft" && x.from_email === "seller-mailbox",
+  );
+  const sentOrStored = threadMessages.filter((x) => x.status !== "draft");
+  const cfg = commsConfig();
+  const canSendDirect = resendConfigured();
 
   return (
     <main>
@@ -154,6 +195,129 @@ export default async function BriefPage({
               </li>
             ))}
           </ol>
+        </Card>
+      )}
+
+      {["approved", "active"].includes(m.status) && (
+        <Card className="mb-6">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            Conversation
+          </h2>
+          {thread && (
+            <p className="mb-3 text-xs text-neutral-500">
+              Thread alias:{" "}
+              <code className="rounded bg-neutral-100 px-1 py-0.5 dark:bg-neutral-800">
+                {threadAddress(thread.thread_alias, cfg.threadsDomain)}
+              </code>{" "}
+              — seller-sent replies CC this address to be captured.
+            </p>
+          )}
+
+          {sentOrStored.map((msg) => (
+            <div
+              key={msg.id}
+              className={`mb-3 rounded-lg p-3 text-sm ${
+                msg.direction === "inbound"
+                  ? "bg-sky-50 dark:bg-sky-950"
+                  : "bg-neutral-50 dark:bg-neutral-950"
+              }`}
+            >
+              <p className="mb-1 text-xs text-neutral-500">
+                {msg.direction === "inbound" ? "← " : "→ "}
+                <span className="font-medium">{msg.from_name ?? msg.from_email}</span>
+                {msg.to_emails.length > 0 && ` to ${msg.to_emails.join(", ")}`} ·{" "}
+                {new Date(msg.created_at).toISOString().slice(0, 10)} · {msg.status}
+              </p>
+              {msg.subject && <p className="font-medium">{msg.subject}</p>}
+              <pre className="mt-1 whitespace-pre-wrap font-sans leading-relaxed">
+                {msg.text_body}
+              </pre>
+            </div>
+          ))}
+
+          {packaged.map((msg) => (
+            <div
+              key={msg.id}
+              className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950"
+            >
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                Ready for seller — send from your own mailbox
+              </p>
+              <p className="mb-2 text-xs text-neutral-600 dark:text-neutral-400">
+                To: {msg.to_emails.join(", ")} · CC{" "}
+                <code className="rounded bg-white/60 px-1 dark:bg-black/30">
+                  {thread && threadAddress(thread.thread_alias, cfg.threadsDomain)}
+                </code>{" "}
+                so PursuitOS captures the conversation.
+              </p>
+              <p className="font-medium">{msg.subject}</p>
+              <pre className="mt-1 whitespace-pre-wrap font-sans leading-relaxed">
+                {msg.text_body}
+              </pre>
+            </div>
+          ))}
+
+          {draft ? (
+            <form action={sendDraftAction.bind(null, motionId)} className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                AI draft — review, edit, then approve
+              </p>
+              <input
+                name="to"
+                type="email"
+                required
+                placeholder="recipient@customer.com"
+                className="w-full rounded-md border border-neutral-300 bg-transparent px-3 py-1.5 text-sm dark:border-neutral-700"
+              />
+              <input
+                name="subject"
+                defaultValue={draft.subject ?? ""}
+                required
+                className="w-full rounded-md border border-neutral-300 bg-transparent px-3 py-1.5 text-sm font-medium dark:border-neutral-700"
+              />
+              <textarea
+                name="body"
+                defaultValue={draft.text_body ?? ""}
+                required
+                rows={10}
+                className="w-full rounded-md border border-neutral-300 bg-transparent px-3 py-2 text-sm leading-relaxed dark:border-neutral-700"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  name="mode"
+                  value="facilitated"
+                  disabled={!canSendDirect}
+                  className="rounded-md bg-green-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Approve &amp; send via PursuitOS
+                </button>
+                <button
+                  type="submit"
+                  name="mode"
+                  value="seller_assisted"
+                  className="rounded-md px-4 py-1.5 text-sm font-medium text-neutral-700 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900"
+                >
+                  Package for seller
+                </button>
+              </div>
+              {!canSendDirect && (
+                <p className="text-xs text-neutral-400">
+                  Direct sending is disabled until Resend is configured (RESEND_API_KEY) —
+                  “Package for seller” works now.
+                </p>
+              )}
+            </form>
+          ) : (
+            <form action={generateDraftAction.bind(null, motionId)}>
+              <button
+                type="submit"
+                className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
+              >
+                Generate outreach draft
+              </button>
+            </form>
+          )}
         </Card>
       )}
 

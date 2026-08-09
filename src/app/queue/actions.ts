@@ -17,3 +17,20 @@ export async function resolveActionAction(
   }
   revalidatePath("/queue");
 }
+
+export async function resolveCommActionAction(
+  actionId: string,
+  status: "done" | "dismissed",
+): Promise<void> {
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    await db.query(
+      `update communication_actions set status = $2 where id = $1 and status = 'pending'`,
+      [actionId, status],
+    );
+  } finally {
+    db.release();
+  }
+  revalidatePath("/queue");
+}

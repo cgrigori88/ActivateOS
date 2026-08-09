@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
 import { Card, PageHeader } from "@/components/ui";
-import { resolveActionAction } from "./actions";
+import { resolveActionAction, resolveCommActionAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +23,17 @@ export default async function QueuePage() {
      left join sellers s on s.id = m.partner_seller_id
      where a.status = 'pending' and m.status = 'active'
      order by a.due_at, a.step`,
+  );
+
+  const { rows: commActions } = await pool.query(
+    `select ca.id, ca.title, ca.detail, ca.due_at, ca.confidence, ca.motion_id,
+            c.legal_name, s.name as owner_name
+     from communication_actions ca
+     join communication_threads t on t.id = ca.thread_id
+     join companies c on c.id = t.company_id
+     left join sellers s on s.id = ca.owner_seller_id
+     where ca.status = 'pending'
+     order by ca.due_at nulls last`,
   );
 
   const { rows: recent } = await pool.query(
@@ -108,6 +119,73 @@ export default async function QueuePage() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {commActions.length > 0 && (
+        <div className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            From conversations
+          </h2>
+          <div className="space-y-3">
+            {commActions.map((a) => (
+              <Card key={a.id}>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm">
+                      {a.due_at && (
+                        <span className="font-medium text-neutral-500">
+                          {new Date(a.due_at).toISOString().slice(0, 10)} ·{" "}
+                        </span>
+                      )}
+                      {a.motion_id ? (
+                        <Link
+                          href={`/briefs/${a.motion_id}`}
+                          className="font-semibold hover:underline"
+                        >
+                          {a.legal_name}
+                        </Link>
+                      ) : (
+                        <span className="font-semibold">{a.legal_name}</span>
+                      )}
+                      {a.confidence && (
+                        <span className="ml-2 text-xs text-neutral-400">
+                          {a.confidence} confidence
+                        </span>
+                      )}
+                      {a.owner_name && (
+                        <span className="ml-2 text-xs text-neutral-400">→ {a.owner_name}</span>
+                      )}
+                    </p>
+                    <p className="mt-1 text-sm font-medium">{a.title}</p>
+                    {a.detail && (
+                      <p className="mt-0.5 text-sm text-neutral-600 dark:text-neutral-400">
+                        {a.detail}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <form action={resolveCommActionAction.bind(null, a.id, "done")}>
+                      <button
+                        type="submit"
+                        className="rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800"
+                      >
+                        Done
+                      </button>
+                    </form>
+                    <form action={resolveCommActionAction.bind(null, a.id, "dismissed")}>
+                      <button
+                        type="submit"
+                        className="rounded-md px-3 py-1.5 text-sm font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
+                      >
+                        Dismiss
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
 

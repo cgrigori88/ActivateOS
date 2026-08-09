@@ -143,9 +143,11 @@ export async function mapSignals(
       continue;
     }
 
-    const classification = await completeStructured({
-      tier: "cheap",
-      system:
+    let classification;
+    try {
+      classification = await completeStructured({
+        tier: "cheap",
+        system:
         `You classify evidence claims about companies into signals for a channel-revenue ` +
         `propensity engine. Choose the single best signal type and, when the claim concerns a ` +
         `specific technology area, the best ontology node. Set relevant=false for claims that ` +
@@ -165,8 +167,13 @@ export async function mapSignals(
           .nullable()
           .describe("ISO date (YYYY-MM-DD) of the future event the claim anchors to, or null"),
       }),
-      maxTokens: 512,
-    });
+        maxTokens: 512,
+      });
+    } catch {
+      // A malformed classification skips ONE claim — it never aborts the run.
+      stats.skipped++;
+      continue;
+    }
 
     if (!classification.relevant || !SIGNAL_DEFS[classification.signal_type]) {
       stats.skipped++;
