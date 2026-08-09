@@ -43,18 +43,35 @@ export class ModelRefusalError extends Error {
   }
 }
 
+/** List prices per million tokens, for AI cost tracking (BLUEPRINT §49). */
+const PRICING: Record<ModelTier, { input: number; output: number }> = {
+  cheap: { input: 1, output: 5 },
+  frontier: { input: 5, output: 25 },
+};
+
+export interface CallMeta {
+  model: string;
+  tier: ModelTier;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  latencyMs: number;
+}
+
 /**
  * Schema-constrained completion (AGENT_LAYER rule: every workflow output is
  * validated against a typed schema; free-form text never leaves an agent).
+ * Returns observability metadata alongside the output (BLUEPRINT §48–49).
  */
-export async function completeStructured<T extends z.ZodType>(opts: {
+export async function completeStructuredMeta<T extends z.ZodType>(opts: {
   tier: ModelTier;
   system: string;
   user: string;
   schema: T;
   maxTokens?: number;
-}): Promise<z.infer<T>> {
+}): Promise<{ output: z.infer<T>; meta: CallMeta }> {
   const anthropic = getAnthropic();
+  const started = Date.now();
   const response = await anthropic.messages.parse({
     model: MODELS[opts.tier],
     max_tokens: opts.maxTokens ?? 4096,
@@ -62,6 +79,7 @@ export async function completeStructured<T extends z.ZodType>(opts: {
     messages: [{ role: "user", content: opts.user }],
     output_config: { format: zodOutputFormat(opts.schema) },
   });
+  const latencyMs = Date.now() - started;
 
   if (response.stop_reason === "refusal") {
     throw new ModelRefusalError(response.stop_details?.category ?? null);
@@ -69,5 +87,29 @@ export async function completeStructured<T extends z.ZodType>(opts: {
   if (response.parsed_output == null) {
     throw new Error("model output failed schema validation");
   }
-  return response.parsed_output;
+  const inputTokens = response.usage.input_tokens;
+  const outputTokens = response.usage.output_tokens;
+  const price = PRICING[opts.tier];
+  return {
+    output: response.parsed_output,
+    meta: {
+      model: MODELS[opts.tier],
+      tier: opts.tier,
+      inputTokens,
+      outputTokens,
+      costUsd: (inputTokens * price.input + outputTokens * price.output) / 1_000_000,
+      latencyMs,
+    },
+  };
+}
+
+export async function completeStructured<T extends z.ZodType>(opts: {
+  tier: ModelTier;
+  system: string;
+  user: string;
+  schema: T;
+  maxTokens?: number;
+}): Promise<z.infer<T>> {
+  const { output } = await completeStructuredMeta(opts);
+  return output;
 }

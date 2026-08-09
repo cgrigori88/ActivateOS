@@ -25,11 +25,22 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
   const company = companies[0];
 
   const { rows: scores } = await pool.query(
-    `select p.id, p.score, p.band, n.slug, p.computed_at
+    `select p.id, p.score, p.band, n.slug, p.computed_at,
+            p.prev_score, p.positive_points, p.negative_points, p.changes
      from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
      where p.company_id = $1 order by p.computed_at desc limit 1`,
     [id],
   );
+
+  let dimensions: { dimension: string; value: string }[] = [];
+  if (scores.length > 0) {
+    const result = await pool.query(
+      `select dimension, value from propensity_dimensions where score_id = $1
+       order by dimension`,
+      [scores[0].id],
+    );
+    dimensions = result.rows;
+  }
 
   let features: { feature: string; contribution: string; evidence_ids: string[] }[] = [];
   let evidence = new Map<string, { claim: string; source_type: string; computed_confidence: string }>();
@@ -95,11 +106,50 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
 
       {scores.length > 0 && (
         <Card className="mb-6">
-          <div className="mb-4 flex items-baseline gap-3">
+          <div className="mb-3 flex items-baseline gap-3">
             <span className="tnum text-4xl font-semibold">{Number(scores[0].score).toFixed(0)}</span>
             <BandBadge band={scores[0].band} />
             <span className="text-sm text-neutral-500">{scores[0].slug}</span>
+            {scores[0].positive_points != null && (
+              <span className="ml-auto text-sm text-neutral-500">
+                <span className="text-green-700 dark:text-green-400">
+                  +{Number(scores[0].positive_points).toFixed(0)}
+                </span>{" "}
+                /{" "}
+                <span className="text-red-700 dark:text-red-400">
+                  {Number(scores[0].negative_points).toFixed(0)}
+                </span>{" "}
+                net evidence
+              </span>
+            )}
           </div>
+
+          {dimensions.length > 0 && (
+            <div className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-7">
+              {dimensions.map((d) => (
+                <div
+                  key={d.dimension}
+                  className="rounded-lg bg-neutral-50 px-2 py-1.5 text-center dark:bg-neutral-950"
+                >
+                  <div className="tnum text-base font-semibold">{Number(d.value).toFixed(0)}</div>
+                  <div className="text-[10px] leading-tight text-neutral-500">
+                    {d.dimension.replace(/_/g, " ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {scores[0].changes?.delta != null && (
+            <p className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950 dark:text-sky-200">
+              <strong>What changed:</strong>{" "}
+              {Number(scores[0].changes.delta) >= 0 ? "+" : ""}
+              {scores[0].changes.delta} since prior evaluation
+              {scores[0].changes.new_evidence_ids?.length > 0 &&
+                ` · ${scores[0].changes.new_evidence_ids.length} new evidence item(s)`}
+            </p>
+          )}
+
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
             Why now
           </h2>

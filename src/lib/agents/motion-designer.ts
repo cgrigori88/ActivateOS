@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type pg from "pg";
 import { z } from "zod";
-import { completeStructured } from "../ai/client";
+import { completeStructuredMeta } from "../ai/client";
 
 /**
  * Motion Designer (docs/AGENT_LAYER.md §3) — the first frontier-tier
@@ -118,7 +118,7 @@ ${solutionProfile ? `## Solution profile\n${solutionProfile}` : ""}
 
 Design the Revenue Motion.`;
 
-  const draft = await completeStructured({
+  const { output: draft, meta } = await completeStructuredMeta({
     tier: MODEL_TIER,
     system,
     user,
@@ -130,18 +130,24 @@ Design the Revenue Motion.`;
 
   // Decision log — recorded whether or not validation passed (audit trail).
   const { rows: runRows } = await db.query<{ id: string }>(
-    `insert into agent_runs (org_id, workflow, workflow_version, model, input_evidence_ids, input_summary, raw_output, validated)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)
+    `insert into agent_runs (org_id, workflow, workflow_version, model, input_evidence_ids,
+        input_summary, raw_output, validated, prompt_version, input_tokens, output_tokens,
+        cost_usd, latency_ms)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $3, $9, $10, $11, $12)
      returning id`,
     [
       args.orgId,
       WORKFLOW,
       WORKFLOW_VERSION,
-      MODEL_TIER,
+      meta.model,
       evidence.map((e) => e.id),
       JSON.stringify({ companyId: args.companyId, targetSlug: args.targetSlug, score: score.score }),
       JSON.stringify(draft),
       citation.ok,
+      meta.inputTokens,
+      meta.outputTokens,
+      meta.costUsd,
+      meta.latencyMs,
     ],
   );
   if (!citation.ok) throw new Error(`motion rejected: ${citation.reason}`);

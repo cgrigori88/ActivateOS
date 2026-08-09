@@ -1,6 +1,6 @@
 import type pg from "pg";
 import { z } from "zod";
-import { completeStructured } from "../ai/client";
+import { completeStructured, completeStructuredMeta } from "../ai/client";
 import { verifyEvidence, type CrossChecker } from "../quality/verify";
 
 /**
@@ -79,7 +79,7 @@ export async function extractAndIngest(
   },
 ): Promise<ExtractionStats> {
   const { doc } = args;
-  const output = await completeStructured({
+  const { output, meta } = await completeStructuredMeta({
     tier: "cheap",
     system: EXTRACTOR_SYSTEM,
     user:
@@ -88,6 +88,23 @@ export async function extractAndIngest(
     schema: extractionSchema,
     maxTokens: 8192,
   });
+
+  // Agent observability (BLUEPRINT §48–49): every workflow run is logged.
+  await db.query(
+    `insert into agent_runs (org_id, workflow, workflow_version, model, input_summary,
+        raw_output, validated, prompt_version, input_tokens, output_tokens, cost_usd, latency_ms)
+     values ($1, 'extractor', 'v1', $2, $3, $4, true, 'v1', $5, $6, $7, $8)`,
+    [
+      args.orgId,
+      meta.model,
+      JSON.stringify({ companyId: args.companyId, sourceType: doc.sourceType, sourceUrl: doc.sourceUrl ?? null }),
+      JSON.stringify({ claims: output.claims.length }),
+      meta.inputTokens,
+      meta.outputTokens,
+      meta.costUsd,
+      meta.latencyMs,
+    ],
+  );
 
   const stats: ExtractionStats = { claims: output.claims.length, verified: 0, held: 0 };
   const observedAt = doc.observedAt ?? new Date();
