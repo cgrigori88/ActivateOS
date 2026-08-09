@@ -162,8 +162,8 @@ export class CensysProvider implements IntelligenceProvider {
   async fetch(target: IntelligenceTarget): Promise<RawObservationInput[]> {
     if (!this.pat() || !target.domain) return [];
     // Category gate (integration requirement): only run for infra-relevant
-    // pursuits. targetSlug rides in on handles from the deep-research caller.
-    const slug = target.handles?.targetSlug;
+    // pursuits.
+    const slug = target.targetSlug;
     if (slug && !isCensysRelevant(slug)) return [];
 
     // KNOWN public asset only — resolve the account's own domain, never search.

@@ -160,7 +160,7 @@ export async function runProvider(
       [provider.providerId, target.companyId, runId],
     );
 
-    const candidates = provider.normalize(
+    const candidates = await provider.normalize(
       withNovelty.map(({ payload, isNew }) => ({ payload, isNew })),
       history.map((h) => ({ payload: h.raw_payload, observedAt: h.observed_at })),
       target,

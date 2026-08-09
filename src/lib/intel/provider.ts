@@ -39,6 +39,8 @@ export interface IntelligenceTarget {
   domain: string | null;
   /** provider-specific handles discovered earlier (e.g. greenhouse board token) */
   handles?: Record<string, string>;
+  /** the pursuit's target solution slug — orchestration/category-gate context */
+  targetSlug?: string;
   /** pipeline-supplied run state: lets a provider pick baseline vs incremental */
   state?: {
     lastSuccessAt: Date | null;
@@ -115,7 +117,7 @@ export interface IntelligenceProvider {
     current: { payload: unknown; isNew: boolean }[],
     history: { payload: unknown; observedAt: Date }[],
     target: IntelligenceTarget,
-  ): EvidenceCandidate[];
+  ): EvidenceCandidate[] | Promise<EvidenceCandidate[]>; // async allows LLM extraction (SEC)
   healthCheck(): Promise<ProviderHealth>;
 }
 

@@ -5,9 +5,11 @@ import { allProviders, registerProvider, type IntelligenceTarget } from "./provi
 import { BuiltWithProvider } from "./providers/builtwith";
 import { CensysProvider } from "./providers/censys";
 import { DnsProvider } from "./providers/dns";
+import { GithubProvider } from "./providers/github";
 import { IpinfoProvider } from "./providers/ipinfo";
 import { GreenhouseProvider } from "./providers/greenhouse";
 import { LeverProvider } from "./providers/lever";
+import { SecProvider } from "./providers/sec";
 import { WappalyzerProvider } from "./providers/wappalyzer";
 
 /**
@@ -24,8 +26,10 @@ import { WappalyzerProvider } from "./providers/wappalyzer";
 let registered = false;
 export function registerBuiltinProviders(): void {
   if (registered) return;
+  registerProvider(new SecProvider());
   registerProvider(new GreenhouseProvider());
   registerProvider(new LeverProvider());
+  registerProvider(new GithubProvider());
   registerProvider(new DnsProvider());
   registerProvider(new BuiltWithProvider());
   registerProvider(new IpinfoProvider());
@@ -52,10 +56,7 @@ export async function screenCompany(
   registerBuiltinProviders();
   const targetSlug = opts.targetSlug ?? "infrastructure-automation";
   const results: Record<string, ProviderRunResult> = {};
-  const withSlug: IntelligenceTarget = {
-    ...target,
-    handles: { ...(target.handles ?? {}), targetSlug },
-  };
+  const withSlug: IntelligenceTarget = { ...target, targetSlug };
   for (const provider of allProviders()) {
     // Every provider registers a row — disabled/specialized states must be
     // VISIBLE in the registry, never silently absent.
@@ -89,10 +90,7 @@ export async function deepResearchCompany(
 ): Promise<Record<string, ProviderRunResult>> {
   registerBuiltinProviders();
   const results: Record<string, ProviderRunResult> = {};
-  const withSlug: IntelligenceTarget = {
-    ...target,
-    handles: { ...(target.handles ?? {}), targetSlug },
-  };
+  const withSlug: IntelligenceTarget = { ...target, targetSlug };
   for (const provider of allProviders()) {
     await ensureProviderRow(db, provider);
     if (provider.costClass === "PREMIUM") continue;

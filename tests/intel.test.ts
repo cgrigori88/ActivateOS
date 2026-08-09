@@ -541,3 +541,80 @@ test("data completeness is per-category and separate from propensity (§24)", as
   });
   assert.equal(viaFamily.byCategory.engineering, true);
 });
+
+// -- GitHub (P1-A): engineering-momentum fixtures ------------------------
+
+test("github: technology momentum over recent public repos", async () => {
+  const { GithubProvider, computeGithubFeatures } = await import("../src/lib/intel/providers/github");
+  const recent = (d: number) => new Date(NOW.getTime() - d * 86_400_000).toISOString();
+  const snap = {
+    org: "acme",
+    repos: [
+      { name: "terraform-modules", language: "HCL", pushed_at: recent(10), created_at: recent(200), archived: false, fork: false, topics: ["terraform", "iac"] },
+      { name: "ansible-playbooks", language: "Python", pushed_at: recent(20), created_at: recent(300), archived: false, fork: false, topics: ["ansible", "automation"] },
+      { name: "k8s-operators", language: "Go", pushed_at: recent(5), created_at: recent(40), archived: false, fork: false, topics: ["kubernetes"] },
+      { name: "helm-charts", language: "Smarty", pushed_at: recent(15), created_at: recent(100), archived: false, fork: false, topics: ["helm", "kubernetes"] },
+      { name: "old-thing", language: "Perl", pushed_at: recent(900), created_at: recent(1200), archived: true, fork: false, topics: [] },
+      { name: "forked-lib", language: "Go", pushed_at: recent(2), created_at: recent(3), archived: false, fork: true, topics: ["kubernetes"] },
+    ],
+  };
+  const f = computeGithubFeatures(snap, NOW);
+  assert.equal(f.activeRepos, 4); // archived + fork excluded
+  assert.equal(f.createdLast90d, 1); // only k8s-operators created in-window
+  const k8s = f.byTechnology.find((t) => t.signalType === "KUBERNETES_ADOPTION_SIGNAL");
+  assert.ok(k8s && k8s.repos === 2); // k8s-operators + helm-charts
+
+  const provider = new GithubProvider();
+  const candidates = provider.normalize(
+    [{ payload: snap, isNew: true }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  const types = candidates.map((c) => c.suggestedSignalType);
+  assert.ok(types.includes("KUBERNETES_ADOPTION_SIGNAL"));
+  // Public activity, never an install claim.
+  for (const c of candidates) {
+    assert.equal(c.firstParty, false);
+    assert.match(c.claim, /public GitHub org/);
+    assert.ok(!/uses|installed|deployed internally/i.test(c.claim));
+  }
+  // Single-repo technology is noise (threshold gate).
+  const thin = provider.normalize(
+    [{ payload: { org: "acme", repos: [snap.repos[0]] }, isNew: true }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: null },
+  );
+  assert.equal(thin.length, 0);
+});
+
+// -- SEC EDGAR (§4, §23): deterministic section identification -----------
+
+test("sec: relevant-section extraction is keyword-driven and merges windows", async () => {
+  const { relevantSections } = await import("../src/lib/intel/providers/sec");
+  const filler = "lorem ipsum ".repeat(200);
+  const text =
+    filler +
+    "The Company announced a multi-year infrastructure modernization and cloud migration program. " +
+    filler +
+    "Management initiated a cost reduction and restructuring effort to improve operating efficiency. " +
+    filler;
+  const sections = relevantSections(text);
+  assert.ok(sections.length >= 2);
+  assert.ok(sections.some((s) => /infrastructure modern|cloud migration/i.test(s)));
+  assert.ok(sections.some((s) => /cost reduction|restructuring/i.test(s)));
+
+  // No relevant keywords → nothing extracted → no LLM call downstream.
+  assert.equal(relevantSections("lorem ipsum ".repeat(500)).length, 0);
+});
+
+test("sec provider: metadata and no-CIK absence behavior", async () => {
+  const { SecProvider } = await import("../src/lib/intel/providers/sec");
+  const p = new SecProvider();
+  assert.equal(p.providerId, "sec_edgar");
+  assert.equal(p.sourceTrustPrior, 0.9); // primary-source regulatory filings
+  // No CIK handle = not a public company = absence, not error, no LLM call.
+  assert.deepEqual(
+    await p.fetch({ orgId: null, companyId: "c1", companyName: "Private LLC", domain: null }),
+    [],
+  );
+});

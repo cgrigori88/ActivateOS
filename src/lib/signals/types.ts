@@ -123,8 +123,14 @@ export const SIGNAL_DEFS: Record<string, SignalDef> = {
   DNS_PROVIDER_CHANGE: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
   MAIL_PLATFORM_CHANGE: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
   SECURITY_GATEWAY_CHANGE: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
-  // Engineering activity (DIRECTIVE P1-A)
+  // Engineering activity (DIRECTIVE P1-A / GitHub): public engineering
+  // momentum. Never proof of enterprise-wide installed technology.
   ENGINEERING_ACTIVITY_EXPANSION: { halfLifeDays: 120, family: "momentum", direction: 1, canonical: "ENGINEERING_ACTIVITY" },
+  CLOUD_NATIVE_ENGINEERING_EXPANSION: { halfLifeDays: 120, family: "momentum", direction: 1, canonical: "ENGINEERING_ACTIVITY" },
+  AUTOMATION_ENGINEERING_ACTIVITY: { halfLifeDays: 120, family: "momentum", direction: 1, canonical: "ENGINEERING_ACTIVITY" },
+  KUBERNETES_ADOPTION_SIGNAL: { halfLifeDays: 120, family: "momentum", direction: 1, canonical: "ENGINEERING_ACTIVITY" },
+  AI_ENGINEERING_EXPANSION: { halfLifeDays: 120, family: "momentum", direction: 1, canonical: "ENGINEERING_ACTIVITY" },
+  INFRA_AS_CODE_EXPANSION: { halfLifeDays: 120, family: "momentum", direction: 1, canonical: "ENGINEERING_ACTIVITY" },
   // Technographic change (DIRECTIVE P1-B): web-facing stack movement.
   TECHNOLOGY_ADDED: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
   TECHNOLOGY_STACK_CHANGE: { halfLifeDays: 120, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
