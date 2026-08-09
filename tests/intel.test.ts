@@ -835,3 +835,83 @@ test("gdelt: radar-grade low-confidence evidence, new observations only", async 
     [],
   );
 });
+
+// -- Generic careers monitor (P0-C): self-hosted / non-ATS boards ----------
+
+test("careers extractJobPostings: JSON-LD JobPosting is the primary path", async () => {
+  const { extractJobPostings } = await import("../src/lib/intel/providers/careers");
+  const html = `<html><head>
+    <script type="application/ld+json">
+    {"@context":"https://schema.org","@graph":[
+      {"@type":"JobPosting","title":"Senior Platform Engineer","url":"/jobs/123","datePosted":"2026-07-01",
+       "jobLocation":{"@type":"Place","address":{"addressLocality":"Berlin","addressCountry":"DE"}}},
+      {"@type":"JobPosting","name":"Staff Kubernetes Engineer","url":"https://acme.com/jobs/456","datePosted":"2026-07-15"},
+      {"@type":"WebPage","name":"Not a job"}
+    ]}
+    </script></head><body></body></html>`;
+  const jobs = extractJobPostings(html, "https://acme.com/careers");
+  assert.equal(jobs.length, 2);
+  const platform = jobs.find((j) => j.title === "Senior Platform Engineer");
+  assert.ok(platform);
+  assert.equal(platform.url, "https://acme.com/jobs/123"); // relative resolved against base
+  assert.equal(platform.location, "Berlin");
+  assert.equal(platform.publishedAt?.toISOString().slice(0, 10), "2026-07-01");
+  // Malformed JSON-LD in the same page never aborts extraction.
+  const withJunk = extractJobPostings(
+    `<script type="application/ld+json">{bad json}</script>` + html,
+    "https://acme.com/careers",
+  );
+  assert.equal(withJunk.length, 2);
+});
+
+test("careers extractJobPostings: anchor fallback only without structured data", async () => {
+  const { extractJobPostings } = await import("../src/lib/intel/providers/careers");
+  const html = `<html><body>
+    <a href="/careers/platform-engineer-eu">Platform Engineer, EU</a>
+    <a href="/jobs/sre-lead">Site Reliability Engineer</a>
+    <a href="/careers">View all openings</a>          <!-- generic, dropped -->
+    <a href="/about">About us</a>                       <!-- not a job href -->
+    <a href="/careers/apply">Apply now</a>              <!-- no title hint -->
+  </body></html>`;
+  const jobs = extractJobPostings(html, "https://acme.com/careers");
+  const titles = jobs.map((j) => j.title).sort();
+  assert.deepEqual(titles, ["Platform Engineer, EU", "Site Reliability Engineer"]);
+  assert.equal(jobs[0].url?.startsWith("https://acme.com/"), true);
+});
+
+test("careers provider: shared hiring model, first-party, change-gated", async () => {
+  const { CareersProvider } = await import("../src/lib/intel/providers/careers");
+  const p = new CareersProvider();
+  assert.equal(p.providerId, "careers");
+  assert.equal(p.sourceKind, "first_party");
+
+  // Enough relevant roles → hiring evidence via the SHARED model.
+  const jobs = [
+    { externalId: "c-1", title: "Platform Engineer", department: null, location: null, url: null, publishedAt: null },
+    { externalId: "c-2", title: "Senior Platform Engineer", department: null, location: null, url: null, publishedAt: null },
+    { externalId: "c-3", title: "Staff Platform Engineer", department: null, location: null, url: null, publishedAt: null },
+  ];
+  const ev = p.normalize(
+    [{ payload: { url: "https://acme.com/careers", jobs }, isNew: true }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  assert.ok(ev.some((e) => e.suggestedSignalType === "PLATFORM_ENGINEERING_EXPANSION"));
+  for (const e of ev) assert.equal(e.firstParty, true);
+
+  // Unchanged snapshot (nothing new) = stop.
+  assert.deepEqual(
+    p.normalize(
+      [{ payload: { url: "https://acme.com/careers", jobs }, isNew: false }],
+      [{ payload: { url: "https://acme.com/careers", jobs }, observedAt: NOW }],
+      { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+    ),
+    [],
+  );
+
+  // No discovered board = no fetch = absence.
+  assert.deepEqual(
+    await p.fetch({ orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" }),
+    [],
+  );
+});

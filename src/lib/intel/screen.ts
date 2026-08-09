@@ -7,6 +7,7 @@ import {
   BuiltWithDomainProvider,
   BuiltWithFreeProvider,
 } from "./providers/builtwith";
+import { CareersProvider } from "./providers/careers";
 import { CensysProvider } from "./providers/censys";
 import { DnsProvider } from "./providers/dns";
 import { GdeltProvider } from "./providers/gdelt";
@@ -39,6 +40,7 @@ export function registerBuiltinProviders(): void {
   registerProvider(new SecProvider());
   registerProvider(new GreenhouseProvider());
   registerProvider(new LeverProvider());
+  registerProvider(new CareersProvider());
   registerProvider(new GithubProvider());
   registerProvider(new WebsiteProvider());
   registerProvider(new GdeltProvider());

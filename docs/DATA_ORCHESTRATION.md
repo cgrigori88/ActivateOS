@@ -76,6 +76,27 @@ eventually supersede inferred intent.
   (`job_title_levels` cxo/vp/director × `job_title_role` engineering), capped
   at five, never every employee. Mandatory for credit efficiency.
 
+## Generic careers monitor (P0-C)
+
+Covers companies **not** on Greenhouse or Lever — the self-hosted / long-tail
+case. Dependency-free, free extraction from the company's own careers page:
+
+1. **schema.org JobPosting JSON-LD** — the SEO standard for Google Jobs; the
+   high-precision primary path.
+2. **Anchor fallback** — job-detail links whose text reads like a role title,
+   used only when no structured data is present.
+
+Both normalize into the **shared hiring model** (`classifyJob` /
+`computeHiringFeatures` / `hiringEvidence`), so a self-hosted board yields
+exactly the same velocity features, thresholds, and evidence as an ATS board —
+no duplicated downstream logic. Verified live on Sentry (self-hosted, not on
+Greenhouse/Lever): 47 postings extracted → "6 open security roles, 8 added in
+30 days" and two new technology-leadership positions.
+
+Honest limitation: fully JS-rendered SPA career pages expose no jobs in their
+initial HTML, so an HTTP-only monitor returns nothing for them (a **skip**,
+never an error) — those need an ATS API or a headless-browser deep provider.
+
 ## GDELT event radar (P0-E)
 
 GDELT indexes global news in near-real time and is **free** — the cheap
@@ -117,8 +138,8 @@ Propensity · Evidence Confidence · Data Completeness.
 Retrofitted into the normalized architecture and policy-governed today:
 pdl_company, pdl_people, greenhouse, lever, dns, ipinfo, builtwith_free
 (builtwith_domain/change credit-gated), wappalyzer (disabled — no plan),
-censys, sec_edgar, website, github, http_fingerprint, gdelt. Policy entries
-exist for the ad-hoc sources still on their earlier modules (tavily, careers,
+censys, sec_edgar, website, github, http_fingerprint, gdelt, careers. Policy
+entries exist for the ad-hoc sources still on their earlier modules (tavily,
 common_crawl); the orchestration already reasons about them, and each becomes
 a first-class provider as it is retrofitted — with no change to the policy or
 scoring layers.
