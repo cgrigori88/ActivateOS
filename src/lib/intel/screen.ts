@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { ensureProviderRow, runProvider, type ProviderRunResult } from "./pipeline";
+import { shouldRunProvider } from "./policy";
 import { allProviders, registerProvider, type IntelligenceTarget } from "./provider";
 import { BuiltWithProvider } from "./providers/builtwith";
 import { CensysProvider } from "./providers/censys";
@@ -33,36 +34,58 @@ export function registerBuiltinProviders(): void {
   registered = true;
 }
 
+export interface ScreenOptions {
+  targetSlug?: string;
+  isPublicCompany?: boolean;
+}
+
+/**
+ * Stage 1 — low-cost screen (§21). Consults the orchestration policy
+ * (shouldRunProvider) so each provider fires only when its gates permit, and
+ * every decision — run or skip — is auditable via its reason.
+ */
 export async function screenCompany(
   db: pg.PoolClient,
   target: IntelligenceTarget,
+  opts: ScreenOptions = {},
 ): Promise<Record<string, ProviderRunResult>> {
   registerBuiltinProviders();
+  const targetSlug = opts.targetSlug ?? "infrastructure-automation";
   const results: Record<string, ProviderRunResult> = {};
+  const withSlug: IntelligenceTarget = {
+    ...target,
+    handles: { ...(target.handles ?? {}), targetSlug },
+  };
   for (const provider of allProviders()) {
     // Every provider registers a row — disabled/specialized states must be
     // VISIBLE in the registry, never silently absent.
     await ensureProviderRow(db, provider);
-    if (provider.costClass !== "FREE" && provider.costClass !== "LOW_COST") continue;
-    if (provider.allowedForScreening === false) continue; // specialized: deep/manual only
-    if (provider.disabledReason) continue; // registered for visibility, never run
+    const decision = shouldRunProvider({
+      providerId: provider.providerId,
+      targetSlug,
+      researchStage: "screen",
+      isPublicCompany: opts.isPublicCompany ?? false,
+      researchTriggered: false,
+      enabled: !provider.disabledReason,
+    });
+    if (!decision.run) continue;
     // Fault isolation is inside runProvider — one failure never stops the rest.
-    results[provider.providerId] = await runProvider(db, provider, target, { stage: "screen" });
+    results[provider.providerId] = await runProvider(db, provider, withSlug, { stage: "screen" });
   }
   return results;
 }
 
 /**
- * Deep/manual-stage specialized providers, run per pursuit. Censys is the
- * first: it fires only when the target solution is infra-relevant AND the
- * account has a resolvable public asset (both gates enforced in the
- * provider). The targetSlug rides in via handles so the provider can check
- * category relevance.
+ * Stage 2 — deep research per pursuit (§13, §21). Runs deep-stage providers
+ * only when the policy permits: category-gated (Censys, GitHub), threshold-
+ * gated (Tavily, PDL people), etc. researchTriggered=true is the account
+ * having crossed the gate; a manual call can force it.
  */
 export async function deepResearchCompany(
   db: pg.PoolClient,
   target: IntelligenceTarget,
   targetSlug: string,
+  opts: { researchTriggered?: boolean; isPublicCompany?: boolean } = {},
 ): Promise<Record<string, ProviderRunResult>> {
   registerBuiltinProviders();
   const results: Record<string, ProviderRunResult> = {};
@@ -72,9 +95,16 @@ export async function deepResearchCompany(
   };
   for (const provider of allProviders()) {
     await ensureProviderRow(db, provider);
-    if (provider.allowedForScreening !== false) continue; // screen providers already ran
-    if (provider.disabledReason) continue;
     if (provider.costClass === "PREMIUM") continue;
+    const decision = shouldRunProvider({
+      providerId: provider.providerId,
+      targetSlug,
+      researchStage: "deep",
+      isPublicCompany: opts.isPublicCompany ?? false,
+      researchTriggered: opts.researchTriggered ?? true,
+      enabled: !provider.disabledReason,
+    });
+    if (!decision.run) continue;
     results[provider.providerId] = await runProvider(db, provider, withSlug, { stage: "deep" });
   }
   return results;

@@ -63,15 +63,31 @@ async function main() {
     if (companies.length === 0) throw new Error(`company not found: ${companyName} (use --create)`);
     const company = companies[0];
 
-    console.log(`\n═ INTELLIGENCE RUN — ${company.legal_name} (${company.primary_domain ?? "no domain"})\n`);
+    // SEC applicability gate: does EDGAR know this company? (cheap CIK lookup)
+    let isPublicCompany = false;
+    try {
+      const { lookupCIK } = await import("../src/lib/research/edgar");
+      isPublicCompany = Boolean(await lookupCIK(company.legal_name));
+    } catch {
+      /* EDGAR optional */
+    }
+
+    console.log(
+      `\n═ INTELLIGENCE RUN — ${company.legal_name} (${company.primary_domain ?? "no domain"})` +
+        `${isPublicCompany ? " [public: SEC applies]" : ""}\n`,
+    );
     const started = Date.now();
 
-    const results = await screenCompany(db, {
-      orgId,
-      companyId: company.id,
-      companyName: company.legal_name,
-      domain: domain ?? company.primary_domain,
-    });
+    const results = await screenCompany(
+      db,
+      {
+        orgId,
+        companyId: company.id,
+        companyName: company.legal_name,
+        domain: domain ?? company.primary_domain,
+      },
+      { targetSlug, isPublicCompany },
+    );
     console.log("─ Stage 1: cheap screen");
     for (const [id, r] of Object.entries(results)) {
       console.log(
@@ -86,6 +102,7 @@ async function main() {
       db,
       { orgId, companyId: company.id, companyName: company.legal_name, domain: domain ?? company.primary_domain },
       targetSlug,
+      { researchTriggered: true, isPublicCompany },
     );
     if (Object.keys(deep).length > 0) {
       console.log("─ Deep stage: specialized providers");
@@ -128,6 +145,22 @@ async function main() {
     } else {
       console.log(`─ No score yet for ${targetSlug} (no verified signals mapped)`);
     }
+
+    // Data completeness by category (§24) — separate from propensity.
+    const { computeCompleteness } = await import("../src/lib/intel/completeness");
+    const { rows: ranRows } = await db.query<{ provider_id: string }>(
+      `select distinct provider_id from provider_runs
+       where company_id = $1 and status = 'succeeded'`,
+      [company.id],
+    );
+    const completeness = computeCompleteness({
+      providersRun: new Set(ranRows.map((r) => r.provider_id)),
+      familiesPresent: new Set(),
+    });
+    console.log(
+      `─ Data completeness: ${completeness.overall}% ` +
+        `(gaps: ${completeness.gaps.join(", ") || "none"})`,
+    );
 
     const { rows: evidence } = await db.query(
       `select claim, status, provider_id, computed_confidence from evidence

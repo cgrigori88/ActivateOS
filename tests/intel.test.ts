@@ -444,3 +444,100 @@ test("censys: relevance gate, finer signal vocabulary, careful claims", async ()
     if (saved) process.env.CENSYS_PAT = saved;
   }
 });
+
+// -- Orchestration policy (§17-24): when each provider fires -------------
+
+test("shouldRunProvider: stage, public-company, category, and threshold gates", async () => {
+  const { shouldRunProvider } = await import("../src/lib/intel/policy");
+  const base = {
+    targetSlug: "infrastructure-automation",
+    researchStage: "screen" as const,
+    isPublicCompany: false,
+    researchTriggered: false,
+    enabled: true,
+  };
+
+  // Tier-2 cheap providers run in the screen.
+  assert.equal(shouldRunProvider({ ...base, providerId: "greenhouse" }).run, true);
+  assert.equal(shouldRunProvider({ ...base, providerId: "dns" }).run, true);
+
+  // Disabled provider never runs, whatever the stage.
+  assert.equal(shouldRunProvider({ ...base, providerId: "wappalyzer", enabled: false }).run, false);
+
+  // SEC only for public companies.
+  assert.equal(shouldRunProvider({ ...base, providerId: "sec_edgar" }).run, false);
+  assert.match(shouldRunProvider({ ...base, providerId: "sec_edgar" }).reason, /public-company/);
+  assert.equal(
+    shouldRunProvider({ ...base, providerId: "sec_edgar", isPublicCompany: true }).run,
+    true,
+  );
+
+  // GitHub only when the category is engineering-observable.
+  assert.equal(shouldRunProvider({ ...base, providerId: "github" }).run, true); // infra-automation
+  assert.equal(
+    shouldRunProvider({ ...base, providerId: "github", targetSlug: "siem" }).run,
+    false,
+  );
+
+  // Censys is deep-stage only, and category-gated even there.
+  assert.equal(shouldRunProvider({ ...base, providerId: "censys" }).run, false); // screen stage
+  assert.match(shouldRunProvider({ ...base, providerId: "censys" }).reason, /not a screen-stage/);
+  assert.equal(
+    shouldRunProvider({ ...base, providerId: "censys", researchStage: "deep", researchTriggered: true }).run,
+    true,
+  );
+  assert.equal(
+    shouldRunProvider({ ...base, providerId: "censys", researchStage: "deep", researchTriggered: true, targetSlug: "analytics" }).run,
+    false,
+  );
+
+  // Tavily / PDL people gate on the research threshold in deep stage.
+  const deep = { ...base, researchStage: "deep" as const };
+  assert.equal(shouldRunProvider({ ...deep, providerId: "tavily", researchTriggered: false }).run, false);
+  assert.match(
+    shouldRunProvider({ ...deep, providerId: "tavily", researchTriggered: false }).reason,
+    /threshold/,
+  );
+  assert.equal(shouldRunProvider({ ...deep, providerId: "pdl_people", researchTriggered: true }).run, true);
+
+  // Unknown provider = no policy = no run.
+  assert.equal(shouldRunProvider({ ...base, providerId: "mystery" }).run, false);
+});
+
+test("source priority order is highest-value first, first-party on top", async () => {
+  const { sourcePriorityOrder } = await import("../src/lib/intel/policy");
+  const order = sourcePriorityOrder();
+  assert.equal(order[0], "customer_outcomes"); // first-party wins/losses
+  assert.ok(order.indexOf("sec_edgar") < order.indexOf("builtwith")); // strategy > technographics
+  assert.ok(order.indexOf("tavily") < order.indexOf("censys")); // corroboration > specialized
+  assert.equal(order[order.length - 1], "common_crawl"); // historical research last
+});
+
+test("data completeness is per-category and separate from propensity (§24)", async () => {
+  const { computeCompleteness } = await import("../src/lib/intel/completeness");
+  // A hiring-only account: promising signal, but thinly researched.
+  const thin = computeCompleteness({
+    providersRun: new Set(["greenhouse"]),
+    familiesPresent: new Set(["HIRING"]),
+  });
+  assert.equal(thin.byCategory.hiring, true);
+  assert.equal(thin.byCategory.identity, false);
+  assert.equal(thin.byCategory.people, false);
+  assert.ok(thin.overall < 30);
+  assert.ok(thin.gaps.includes("identity") && thin.gaps.includes("strategic"));
+
+  // Broadly researched account scores high completeness.
+  const broad = computeCompleteness({
+    providersRun: new Set(["pdl_company", "sec_edgar", "greenhouse", "builtwith", "github", "pdl_people"]),
+    familiesPresent: new Set(["STRATEGIC_CHANGE", "HIRING", "TECHNOLOGY", "COMMERCIAL_TIMING"]),
+  });
+  assert.ok(broad.overall >= 75);
+  assert.equal(broad.byCategory.identity, true);
+
+  // Evidence families satisfy a category even without the named provider.
+  const viaFamily = computeCompleteness({
+    providersRun: new Set(),
+    familiesPresent: new Set(["ENGINEERING_ACTIVITY"]),
+  });
+  assert.equal(viaFamily.byCategory.engineering, true);
+});
