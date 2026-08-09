@@ -26,7 +26,8 @@
     "source-intel": "tsx scripts/source-intel.ts",
     "seed-partners": "tsx scripts/seed-partners.ts",
     "match-partners": "tsx scripts/match-partners.ts",
-    "assemble-teams": "tsx scripts/assemble-teams.ts"
+    "assemble-teams": "tsx scripts/assemble-teams.ts",
+    "setup-comms": "tsx scripts/setup-comms-dns.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
