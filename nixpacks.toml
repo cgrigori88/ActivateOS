@@ -1,0 +1,11 @@
+# Railway builds the pipeline WORKER from this repo (`npm run worker`) — a pure
+# Node/tsx process. It must NOT run `next build`: the worker never imports
+# Tailwind/Next, and that build loads the @tailwindcss/oxide native binary which
+# Nixpacks' `npm ci` fails to install (npm optional-deps bug), crashing the
+# build. Install deps, skip the build, and let railway.json's startCommand run
+# the worker.
+#
+# (The Next.js web app is deployed separately on Vercel, which builds it fine.)
+
+[phases.build]
+cmds = ["echo 'worker service: no build step needed'"]
