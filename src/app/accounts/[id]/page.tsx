@@ -61,6 +61,50 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  let partnerFits: {
+    fit_id: string;
+    partner_id: string;
+    partner: string;
+    partner_type: string;
+    score: string;
+    band: string;
+    seller: string | null;
+    seller_strength: string | null;
+  }[] = [];
+  let fitFeatures = new Map<string, { feature: string; contribution: string; detail: string | null }[]>();
+  if (scores.length > 0) {
+    const result = await pool.query(
+      `select distinct on (f.partner_id)
+              f.id as fit_id, f.partner_id, pa.name as partner, pa.partner_type,
+              f.score, f.band, best.name as seller, best.strength as seller_strength
+       from partner_fit_scores f
+       join partners pa on pa.id = f.partner_id
+       left join lateral (
+         select s.name, sar.strength
+         from seller_account_relationships sar
+         join sellers s on s.id = sar.seller_id
+         where sar.company_id = f.company_id and s.partner_id = f.partner_id
+         order by sar.strength desc limit 1) as best on true
+       where f.company_id = $1
+       order by f.partner_id, f.computed_at desc`,
+      [id],
+    );
+    partnerFits = result.rows.sort((a, b) => Number(b.score) - Number(a.score));
+    if (partnerFits.length > 0) {
+      const features = await pool.query(
+        `select fit_id, feature, contribution, detail from partner_fit_features
+         where fit_id = any($1) order by contribution desc`,
+        [partnerFits.map((f) => f.fit_id)],
+      );
+      fitFeatures = features.rows.reduce((m, r) => {
+        const list = m.get(r.fit_id) ?? [];
+        list.push(r);
+        m.set(r.fit_id, list);
+        return m;
+      }, new Map<string, { feature: string; contribution: string; detail: string | null }[]>());
+    }
+  }
+
   const { rows: motions } = await pool.query(
     `select m.id, m.status, m.thesis, m.trigger_summary, m.primary_persona, m.secondary_persona,
             m.cta, m.confidence
@@ -182,6 +226,52 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
               </ul>
             </div>
           ))}
+        </Card>
+      )}
+
+      {partnerFits.length > 0 && (
+        <Card className="mb-6">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            Pursuit team
+          </h2>
+          <div className="space-y-3">
+            {partnerFits.map((f, i) => (
+              <div
+                key={f.partner_id}
+                className={
+                  i === 0
+                    ? "rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-950"
+                    : "px-3"
+                }
+              >
+                <div className="flex items-baseline gap-2">
+                  <span className="tnum text-lg font-semibold">{Number(f.score).toFixed(0)}</span>
+                  <BandBadge band={f.band} />
+                  <span className="font-medium">{f.partner}</span>
+                  <span className="text-xs uppercase tracking-wide text-neutral-400">
+                    {f.partner_type?.replace(/_/g, " ")}
+                  </span>
+                  {i === 0 && (
+                    <span className="ml-auto text-xs font-semibold text-green-700 dark:text-green-400">
+                      RECOMMENDED
+                    </span>
+                  )}
+                </div>
+                {f.seller && (
+                  <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                    Seller: <span className="font-medium">{f.seller}</span> (relationship{" "}
+                    {Number(f.seller_strength).toFixed(0)}/100)
+                  </p>
+                )}
+                <p className="mt-1 text-xs text-neutral-500">
+                  {(fitFeatures.get(f.fit_id) ?? [])
+                    .map((ff) => ff.detail)
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 

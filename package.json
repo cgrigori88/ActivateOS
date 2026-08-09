@@ -23,7 +23,9 @@
     "compose-campaign": "tsx scripts/compose-campaign.ts",
     "enrich": "tsx scripts/enrich.ts",
     "refresh": "tsx scripts/refresh.ts",
-    "source-intel": "tsx scripts/source-intel.ts"
+    "source-intel": "tsx scripts/source-intel.ts",
+    "seed-partners": "tsx scripts/seed-partners.ts",
+    "match-partners": "tsx scripts/match-partners.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
