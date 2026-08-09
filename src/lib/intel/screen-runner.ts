@@ -106,3 +106,45 @@ export async function runScreeningSweepLocked(
   if (outcome.locked) return { screened: 0, evidenceCreated: 0, enqueued: 0, locked: true, accounts: [] };
   return { ...outcome.result, locked: false };
 }
+
+export interface AllOrgsSweepSummary {
+  orgs: number;
+  screened: number;
+  evidenceCreated: number;
+  enqueued: number;
+  locked: boolean;
+  byOrg: { org: string; summary: SweepSummary }[];
+}
+
+/**
+ * Sweep every organization (or one named org), each under the shared lock.
+ * Shared by the CLI and the Railway worker so scheduled and manual sweeps run
+ * identical logic.
+ */
+export async function runScreeningSweepAllOrgs(
+  db: pg.PoolClient,
+  opts: { orgName?: string; limit?: number; targetSlug?: string; useLLM?: boolean } = {},
+): Promise<AllOrgsSweepSummary> {
+  const { rows: orgs } = opts.orgName
+    ? await db.query<{ id: string; name: string }>(`select id, name from organizations where name = $1`, [opts.orgName])
+    : await db.query<{ id: string; name: string }>(`select id, name from organizations order by name`);
+
+  const out: AllOrgsSweepSummary = {
+    orgs: 0, screened: 0, evidenceCreated: 0, enqueued: 0, locked: false, byOrg: [],
+  };
+  for (const org of orgs) {
+    const summary = await runScreeningSweepLocked(db, org.id, {
+      limit: opts.limit, targetSlug: opts.targetSlug, useLLM: opts.useLLM,
+    });
+    if (summary.locked) {
+      out.locked = true; // another pipeline run is active — stop this pass
+      break;
+    }
+    out.orgs++;
+    out.screened += summary.screened;
+    out.evidenceCreated += summary.evidenceCreated;
+    out.enqueued += summary.enqueued;
+    out.byOrg.push({ org: org.name, summary });
+  }
+  return out;
+}

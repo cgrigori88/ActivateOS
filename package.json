@@ -30,7 +30,8 @@
     "setup-comms": "tsx scripts/setup-comms-dns.ts",
     "intel": "tsx scripts/intel.ts",
     "screen": "tsx scripts/screen-sweep.ts",
-    "research": "tsx scripts/research-runner.ts"
+    "research": "tsx scripts/research-runner.ts",
+    "worker": "tsx src/worker/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
@@ -43,6 +44,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.19.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -50,7 +52,6 @@
     "@types/pg": "^8.11.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }
 }
