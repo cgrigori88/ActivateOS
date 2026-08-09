@@ -91,6 +91,17 @@ export interface IntelligenceProvider {
    * guard for metered providers. Omit for free unmetered sources.
    */
   minRefreshHours?: number;
+  /**
+   * Plan/licensing block (e.g. 'DISABLED_NO_PLAN_ACCESS'): the provider
+   * registers with enabled=false and the reason on record — visible in
+   * provider tooling, never silently absent, never blocking the build.
+   */
+  disabledReason?: string;
+  /**
+   * false = specialized provider excluded from the universal cheap screen
+   * (§34 stage 1); runs only in deep/manual stages for relevant campaigns.
+   */
+  allowedForScreening?: boolean;
   /** optional cheap discovery (e.g. find the careers board token) */
   discover?(target: IntelligenceTarget): Promise<Record<string, string> | null>;
   fetch(target: IntelligenceTarget): Promise<RawObservationInput[]>;

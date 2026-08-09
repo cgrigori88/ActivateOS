@@ -1,11 +1,13 @@
 import type pg from "pg";
-import { runProvider, type ProviderRunResult } from "./pipeline";
+import { ensureProviderRow, runProvider, type ProviderRunResult } from "./pipeline";
 import { allProviders, registerProvider, type IntelligenceTarget } from "./provider";
 import { BuiltWithProvider } from "./providers/builtwith";
+import { CensysProvider } from "./providers/censys";
 import { DnsProvider } from "./providers/dns";
 import { IpinfoProvider } from "./providers/ipinfo";
 import { GreenhouseProvider } from "./providers/greenhouse";
 import { LeverProvider } from "./providers/lever";
+import { WappalyzerProvider } from "./providers/wappalyzer";
 
 /**
  * Two-stage research (DIRECTIVE §34, mandatory for cost efficiency):
@@ -26,6 +28,8 @@ export function registerBuiltinProviders(): void {
   registerProvider(new DnsProvider());
   registerProvider(new BuiltWithProvider());
   registerProvider(new IpinfoProvider());
+  registerProvider(new WappalyzerProvider());
+  registerProvider(new CensysProvider());
   registered = true;
 }
 
@@ -36,7 +40,12 @@ export async function screenCompany(
   registerBuiltinProviders();
   const results: Record<string, ProviderRunResult> = {};
   for (const provider of allProviders()) {
+    // Every provider registers a row — disabled/specialized states must be
+    // VISIBLE in the registry, never silently absent.
+    await ensureProviderRow(db, provider);
     if (provider.costClass !== "FREE" && provider.costClass !== "LOW_COST") continue;
+    if (provider.allowedForScreening === false) continue; // specialized: deep/manual only
+    if (provider.disabledReason) continue; // registered for visibility, never run
     // Fault isolation is inside runProvider — one failure never stops the rest.
     results[provider.providerId] = await runProvider(db, provider, target, { stage: "screen" });
   }

@@ -360,3 +360,67 @@ test("ipinfo: cloud detection, distinct networks, change events", async () => {
   }
   assert.equal(provider.minRefreshHours, 24 * 7);
 });
+
+// -- Wappalyzer (P1-C): plan-blocked provider state ----------------------
+
+test("wappalyzer registers DISABLED_NO_PLAN_ACCESS and never runs", async () => {
+  const { WappalyzerProvider } = await import("../src/lib/intel/providers/wappalyzer");
+  const p = new WappalyzerProvider();
+  assert.equal(p.disabledReason, "DISABLED_NO_PLAN_ACCESS");
+  assert.deepEqual(await p.fetch({ orgId: null, companyId: "c", companyName: "A", domain: "a.com" }), []);
+  const health = await p.healthCheck();
+  assert.equal(health.ok, false);
+  assert.equal(health.detail, "DISABLED_NO_PLAN_ACCESS");
+});
+
+// -- Censys (P2-B): fixtures mirror the LIVE platform API shape ----------
+
+test("censys: specialized posture, careful claims, ontology-filtered software", async () => {
+  const { CensysProvider, summarizeHost } = await import("../src/lib/intel/providers/censys");
+  const p = new CensysProvider();
+  // Never in the universal screen; monthly cadence.
+  assert.equal(p.allowedForScreening, false);
+  assert.equal(p.minRefreshHours, 24 * 30);
+
+  const host = {
+    ip: "203.0.113.10",
+    autonomous_system: { asn: 64500, name: "EXAMPLE-NET" },
+    service_count: 3,
+    services: [
+      { port: 443, protocol: "HTTP", transport_protocol: "tcp", software: [{ product: "OpenShift", vendor: "Red Hat" }] },
+      { port: 22, protocol: "SSH", transport_protocol: "tcp" },
+      { port: 443, protocol: "UNKNOWN", transport_protocol: "quic" }, // UNKNOWN filtered
+    ],
+  };
+  const s = summarizeHost(host);
+  assert.equal(s.serviceCount, 3);
+  assert.deepEqual(s.protocols, ["HTTP", "SSH"]);
+  assert.deepEqual(s.software, ["OpenShift"]);
+
+  const candidates = p.normalize(
+    [{ payload: { domain: "acme.com", hosts: [host] }, isNew: true }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  // Posture claim + ontology-mapped software claim (OpenShift → kubernetes).
+  assert.equal(candidates.length, 2);
+  for (const c of candidates) {
+    assert.equal(c.suggestedSignalType, "PUBLIC_INFRASTRUCTURE_EVIDENCE");
+    assert.match(c.claim, /internet-facing/);
+    // No vulnerability/security-posture language, no location.
+    assert.ok(!/vulnerab|insecure|exposed|risk|CVE/i.test(c.claim));
+  }
+  assert.equal(candidates[1].suggestedNodeSlug, "kubernetes");
+
+  // No PAT = absence, not error.
+  const saved = process.env.CENSYS_PAT;
+  delete process.env.CENSYS_PAT;
+  try {
+    assert.deepEqual(
+      await p.fetch({ orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" }),
+      [],
+    );
+  } finally {
+    if (saved) process.env.CENSYS_PAT = saved;
+  }
+});

@@ -32,9 +32,16 @@ export interface ProviderRunResult {
 
 export async function ensureProviderRow(db: pg.PoolClient, p: IntelligenceProvider): Promise<void> {
   await db.query(
-    `insert into providers (id, provider_type, cost_class)
-     values ($1, $2, $3) on conflict (id) do nothing`,
-    [p.providerId, p.providerType, p.costClass],
+    `insert into providers (id, provider_type, cost_class, enabled, allowed_for_screening, config)
+     values ($1, $2, $3, $4, $5, $6) on conflict (id) do nothing`,
+    [
+      p.providerId,
+      p.providerType,
+      p.costClass,
+      !p.disabledReason,
+      p.allowedForScreening !== false,
+      JSON.stringify(p.disabledReason ? { disabled_reason: p.disabledReason } : {}),
+    ],
   );
   // Bootstrap the source-trust prior; audit outcomes evolve it afterwards.
   await db.query(

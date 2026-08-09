@@ -133,6 +133,8 @@ export const SIGNAL_DEFS: Record<string, SignalDef> = {
   CLOUD_NETWORK_EVIDENCE: { halfLifeDays: 365, family: "technology", direction: 1, canonical: "TECHNOLOGY" },
   NETWORK_PROVIDER_CHANGE: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
   NETWORK_INFRASTRUCTURE_CHANGE: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
+  // Internet-facing infrastructure (DIRECTIVE P2-B): specialized, opt-in.
+  PUBLIC_INFRASTRUCTURE_EVIDENCE: { halfLifeDays: 365, family: "technology", direction: 1, canonical: "TECHNOLOGY" },
   // Negative
   HIRING_FREEZE: { halfLifeDays: 120, family: "negative", direction: -1 },
   LAYOFFS: { halfLifeDays: 180, family: "negative", direction: -1 },
