@@ -6,11 +6,13 @@ import { BuiltWithProvider } from "./providers/builtwith";
 import { CensysProvider } from "./providers/censys";
 import { DnsProvider } from "./providers/dns";
 import { GithubProvider } from "./providers/github";
+import { HttpFingerprintProvider } from "./providers/http-fingerprint";
 import { IpinfoProvider } from "./providers/ipinfo";
 import { GreenhouseProvider } from "./providers/greenhouse";
 import { LeverProvider } from "./providers/lever";
 import { SecProvider } from "./providers/sec";
 import { WappalyzerProvider } from "./providers/wappalyzer";
+import { WebsiteProvider } from "./providers/website";
 
 /**
  * Two-stage research (DIRECTIVE §34, mandatory for cost efficiency):
@@ -30,7 +32,9 @@ export function registerBuiltinProviders(): void {
   registerProvider(new GreenhouseProvider());
   registerProvider(new LeverProvider());
   registerProvider(new GithubProvider());
+  registerProvider(new WebsiteProvider());
   registerProvider(new DnsProvider());
+  registerProvider(new HttpFingerprintProvider());
   registerProvider(new BuiltWithProvider());
   registerProvider(new IpinfoProvider());
   registerProvider(new WappalyzerProvider());

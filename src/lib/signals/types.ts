@@ -134,6 +134,14 @@ export const SIGNAL_DEFS: Record<string, SignalDef> = {
   // Technographic change (DIRECTIVE P1-B): web-facing stack movement.
   TECHNOLOGY_ADDED: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
   TECHNOLOGY_STACK_CHANGE: { halfLifeDays: 120, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
+  // First-party strategic change (DIRECTIVE P0-D): company's own site/news.
+  NEW_PRODUCT: { halfLifeDays: 180, family: "initiative", direction: 1, canonical: "STRATEGIC_CHANGE" },
+  GEOGRAPHIC_EXPANSION: { halfLifeDays: 270, family: "trigger", direction: 1, canonical: "BUSINESS_TRIGGER" },
+  NEW_FACILITY: { halfLifeDays: 270, family: "trigger", direction: 1, canonical: "BUSINESS_TRIGGER" },
+  PARTNERSHIP: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "BUSINESS_TRIGGER" },
+  // Web-infrastructure fingerprint (DIRECTIVE P0-G): HTTP headers/HTML clues.
+  CLOUD_WEB_INFRASTRUCTURE_EVIDENCE: { halfLifeDays: 365, family: "technology", direction: 1, canonical: "TECHNOLOGY" },
+  WEB_INFRASTRUCTURE_CHANGE: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
   // Network intelligence (DIRECTIVE P1-D): ASN/ownership clues, conservative.
   NETWORK_PROVIDER_IDENTIFIED: { halfLifeDays: 365, family: "technology", direction: 1, canonical: "TECHNOLOGY" },
   CLOUD_NETWORK_EVIDENCE: { halfLifeDays: 365, family: "technology", direction: 1, canonical: "TECHNOLOGY" },

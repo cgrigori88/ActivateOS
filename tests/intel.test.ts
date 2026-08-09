@@ -618,3 +618,73 @@ test("sec provider: metadata and no-CIK absence behavior", async () => {
     [],
   );
 });
+
+// -- HTTP fingerprint (P0-G): deterministic header/HTML vendor detection --
+
+test("http fingerprint: headers + scripts → conservative vendor evidence", async () => {
+  const { HttpFingerprintProvider, fingerprintFrom } = await import(
+    "../src/lib/intel/providers/http-fingerprint"
+  );
+  const headers = {
+    server: "cloudflare",
+    "cf-ray": "abc123",
+    "x-powered-by": "ASP.NET",
+  };
+  const html = `<html><head><meta name="generator" content="HubSpot"></head>
+    <body><script src="https://js.hs-scripts.com/123.js"></script>
+    <script src="https://cdn.cloudfront.net/app.js"></script></body></html>`;
+  const fp = fingerprintFrom("acme.com", headers, html);
+  assert.ok(fp.vendors.includes("Cloudflare"));
+  assert.ok(fp.vendors.includes("ASP.NET"));
+  assert.ok(fp.vendors.includes("HubSpot"));
+  assert.ok(fp.vendors.includes("AWS CloudFront"));
+  assert.equal(fp.generator, "HubSpot");
+
+  const provider = new HttpFingerprintProvider();
+  const candidates = provider.normalize(
+    [{ payload: fp, isNew: true }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  const cloud = candidates.find((c) => c.suggestedSignalType === "CLOUD_WEB_INFRASTRUCTURE_EVIDENCE");
+  assert.ok(cloud);
+  assert.match(cloud.claim, /HTTP fingerprint/);
+  for (const c of candidates) assert.equal(c.firstParty, false); // supporting only
+
+  // Change detection: vendor set changed vs the prior fingerprint.
+  const prev = fingerprintFrom("acme.com", { server: "nginx" }, "");
+  const withChange = provider.normalize(
+    [{ payload: fp, isNew: true }],
+    [{ payload: prev, observedAt: NOW }],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  assert.ok(withChange.some((c) => c.suggestedSignalType === "WEB_INFRASTRUCTURE_CHANGE"));
+
+  // No domain = absence.
+  assert.deepEqual(
+    await provider.fetch({ orgId: null, companyId: "c1", companyName: "Acme", domain: null }),
+    [],
+  );
+});
+
+// -- Website monitor (P0-D): first-party metadata --------------------------
+
+test("website provider: first-party posture and metadata", async () => {
+  const { WebsiteProvider } = await import("../src/lib/intel/providers/website");
+  const p = new WebsiteProvider();
+  assert.equal(p.providerType, "FIRST_PARTY");
+  assert.equal(p.sourceKind, "first_party");
+  assert.equal(p.sourceTrustPrior, 0.8);
+  // No domain = no fetch = absence, not error.
+  assert.deepEqual(
+    await p.fetch({ orgId: null, companyId: "c1", companyName: "Acme", domain: null }),
+    [],
+  );
+  // Unchanged pages are never sent to the LLM (isNew=false → skipped).
+  const none = await p.normalize(
+    [{ payload: { url: "https://acme.com/news", text: "x".repeat(500) }, isNew: false }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  assert.deepEqual(none, []);
+});
