@@ -128,6 +128,11 @@ export const SIGNAL_DEFS: Record<string, SignalDef> = {
   // Technographic change (DIRECTIVE P1-B): web-facing stack movement.
   TECHNOLOGY_ADDED: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
   TECHNOLOGY_STACK_CHANGE: { halfLifeDays: 120, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
+  // Network intelligence (DIRECTIVE P1-D): ASN/ownership clues, conservative.
+  NETWORK_PROVIDER_IDENTIFIED: { halfLifeDays: 365, family: "technology", direction: 1, canonical: "TECHNOLOGY" },
+  CLOUD_NETWORK_EVIDENCE: { halfLifeDays: 365, family: "technology", direction: 1, canonical: "TECHNOLOGY" },
+  NETWORK_PROVIDER_CHANGE: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
+  NETWORK_INFRASTRUCTURE_CHANGE: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
   // Negative
   HIRING_FREEZE: { halfLifeDays: 120, family: "negative", direction: -1 },
   LAYOFFS: { halfLifeDays: 180, family: "negative", direction: -1 },

@@ -295,3 +295,68 @@ test("builtwith disabled/absent states: no key or no domain = absence, not error
   // Metered guard is declared: weekly per-company throttle.
   assert.equal(provider.minRefreshHours, 24 * 7);
 });
+
+// -- IPinfo Lite (P1-D): fixtures mirror the LIVE response shape ---------
+
+test("ipinfo: cloud detection, distinct networks, change events", async () => {
+  const { IpinfoProvider, detectNetworkChanges, distinctNetworks, isCloudNetwork } = await import(
+    "../src/lib/intel/providers/ipinfo"
+  );
+  const snap = {
+    domain: "acme.com",
+    entries: [
+      { ip: "18.1.1.1", asn: "AS16509", as_name: "Amazon.com, Inc.", as_domain: "amazon.com", country: "US", continent: "NA" },
+      { ip: "18.1.1.2", asn: "AS16509", as_name: "Amazon.com, Inc.", as_domain: "amazon.com", country: "NL", continent: "EU" },
+    ],
+  };
+  assert.equal(distinctNetworks(snap).length, 1); // same ASN across IPs = one network
+  assert.equal(isCloudNetwork(snap.entries[0]), true);
+
+  const provider = new IpinfoProvider();
+  const candidates = provider.normalize(
+    [{ payload: snap, isNew: true }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].suggestedSignalType, "CLOUD_NETWORK_EVIDENCE");
+  assert.match(candidates[0].claim, /route through Amazon/);
+  // Location never appears in evidence claims.
+  assert.ok(!/US|Netherlands|NA|EU/.test(candidates[0].claim));
+
+  // Provider change: AWS → Cloudflare.
+  const moved = {
+    domain: "acme.com",
+    entries: [
+      { ip: "104.1.1.1", asn: "AS13335", as_name: "Cloudflare, Inc.", as_domain: "cloudflare.com", country: "US", continent: "NA" },
+    ],
+  };
+  const changes = detectNetworkChanges(snap, moved);
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].signalType, "NETWORK_PROVIDER_CHANGE");
+  assert.match(changes[0].claim, /amazon\.com → cloudflare\.com/);
+
+  // Same provider, different ASN = infrastructure change, not provider change.
+  const shuffled = {
+    domain: "acme.com",
+    entries: [
+      { ip: "3.1.1.1", asn: "AS14618", as_name: "Amazon.com, Inc.", as_domain: "amazon.com", country: "US", continent: "NA" },
+    ],
+  };
+  const infra = detectNetworkChanges(snap, shuffled);
+  assert.equal(infra.length, 1);
+  assert.equal(infra[0].signalType, "NETWORK_INFRASTRUCTURE_CHANGE");
+
+  // No token = absence, not error; weekly throttle declared.
+  const saved = process.env.IPINFO_TOKEN;
+  delete process.env.IPINFO_TOKEN;
+  try {
+    assert.deepEqual(
+      await provider.fetch({ orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" }),
+      [],
+    );
+  } finally {
+    if (saved) process.env.IPINFO_TOKEN = saved;
+  }
+  assert.equal(provider.minRefreshHours, 24 * 7);
+});

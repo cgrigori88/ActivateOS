@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import { crossCheckLLM } from "../agents/extractor";
+import { claimFingerprint } from "../quality/checks";
 import { verifyEvidence } from "../quality/verify";
 import { SIGNAL_DEFS } from "../signals/types";
 import type { IntelligenceProvider, IntelligenceTarget } from "./provider";
@@ -154,6 +155,19 @@ export async function runProvider(
     let signalsCreated = 0;
     for (const c of candidates) {
       const observedAt = c.observedAt ?? new Date();
+
+      // §26 duplication rule: the SAME provider re-asserting the SAME claim
+      // about the SAME company is not new evidence — one logical event.
+      // (A DIFFERENT provider making the claim IS corroboration and passes.)
+      const fp = claimFingerprint(target.companyId, c.claim);
+      const { rows: dupRows } = await db.query<{ id: string }>(
+        `select id from evidence
+         where company_id = $1 and provider_id = $2 and claim_fingerprint = $3
+         limit 1`,
+        [target.companyId, provider.providerId, fp],
+      );
+      if (dupRows.length > 0) continue;
+
       const { rows: evRows } = await db.query<{ id: string }>(
         `insert into evidence (org_id, company_id, source_type, source_url, claim, raw_excerpt,
             confidence, observed_at, provider_id, first_party, published_at)
