@@ -9,6 +9,7 @@ import {
 } from "./providers/builtwith";
 import { CareersProvider } from "./providers/careers";
 import { CensysProvider } from "./providers/censys";
+import { CommonCrawlProvider } from "./providers/commoncrawl";
 import { DnsProvider } from "./providers/dns";
 import { GdeltProvider } from "./providers/gdelt";
 import { GithubProvider } from "./providers/github";
@@ -52,6 +53,7 @@ export function registerBuiltinProviders(): void {
   registerProvider(new IpinfoProvider());
   registerProvider(new WappalyzerProvider());
   registerProvider(new CensysProvider());
+  registerProvider(new CommonCrawlProvider());
   registered = true;
 }
 

@@ -97,6 +97,24 @@ Honest limitation: fully JS-rendered SPA career pages expose no jobs in their
 initial HTML, so an HTTP-only monitor returns nothing for them (a **skip**,
 never an error) — those need an ATS API or a headless-browser deep provider.
 
+## Common Crawl historical change (P2-A)
+
+Common Crawl is a free, open web archive. Its CDX index exposes a company's
+captured URL surface across crawls **months apart** — retroactively, without our
+ever having monitored the site. That is its unique value: the first-party
+website monitor only sees change from when *we* start watching; Common Crawl
+reveals change that already happened. The provider compares a recent crawl to
+one ~12 months older and emits evidence when a strategically-meaningful section
+(ai, cloud, security, partners, careers, platform…) **appears** between them —
+deep-tier, moderate confidence (0.55), a corroboration/timing clue rather than a
+primary intent driver. A few segments map to a real initiative (ai →
+AI_INITIATIVE, cloud → CLOUD_MIGRATION, security → CYBERSECURITY_INITIATIVE,
+partners → PARTNERSHIP); the rest are corroboration-only.
+
+Resilient to a flaky upstream: Common Crawl's index frequently returns transient
+503s, so index/CDX fetches retry a few times and any sustained failure is a
+**skip**, never an error.
+
 ## GDELT event radar (P0-E)
 
 GDELT indexes global news in near-real time and is **free** — the cheap
@@ -138,8 +156,8 @@ Propensity · Evidence Confidence · Data Completeness.
 Retrofitted into the normalized architecture and policy-governed today:
 pdl_company, pdl_people, greenhouse, lever, dns, ipinfo, builtwith_free
 (builtwith_domain/change credit-gated), wappalyzer (disabled — no plan),
-censys, sec_edgar, website, github, http_fingerprint, gdelt, careers. Policy
-entries exist for the ad-hoc sources still on their earlier modules (tavily,
-common_crawl); the orchestration already reasons about them, and each becomes
+censys, sec_edgar, website, github, http_fingerprint, gdelt, careers,
+common_crawl. Policy entries exist for the ad-hoc sources still on their earlier
+modules (tavily); the orchestration already reasons about them, and each becomes
 a first-class provider as it is retrofitted — with no change to the policy or
 scoring layers.

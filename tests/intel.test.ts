@@ -915,3 +915,61 @@ test("careers provider: shared hiring model, first-party, change-gated", async (
     [],
   );
 });
+
+// -- Common Crawl historical change (P2-A) ---------------------------------
+
+test("commoncrawl pathPrefix + strategicSegments: first segment, junk filtered", async () => {
+  const { pathPrefix, strategicSegments } = await import("../src/lib/intel/providers/commoncrawl");
+  assert.equal(pathPrefix("https://acme.com/careers/eng-123"), "careers");
+  assert.equal(pathPrefix("https://acme.com/"), null); // root
+  assert.equal(pathPrefix("https://acme.com/app.js"), null); // root-level asset
+  assert.equal(pathPrefix("not a url"), null);
+
+  const segs = strategicSegments([
+    "https://acme.com/careers/1",
+    "https://acme.com/partners",
+    "https://acme.com/blog/x", // not strategic
+    "https://acme.com/security/soc2",
+  ]);
+  assert.deepEqual([...segs].sort(), ["careers", "partners", "security"]);
+});
+
+test("commoncrawl addedSections + normalize: historical section appearance", async () => {
+  const { addedSections, CommonCrawlProvider } = await import("../src/lib/intel/providers/commoncrawl");
+  // partners + ai are new in recent; careers existed before → not "added".
+  assert.deepEqual(addedSections(["careers", "partners", "ai"], ["careers"]), ["ai", "partners"]);
+
+  const p = new CommonCrawlProvider();
+  assert.equal(p.allowedForScreening, false); // deep-only
+  assert.equal(p.sourceTrustPrior, 0.5);
+  const ev = p.normalize(
+    [{
+      payload: {
+        domain: "acme.com",
+        recent: { crawl: "CC-MAIN-2026-30", paths: ["careers", "partners", "ai"], count: 120 },
+        older: { crawl: "CC-MAIN-2025-30", paths: ["careers"], count: 90 },
+      },
+      isNew: true,
+    }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  // ai → AI_INITIATIVE (mapped); partners → PARTNERSHIP; careers unchanged → none.
+  const signals = ev.map((e) => e.suggestedSignalType).sort();
+  assert.deepEqual(signals, ["AI_INITIATIVE", "PARTNERSHIP"]);
+  for (const e of ev) {
+    assert.equal(e.confidence, 0.55);
+    assert.match(e.claim, /Common Crawl history shows Acme added/);
+    assert.match(e.claim, /CC-MAIN-2026-30.*CC-MAIN-2025-30/);
+  }
+
+  // No new sections → no evidence (nothing changed historically).
+  assert.deepEqual(
+    p.normalize(
+      [{ payload: { domain: "acme.com", recent: { crawl: "a", paths: ["careers"], count: 10 }, older: { crawl: "b", paths: ["careers"], count: 10 } }, isNew: true }],
+      [],
+      { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+    ),
+    [],
+  );
+});
