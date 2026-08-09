@@ -1,8 +1,7 @@
 import { readFileSync } from "node:fs";
 import { getPool } from "../src/db/client";
 import { extractAndIngest, type ResearchDocument } from "../src/lib/agents/extractor";
-import { filingText, filingUrl, lookupCIK, recentFilings } from "../src/lib/research/edgar";
-import { researchQueries, tavilyAvailable, tavilySearch } from "../src/lib/research/tavily";
+import { gatherLiveDocs } from "../src/lib/research/gather";
 
 /**
  * Run the Extractor agent on research documents for one company.
@@ -24,7 +23,7 @@ function arg(name: string): string | undefined {
 }
 
 async function main() {
-  const orgName = arg("org") ?? "ActivateOS Dev";
+  const orgName = arg("org") ?? "PursuitOS Dev";
   const companyName = arg("company");
   const file = arg("file");
   const live = process.argv.includes("--live");
@@ -61,35 +60,7 @@ async function main() {
       docs.push({ sourceType, sourceUrl, text: readFileSync(file, "utf8") });
     }
     if (live) {
-      // SEC EDGAR — free, public companies only.
-      try {
-        const hit = await lookupCIK(companies[0].legal_name);
-        if (hit) {
-          console.log(`EDGAR match: ${hit.title} (CIK ${hit.cik})`);
-          for (const filing of await recentFilings(hit.cik, ["8-K", "10-K"], 2)) {
-            docs.push({
-              sourceType: "sec_filing",
-              sourceUrl: filingUrl(hit.cik, filing),
-              text: (await filingText(hit.cik, filing)).slice(0, 60000),
-              observedAt: new Date(filing.filingDate),
-            });
-          }
-        } else {
-          console.log("EDGAR: no public-company match (private companies have no filings)");
-        }
-      } catch (err) {
-        console.warn(`EDGAR unavailable: ${err instanceof Error ? err.message : err}`);
-      }
-      // Tavily web search — optional.
-      if (tavilyAvailable()) {
-        for (const query of researchQueries(companies[0].legal_name, "infrastructure automation")) {
-          for (const r of await tavilySearch(query, 3)) {
-            docs.push({ sourceType: "web_search", sourceUrl: r.url, text: r.content.slice(0, 24000) });
-          }
-        }
-      } else {
-        console.log("Tavily skipped (set TAVILY_API_KEY to enable web research)");
-      }
+      docs.push(...(await gatherLiveDocs(companies[0].legal_name, "infrastructure automation")));
     }
 
     if (docs.length === 0) {

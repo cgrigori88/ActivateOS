@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type pg from "pg";
 import { z } from "zod";
-import { completeStructured } from "../ai/client";
+import { completeStructuredMeta } from "../ai/client";
 
 /**
  * Campaign Composer (docs/AGENT_LAYER.md §3): approved motion → seller-facing
@@ -86,7 +86,7 @@ ${solutionProfile ? `## Solution profile\n${solutionProfile}` : ""}
 
 Compose the campaign assets.`;
 
-  const draft = await completeStructured({
+  const { output: draft, meta } = await completeStructuredMeta({
     tier: "frontier",
     system,
     user,
@@ -95,9 +95,21 @@ Compose the campaign assets.`;
   });
 
   await db.query(
-    `insert into agent_runs (org_id, workflow, workflow_version, model, input_summary, raw_output, validated, motion_id)
-     values ($1, 'campaign_composer', 'v1', 'frontier', $2, $3, true, $4)`,
-    [motion.org_id, JSON.stringify({ motionId }), JSON.stringify(draft), motionId],
+    `insert into agent_runs (org_id, workflow, workflow_version, model, input_summary,
+        raw_output, validated, motion_id, prompt_version, input_tokens, output_tokens,
+        cost_usd, latency_ms)
+     values ($1, 'campaign_composer', 'v1', $2, $3, $4, true, $5, 'v1', $6, $7, $8, $9)`,
+    [
+      motion.org_id,
+      meta.model,
+      JSON.stringify({ motionId }),
+      JSON.stringify(draft),
+      motionId,
+      meta.inputTokens,
+      meta.outputTokens,
+      meta.costUsd,
+      meta.latencyMs,
+    ],
   );
 
   const { rows: campaigns } = await db.query<{ id: string }>(

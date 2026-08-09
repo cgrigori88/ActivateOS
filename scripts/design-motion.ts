@@ -8,7 +8,7 @@ function arg(name: string): string | undefined {
 }
 
 async function main() {
-  const orgName = arg("org") ?? "ActivateOS Dev";
+  const orgName = arg("org") ?? "PursuitOS Dev";
   const companyName = arg("company");
   const targetSlug = arg("target") ?? "infrastructure-automation";
   if (!companyName) {

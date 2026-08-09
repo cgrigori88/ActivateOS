@@ -21,7 +21,9 @@
     "design-motion": "tsx scripts/design-motion.ts",
     "motion": "tsx scripts/motion.ts",
     "compose-campaign": "tsx scripts/compose-campaign.ts",
-    "enrich": "tsx scripts/enrich.ts"
+    "enrich": "tsx scripts/enrich.ts",
+    "refresh": "tsx scripts/refresh.ts",
+    "source-intel": "tsx scripts/source-intel.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

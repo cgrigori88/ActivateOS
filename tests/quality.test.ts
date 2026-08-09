@@ -158,3 +158,29 @@ test("a new source's items are heavily sampled, a proven source barely", () => {
   assert.ok(newSource > 0.15);
   assert.ok(proven < 0.03);
 });
+
+test("computeSourceIntel: predictive value with Laplace smoothing", async () => {
+  const { computeSourceIntel } = await import("../src/lib/quality/source-intel");
+  const intel = computeSourceIntel([
+    { sourceType: "press", evidenceId: "e1", band: "very_high" },
+    { sourceType: "press", evidenceId: "e2", band: "very_high" },
+    { sourceType: "press", evidenceId: "e3", band: "low" },
+    { sourceType: "web_search", evidenceId: "e4", band: "low" },
+  ]);
+  const press = intel.get("press")!;
+  assert.equal(press.scoredEvidence, 3);
+  assert.equal(press.highBandEvidence, 2);
+  assert.equal(press.predictiveValue, 0.429); // (2+1)/(3+4), rounded to 3 decimals
+  const web = intel.get("web_search")!;
+  assert.equal(web.predictiveValue, (0 + 1) / (1 + 4)); // 0.2 — low but not zero
+});
+
+test("computeSourceIntel: same evidence in two features counts once", async () => {
+  const { computeSourceIntel } = await import("../src/lib/quality/source-intel");
+  const intel = computeSourceIntel([
+    { sourceType: "press", evidenceId: "e1", band: "high" },
+    { sourceType: "press", evidenceId: "e1", band: "high" },
+  ]);
+  assert.equal(intel.get("press")!.scoredEvidence, 1);
+  assert.equal(intel.get("press")!.highBandEvidence, 1);
+});

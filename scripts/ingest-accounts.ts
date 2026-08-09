@@ -5,7 +5,7 @@ import { ingestAccounts } from "../src/lib/ingest/ingest-accounts";
 
 /** Usage: npm run ingest -- <csv-path> [org-name] */
 async function main() {
-  const [csvPath, orgName = "ActivateOS Dev"] = process.argv.slice(2);
+  const [csvPath, orgName = "PursuitOS Dev"] = process.argv.slice(2);
   if (!csvPath) {
     console.error("usage: npm run ingest -- <csv-path> [org-name]");
     process.exit(1);

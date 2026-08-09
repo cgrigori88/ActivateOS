@@ -4,7 +4,7 @@
  * Extractor. SEC requires a descriptive User-Agent.
  */
 
-const UA = "ActivateOS research (contact: ops@activateos.dev)";
+const UA = "PursuitOS research (contact: tpcchris1@gmail.com)";
 
 interface TickerEntry {
   cik_str: number;

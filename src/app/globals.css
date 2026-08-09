@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ActivateOS design tokens (docs/DESIGN.md §3) */
+/* PursuitOS design tokens (docs/DESIGN.md §3) */
 @theme {
   --color-band-very-high: #15803d;
   --color-band-high: #0369a1;

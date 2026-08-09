@@ -13,7 +13,7 @@ async function main() {
     console.error("PDL_API_KEY is not set");
     process.exit(1);
   }
-  const orgName = process.argv[2] ?? "ActivateOS Dev";
+  const orgName = process.argv[2] ?? "PursuitOS Dev";
   const pool = getPool();
   const db = await pool.connect();
   try {

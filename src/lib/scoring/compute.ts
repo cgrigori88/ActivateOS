@@ -29,6 +29,8 @@ export interface ScorableSignal {
   observedAt: Date;
   halfLifeDays: number;
   evidenceId: string;
+  /** Known future event this signal points at (renewal date, refresh window). */
+  eventDate?: Date | null;
 }
 
 /** Edge weight from an installed/related node toward the target solution node. */
@@ -50,6 +52,29 @@ export interface ScoreResult {
 export function decay(observedAt: Date, halfLifeDays: number, now: Date = new Date()): number {
   const ageDays = Math.max(0, (now.getTime() - observedAt.getTime()) / 86_400_000);
   return Math.pow(0.5, ageDays / halfLifeDays);
+}
+
+const EVENT_RAMP_DAYS = 365; // horizon over which an approaching event ramps up
+const EVENT_FLOOR = 0.35; // relevance of an event a full horizon away
+const EVENT_PASSED_HALF_LIFE_DAYS = 30; // events fade fast once they're behind us
+
+/**
+ * Relevance of a signal anchored to a dated future event (BLUEPRINT: a
+ * contract expiry becomes MORE relevant as the date approaches, the opposite
+ * of ordinary evidence decay). Ramps from a floor one horizon out to 1.0 at
+ * the event, then decays quickly once the event has passed.
+ */
+export function eventProximity(eventDate: Date, now: Date = new Date()): number {
+  const daysUntil = (eventDate.getTime() - now.getTime()) / 86_400_000;
+  if (daysUntil >= 0) {
+    return EVENT_FLOOR + (1 - EVENT_FLOOR) * (1 - Math.min(1, daysUntil / EVENT_RAMP_DAYS));
+  }
+  return Math.pow(0.5, -daysUntil / EVENT_PASSED_HALF_LIFE_DAYS);
+}
+
+/** Unified time factor: dated events use proximity, everything else uses decay. */
+export function timeRelevance(s: ScorableSignal, now: Date = new Date()): number {
+  return s.eventDate ? eventProximity(s.eventDate, now) : decay(s.observedAt, s.halfLifeDays, now);
 }
 
 export function band(score: number): ScoreResult["band"] {
@@ -74,7 +99,7 @@ export function computeScore(
   };
 
   for (const s of signals) {
-    const strength = s.magnitude * s.confidence * decay(s.observedAt, s.halfLifeDays, now);
+    const strength = s.magnitude * s.confidence * timeRelevance(s, now);
     if (strength <= 0) continue;
 
     if (s.direction === -1 || s.family === "negative") {

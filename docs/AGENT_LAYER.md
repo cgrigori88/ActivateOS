@@ -1,4 +1,4 @@
-# The ActivateOS Agent Layer
+# The PursuitOS Agent Layer
 
 The agent layer is the reasoning brain of Design and Execute: it turns scored
 opportunities into Revenue Motions, campaigns, and seller actions. It is **not**

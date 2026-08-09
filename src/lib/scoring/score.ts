@@ -60,10 +60,11 @@ export async function scoreOrg(
     half_life_days: number;
     evidence_id: string;
     source_type: string;
+    value: { event_date?: string } | null;
   }>(
     `select s.id, s.company_id, s.signal_type, n.slug as node_slug, n.id as node_id,
             s.direction, s.magnitude, s.confidence, s.observed_at, s.half_life_days,
-            s.evidence_id, e.source_type
+            s.evidence_id, e.source_type, s.value
      from signals s
      left join taxonomy_nodes n on n.id = s.taxonomy_node_id
      join evidence e on e.id = s.evidence_id
@@ -89,6 +90,7 @@ export async function scoreOrg(
       halfLifeDays: r.half_life_days,
       evidenceId: r.evidence_id,
       sourceType: r.source_type,
+      eventDate: r.value?.event_date ? new Date(r.value.event_date) : null,
     });
     byCompany.set(r.company_id, list);
   }

@@ -3,7 +3,7 @@ import { scoreOrg } from "../src/lib/scoring/score";
 
 /** Usage: npm run score -- [org-name] [target-node-slug] */
 async function main() {
-  const [orgName = "ActivateOS Dev", targetSlug = "infrastructure-automation"] =
+  const [orgName = "PursuitOS Dev", targetSlug = "infrastructure-automation"] =
     process.argv.slice(2);
 
   const pool = getPool();

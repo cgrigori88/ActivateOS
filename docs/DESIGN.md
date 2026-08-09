@@ -1,4 +1,4 @@
-# ActivateOS Front-End Design Brief
+# PursuitOS Front-End Design Brief
 
 The front end must be top-of-class against ecosystem-revenue platforms
 (Crossbeam-style data browsers) and internal vendor outreach consoles. We do
@@ -15,7 +15,7 @@ is our own design, derived from our own product thesis.
 ## 1. UX thesis — the decision cockpit
 
 Competing surfaces answer "what is happening?" (analytics consoles) or "what
-data do we share?" (overlap browsers). ActivateOS answers **"what should
+data do we share?" (overlap browsers). PursuitOS answers **"what should
 happen next, and why?"** Every screen is organized around a decision the
 operator can take right now, with the evidence to take it confidently.
 

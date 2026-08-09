@@ -1,5 +1,5 @@
 import type { ScorableSignal } from "./compute";
-import { decay } from "./compute";
+import { timeRelevance } from "./compute";
 
 /**
  * Phase 1 multidimensional scoring (BLUEPRINT §6–8): pure, deterministic,
@@ -89,7 +89,7 @@ function familyStrength(
   let count = 0;
   for (const s of signals) {
     if (s.direction !== 1 || !families.includes(s.family)) continue;
-    raw += s.magnitude * s.confidence * decay(s.observedAt, s.halfLifeDays, now);
+    raw += s.magnitude * s.confidence * timeRelevance(s, now);
     count++;
   }
   return { raw, count };
@@ -111,7 +111,7 @@ export function computeDimensions(
     if (s.direction !== 1 || s.family !== "technology" || !s.nodeSlug) continue;
     if (s.nodeSlug === targetSlug) continue;
     const w = edgeWeights.get(s.nodeSlug);
-    if (w) fitRaw += s.magnitude * s.confidence * decay(s.observedAt, s.halfLifeDays, now) * w;
+    if (w) fitRaw += s.magnitude * s.confidence * timeRelevance(s, now) * w;
   }
 
   const need = familyStrength(signals, ["initiative"], now).raw +

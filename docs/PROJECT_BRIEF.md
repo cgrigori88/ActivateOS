@@ -1,6 +1,6 @@
-# ActivateOS — Project Brief & Founding Technical Direction
+# PursuitOS — Project Brief & Founding Technical Direction
 
-> **ActivateOS decides what the channel should do next.**
+> **PursuitOS decides what the channel should do next.**
 
 This document is the engineering source of truth distilled from the founding strategy
 conversation. It captures what we are building, why, the architecture we agreed on,
@@ -10,9 +10,9 @@ or reproduced here, by design.
 
 ---
 
-## 1. What ActivateOS is
+## 1. What PursuitOS is
 
-ActivateOS is an **AI decision and orchestration layer for partner-led (channel)
+PursuitOS is an **AI decision and orchestration layer for partner-led (channel)
 revenue**. It identifies the highest-value combinations of customers, products,
 partners, sellers, incentives, and market signals — and converts them into
 measurable, executable revenue motions.
@@ -28,7 +28,7 @@ results. Existing categories each solve a slice:
 - **Intent providers (HG Insights, Bombora, G2, etc.)** sell signals.
 - **Outreach/enablement tools** execute communications.
 
-ActivateOS sits **above** all of them and answers the question none of them own:
+PursuitOS sits **above** all of them and answers the question none of them own:
 
 > *Of all possible products, partners, accounts, sellers, budgets, and market
 > signals — which combination should we activate right now, why, through whom,
@@ -36,7 +36,7 @@ ActivateOS sits **above** all of them and answers the question none of them own:
 
 **Positioning:** "AI Partner Revenue Activation Platform" — the Revenue System of
 Action for the technology channel. Contrast line: *ecosystem-mapping tools show
-where partners can win together; ActivateOS makes the win happen.*
+where partners can win together; PursuitOS makes the win happen.*
 We deliberately do **not** compete on account-overlap mapping, warm-intro
 infrastructure, or generic individual-seller copilots — those are inputs and
 adjacent layers, not our job.
@@ -152,7 +152,7 @@ engine turns motions into campaigns; Execute runs them; Learn scores the predict
    OPPORTUNITY → CLOSED_WON/LOST) suitable for later supervised training and
    uplift modeling.
 5. **Measure lift, not eloquence.** The core metric: how much better do
-   ActivateOS-selected accounts perform vs. the customer's existing targeting?
+   PursuitOS-selected accounts perform vs. the customer's existing targeting?
 6. **Human-approved sends.** No autonomous outbound in V1.
 7. **Boring stack, modular monolith.** No microservices, Kafka, Kubernetes, or a
    graph database until scale demands it.
@@ -224,7 +224,7 @@ tier, People Data Labs free tier.
 
 **Do not buy in year one:** HG Insights, ZoomInfo, Bombora, G2 Buyer Intent,
 Gartner/Forrester data. Instead: **"Bring Your Own Intelligence"** — customers
-connect signal sources they already license, as an ActivateOS feature.
+connect signal sources they already license, as an PursuitOS feature.
 
 **Distributor partnership (e.g. TD SYNNEX) — after the engine proves lift.**
 Distributor transaction history is the killer signal (actual purchases beat
@@ -292,7 +292,7 @@ from real outcomes. Holdout cohorts prove incrementality when volume allows.
    the unicorn layer).
 
 End-state ambition: a channel executive asks *"I need $50M of incremental pipeline
-with $2M of channel investment — what should I do?"* and ActivateOS allocates the
+with $2M of channel investment — what should I do?"* and PursuitOS allocates the
 budget across partners, motions, and pursuit teams with expected pipeline and
 confidence — then executes the plan.
 

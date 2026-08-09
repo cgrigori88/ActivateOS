@@ -166,3 +166,51 @@ test("refresh cadence follows the band", () => {
   assert.equal(refreshIntervalDays("medium"), 21);
   assert.equal(refreshIntervalDays("low"), 45);
 });
+
+test("eventProximity: approaching events ramp up, passed events fade fast", async () => {
+  const { eventProximity } = await import("../src/lib/scoring/compute");
+  const inDays = (d: number) => new Date(NOW.getTime() + d * 86_400_000);
+  // A year out sits at the floor; at the event it reaches 1.
+  assert.ok(Math.abs(eventProximity(inDays(365), NOW) - 0.35) < 1e-9);
+  assert.equal(eventProximity(inDays(0), NOW), 1);
+  // 60 days out beats 300 days out — relevance rises as the date approaches.
+  assert.ok(eventProximity(inDays(60), NOW) > eventProximity(inDays(300), NOW));
+  // 30 days past the event: one half-life gone.
+  assert.ok(Math.abs(eventProximity(inDays(-30), NOW) - 0.5) < 1e-9);
+});
+
+test("timeRelevance: dated events override observation-age decay", async () => {
+  const { computeScore } = await import("../src/lib/scoring/compute");
+  const edges = new Map([["virtualization", { weight: 0.65, edgeType: "adjacent" }]]);
+  const base = {
+    family: "trigger" as const,
+    signalType: "SOFTWARE_RENEWAL",
+    nodeSlug: null,
+    direction: 1 as const,
+    magnitude: 1,
+    confidence: 0.8,
+    halfLifeDays: 270,
+    evidenceId: "e1",
+  };
+  // Announced 8 months ago — ordinary decay would have faded it...
+  const observedAt = new Date(NOW.getTime() - 240 * 86_400_000);
+  const withoutDate = computeScore([{ ...base, observedAt }], "infrastructure-automation", edges, NOW);
+  // ...but the renewal is only 45 days away, so it scores near full strength.
+  const withDate = computeScore(
+    [{ ...base, observedAt, eventDate: new Date(NOW.getTime() + 45 * 86_400_000) }],
+    "infrastructure-automation",
+    edges,
+    NOW,
+  );
+  assert.ok(withDate.score > withoutDate.score);
+});
+
+test("parseEventDate rejects junk and implausible windows", async () => {
+  const { parseEventDate } = await import("../src/lib/agents/taxonomy-mapper");
+  assert.equal(parseEventDate(null, NOW), null);
+  assert.equal(parseEventDate("not-a-date", NOW), null);
+  assert.equal(parseEventDate("2010-01-01", NOW), null); // deep past
+  assert.equal(parseEventDate("2040-01-01", NOW), null); // implausibly far out
+  const ok = parseEventDate("2027-05-15", NOW);
+  assert.ok(ok instanceof Date);
+});

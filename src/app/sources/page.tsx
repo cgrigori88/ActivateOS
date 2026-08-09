@@ -11,6 +11,7 @@ export default async function SourcesPage() {
   const pool = getPool();
   const { rows: sources } = await pool.query(
     `select s.name, s.kind, s.trust_score, s.audit_sample_rate, s.audited_count, s.accurate_count,
+            s.predictive_value, s.scored_evidence, s.high_band_evidence,
             count(e.id) as total,
             count(e.id) filter (where e.status = 'verified') as verified,
             count(e.id) filter (where e.status = 'quarantined') as quarantined,
@@ -55,6 +56,14 @@ export default async function SourcesPage() {
                   <div className="tnum text-2xl font-semibold">{verifiedPct}%</div>
                   <div className="text-xs text-neutral-500">verified rate</div>
                 </div>
+                {s.predictive_value != null && (
+                  <div>
+                    <div className="tnum text-2xl font-semibold">
+                      {Number(s.predictive_value).toFixed(2)}
+                    </div>
+                    <div className="text-xs text-neutral-500">predictive value</div>
+                  </div>
+                )}
               </div>
               {total > 0 && (
                 <div className="mb-2 flex h-2 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
@@ -66,6 +75,8 @@ export default async function SourcesPage() {
               <p className="text-xs text-neutral-500">
                 {s.total} evidence items — {s.verified} verified, {s.quarantined} quarantined,{" "}
                 {s.rejected} rejected · audited {s.audited_count} ({s.accurate_count} accurate)
+                {s.predictive_value != null &&
+                  ` · ${s.high_band_evidence}/${s.scored_evidence} scored evidence in high bands`}
                 {s.last_seen && ` · last seen ${new Date(s.last_seen).toISOString().slice(0, 10)}`}
               </p>
             </Card>

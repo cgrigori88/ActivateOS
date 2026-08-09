@@ -5,7 +5,7 @@ import { mapSignals } from "../src/lib/agents/taxonomy-mapper";
 async function main() {
   const args = process.argv.slice(2);
   const useLLM = args.includes("--llm");
-  const orgName = args.filter((a) => a !== "--llm")[0] ?? "ActivateOS Dev";
+  const orgName = args.filter((a) => a !== "--llm")[0] ?? "PursuitOS Dev";
 
   const pool = getPool();
   const client = await pool.connect();
