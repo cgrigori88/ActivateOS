@@ -973,3 +973,53 @@ test("commoncrawl addedSections + normalize: historical section appearance", asy
     [],
   );
 });
+
+// -- Tavily deep-research provider + investigator ---------------------------
+
+test("tavily investigationQuery: strips radar framing, targets the event", async () => {
+  const { investigationQuery } = await import("../src/lib/intel/providers/tavily");
+
+  const gdelt = investigationQuery(
+    "MongoDB",
+    'News coverage indicates MongoDB launched a product or initiative: "MongoDB launches Atlas Stream" (techcrunch.com)',
+  );
+  assert.ok(gdelt.startsWith('"MongoDB"'));
+  assert.ok(!/news coverage indicates/i.test(gdelt)); // radar framing removed
+  assert.ok(!gdelt.includes('"MongoDB launches')); // inner quotes stripped
+
+  const cc = investigationQuery(
+    "Acme",
+    "Common Crawl history shows Acme added a partners section (present in crawl CC-MAIN-2026-30, absent in CC-MAIN-2025-30)",
+  );
+  assert.ok(!/common crawl history shows/i.test(cc));
+  assert.ok(!/present in crawl/i.test(cc));
+  assert.ok(cc.includes("partners section"));
+});
+
+test("tavily provider: deep-only, credit-gated, absent without a key", async () => {
+  const { TavilyProvider } = await import("../src/lib/intel/providers/tavily");
+  const p = new TavilyProvider();
+  assert.equal(p.providerId, "tavily");
+  assert.equal(p.allowedForScreening, false); // never the cheap screen
+  assert.equal(p.sourceTrustPrior, 0.6); // secondary web research
+
+  const savedKey = process.env.TAVILY_API_KEY;
+  delete process.env.TAVILY_API_KEY;
+  try {
+    // No key → no fetch, no fabricated research.
+    assert.deepEqual(
+      await p.fetch({ orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" }),
+      [],
+    );
+  } finally {
+    if (savedKey) process.env.TAVILY_API_KEY = savedKey;
+  }
+
+  // Unchanged observations → nothing re-derived.
+  const none = await p.normalize(
+    [{ payload: { query: "q", title: "t", url: "https://x.com", content: "..." }, isNew: false }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  assert.deepEqual(none, []);
+});

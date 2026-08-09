@@ -136,6 +136,24 @@ Throttle-safe: GDELT rate-limits by IP and returns a plain-text notice instead
 of JSON when busy; the provider treats any non-JSON body as a **skip** (not an
 error, and it never trips the metered-refresh guard), and runs at most daily.
 
+## Tavily deep research & investigator (§12)
+
+Tavily is the deep-tier web researcher — metered credits, so deep-only and
+gated behind the research threshold. Two roles:
+
+- **Investigation** (`tavily` provider): runs a few targeted queries about an
+  escalated account and extracts specific, **cited** claims as evidence
+  (secondary-web trust prior 0.6). Stands on its own and corroborates other
+  providers when claims align.
+- **Corroboration** (`investigateCandidates`): closes the radar loop. It takes
+  the cheap radar's (GDELT / Common Crawl) **unconfirmed** candidates, sends
+  Tavily to confirm each, and on a confirmed lead writes **verified**,
+  fingerprint-aligned evidence carrying Tavily's credible citation. The radar
+  pointed us where to look; the investigator supplied the proof. A radar lead
+  is never promoted on its own — its own trust stays low; the *event* graduates
+  because a credible source confirmed it. Verified live: a MongoDB acquisition
+  lead was confirmed to a prnewswire.com release as verified evidence.
+
 ## SEC staged processing (§4, §23)
 
 Filing discovered → cheap keyword/section identification → relevant-section
@@ -153,11 +171,11 @@ Propensity · Evidence Confidence · Data Completeness.
 
 ## Status vs the command
 
-Retrofitted into the normalized architecture and policy-governed today:
-pdl_company, pdl_people, greenhouse, lever, dns, ipinfo, builtwith_free
-(builtwith_domain/change credit-gated), wappalyzer (disabled — no plan),
-censys, sec_edgar, website, github, http_fingerprint, gdelt, careers,
-common_crawl. Policy entries exist for the ad-hoc sources still on their earlier
-modules (tavily); the orchestration already reasons about them, and each becomes
-a first-class provider as it is retrofitted — with no change to the policy or
-scoring layers.
+Every source is now retrofitted into the normalized architecture and
+policy-governed: pdl_company, pdl_people, greenhouse, lever, careers, dns,
+ipinfo, builtwith_free (builtwith_domain/change credit-gated), wappalyzer
+(disabled — no plan), censys, sec_edgar, website, github, http_fingerprint,
+gdelt, common_crawl, and tavily (provider + investigator). The earlier ad-hoc
+research modules (`research/tavily`, `research/gather`, `research/edgar`) remain
+as low-level connectors the providers build on — no orphan data paths, no
+change to the policy or scoring layers.

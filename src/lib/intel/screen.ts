@@ -19,6 +19,7 @@ import { GreenhouseProvider } from "./providers/greenhouse";
 import { LeverProvider } from "./providers/lever";
 import { PdlCompanyProvider, PdlPeopleProvider } from "./providers/pdl";
 import { SecProvider } from "./providers/sec";
+import { investigateCandidates, TavilyProvider } from "./providers/tavily";
 import { WappalyzerProvider } from "./providers/wappalyzer";
 import { WebsiteProvider } from "./providers/website";
 
@@ -51,6 +52,7 @@ export function registerBuiltinProviders(): void {
   registerProvider(new BuiltWithDomainProvider());
   registerProvider(new BuiltWithChangeProvider());
   registerProvider(new IpinfoProvider());
+  registerProvider(new TavilyProvider());
   registerProvider(new WappalyzerProvider());
   registerProvider(new CensysProvider());
   registerProvider(new CommonCrawlProvider());
@@ -123,6 +125,22 @@ export async function deepResearchCompany(
     });
     if (!decision.run) continue;
     results[provider.providerId] = await runProvider(db, provider, withSlug, { stage: "deep" });
+  }
+
+  // Corroboration pass: send Tavily to confirm the cheap radar's unconfirmed
+  // candidates (§26). Same threshold gate as the deep providers.
+  if (opts.researchTriggered ?? true) {
+    const inv = await investigateCandidates(db, withSlug);
+    if (inv.investigated > 0) {
+      results["tavily_investigator"] = {
+        runId: "investigator",
+        status: "succeeded",
+        recordsReceived: inv.investigated,
+        newObservations: inv.corroborated,
+        evidenceCreated: inv.evidenceCreated,
+        signalsCreated: 0,
+      };
+    }
   }
   return results;
 }
