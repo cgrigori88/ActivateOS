@@ -683,3 +683,80 @@ test("website provider: first-party posture and metadata", async () => {
   );
   assert.deepEqual(none, []);
 });
+
+// -- People Data Labs (§3/§22): identity firmographics + gated people -------
+
+test("pdl_company: firmographics are EVIDENCE only, never a propensity signal", async () => {
+  const { PdlCompanyProvider } = await import("../src/lib/intel/providers/pdl");
+  const p = new PdlCompanyProvider();
+  assert.equal(p.providerId, "pdl_company");
+  assert.equal(p.providerType, "FIRMOGRAPHIC");
+  assert.deepEqual(p.supportedFamilies, ["COMPANY_FIT"]);
+
+  const record = {
+    name: "Acme", industry: "software", employeeCount: 4200, country: "US",
+    region: "California", founded: 2010, ticker: "ACME", type: "public",
+    summary: "Acme builds things.",
+  };
+  const candidates = p.normalize(
+    [{ payload: { domain: "acme.com", record }, isNew: true }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  assert.equal(candidates.length, 1);
+  const c = candidates[0];
+  // §3: size/industry establish FIT, never intent — so NO suggestedSignalType.
+  assert.equal(c.suggestedSignalType, undefined);
+  assert.match(c.claim, /firmographic profile/);
+  assert.match(c.claim, /4,200 employees/);
+  assert.match(c.claim, /publicly traded \(ACME\)/);
+  assert.equal(c.firstParty, false);
+
+  // Unchanged observation → no re-emitted evidence.
+  const repeat = p.normalize(
+    [{ payload: { domain: "acme.com", record }, isNew: false }],
+    [{ payload: { domain: "acme.com", record }, observedAt: NOW }],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  assert.deepEqual(repeat, []);
+
+  // No key or no domain = SKIP_NO_DOMAIN (absence), never a fabricated firmographic.
+  const savedKey = process.env.PDL_API_KEY;
+  delete process.env.PDL_API_KEY;
+  try {
+    assert.deepEqual(
+      await p.fetch({ orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" }),
+      [],
+    );
+  } finally {
+    if (savedKey) process.env.PDL_API_KEY = savedKey;
+  }
+});
+
+test("pdl_people: deep-only, targets the buying committee, degrades gracefully", async () => {
+  const { PdlPeopleProvider } = await import("../src/lib/intel/providers/pdl");
+  const p = new PdlPeopleProvider();
+  assert.equal(p.providerId, "pdl_people");
+  assert.equal(p.providerType, "PEOPLE");
+  // Never runs in the universal cheap screen — credits are spent only after
+  // an account crosses the research gate (§22).
+  assert.equal(p.allowedForScreening, false);
+
+  const people = [
+    { fullName: "Dana Ops", jobTitle: "VP Platform Engineering", jobRole: "engineering" },
+    { fullName: null, jobTitle: "CTO", jobRole: "engineering" }, // no name → dropped
+  ];
+  const candidates = p.normalize(
+    [{ payload: { domain: "acme.com", people }, isNew: true }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  assert.equal(candidates.length, 1);
+  assert.match(candidates[0].claim, /Dana Ops holds VP Platform Engineering at Acme/);
+
+  // No domain = absence, not error.
+  assert.deepEqual(
+    await p.fetch({ orgId: null, companyId: "c1", companyName: "Acme", domain: null }),
+    [],
+  );
+});

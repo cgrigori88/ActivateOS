@@ -14,6 +14,7 @@ import { HttpFingerprintProvider } from "./providers/http-fingerprint";
 import { IpinfoProvider } from "./providers/ipinfo";
 import { GreenhouseProvider } from "./providers/greenhouse";
 import { LeverProvider } from "./providers/lever";
+import { PdlCompanyProvider, PdlPeopleProvider } from "./providers/pdl";
 import { SecProvider } from "./providers/sec";
 import { WappalyzerProvider } from "./providers/wappalyzer";
 import { WebsiteProvider } from "./providers/website";
@@ -32,6 +33,8 @@ import { WebsiteProvider } from "./providers/website";
 let registered = false;
 export function registerBuiltinProviders(): void {
   if (registered) return;
+  registerProvider(new PdlCompanyProvider());
+  registerProvider(new PdlPeopleProvider());
   registerProvider(new SecProvider());
   registerProvider(new GreenhouseProvider());
   registerProvider(new LeverProvider());

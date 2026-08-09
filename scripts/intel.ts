@@ -91,24 +91,34 @@ async function main() {
     console.log("─ Stage 1: cheap screen");
     for (const [id, r] of Object.entries(results)) {
       console.log(
-        `  ${id.padEnd(12)} ${r.status.padEnd(10)} records=${r.recordsReceived} ` +
+        `  ${id.padEnd(14)} ${r.status.padEnd(10)} records=${r.recordsReceived} ` +
           `new=${r.newObservations} evidence=${r.evidenceCreated} signals=${r.signalsCreated}` +
           (r.error ? ` error=${r.error.slice(0, 80)}` : ""),
       );
     }
+
+    // Tier 1 identity: fold PDL firmographics into the company entity and let
+    // the ticker settle the public-company question for the SEC gate (§3/§22).
+    // Firmographics establish FIT, never intent — no signal is emitted here.
+    const { applyPdlFirmographics } = await import("../src/lib/intel/providers/pdl");
+    const { isPublic: pdlPublic } = await applyPdlFirmographics(db, company.id);
+    if (pdlPublic && !isPublicCompany) {
+      console.log("─ PDL firmographics: ticker present → public company (SEC gate now open)");
+    }
+    const effectivePublic = isPublicCompany || pdlPublic;
 
     // Specialized deep-stage providers (Censys), gated on category relevance.
     const deep = await deepResearchCompany(
       db,
       { orgId, companyId: company.id, companyName: company.legal_name, domain: domain ?? company.primary_domain },
       targetSlug,
-      { researchTriggered: true, isPublicCompany },
+      { researchTriggered: true, isPublicCompany: effectivePublic },
     );
     if (Object.keys(deep).length > 0) {
       console.log("─ Deep stage: specialized providers");
       for (const [id, r] of Object.entries(deep)) {
         console.log(
-          `  ${id.padEnd(12)} ${r.status.padEnd(10)} records=${r.recordsReceived} ` +
+          `  ${id.padEnd(14)} ${r.status.padEnd(10)} records=${r.recordsReceived} ` +
             `evidence=${r.evidenceCreated} signals=${r.signalsCreated}` +
             (r.error ? ` error=${r.error.slice(0, 80)}` : ""),
         );

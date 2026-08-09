@@ -65,11 +65,16 @@ eventually supersede inferred intent.
 
 ## PDL split (§3, §22)
 
-- **Company pass** (Tier 1): identity + firmographics on ~every account.
-  Never person-search credits here.
-- **People pass** (Tier 3): only after the research threshold or a motion
-  needing personas — and only the personas the motion requires, never every
-  employee. Mandatory for credit efficiency.
+- **Company pass** (`pdl_company`, Tier 1): identity + firmographics on
+  ~every account. Never person-search credits here. Firmographics establish
+  **fit, not intent** — the provider produces provenance evidence and enriches
+  the company record (industry / employee count / country), but emits **no
+  propensity signal**. A present `ticker` settles the public-company question
+  and opens the SEC gate.
+- **People pass** (`pdl_people`, Tier 3): only after the research threshold or
+  a motion needing personas — and only the senior technical committee
+  (`job_title_levels` cxo/vp/director × `job_title_role` engineering), capped
+  at five, never every employee. Mandatory for credit efficiency.
 
 ## SEC staged processing (§4, §23)
 
@@ -89,9 +94,10 @@ Propensity · Evidence Confidence · Data Completeness.
 ## Status vs the command
 
 Retrofitted into the normalized architecture and policy-governed today:
-greenhouse, lever, dns, ipinfo, builtwith, wappalyzer (disabled — no plan),
-censys. Policy entries exist for the ad-hoc sources still on their earlier
-modules (pdl_company, pdl_people, sec_edgar/EDGAR, tavily, website, github,
-gdelt); the orchestration already reasons about them, and each becomes a
-first-class provider as it is retrofitted — with no change to the policy or
+pdl_company, pdl_people, greenhouse, lever, dns, ipinfo, builtwith_free
+(builtwith_domain/change credit-gated), wappalyzer (disabled — no plan),
+censys, sec_edgar, website, github, http_fingerprint. Policy entries exist for
+the ad-hoc sources still on their earlier modules (tavily, gdelt, careers,
+common_crawl); the orchestration already reasons about them, and each becomes
+a first-class provider as it is retrofitted — with no change to the policy or
 scoring layers.
