@@ -1,5 +1,5 @@
 import { getPool } from "../src/db/client";
-import { runPendingResearch } from "../src/lib/intel/research-runner";
+import { runPendingResearchLocked } from "../src/lib/intel/research-runner";
 
 /**
  * Drain the deep-research queue: process pending research_jobs (written by
@@ -37,7 +37,11 @@ async function main() {
     );
     console.log(`\n═ RESEARCH QUEUE — ${pending[0].n} pending job(s)${orgName ? ` for ${orgName}` : ""}\n`);
 
-    const summary = await runPendingResearch(db, { limit, orgId });
+    const summary = await runPendingResearchLocked(db, { limit, orgId });
+    if (summary.locked) {
+      console.log("  ⚠ another research run holds the lock — skipping this pass\n");
+      return;
+    }
     for (const j of summary.jobs) {
       const mark = j.status === "done" ? "✓" : "✗";
       console.log(`  ${mark} ${j.company.padEnd(24)} [${j.reason}] ${j.detail}`);

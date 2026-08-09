@@ -19,7 +19,42 @@ export interface ResearchRunSummary {
   processed: number;
   done: number;
   failed: number;
+  /** true when a run was skipped because another run held the global lock */
+  locked?: boolean;
   jobs: { companyId: string; company: string; reason: string; status: "done" | "failed"; detail: string }[];
+}
+
+/**
+ * Global advisory-lock key for the research runner. Deep research spends real
+ * money (LLM + Tavily + PDL) and re-scores whole orgs, so overlapping drains —
+ * a cron firing while a manual trigger is mid-run — would double-spend and race
+ * on scoreOrg. One drain at a time, process-wide.
+ */
+const RESEARCH_LOCK_KEY = 0x50524553; // "PRES"
+
+/**
+ * Run the queue under a global advisory lock (Postgres session-scoped, so it
+ * auto-releases if the connection drops). If another run holds it, this returns
+ * immediately with `locked: true` instead of piling on. This is the entry point
+ * cron and the API trigger should call — job-level `for update skip locked`
+ * keeps individual jobs safe, but the lock keeps whole RUNS from overlapping.
+ */
+export async function runPendingResearchLocked(
+  db: pg.PoolClient,
+  opts: { limit?: number; orgId?: string; useLLM?: boolean } = {},
+): Promise<ResearchRunSummary> {
+  const { rows } = await db.query<{ locked: boolean }>(
+    `select pg_try_advisory_lock($1) as locked`,
+    [RESEARCH_LOCK_KEY],
+  );
+  if (!rows[0]?.locked) {
+    return { processed: 0, done: 0, failed: 0, locked: true, jobs: [] };
+  }
+  try {
+    return { ...(await runPendingResearch(db, opts)), locked: false };
+  } finally {
+    await db.query(`select pg_advisory_unlock($1)`, [RESEARCH_LOCK_KEY]);
+  }
 }
 
 /** The company's most recently scored solution, or the default motion. */

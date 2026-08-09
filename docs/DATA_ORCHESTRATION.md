@@ -21,10 +21,17 @@ ACCOUNT → identity+fit → CHEAP SCREEN → preliminary score → RESEARCH GAT
   policy gates permit. Builds the preliminary picture.
 - **Research gate** (`escalationReason`): high-propensity/low-confidence,
   high-value/low-completeness, contradiction, or near-threshold → `research_jobs`.
-- **Research runner** (`runPendingResearch`, `npm run research`): drains the
+- **Research runner** (`runPendingResearch`, the reusable library): drains the
   queue — claims pending jobs with `for update skip locked`, runs deep research
   + re-map + re-score per account, and records each job's outcome. Escalation is
-  autonomous, not a manual step.
+  autonomous, not a manual step. Two thin callers share it — the CLI
+  (`npm run research`) and an HTTP endpoint (`POST /api/research`) — so a
+  scheduler (cron) and a manual trigger use the exact same code path.
+  `runPendingResearchLocked` wraps it in a global Postgres advisory lock: deep
+  research spends real money and re-scores whole orgs, so overlapping runs back
+  off (the API returns 409) rather than double-spend. The endpoint authenticates
+  with its own bearer secret (`RESEARCH_TRIGGER_SECRET`), separate from the
+  app's Basic Auth, and `GET /api/research` returns queue status.
 - **Stage 2 — deep research** (`deepResearchCompany`): Tavily, PDL people,
   Wappalyzer, Censys, deeper SEC/GitHub — only for accounts past the gate.
 

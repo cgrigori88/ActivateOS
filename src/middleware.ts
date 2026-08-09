@@ -27,6 +27,7 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Webhooks authenticate with provider signatures (svix), not Basic Auth.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/webhooks).*)"],
+  // Webhooks authenticate with provider signatures (svix); the research trigger
+  // authenticates with its own bearer secret — neither uses Basic Auth.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/webhooks|api/research).*)"],
 };
