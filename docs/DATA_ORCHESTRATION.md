@@ -20,7 +20,11 @@ ACCOUNT → identity+fit → CHEAP SCREEN → preliminary score → RESEARCH GAT
 - **Stage 1 — cheap screen** (`screenCompany`): every Tier-1/2 provider whose
   policy gates permit. Builds the preliminary picture.
 - **Research gate** (`escalationReason`): high-propensity/low-confidence,
-  high-value/low-completeness, contradiction, or near-threshold → enqueue.
+  high-value/low-completeness, contradiction, or near-threshold → `research_jobs`.
+- **Research runner** (`runPendingResearch`, `npm run research`): drains the
+  queue — claims pending jobs with `for update skip locked`, runs deep research
+  + re-map + re-score per account, and records each job's outcome. Escalation is
+  autonomous, not a manual step.
 - **Stage 2 — deep research** (`deepResearchCompany`): Tavily, PDL people,
   Wappalyzer, Censys, deeper SEC/GitHub — only for accounts past the gate.
 
