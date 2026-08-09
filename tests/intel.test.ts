@@ -760,3 +760,78 @@ test("pdl_people: deep-only, targets the buying committee, degrades gracefully",
     [],
   );
 });
+
+// -- GDELT corporate-event radar (P0-E) ------------------------------------
+
+test("gdelt classifyEvent: subject-gated, specificity-ordered, event-typed", async () => {
+  const { classifyEvent } = await import("../src/lib/intel/providers/gdelt");
+
+  // Company as the subject of a launch → NEW_PRODUCT.
+  assert.equal(classifyEvent("Acme launches new AI platform", "Acme")?.type, "NEW_PRODUCT");
+
+  // A partner's event that only mentions the company is NOT attributed to it.
+  assert.equal(classifyEvent("Datadog partners with Acme on observability", "Zscaler"), null);
+
+  // Specificity: a new data center is a FACILITY, not a plain expansion.
+  assert.equal(classifyEvent("MongoDB opens new data center in Frankfurt", "MongoDB")?.type, "NEW_FACILITY");
+  // Acquisitions win over generic verbs.
+  assert.equal(classifyEvent("MongoDB acquires Voyage AI to boost retrieval", "MongoDB")?.type, "M_AND_A");
+  // Leadership changes.
+  assert.equal(
+    classifyEvent("Snowflake appoints new CTO to lead platform", "Snowflake")?.type,
+    "NEW_TECHNOLOGY_LEADERSHIP",
+  );
+  // Partnerships.
+  assert.equal(classifyEvent("Stripe teams up with Acme for payments", "Stripe")?.type, "PARTNERSHIP");
+
+  // Non-events (stock chatter / tutorials) are rejected.
+  assert.equal(classifyEvent("Datadog shares fall 16% as investors punish outlook", "Datadog"), null);
+  assert.equal(classifyEvent("How to use MongoDB aggregation pipelines", "MongoDB"), null);
+});
+
+test("gdelt parseSeendate: compact timestamp round-trips, rejects junk", async () => {
+  const { parseSeendate } = await import("../src/lib/intel/providers/gdelt");
+  assert.equal(parseSeendate("20260806T161500Z")?.toISOString(), "2026-08-06T16:15:00.000Z");
+  assert.equal(parseSeendate("not-a-date"), null);
+  assert.equal(parseSeendate(""), null);
+});
+
+test("gdelt: radar-grade low-confidence evidence, new observations only", async () => {
+  const { GdeltProvider } = await import("../src/lib/intel/providers/gdelt");
+  const p = new GdeltProvider();
+  assert.equal(p.providerId, "gdelt");
+  assert.equal(p.costClass, "FREE");
+  assert.equal(p.sourceTrustPrior, 0.4); // radar: low trust, needs corroboration
+
+  // Force the deterministic path (no LLM) so the test is hermetic.
+  const savedKey = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const target = { orgId: null, companyId: "c1", companyName: "MongoDB", domain: "mongodb.com" };
+    const ev = await p.normalize(
+      [
+        { payload: { url: "https://x.com/a", title: "MongoDB acquires Voyage AI", domain: "x.com", seendate: "20260806T161500Z" }, isNew: true },
+        { payload: { url: "https://y.com/b", title: "MongoDB partners with AWS", domain: "y.com", seendate: "20260805T101500Z" }, isNew: true },
+        { payload: { url: "https://z.com/c", title: "MongoDB stock rises on earnings", domain: "z.com", seendate: "20260804T101500Z" }, isNew: true }, // not an event
+        { payload: { url: "https://w.com/d", title: "MongoDB launches Atlas Stream", domain: "w.com", seendate: "20260803T101500Z" }, isNew: false }, // not new
+      ],
+      [],
+      target,
+    );
+    const types = ev.map((e) => e.suggestedSignalType).sort();
+    assert.deepEqual(types, ["M_AND_A", "PARTNERSHIP"]); // event, event; non-event & non-new excluded
+    for (const e of ev) {
+      assert.equal(e.confidence, 0.45); // radar-grade
+      assert.equal(e.firstParty, false);
+      assert.match(e.claim, /News coverage indicates MongoDB/);
+    }
+  } finally {
+    if (savedKey) process.env.ANTHROPIC_API_KEY = savedKey;
+  }
+
+  // No company name = no query = absence.
+  assert.deepEqual(
+    await p.fetch({ orgId: null, companyId: "c1", companyName: "", domain: "mongodb.com" }),
+    [],
+  );
+});

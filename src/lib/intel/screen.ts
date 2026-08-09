@@ -9,6 +9,7 @@ import {
 } from "./providers/builtwith";
 import { CensysProvider } from "./providers/censys";
 import { DnsProvider } from "./providers/dns";
+import { GdeltProvider } from "./providers/gdelt";
 import { GithubProvider } from "./providers/github";
 import { HttpFingerprintProvider } from "./providers/http-fingerprint";
 import { IpinfoProvider } from "./providers/ipinfo";
@@ -40,6 +41,7 @@ export function registerBuiltinProviders(): void {
   registerProvider(new LeverProvider());
   registerProvider(new GithubProvider());
   registerProvider(new WebsiteProvider());
+  registerProvider(new GdeltProvider());
   registerProvider(new DnsProvider());
   registerProvider(new HttpFingerprintProvider());
   registerProvider(new BuiltWithFreeProvider());

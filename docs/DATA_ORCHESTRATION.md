@@ -76,6 +76,27 @@ eventually supersede inferred intent.
   (`job_title_levels` cxo/vp/director × `job_title_role` engineering), capped
   at five, never every employee. Mandatory for credit efficiency.
 
+## GDELT event radar (P0-E)
+
+GDELT indexes global news in near-real time and is **free** — the cheap
+DISCOVERY layer for corporate events (launches, partnerships, acquisitions,
+expansions, facilities, leadership changes). It is a **radar, not a witness**:
+
+1. **Candidate** — one screen-tier query per company returns recent headlines.
+2. **Relevance classify** — a deterministic, subject-gated headline classifier
+   (the company must be the actor, plus an event pattern) types each candidate;
+   an optional single cheap-LLM pass prunes residual noise when a key is set.
+3. **Corroborate** — GDELT's source-trust prior is deliberately low (0.4) and
+   its evidence is radar-grade (confidence 0.45), so a lone GDELT article is
+   **quarantined** by the quality gate. It is promoted to verified only when an
+   independent higher-trust source — the company's own newsroom, an SEC filing,
+   or a Tavily investigation of an escalated account — reports the same event
+   (§26 corroboration). Noisy press never inflates propensity on its own.
+
+Throttle-safe: GDELT rate-limits by IP and returns a plain-text notice instead
+of JSON when busy; the provider treats any non-JSON body as a **skip** (not an
+error, and it never trips the metered-refresh guard), and runs at most daily.
+
 ## SEC staged processing (§4, §23)
 
 Filing discovered → cheap keyword/section identification → relevant-section
@@ -96,8 +117,8 @@ Propensity · Evidence Confidence · Data Completeness.
 Retrofitted into the normalized architecture and policy-governed today:
 pdl_company, pdl_people, greenhouse, lever, dns, ipinfo, builtwith_free
 (builtwith_domain/change credit-gated), wappalyzer (disabled — no plan),
-censys, sec_edgar, website, github, http_fingerprint. Policy entries exist for
-the ad-hoc sources still on their earlier modules (tavily, gdelt, careers,
+censys, sec_edgar, website, github, http_fingerprint, gdelt. Policy entries
+exist for the ad-hoc sources still on their earlier modules (tavily, careers,
 common_crawl); the orchestration already reasons about them, and each becomes
 a first-class provider as it is retrofitted — with no change to the policy or
 scoring layers.
