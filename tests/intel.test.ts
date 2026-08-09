@@ -188,3 +188,110 @@ test("contentHash is stable and order-independent via caller sorting", () => {
   assert.notEqual(contentHash("a|b"), contentHash("a|c"));
   assert.equal(contentHash("x").length, 32);
 });
+
+// -- BuiltWith (P1-B): fixtures mirror BuiltWith's DOCUMENTED response
+// shapes — test fixtures only, never real account intelligence. ----------
+
+test("builtwith baseline: only ontology-mapped technologies become evidence", async () => {
+  const { BuiltWithProvider, extractTechnologies } = await import(
+    "../src/lib/intel/providers/builtwith"
+  );
+  const fixture = {
+    Results: [
+      {
+        Lookup: "acme.com",
+        Result: {
+          Paths: [
+            {
+              Technologies: [
+                { Name: "Kubernetes", Tag: "hosting", Categories: ["Container Orchestration"] },
+                { Name: "Google Analytics", Tag: "analytics" }, // unmapped → skipped
+                { Name: "Ansible", Tag: "hosting" },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+  };
+  assert.equal(extractTechnologies(fixture).length, 3);
+
+  const provider = new BuiltWithProvider();
+  const candidates = provider.normalize(
+    [
+      {
+        payload: {
+          mode: "baseline",
+          domain: "acme.com",
+          technologies: extractTechnologies(fixture),
+        },
+        isNew: true,
+      },
+    ],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  // Kubernetes + Ansible map into the ontology; Google Analytics does not.
+  assert.equal(candidates.length, 2);
+  for (const c of candidates) {
+    assert.match(c.claim, /public web presence/); // web-facing phrasing, never installed-base proof
+    assert.equal(c.suggestedSignalType, "TECH_INSTALLED");
+    assert.ok(c.suggestedNodeSlug);
+  }
+});
+
+test("builtwith changes: additions/removals/stack-change signals", async () => {
+  const { BuiltWithProvider, extractChanges } = await import(
+    "../src/lib/intel/providers/builtwith"
+  );
+  const fixture = {
+    Lookup: "acme.com",
+    Changes: [
+      { Technology: "Ansible", Type: "Added", Date: "2026-07-20" },
+      { Technology: "VMware", Type: "Removed", Date: "2026-07-22" },
+    ],
+  };
+  const changes = extractChanges(fixture);
+  assert.deepEqual(changes.map((c) => c.type), ["added", "removed"]);
+
+  const provider = new BuiltWithProvider();
+  const candidates = provider.normalize(
+    [{ payload: { mode: "change", domain: "acme.com", changes }, isNew: true }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  assert.equal(candidates.length, 2); // <5 changes → no stack-change event
+  assert.equal(candidates[0].suggestedSignalType, "TECHNOLOGY_ADDED");
+  assert.equal(candidates[1].suggestedSignalType, "TECH_REMOVED");
+
+  // ≥5 simultaneous changes add a TECHNOLOGY_STACK_CHANGE event.
+  const many = Array.from({ length: 6 }, (_, i) => ({
+    name: `Tech${i}`, type: "added" as const, date: null,
+  }));
+  const withStack = provider.normalize(
+    [{ payload: { mode: "change", domain: "acme.com", changes: many }, isNew: true }],
+    [],
+    { orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" },
+  );
+  assert.ok(withStack.some((c) => c.suggestedSignalType === "TECHNOLOGY_STACK_CHANGE"));
+});
+
+test("builtwith disabled/absent states: no key or no domain = absence, not error", async () => {
+  const { BuiltWithProvider } = await import("../src/lib/intel/providers/builtwith");
+  const provider = new BuiltWithProvider();
+  const saved = process.env.BUILTWITH_API_KEY;
+  delete process.env.BUILTWITH_API_KEY;
+  try {
+    assert.deepEqual(
+      await provider.fetch({ orgId: null, companyId: "c1", companyName: "Acme", domain: "acme.com" }),
+      [],
+    );
+    const health = await provider.healthCheck();
+    assert.equal(health.ok, false);
+    assert.match(health.detail, /not set/);
+  } finally {
+    if (saved) process.env.BUILTWITH_API_KEY = saved;
+  }
+  // Metered guard is declared: weekly per-company throttle.
+  assert.equal(provider.minRefreshHours, 24 * 7);
+});

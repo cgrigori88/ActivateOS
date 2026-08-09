@@ -125,6 +125,9 @@ export const SIGNAL_DEFS: Record<string, SignalDef> = {
   SECURITY_GATEWAY_CHANGE: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
   // Engineering activity (DIRECTIVE P1-A)
   ENGINEERING_ACTIVITY_EXPANSION: { halfLifeDays: 120, family: "momentum", direction: 1, canonical: "ENGINEERING_ACTIVITY" },
+  // Technographic change (DIRECTIVE P1-B): web-facing stack movement.
+  TECHNOLOGY_ADDED: { halfLifeDays: 180, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
+  TECHNOLOGY_STACK_CHANGE: { halfLifeDays: 120, family: "trigger", direction: 1, canonical: "TECHNOLOGY_CHANGE" },
   // Negative
   HIRING_FREEZE: { halfLifeDays: 120, family: "negative", direction: -1 },
   LAYOFFS: { halfLifeDays: 180, family: "negative", direction: -1 },

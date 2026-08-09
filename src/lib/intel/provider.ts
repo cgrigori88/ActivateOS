@@ -39,6 +39,11 @@ export interface IntelligenceTarget {
   domain: string | null;
   /** provider-specific handles discovered earlier (e.g. greenhouse board token) */
   handles?: Record<string, string>;
+  /** pipeline-supplied run state: lets a provider pick baseline vs incremental */
+  state?: {
+    lastSuccessAt: Date | null;
+    observationCount: number;
+  };
 }
 
 export interface RawObservationInput {
@@ -81,6 +86,11 @@ export interface IntelligenceProvider {
    */
   sourceTrustPrior: number;
   sourceKind: "first_party" | "external";
+  /**
+   * Minimum hours between successful runs per company — the credit/budget
+   * guard for metered providers. Omit for free unmetered sources.
+   */
+  minRefreshHours?: number;
   /** optional cheap discovery (e.g. find the careers board token) */
   discover?(target: IntelligenceTarget): Promise<Record<string, string> | null>;
   fetch(target: IntelligenceTarget): Promise<RawObservationInput[]>;

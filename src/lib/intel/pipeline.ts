@@ -78,6 +78,30 @@ export async function runProvider(
     return { runId, status: "skipped", recordsReceived: 0, newObservations: 0, evidenceCreated: 0, signalsCreated: 0 };
   }
 
+  // Run state: lets providers choose baseline vs incremental, and enforces
+  // the per-company refresh throttle for metered providers (§24-25).
+  const { rows: stateRows } = await db.query<{ last_success: Date | null; obs: string }>(
+    `select
+       (select max(finished_at) from provider_runs
+         where provider_id = $1 and company_id = $2 and status = 'succeeded' and id <> $3) as last_success,
+       (select count(*) from raw_observations
+         where provider_id = $1 and company_id = $2) as obs`,
+    [provider.providerId, target.companyId, runId],
+  );
+  const lastSuccessAt = stateRows[0].last_success;
+  if (
+    provider.minRefreshHours &&
+    lastSuccessAt &&
+    Date.now() - new Date(lastSuccessAt).getTime() < provider.minRefreshHours * 3_600_000
+  ) {
+    await finish({ status: "skipped" });
+    return { runId, status: "skipped", recordsReceived: 0, newObservations: 0, evidenceCreated: 0, signalsCreated: 0 };
+  }
+  target = {
+    ...target,
+    state: { lastSuccessAt, observationCount: Number(stateRows[0].obs) },
+  };
+
   try {
     // Optional discovery (e.g. locate the company's job-board token).
     if (provider.discover && !target.handles) {

@@ -1,6 +1,7 @@
 import type pg from "pg";
 import { runProvider, type ProviderRunResult } from "./pipeline";
 import { allProviders, registerProvider, type IntelligenceTarget } from "./provider";
+import { BuiltWithProvider } from "./providers/builtwith";
 import { DnsProvider } from "./providers/dns";
 import { GreenhouseProvider } from "./providers/greenhouse";
 import { LeverProvider } from "./providers/lever";
@@ -22,6 +23,7 @@ export function registerBuiltinProviders(): void {
   registerProvider(new GreenhouseProvider());
   registerProvider(new LeverProvider());
   registerProvider(new DnsProvider());
+  registerProvider(new BuiltWithProvider());
   registered = true;
 }
 
