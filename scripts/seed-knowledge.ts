@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { getPool } from "../src/db/client";
+import { CANONICAL_TO_SCORING, SIGNAL_DEFS } from "../src/lib/signals/types";
 
 /**
  * Seed the Channel Knowledge Base from knowledge/ into the database:
@@ -69,6 +70,25 @@ async function main() {
 
     await client.query("commit");
     console.log(`seeded ${ontology.nodes.length} taxonomy nodes, ${ontology.edges.length} edges`);
+
+    // Versioned signal configuration (DIRECTIVE §12): the registry is the
+    // source of truth; the DB copy is what admin/config tooling edits.
+    let configs = 0;
+    for (const [signalType, def] of Object.entries(SIGNAL_DEFS)) {
+      const family = def.canonical ?? def.family;
+      await client.query(
+        `insert into signal_configs (signal_type, family, default_half_life_days)
+         values ($1, $2, $3)
+         on conflict (signal_type) do update
+           set family = excluded.family,
+               default_half_life_days = excluded.default_half_life_days,
+               updated_at = now()`,
+        [signalType, family, def.halfLifeDays],
+      );
+      configs++;
+    }
+    void CANONICAL_TO_SCORING; // mapping lives in code; referenced for clarity
+    console.log(`seeded ${configs} signal configs`);
   } catch (err) {
     await client.query("rollback");
     throw err;
