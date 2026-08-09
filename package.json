@@ -29,6 +29,7 @@
     "assemble-teams": "tsx scripts/assemble-teams.ts",
     "setup-comms": "tsx scripts/setup-comms-dns.ts",
     "intel": "tsx scripts/intel.ts",
+    "screen": "tsx scripts/screen-sweep.ts",
     "research": "tsx scripts/research-runner.ts"
   },
   "dependencies": {

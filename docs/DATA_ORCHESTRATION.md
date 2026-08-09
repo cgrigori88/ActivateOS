@@ -19,6 +19,13 @@ ACCOUNT → identity+fit → CHEAP SCREEN → preliminary score → RESEARCH GAT
 
 - **Stage 1 — cheap screen** (`screenCompany`): every Tier-1/2 provider whose
   policy gates permit. Builds the preliminary picture.
+- **Screening sweep** (`runScreeningSweep`, `npm run screen`,
+  `.github/workflows/screen.yml` daily): re-screens each org's portfolio,
+  re-maps + re-scores, and enqueues deep research for accounts that now cross a
+  gate — the front of the loop that keeps `research_jobs` filled. Cheap by
+  construction (content-hash change detection: unchanged sources cost nothing).
+  Shares the pipeline advisory lock with the research runner, so screening and
+  draining never race on `scoreOrg`.
 - **Research gate** (`escalationReason`): high-propensity/low-confidence,
   high-value/low-completeness, contradiction, or near-threshold → `research_jobs`.
 - **Research runner** (`runPendingResearch`, the reusable library): drains the
