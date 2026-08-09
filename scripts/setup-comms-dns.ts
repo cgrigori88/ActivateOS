@@ -80,11 +80,20 @@ async function ensureResendDomain(name: string): Promise<{ id: string; records: 
   return { id, records: detail.records ?? [] };
 }
 
-/** Resend record names are relative to ITS domain; Vercel wants zone-relative. */
+/**
+ * Map a Resend record name onto the apex zone. Resend has returned names in
+ * several shapes over time — fully qualified (`send.engage.pursuitos.io`),
+ * apex-relative (`send.engage`), or domain-relative (`send`) — so normalize
+ * by detecting which suffix is already present rather than assuming one.
+ */
 export function zoneRelativeName(resendName: string, resendDomain: string, apex: string): string {
+  const name = resendName.replace(/\.$/, "");
   const sub = resendDomain === apex ? "" : resendDomain.slice(0, -(apex.length + 1));
-  const rel = resendName === resendDomain ? "" : resendName.replace(`.${resendDomain}`, "");
-  return [rel, sub].filter(Boolean).join(".");
+  if (name === apex) return "";
+  if (name.endsWith(`.${apex}`)) return name.slice(0, -(apex.length + 1)); // fully qualified
+  if (!sub) return name;
+  if (name === sub || name.endsWith(`.${sub}`)) return name; // already apex-relative
+  return `${name}.${sub}`; // relative to the Resend domain
 }
 
 async function ensureVercelRecord(rec: {

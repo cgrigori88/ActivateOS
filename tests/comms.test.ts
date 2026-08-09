@@ -173,6 +173,12 @@ test("zoneRelativeName maps Resend record names into the apex zone", async () =>
     zoneRelativeName("resend._domainkey", "engage.pursuitos.io", apex),
     "resend._domainkey.engage",
   );
+  // Apex-relative names (what Resend actually returns today).
+  assert.equal(zoneRelativeName("send.engage", "engage.pursuitos.io", apex), "send.engage");
+  assert.equal(
+    zoneRelativeName("resend._domainkey.engage", "engage.pursuitos.io", apex),
+    "resend._domainkey.engage",
+  );
   // Apex-of-subdomain records (e.g. inbound MX on threads.pursuitos.io).
   assert.equal(zoneRelativeName("threads.pursuitos.io", "threads.pursuitos.io", apex), "threads");
   // Fully-qualified name form.
