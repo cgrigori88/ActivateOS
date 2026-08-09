@@ -11,6 +11,7 @@ import { getPool } from "../src/db/client";
 interface PartnerSeed {
   name: string;
   partner_type: string;
+  capacity?: number;
   industries: string[];
   countries: string[];
   capabilities: { node: string; strength: number; certified: boolean }[];
@@ -61,14 +62,15 @@ async function main() {
       if (existing.length > 0) {
         partnerId = existing[0].id;
         await db.query(
-          `update partners set partner_type = $2, industries = $3, countries = $4 where id = $1`,
-          [partnerId, p.partner_type, p.industries, p.countries],
+          `update partners set partner_type = $2, industries = $3, countries = $4, capacity = $5
+           where id = $1`,
+          [partnerId, p.partner_type, p.industries, p.countries, p.capacity ?? null],
         );
       } else {
         const { rows } = await db.query<{ id: string }>(
-          `insert into partners (org_id, name, partner_type, industries, countries)
-           values ($1, $2, $3, $4, $5) returning id`,
-          [orgId, p.name, p.partner_type, p.industries, p.countries],
+          `insert into partners (org_id, name, partner_type, industries, countries, capacity)
+           values ($1, $2, $3, $4, $5, $6) returning id`,
+          [orgId, p.name, p.partner_type, p.industries, p.countries, p.capacity ?? null],
         );
         partnerId = rows[0].id;
       }

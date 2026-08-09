@@ -76,6 +76,27 @@ export async function designMotion(
   if (plays.length === 0) throw new Error(`no active play template for ${args.targetSlug}`);
   const play = plays[0];
 
+  // The routed pursuit team, if assembled — the motion is written for THIS
+  // partner to execute, not for an abstract channel.
+  const { rows: teams } = await db.query<{
+    partner_id: string;
+    seller_id: string | null;
+    partner_name: string;
+    partner_type: string | null;
+    seller_name: string | null;
+  }>(
+    `select t.partner_id, t.seller_id, pa.name as partner_name, pa.partner_type,
+            s.name as seller_name
+     from pursuit_teams t
+     join partners pa on pa.id = t.partner_id
+     left join sellers s on s.id = t.seller_id
+     where t.company_id = $1 and t.taxonomy_node_id = $2
+       and t.status in ('recommended','accepted')
+     order by t.created_at desc limit 1`,
+    [args.companyId, score.node_id],
+  );
+  const team = teams[0] ?? null;
+
   // Evidence-gated context: verified rows only.
   const { rows: evidence } = await db.query<{ id: string; claim: string; source_type: string; observed_at: Date }>(
     `select id, claim, source_type, observed_at from evidence
@@ -115,7 +136,14 @@ ${evidence.map((e) => `${e.id}: [${e.source_type}, ${e.observed_at.toISOString()
 ${JSON.stringify(play.definition, null, 2)}
 
 ${solutionProfile ? `## Solution profile\n${solutionProfile}` : ""}
-
+${
+  team
+    ? `## Pursuit team (routed)\nThis motion will be executed by partner ${team.partner_name}` +
+      `${team.partner_type ? ` (${team.partner_type.replace(/_/g, " ")})` : ""}` +
+      `${team.seller_name ? `, seller ${team.seller_name}` : ""}. ` +
+      `Frame the actions for that partner; do not invent facts about them.\n`
+    : ""
+}
 Design the Revenue Motion.`;
 
   const { output: draft, meta } = await completeStructuredMeta({
@@ -155,8 +183,8 @@ Design the Revenue Motion.`;
   const { rows: motions } = await db.query<{ id: string }>(
     `insert into revenue_motions (org_id, company_id, taxonomy_node_id, play_template_id,
         propensity_score_id, status, thesis, trigger_summary, primary_persona,
-        secondary_persona, cta, confidence)
-     values ($1, $2, $3, $4, $5, 'draft', $6, $7, $8, $9, $10, $11)
+        secondary_persona, cta, confidence, partner_id, partner_seller_id)
+     values ($1, $2, $3, $4, $5, 'draft', $6, $7, $8, $9, $10, $11, $12, $13)
      returning id`,
     [
       args.orgId,
@@ -170,6 +198,8 @@ Design the Revenue Motion.`;
       draft.secondary_persona,
       draft.cta,
       draft.confidence,
+      team?.partner_id ?? null,
+      team?.seller_id ?? null,
     ],
   );
 

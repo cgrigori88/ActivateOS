@@ -4,6 +4,7 @@
     {
       "name": "Northbridge Systems",
       "partner_type": "solution_provider",
+      "capacity": 1,
       "industries": ["Financial Services", "Healthcare"],
       "countries": [],
       "capabilities": [
@@ -25,6 +26,7 @@
     {
       "name": "Meridian Digital",
       "partner_type": "reseller",
+      "capacity": 4,
       "industries": [],
       "countries": [],
       "capabilities": [

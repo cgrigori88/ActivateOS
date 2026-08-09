@@ -95,3 +95,47 @@ test("every feature carries a human-readable detail", () => {
     assert.ok(fit.details.get(f.feature), `missing detail for ${f.feature}`);
   }
 });
+
+test("choosePartner respects capacity and records skip reasons", async () => {
+  const { choosePartner } = await import("../src/lib/ecosystem/routing");
+  const fits = [
+    { partnerId: "p1", partnerName: "Top", fitId: "f1", score: 90 },
+    { partnerId: "p2", partnerName: "Backup", fitId: "f2", score: 60 },
+  ];
+  const full = choosePartner(fits, {
+    active: new Map([["p1", 1]]),
+    capacity: new Map([["p1", 1], ["p2", null]]),
+  });
+  assert.equal(full.chosen?.partnerId, "p2");
+  assert.equal(full.skipped.length, 1);
+  assert.match(full.skipped[0].reason, /at capacity \(1\/1/);
+
+  const open = choosePartner(fits, { active: new Map(), capacity: new Map([["p1", 1]]) });
+  assert.equal(open.chosen?.partnerId, "p1");
+  assert.equal(open.skipped.length, 0);
+});
+
+test("choosePartner returns null when every partner is saturated", async () => {
+  const { choosePartner } = await import("../src/lib/ecosystem/routing");
+  const result = choosePartner(
+    [{ partnerId: "p1", partnerName: "Only", fitId: "f1", score: 90 }],
+    { active: new Map([["p1", 2]]), capacity: new Map([["p1", 2]]) },
+  );
+  assert.equal(result.chosen, null);
+  assert.equal(result.skipped.length, 1);
+});
+
+test("chooseSeller picks strongest relationship, never invents one", async () => {
+  const { chooseSeller } = await import("../src/lib/ecosystem/routing");
+  const best = chooseSeller([
+    { sellerId: "s1", name: "A", relationshipStrength: 40 },
+    { sellerId: "s2", name: "B", relationshipStrength: 85 },
+    { sellerId: "s3", name: "C", relationshipStrength: null },
+  ]);
+  assert.equal(best?.sellerId, "s2");
+  assert.equal(
+    chooseSeller([{ sellerId: "s3", name: "C", relationshipStrength: null }]),
+    null,
+  );
+  assert.equal(chooseSeller([]), null);
+});

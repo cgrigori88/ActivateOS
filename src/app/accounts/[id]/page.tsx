@@ -61,6 +61,24 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  let team: {
+    partner_id: string;
+    seller: string | null;
+    status: string;
+    reason: string | null;
+  } | null = null;
+  {
+    const result = await pool.query(
+      `select t.partner_id, s.name as seller, t.status, t.reason
+       from pursuit_teams t
+       left join sellers s on s.id = t.seller_id
+       where t.company_id = $1 and t.status in ('recommended','accepted')
+       order by t.created_at desc limit 1`,
+      [id],
+    );
+    team = result.rows[0] ?? null;
+  }
+
   let partnerFits: {
     fit_id: string;
     partner_id: string;
@@ -235,42 +253,50 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
             Pursuit team
           </h2>
           <div className="space-y-3">
-            {partnerFits.map((f, i) => (
-              <div
-                key={f.partner_id}
-                className={
-                  i === 0
-                    ? "rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-950"
-                    : "px-3"
-                }
-              >
-                <div className="flex items-baseline gap-2">
-                  <span className="tnum text-lg font-semibold">{Number(f.score).toFixed(0)}</span>
-                  <BandBadge band={f.band} />
-                  <span className="font-medium">{f.partner}</span>
-                  <span className="text-xs uppercase tracking-wide text-neutral-400">
-                    {f.partner_type?.replace(/_/g, " ")}
-                  </span>
-                  {i === 0 && (
-                    <span className="ml-auto text-xs font-semibold text-green-700 dark:text-green-400">
-                      RECOMMENDED
+            {partnerFits.map((f) => {
+              const isRouted = team?.partner_id === f.partner_id;
+              return (
+                <div
+                  key={f.partner_id}
+                  className={
+                    isRouted
+                      ? "rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-950"
+                      : "px-3"
+                  }
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="tnum text-lg font-semibold">{Number(f.score).toFixed(0)}</span>
+                    <BandBadge band={f.band} />
+                    <span className="font-medium">{f.partner}</span>
+                    <span className="text-xs uppercase tracking-wide text-neutral-400">
+                      {f.partner_type?.replace(/_/g, " ")}
                     </span>
+                    {isRouted && (
+                      <span className="ml-auto text-xs font-semibold uppercase text-green-700 dark:text-green-400">
+                        {team?.status === "accepted" ? "Accepted" : "Routed"}
+                      </span>
+                    )}
+                  </div>
+                  {f.seller && (
+                    <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                      Seller: <span className="font-medium">{f.seller}</span> (relationship{" "}
+                      {Number(f.seller_strength).toFixed(0)}/100)
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {(fitFeatures.get(f.fit_id) ?? [])
+                      .map((ff) => ff.detail)
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                  {isRouted && team?.reason && (
+                    <p className="mt-1 text-xs text-neutral-500">
+                      <span className="font-medium">Routing:</span> {team.reason}
+                    </p>
                   )}
                 </div>
-                {f.seller && (
-                  <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-                    Seller: <span className="font-medium">{f.seller}</span> (relationship{" "}
-                    {Number(f.seller_strength).toFixed(0)}/100)
-                  </p>
-                )}
-                <p className="mt-1 text-xs text-neutral-500">
-                  {(fitFeatures.get(f.fit_id) ?? [])
-                    .map((ff) => ff.detail)
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       )}

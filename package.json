@@ -25,7 +25,8 @@
     "refresh": "tsx scripts/refresh.ts",
     "source-intel": "tsx scripts/source-intel.ts",
     "seed-partners": "tsx scripts/seed-partners.ts",
-    "match-partners": "tsx scripts/match-partners.ts"
+    "match-partners": "tsx scripts/match-partners.ts",
+    "assemble-teams": "tsx scripts/assemble-teams.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
