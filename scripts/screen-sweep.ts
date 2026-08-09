@@ -1,5 +1,5 @@
 import { getPool } from "../src/db/client";
-import { runScreeningSweepLocked } from "../src/lib/intel/screen-runner";
+import { runScreeningSweepAllOrgs } from "../src/lib/intel/screen-runner";
 
 /**
  * Screening sweep runner: re-screen an org's portfolio (or every org's), then
@@ -23,25 +23,20 @@ async function main() {
   const pool = getPool();
   const db = await pool.connect();
   try {
-    const { rows: orgs } = orgName
-      ? await db.query<{ id: string; name: string }>(`select id, name from organizations where name = $1`, [orgName])
-      : await db.query<{ id: string; name: string }>(`select id, name from organizations order by name`);
-    if (orgs.length === 0) throw new Error(orgName ? `organization not found: ${orgName}` : "no organizations");
-
-    for (const org of orgs) {
-      console.log(`\n═ SCREENING SWEEP — ${org.name}\n`);
-      const s = await runScreeningSweepLocked(db, org.id, { targetSlug, limit });
-      if (s.locked) {
-        console.log("  ⚠ another pipeline run holds the lock — skipping\n");
-        continue;
-      }
-      for (const a of s.accounts) {
+    const result = await runScreeningSweepAllOrgs(db, { orgName, targetSlug, limit });
+    if (result.byOrg.length === 0 && !result.locked) {
+      throw new Error(orgName ? `organization not found: ${orgName}` : "no organizations");
+    }
+    for (const { org, summary } of result.byOrg) {
+      console.log(`\n═ SCREENING SWEEP — ${org}\n`);
+      for (const a of summary.accounts) {
         console.log(`  ${a.company.padEnd(24)} +${a.evidence} evidence`);
       }
       console.log(
-        `─ Screened ${s.screened} · +${s.evidenceCreated} evidence · ${s.enqueued} deep-research job(s) enqueued\n`,
+        `─ Screened ${summary.screened} · +${summary.evidenceCreated} evidence · ${summary.enqueued} deep-research job(s) enqueued\n`,
       );
     }
+    if (result.locked) console.log("⚠ another pipeline run holds the lock — stopped early\n");
   } finally {
     db.release();
     await pool.end();

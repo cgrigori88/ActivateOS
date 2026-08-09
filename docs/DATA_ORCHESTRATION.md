@@ -19,8 +19,8 @@ ACCOUNT → identity+fit → CHEAP SCREEN → preliminary score → RESEARCH GAT
 
 - **Stage 1 — cheap screen** (`screenCompany`): every Tier-1/2 provider whose
   policy gates permit. Builds the preliminary picture.
-- **Screening sweep** (`runScreeningSweep`, `npm run screen`,
-  `.github/workflows/screen.yml` daily): re-screens each org's portfolio,
+- **Screening sweep** (`runScreeningSweep`, `npm run screen`, or the Railway
+  worker's daily tick): re-screens each org's portfolio,
   re-maps + re-scores, and enqueues deep research for accounts that now cross a
   gate — the front of the loop that keeps `research_jobs` filled. Cheap by
   construction (content-hash change detection: unchanged sources cost nothing).
@@ -39,13 +39,13 @@ ACCOUNT → identity+fit → CHEAP SCREEN → preliminary score → RESEARCH GAT
   off (the API returns 409) rather than double-spend. The endpoint authenticates
   with its own bearer secret (`RESEARCH_TRIGGER_SECRET`), separate from the
   app's Basic Auth, and `GET /api/research` returns queue status.
-  - **Scheduled**: `.github/workflows/research.yml` runs `npm run research` every
-    6 hours on a GitHub Actions runner — no serverless timeout, so it drains the
-    whole queue per pass; a `concurrency` group plus the DB advisory lock prevent
-    overlap. Needs repo secrets `DATABASE_URL`, `ANTHROPIC_API_KEY`,
-    `TAVILY_API_KEY`, `PDL_API_KEY`.
-  - **On-demand**: `POST /api/research` for a button or ops trigger — the same
-    library path, so scheduled and manual stay consistent.
+  - **Scheduled + on-demand**: a long-lived **Railway worker** (`src/worker`,
+    `npm run worker`) exposes authenticated `POST /screen` and `POST /research`
+    triggers AND runs an internal scheduler (research every few hours, screening
+    daily). A real Node process, so a full batch runs with no serverless
+    timeout; the shared advisory lock keeps scheduled and manual runs from
+    overlapping. See `docs/RAILWAY.md`. (`POST /api/research` in the web app
+    remains a lightweight in-app trigger for smaller, time-boxed runs.)
 - **Stage 2 — deep research** (`deepResearchCompany`): Tavily, PDL people,
   Wappalyzer, Censys, deeper SEC/GitHub — only for accounts past the gate.
 
