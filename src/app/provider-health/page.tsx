@@ -55,6 +55,7 @@ export default async function ProviderHealthPage() {
                   <th>Cost</th>
                   <th>Stage</th>
                   <th>State</th>
+                  <th>Recent</th>
                   <th className="text-right">Runs</th>
                   <th className="text-right">OK / Fail / Skip</th>
                   <th className="text-right">Evidence</th>
@@ -83,6 +84,9 @@ export default async function ProviderHealthPage() {
                         <span className="text-xs text-neutral-400">never run</span>
                       )}
                     </td>
+                    <td>
+                      <RunSparkline runs={r.recentRuns} />
+                    </td>
                     <td className="tnum text-right">{r.runs || "—"}</td>
                     <td className="tnum text-right text-neutral-500">
                       {r.runs ? `${r.succeeded} / ${r.failed} / ${r.skipped}` : "—"}
@@ -107,9 +111,45 @@ export default async function ProviderHealthPage() {
                 .join(" · ")}
             </p>
           )}
+          {g.rows.some((r) => r.lastError) && (
+            <div className="mt-1.5 space-y-0.5">
+              {g.rows
+                .filter((r) => r.lastError)
+                .map((r) => (
+                  <p key={r.providerId} className="text-xs text-red-600 dark:text-red-400">
+                    <span className="font-medium">{r.providerId}</span> last error:{" "}
+                    <span className="text-neutral-500">{r.lastError!.slice(0, 160)}</span>
+                  </p>
+                ))}
+            </div>
+          )}
         </div>
       ))}
     </main>
+  );
+}
+
+const RUN_COLORS: Record<string, string> = {
+  succeeded: "bg-green-500",
+  failed: "bg-red-500",
+  skipped: "bg-neutral-300 dark:bg-neutral-600",
+  running: "bg-sky-500",
+};
+
+/** Recent-run sparkline: oldest → newest (left → right), one bar per run. */
+function RunSparkline({ runs }: { runs: string[] }) {
+  if (runs.length === 0) return <span className="text-xs text-neutral-400">—</span>;
+  const ordered = [...runs].reverse(); // query gives newest-first; show newest at right
+  return (
+    <span className="inline-flex items-end gap-[2px]" title={`last ${ordered.length} runs`}>
+      {ordered.map((s, i) => (
+        <span
+          key={i}
+          className={`h-3.5 w-1 rounded-sm ${RUN_COLORS[s] ?? "bg-neutral-300 dark:bg-neutral-600"}`}
+          title={s}
+        />
+      ))}
+    </span>
   );
 }
 

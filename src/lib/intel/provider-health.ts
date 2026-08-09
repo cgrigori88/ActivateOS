@@ -30,6 +30,10 @@ export interface ProviderHealthRow {
   costUsd: number;
   lastStatus: string | null;
   lastRunAt: Date | null;
+  /** last ~12 run statuses, newest first — the health sparkline */
+  recentRuns: string[];
+  /** most recent failure's error message, if any */
+  lastError: string | null;
 }
 
 const TIER_ORDER: Record<string, number> = {
@@ -52,7 +56,10 @@ export async function loadProviderHealth(pool: pg.Pool): Promise<ProviderHealthR
             coalesce(sum(evidence_created), 0) as evidence,
             coalesce(sum(cost_usd), 0) as cost_usd,
             max(finished_at) as last_run_at,
-            (array_agg(status order by started_at desc))[1] as last_status
+            (array_agg(status order by started_at desc))[1] as last_status,
+            (array_agg(status order by started_at desc))[1:12] as recent_runs,
+            (array_agg(error order by started_at desc)
+               filter (where status = 'failed' and error is not null))[1] as last_error
      from provider_runs group by provider_id`,
   );
   const byId = new Map(stats.map((r) => [r.provider_id, r]));
@@ -78,6 +85,8 @@ export async function loadProviderHealth(pool: pg.Pool): Promise<ProviderHealthR
       costUsd: s ? Number(s.cost_usd) : 0,
       lastStatus: s ? s.last_status : null,
       lastRunAt: s ? s.last_run_at : null,
+      recentRuns: s?.recent_runs ?? [],
+      lastError: s?.last_error ?? null,
     };
   });
 
