@@ -1,11 +1,71 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
+import { rankNextActions, type PortfolioState } from "@/lib/portfolio/next-best";
 import { BandBadge, Card, PageHeader, StatChip, StatusBadge } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
+async function loadNextActions() {
+  const pool = getPool();
+  const [drafts, approved, review, contradictions, refreshes] = await Promise.all([
+    pool.query(
+      `select m.id, c.legal_name, m.estimated_value_usd, p.score as propensity
+       from revenue_motions m
+       join companies c on c.id = m.company_id
+       left join propensity_scores p on p.id = m.propensity_score_id
+       where m.status = 'draft'`,
+    ),
+    pool.query(
+      `select m.id, c.legal_name, m.estimated_value_usd, p.score as propensity,
+              exists (select 1 from campaigns cp where cp.motion_id = m.id) as has_campaign
+       from revenue_motions m
+       join companies c on c.id = m.company_id
+       left join propensity_scores p on p.id = m.propensity_score_id
+       where m.status = 'approved'`,
+    ),
+    pool.query(`select count(*) as n from review_queue where status = 'pending'`),
+    pool.query(
+      `select distinct c.id, c.legal_name from contradictions ct
+       join companies c on c.id = ct.company_id where ct.status = 'open'`,
+    ),
+    pool.query(
+      `select id, legal_name, refresh_tier from companies
+       where next_refresh_at is not null and next_refresh_at <= now()`,
+    ),
+  ]);
+
+  const expected = (v: unknown, p: unknown) =>
+    v == null ? null : Math.round((Number(v) * (p == null ? 50 : Number(p))) / 100);
+
+  const state: PortfolioState = {
+    draftMotions: drafts.rows.map((m) => ({
+      motionId: m.id,
+      company: m.legal_name,
+      expectedValueUsd: expected(m.estimated_value_usd, m.propensity),
+    })),
+    approvedMotions: approved.rows.map((m) => ({
+      motionId: m.id,
+      company: m.legal_name,
+      expectedValueUsd: expected(m.estimated_value_usd, m.propensity),
+      hasCampaign: m.has_campaign,
+    })),
+    pendingReviewCount: Number(review.rows[0].n),
+    openContradictions: contradictions.rows.map((c) => ({
+      company: c.legal_name,
+      companyId: c.id,
+    })),
+    refreshDue: refreshes.rows.map((r) => ({
+      company: r.legal_name,
+      companyId: r.id,
+      tier: r.refresh_tier ?? "low",
+    })),
+  };
+  return rankNextActions(state, 6);
+}
+
 export default async function TodayPage() {
   const pool = getPool();
+  const nextActions = await loadNextActions();
 
   const [{ rows: counts }, { rows: drafts }, { rows: top }, { rows: activity }] =
     await Promise.all([
@@ -52,6 +112,27 @@ export default async function TodayPage() {
         <StatChip label="Scored accounts" value={c.scored_accounts} href="/accounts" />
         <StatChip label="Verified evidence" value={c.verified_evidence} />
       </div>
+
+      {nextActions.length > 0 && (
+        <Card className="mb-6">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            Next best actions
+          </h2>
+          <ol className="space-y-2">
+            {nextActions.map((a, i) => (
+              <li key={i} className="flex items-baseline gap-3 text-sm">
+                <span className="tnum w-5 text-right font-semibold text-neutral-400">{i + 1}</span>
+                <span>
+                  <Link href={a.href} className="font-medium hover:underline">
+                    {a.title}
+                  </Link>
+                  <span className="ml-2 text-neutral-500">— {a.reason}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </Card>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>

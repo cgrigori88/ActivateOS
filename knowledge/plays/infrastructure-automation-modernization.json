@@ -38,16 +38,45 @@
     "fallback": "Benchmark briefing: how peers are automating the virtualization-exit path"
   },
   "seller_cadence": [
-    { "step": 1, "action": "Partner seller sends evidence-grounded opening email (approved draft)", "day": 0 },
-    { "step": 2, "action": "Vendor seller engages technical persona with assessment offer", "day": 3 },
-    { "step": 3, "action": "Call attempt referencing the specific trigger, not the product", "day": 5 },
-    { "step": 4, "action": "Value-recap follow-up with one relevant proof point", "day": 10 },
-    { "step": 5, "action": "Manager-level partner-to-customer touch or close-file", "day": 18 }
+    {
+      "step": 1,
+      "action": "Partner seller sends evidence-grounded opening email (approved draft)",
+      "day": 0
+    },
+    {
+      "step": 2,
+      "action": "Vendor seller engages technical persona with assessment offer",
+      "day": 3
+    },
+    {
+      "step": 3,
+      "action": "Call attempt referencing the specific trigger, not the product",
+      "day": 5
+    },
+    {
+      "step": 4,
+      "action": "Value-recap follow-up with one relevant proof point",
+      "day": 10
+    },
+    {
+      "step": 5,
+      "action": "Manager-level partner-to-customer touch or close-file",
+      "day": 18
+    }
   ],
   "objections": [
-    { "objection": "We already script everything in-house", "response_angle": "Toil, drift, and bus-factor cost of bespoke scripting vs. platform; keep scripts, orchestrate them" },
-    { "objection": "Renewal decision is already made", "response_angle": "Automation is renewal-agnostic: it de-risks whichever platform decision was made" },
-    { "objection": "No budget this year", "response_angle": "Assessment is free; output is a business case sized for next cycle" }
+    {
+      "objection": "We already script everything in-house",
+      "response_angle": "Toil, drift, and bus-factor cost of bespoke scripting vs. platform; keep scripts, orchestrate them"
+    },
+    {
+      "objection": "Renewal decision is already made",
+      "response_angle": "Automation is renewal-agnostic: it de-risks whichever platform decision was made"
+    },
+    {
+      "objection": "No budget this year",
+      "response_angle": "Assessment is free; output is a business case sized for next cycle"
+    }
   ],
   "qualification_framework": [
     "Confirmed infrastructure/platform leadership engagement",
@@ -55,5 +84,12 @@
     "Estate size sufficient for platform economics",
     "Partner has (or can create) a commercial path into the account"
   ],
-  "escalation_criteria": "Positive reply from economic or technical persona, or meeting booked → escalate to business-value assessment workflow."
+  "escalation_criteria": "Positive reply from economic or technical persona, or meeting booked \u2192 escalate to business-value assessment workflow.",
+  "economics": {
+    "$comment": "Deterministic value model: base + per-employee scaling, capped. Used by the Motion Engine, never shown to the LLM.",
+    "base_value_usd": 120000,
+    "value_per_employee_usd": 35,
+    "value_cap_usd": 600000,
+    "effort": 3
+  }
 }

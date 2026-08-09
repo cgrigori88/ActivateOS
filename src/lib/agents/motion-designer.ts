@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type pg from "pg";
 import { z } from "zod";
 import { completeStructuredMeta } from "../ai/client";
+import { computeMotionEconomics, type PlayEconomics } from "../motions/economics";
 
 /**
  * Motion Designer (docs/AGENT_LAYER.md §3) — the first frontier-tier
@@ -76,6 +77,16 @@ export async function designMotion(
   if (plays.length === 0) throw new Error(`no active play template for ${args.targetSlug}`);
   const play = plays[0];
 
+  // Economics stay deterministic AND out of the prompt: the model never
+  // sees dollar figures it could echo into customer-facing copy.
+  const { economics, ...playForPrompt } = play.definition as {
+    economics?: PlayEconomics;
+    [k: string]: unknown;
+  };
+  const econ = economics
+    ? computeMotionEconomics(economics, company.employee_count)
+    : null;
+
   // The routed pursuit team, if assembled — the motion is written for THIS
   // partner to execute, not for an abstract channel.
   const { rows: teams } = await db.query<{
@@ -133,7 +144,7 @@ Propensity: ${Number(score.score).toFixed(0)}/100 (${score.band}) for ${args.tar
 ${evidence.map((e) => `${e.id}: [${e.source_type}, ${e.observed_at.toISOString().slice(0, 10)}] ${e.claim}`).join("\n")}
 
 ## Play template
-${JSON.stringify(play.definition, null, 2)}
+${JSON.stringify(playForPrompt, null, 2)}
 
 ${solutionProfile ? `## Solution profile\n${solutionProfile}` : ""}
 ${
@@ -183,8 +194,9 @@ Design the Revenue Motion.`;
   const { rows: motions } = await db.query<{ id: string }>(
     `insert into revenue_motions (org_id, company_id, taxonomy_node_id, play_template_id,
         propensity_score_id, status, thesis, trigger_summary, primary_persona,
-        secondary_persona, cta, confidence, partner_id, partner_seller_id)
-     values ($1, $2, $3, $4, $5, 'draft', $6, $7, $8, $9, $10, $11, $12, $13)
+        secondary_persona, cta, confidence, partner_id, partner_seller_id,
+        estimated_value_usd, effort)
+     values ($1, $2, $3, $4, $5, 'draft', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      returning id`,
     [
       args.orgId,
@@ -200,6 +212,8 @@ Design the Revenue Motion.`;
       draft.confidence,
       team?.partner_id ?? null,
       team?.seller_id ?? null,
+      econ?.estimatedValueUsd ?? null,
+      econ?.effort ?? null,
     ],
   );
 
