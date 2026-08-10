@@ -57,6 +57,7 @@ export async function runScreeningSweep(
        from companies c
       where exists (select 1 from propensity_scores p where p.company_id = c.id and p.org_id = $1)
          or exists (select 1 from evidence e where e.company_id = c.id and e.org_id = $1)
+         or exists (select 1 from partner_accounts pa where pa.company_id = c.id and pa.org_id = $1)
       order by array_position(array['very_high','high','medium','low'], coalesce(c.refresh_tier, 'low')),
                c.legal_name
       limit $2`,
