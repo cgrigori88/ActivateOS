@@ -5,6 +5,7 @@ import { motion, useInView, useMotionValue, useTransform, animate, useScroll } f
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Mark } from "@/components/brand";
+import { HeroMesh } from "./HeroMesh";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -13,7 +14,6 @@ if (typeof window !== "undefined") {
 }
 
 export const ASSET_BASE = "https://qclay.design/lovable/circom/";
-const heroVideo = `${ASSET_BASE}hero-bg.mp4`;
 const usersImg = `${ASSET_BASE}users.png`;
 
 /* ----------------------------- Shared bits ----------------------------- */
@@ -50,77 +50,6 @@ export function useCountUp(target: number, duration = 1, trigger = true, decimal
 }
 
 export const formatNum = (n: number) => n.toLocaleString("en-US");
-
-function SeamlessHeroVideo() {
-  const videos = useRef<Array<HTMLVideoElement | null>>([]);
-  const [activeVideo, setActiveVideo] = useState(0);
-  const isCrossfading = useRef(false);
-  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (resetTimer.current) clearTimeout(resetTimer.current);
-    },
-    [],
-  );
-
-  const crossfade = (from: number) => {
-    if (from !== activeVideo || isCrossfading.current) return;
-    const current = videos.current[from];
-    const nextIndex = from === 0 ? 1 : 0;
-    const next = videos.current[nextIndex];
-    if (!current || !next) return;
-
-    isCrossfading.current = true;
-    next.currentTime = 0;
-    next
-      .play()
-      .then(() => {
-        setActiveVideo(nextIndex);
-        resetTimer.current = setTimeout(() => {
-          current.pause();
-          current.currentTime = 0;
-          isCrossfading.current = false;
-        }, 900);
-      })
-      .catch(() => {
-        isCrossfading.current = false;
-      });
-  };
-
-  return (
-    <motion.div
-      className="absolute inset-0"
-      initial={{ scale: 1.08 }}
-      animate={{ scale: 1 }}
-      transition={{ duration: 2, ease: [0.22, 1, 0.36, 1] }}
-    >
-      {[0, 1].map((index) => (
-        <video
-          key={index}
-          ref={(element) => {
-            videos.current[index] = element;
-          }}
-          src={heroVideo}
-          autoPlay={index === 0}
-          muted
-          playsInline
-          preload="auto"
-          disablePictureInPicture
-          disableRemotePlayback
-          onTimeUpdate={(event) => {
-            const video = event.currentTarget;
-            if (video.duration && video.currentTime >= video.duration - 0.9) crossfade(index);
-          }}
-          onEnded={() => crossfade(index)}
-          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${
-            activeVideo === index ? "opacity-90" : "opacity-0"
-          }`}
-        />
-      ))}
-    </motion.div>
-  );
-}
 
 /* ----------------------------- 1. NAVBAR ----------------------------- */
 
@@ -217,11 +146,13 @@ export function Hero({ scrolled }: { scrolled: boolean }) {
   }, []);
 
   return (
-    <section className="hero-section relative min-h-[100svh] overflow-hidden bg-night text-white">
-      {/* base gradient */}
+    <section className="hero-section relative min-h-[100svh] overflow-hidden bg-[#030712] text-white">
+      {/* Dark ground, then the rotating wireframe mark, then the ambient glow
+          and the bottom scrim that keeps the copy readable over it. */}
       <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_50%,#0b1330_0%,#040716_60%,#000_100%)]" />
-      <SeamlessHeroVideo />
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-night" />
+      <HeroMesh />
+      <div className="pointer-events-none absolute top-[-10%] left-1/2 -translate-x-1/2 w-[80%] aspect-square rounded-full bg-[#2563eb] opacity-10 blur-[150px]" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-[#030712] via-[#030712]/80 to-transparent" />
 
       {/* Content */}
       <div className="relative z-10 max-w-[1240px] mx-auto px-6 pt-40 pb-12 min-h-[100svh] flex flex-col">

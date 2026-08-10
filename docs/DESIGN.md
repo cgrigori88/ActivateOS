@@ -133,6 +133,34 @@ GSAP + ScrollTrigger for scroll reveals and the dashboard; Lenis for desktop
 smooth scroll only (disabled under 1024px). All animation is clamped under
 `prefers-reduced-motion`.
 
+### The hero mesh
+
+`src/app/landing/HeroMesh.tsx` replaces the hero video with the mark rendered
+as a slowly rotating wireframe (Three.js, imported dynamically so it stays out
+of the initial bundle).
+
+The reference this came from used a `TorusGeometry` — one hole. The subject here
+is our own mark instead: a `Shape` carrying two circular holes, taken straight
+from the handoff's construction and recentred for WebGL — outer circle at
+(0, 0) r20, large counter at (-5, -2) r10, small counter at (11, 7) r4. The
+counters land 18.36 units apart on a bearing of 29.36°, which is the handoff's
+fixed bearing.
+
+Everything else is kept from the reference: two layered `LineBasicMaterial`s
+(#2563eb at 0.15 and #60a5fa at 0.10, additive, `depthWrite` off, the inner copy
+scaled to 0.98 and offset half a segment), and the rotation — `time += 0.0015`,
+`rotation.z = time * 0.5`, a `sin` wobble on y, and a gentle float.
+
+Two things worth knowing if you tune it:
+
+- **The extruded caps are discarded.** Only the swept side walls (materialIndex
+  1) are wireframed. The caps are earcut-triangulated and read as coarse
+  triangle fans across the face; the walls are a regular ring grid, which is
+  what gives the reference's torus its even density.
+- **The mark scales with aspect ratio.** On a narrow viewport the visible width
+  collapses, so it shrinks and recentres rather than pushing the small counter
+  off the right edge.
+
 ### Two things to settle before this goes public
 
 1. **Media is hot-linked from `qclay.design`.** The hero video, portraits and
