@@ -1,18 +1,61 @@
 @import "tailwindcss";
 
-/* PursuitOS design tokens (docs/DESIGN.md §3) */
+/* ---------------------------------------------------------------------------
+   PursuitOS design tokens (docs/BRAND.md).
+
+   The `neutral` and `blue` ramps are overridden at the theme level on purpose:
+   the product screens are written with inline `neutral-*` / `blue-*` classes,
+   so redefining the ramps carries the palette into every screen without the
+   platform lane's markup changing.
+   --------------------------------------------------------------------------- */
 @theme {
+  /* Cool neutral ramp — blue-black rather than true black, so the greys sit
+     with the accent instead of fighting it. */
+  --color-neutral-50: #f7f9fc;
+  --color-neutral-100: #eef2f8;
+  --color-neutral-200: #e1e7f0;
+  --color-neutral-300: #cbd4e1;
+  --color-neutral-400: #94a0b5;
+  --color-neutral-500: #67748c;
+  --color-neutral-600: #4b5772;
+  --color-neutral-700: #39435a;
+  --color-neutral-800: #232b3d;
+  --color-neutral-900: #151b29;
+  --color-neutral-950: #0b0f1a;
+
+  /* Brand blue ramp, centred on the site's #2563EB. */
+  --color-blue-50: #eff5ff;
+  --color-blue-100: #deeaff;
+  --color-blue-200: #c2d8ff;
+  --color-blue-300: #9bbeff;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-800: #1e3fae;
+  --color-blue-900: #1e357f;
+  --color-blue-950: #16204d;
+
+  /* Semantic — these describe the data, never interface state. */
   --color-band-very-high: #15803d;
-  --color-band-high: #0369a1;
+  --color-band-high: #2563eb;
   --color-band-medium: #b45309;
-  --color-band-low: #6b7280;
+  --color-band-low: #67748c;
   --color-positive: #15803d;
   --color-negative: #b91c1c;
-  --color-accent: #1d4ed8;
+
+  --color-accent: #2563eb;
+  --color-accent-strong: #1d4ed8;
+  --color-accent-tint: #60a5fa;
+  --color-accent-wash: #eff5ff;
+
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  /* Landing-page palette (docs/DESIGN.md §7). New names only — no existing
-     app class resolves to these, so the cockpit's styling is unaffected. */
+  --radius-control: 6px;
+  --radius-input: 10px;
+  --radius-card: 14px;
+
+  /* Landing-page palette (docs/DESIGN.md §7). */
   --color-ink: oklch(0.16 0.04 260);
   --color-ink-soft: oklch(0.4 0.05 260);
   --color-brand: oklch(0.55 0.22 260);
@@ -22,27 +65,103 @@
   --color-night-2: oklch(0.08 0.04 260);
 }
 
-html { color-scheme: light dark; }
-body { @apply bg-neutral-50 text-neutral-900 antialiased; }
-@media (prefers-color-scheme: dark) {
-  body { @apply bg-neutral-950 text-neutral-100; }
+:root {
+  /* One soft shadow for raised surfaces, one for popovers. A resting card gets
+     a hairline instead. */
+  --shadow-raise: 0 1px 2px rgba(11, 15, 26, 0.04), 0 4px 16px -8px rgba(11, 15, 26, 0.12);
+  --shadow-pop: 0 8px 32px -12px rgba(11, 15, 26, 0.22), 0 2px 8px -4px rgba(11, 15, 26, 0.12);
+  --dur-reaction: 120ms;
+  --dur-enter: 200ms;
 }
-.tnum { font-variant-numeric: tabular-nums; }
 
-/* The wordmark is the one place the brand typeface is used (docs/DESIGN.md §6). */
-.wordmark { font-family: var(--font-brand), var(--font-sans); }
+html {
+  color-scheme: light dark;
+}
+body {
+  @apply bg-neutral-50 text-neutral-900 antialiased;
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    @apply bg-neutral-950 text-neutral-100;
+  }
+  :root {
+    --shadow-raise: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px -8px rgba(0, 0, 0, 0.6);
+    --shadow-pop: 0 8px 32px -12px rgba(0, 0, 0, 0.7), 0 2px 8px -4px rgba(0, 0, 0, 0.5);
+  }
+}
 
-/* Dense data tables */
-.data-table { @apply w-full text-sm; }
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The wordmark is the one place the brand typeface is used (docs/BRAND.md §2). */
+.wordmark {
+  font-family: var(--font-brand), var(--font-sans);
+}
+
+/* Focus is never removed — a 2px accent ring at 2px offset. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+/* ---------------------------------------------------------------------------
+   Data tables — the densest surface in the product, so space is the
+   counterweight: 44px rows, hairline separators, a header that reads as a label
+   rather than a band of chrome.
+   --------------------------------------------------------------------------- */
+.data-table {
+  @apply w-full text-[13.5px];
+  border-collapse: separate;
+  border-spacing: 0;
+}
 .data-table thead th {
-  @apply sticky top-0 z-[1] whitespace-nowrap border-b border-neutral-200 bg-white px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400;
+  @apply sticky top-0 z-[1] whitespace-nowrap border-b border-neutral-200 bg-neutral-50/95 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-neutral-500;
+  backdrop-filter: blur(6px);
 }
 .data-table tbody td {
-  @apply whitespace-nowrap border-b border-neutral-100 px-3 py-2.5 align-middle dark:border-neutral-800/60;
+  @apply whitespace-nowrap border-b border-neutral-100 px-3 py-3 align-middle;
 }
-.data-table tbody tr { @apply transition-colors hover:bg-blue-50/40 dark:hover:bg-blue-950/20; }
+.data-table tbody tr {
+  transition: background-color var(--dur-reaction) linear;
+}
+.data-table tbody tr:hover {
+  @apply bg-accent-wash/60;
+}
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+@media (prefers-color-scheme: dark) {
+  .data-table thead th {
+    @apply border-neutral-800 bg-neutral-900/95 text-neutral-400;
+  }
+  .data-table tbody td {
+    @apply border-neutral-800/60;
+  }
+  .data-table tbody tr:hover {
+    @apply bg-blue-950/30;
+  }
+}
 
 /* Thin scrollbars for dense panes */
-.scroll-thin { scrollbar-width: thin; }
-.scroll-thin::-webkit-scrollbar { height: 6px; width: 6px; }
-.scroll-thin::-webkit-scrollbar-thumb { @apply rounded bg-neutral-300 dark:bg-neutral-700; }
+.scroll-thin {
+  scrollbar-width: thin;
+}
+.scroll-thin::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  @apply rounded bg-neutral-300 dark:bg-neutral-700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -158,21 +158,34 @@ export function Shell({ children }: { children: ReactNode }) {
       <Link
         key={item.href}
         href={item.href}
+        aria-current={active ? "page" : undefined}
         className={
           compact
-            ? `flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm ${
+            ? `flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] transition-colors duration-[120ms] ${
                 active
                   ? "bg-neutral-900 font-medium text-white dark:bg-white dark:text-neutral-900"
                   : "text-neutral-600 dark:text-neutral-300"
               }`
-            : `group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors ${
+            : `group relative flex items-center gap-2.5 rounded-[8px] px-2.5 py-[7px] text-[13px] transition-colors duration-[120ms] ${
                 active
-                  ? "bg-blue-50 font-semibold text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
+                  ? "bg-accent-wash font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300"
                   : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-100"
               }`
         }
       >
-        <span className={compact ? "hidden" : active ? "text-blue-700 dark:text-blue-400" : "text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-300"}>
+        {/* Active rail: the accent marks one thing, and this is it. */}
+        {!compact && active && (
+          <span className="absolute -left-2 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-accent" />
+        )}
+        <span
+          className={
+            compact
+              ? "hidden"
+              : active
+                ? "text-blue-600 dark:text-blue-400"
+                : "text-neutral-400 transition-colors duration-[120ms] group-hover:text-neutral-600 dark:group-hover:text-neutral-300"
+          }
+        >
           {item.icon}
         </span>
         {item.label}
@@ -183,15 +196,15 @@ export function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-52 flex-col border-r border-neutral-200 bg-white md:flex dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="px-4 py-4">
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-[228px] flex-col border-r border-neutral-200 bg-white md:flex dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="px-5 py-5">
           <Wordmark />
         </div>
-        <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-4 scroll-thin">
+        <nav className="scroll-thin flex-1 space-y-5 overflow-y-auto px-4 pb-4">
           {NAV.map((group, i) => (
             <div key={i}>
               {group.label && (
-                <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400">
+                <p className="mb-1.5 px-2.5 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-neutral-400">
                   {group.label}
                 </p>
               )}
@@ -199,23 +212,28 @@ export function Shell({ children }: { children: ReactNode }) {
             </div>
           ))}
         </nav>
-        <div className="border-t border-neutral-100 px-4 py-3 text-[11px] text-neutral-400 dark:border-neutral-800">
-          Design Partner Demo
+        <div className="border-t border-neutral-100 px-5 py-4 dark:border-neutral-800">
+          <p className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
+            Design Partner Demo
+          </p>
+          <p className="mt-0.5 text-[11px] text-neutral-400 dark:text-neutral-500">
+            Partner revenue graph
+          </p>
         </div>
       </aside>
 
       {/* Mobile top bar */}
-      <div className="sticky top-0 z-20 border-b border-neutral-200 bg-white/95 backdrop-blur md:hidden dark:border-neutral-800 dark:bg-neutral-900/95">
-        <div className="flex items-center gap-3 px-4 py-2.5">
+      <div className="sticky top-0 z-20 border-b border-neutral-200 bg-white/90 backdrop-blur md:hidden dark:border-neutral-800 dark:bg-neutral-900/90">
+        <div className="flex items-center gap-3 px-4 py-3">
           <Wordmark />
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-3 pb-2 scroll-thin">
+        <nav className="scroll-thin flex gap-1.5 overflow-x-auto px-3 pb-2.5">
           {NAV.flatMap((g) => g.items).map((item) => link(item, true))}
         </nav>
       </div>
 
-      <div className="md:pl-52">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">{children}</div>
+      <div className="md:pl-[228px]">
+        <div className="mx-auto max-w-[1400px] px-6 py-8 sm:px-8">{children}</div>
       </div>
     </div>
   );

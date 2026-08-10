@@ -1,5 +1,9 @@
 # PursuitOS Front-End Design Brief
 
+> **Brand kit: [BRAND.md](BRAND.md).** That document is the source of truth for
+> colour, type, shape and density, derived from the marketing site. This file
+> remains the UX thesis, information architecture and interaction standards.
+
 The front end must be top-of-class against ecosystem-revenue platforms
 (Crossbeam-style data browsers) and internal vendor outreach consoles. We do
 not win by matching their dashboards feature-for-feature — we win by shipping
