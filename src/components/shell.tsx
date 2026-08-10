@@ -146,8 +146,15 @@ function Wordmark() {
   );
 }
 
+/** Public marketing surfaces render without the app chrome. */
+const CHROMELESS = ["/landing"];
+
 export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+
+  if (CHROMELESS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return <>{children}</>;
+  }
 
   const link = (item: NavItem, compact = false) => {
     const active = isActive(pathname, item.href);

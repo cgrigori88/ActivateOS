@@ -78,3 +78,48 @@ Three product truths drive every screen:
   is added per-component only where needed (queues, palette).
 - Design tokens defined once: band scale, status scale, surface/ink ramps,
   spacing, radii. Charts (later) follow the same tokens.
+
+---
+
+## 6. Meridian — the brand system (added in the design lane)
+
+The client-supplied kit `design_handoff_pursuitos_brand` ("Meridian") is now the
+authority on colour, type, radii and motion for the **marketing surface**. It is
+high-fidelity: values are final and exact, and are reproduced rather than tuned.
+
+- **Tokens** live in `src/app/globals.css` as `--pos-*` custom properties, taken
+  verbatim from the kit's `tokens.css`.
+- **Primitives** live in `src/components/brand.tsx`, deliberately separate from
+  `src/components/ui.tsx` so the marketing surface can adopt the brand without
+  colliding with the platform lane's edits to the app primitives.
+- **Type**: Instrument Sans (display/interface) + JetBrains Mono (every number,
+  without exception, tabular figures always on), loaded in `src/app/layout.tsx`
+  as `--font-pos-sans` / `--font-pos-mono`.
+- **Ground** is fixed at `--pos-canvas` (#040D43) and must never be shifted by a
+  background treatment.
+- **Accent** `--pos-accent` marks exactly one thing per screen — what the system
+  is asserting — and stays under 6% of any surface. The warm pair (honey,
+  canary) is emphasis only: section numbers and timing, never a button or fill.
+- **Market-signal colours are data.** They describe the market; they never mean
+  success or error in the interface. Use the accent for that.
+
+### The background field
+
+The kit ships without one by design. Ours is `src/app/landing/beam.tsx` and
+satisfies the four stated constraints: the ground value is never shifted; no
+colour sits under body copy (beams are parked outside the reading column and
+panels carry opaque surfaces); the field resolves into the ground through an
+~800px scrim rather than ending on an edge; and scroll is the only clock — it
+translates against page progress at ~a fifth of scroll speed and crossfades
+three fixed temperatures, with no timeline of its own. Clamped to none under
+`prefers-reduced-motion`.
+
+### Open: does Meridian apply app-wide?
+
+§3 above describes the current app chrome — neutral base, light and dark of
+equal quality. Meridian is a fixed dark navy ground with a different palette and
+type pairing. **The two cannot both be true.** Meridian is currently scoped to
+the `.meridian` class so only `/landing` uses it; the app screens are untouched.
+Rolling it through the cockpit is a large, separate change to screens the
+platform lane is actively building, and needs an explicit decision before it
+starts. Until then, §3 governs the app and §6 governs the marketing surface.
