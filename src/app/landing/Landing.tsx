@@ -27,7 +27,7 @@ export function Landing() {
     <main id="top" className="cirform bg-white">
       {mounted && <MagneticCursor />}
       <Navbar scrolled={scrolled} />
-      <Hero scrolled={scrolled} />
+      <Hero />
       <About />
       <NumbersSpeak />
       <SmarterBanking />

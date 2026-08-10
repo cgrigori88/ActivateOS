@@ -135,38 +135,31 @@ smooth scroll only (disabled under 1024px). All animation is clamped under
 
 ### The hero mesh
 
-`src/app/landing/HeroMesh.tsx` replaces the hero video with the mark rendered
-as a slowly rotating wireframe (Three.js, imported dynamically so it stays out
-of the initial bundle).
-
-The reference this came from used a `TorusGeometry` — one hole. The subject here
-is our own mark instead: a `Shape` carrying two circular holes, taken straight
-from the handoff's construction and recentred for WebGL — outer circle at
-(0, 0) r20, large counter at (-5, -2) r10, small counter at (11, 7) r4. The
-counters land 18.36 units apart on a bearing of 29.36°, which is the handoff's
-fixed bearing.
-
-Everything else is kept from the reference: two layered `LineBasicMaterial`s
+`src/app/landing/HeroMesh.tsx` is the reference's torus, reproduced as-is:
+`TorusGeometry(22, 7, 120, 250)` wireframed, two layered `LineBasicMaterial`s
 (#2563eb at 0.15 and #60a5fa at 0.10, additive, `depthWrite` off, the inner copy
-scaled to 0.98 and offset half a segment), and the rotation — `time += 0.0015`,
-`rotation.z = time * 0.5`, a `sin` wobble on y, and a gentle float.
+scaled to 0.98 and offset half a segment), parked at y 18 so the tube arches
+over the top of the frame, tilted 0.1π, turning at `time += 0.0015` with
+`rotation.z = time * 0.5`. Three is imported dynamically so it stays out of the
+initial bundle; reduced motion renders one static frame.
 
-Two things worth knowing if you tune it:
+The hero layout follows the reference too — content centred and bottom-aligned
+under the arch: headline, then a `max-w-md` lead, then the CTA pair. The
+reference's vertical hairline beside the title is dropped, since that reads as
+an accent next to a single word and as a stray mark next to a two-line headline.
 
-- **The extruded caps are discarded.** Only the swept side walls (materialIndex
-  1) are wireframed. The caps are earcut-triangulated and read as coarse
-  triangle fans across the face; the walls are a regular ring grid, which is
-  what gives the reference's torus its even density.
-- **The profile is pre-compensated for the bevel.** Bevelling grows the outer
-  edge outward and eats each hole inward, so the shape is drawn with its outer
-  circle one unit smaller and both counters one unit larger. After bevelling the
-  silhouette is the mark at true proportions. Without it the small counter loses
-  half its radius and the mark stops reading as aim.
-- **Segment counts track the reference torus** (radialSegments 120, tubular 250):
-  220 along each contour, 58 rings around the profile.
-- **The mark scales with aspect ratio.** On a narrow viewport the visible width
-  collapses, so it shrinks and recentres rather than pushing the small counter
-  off the right edge.
+One addition the reference doesn't need: **the torus scales with aspect ratio.**
+Its camera framing assumes a landscape container, and on a phone the arch falls
+entirely outside the frame, leaving a slab of tube across the bottom. Below an
+aspect of 1.25 the torus and its height scale down together so the arch stays in
+shot. At the reference's own proportions it is a no-op.
+
+An earlier version made our mark the subject instead of the torus — the same
+wireframe treatment applied to a `Shape` with two circular holes. It is in the
+git history if we want it back. It cannot carry a tube this fat, though: the
+mark's wall between its outer edge and the large counter is only 4.6 units, and
+3.0 to the small counter, so a tube of radius 7 collides with itself and the
+mark stops reading. A thin rimmed profile is the most that shape allows.
 
 ### Two things to settle before this goes public
 

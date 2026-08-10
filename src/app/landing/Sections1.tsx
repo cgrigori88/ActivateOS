@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { motion, useInView, useMotionValue, useTransform, animate, useScroll } from "framer-motion";
+import { motion, useInView, useMotionValue, animate } from "framer-motion";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Mark } from "@/components/brand";
@@ -114,13 +114,7 @@ function CurtainWord({ word, delay, className }: { word: string; delay: number; 
   );
 }
 
-export function Hero({ scrolled }: { scrolled: boolean }) {
-  const pipeline = useCountUp(1840000, 1.2, true);
-  const multiple = useCountUp(3.4, 1, true, 1);
-
-  const { scrollY } = useScroll();
-  const cardY = useTransform(scrollY, [0, 800], [0, 150]);
-
+export function Hero() {
   useEffect(() => {
     const ctx = gsap.context(() => {
       gsap.to(".hero-content", {
@@ -134,30 +128,26 @@ export function Hero({ scrolled }: { scrolled: boolean }) {
           scrub: 0.6,
         },
       });
-      gsap.from(".revenue-card", {
-        x: 120,
-        opacity: 0,
-        duration: 1.2,
-        delay: 0.8,
-        ease: "expo.out",
-      });
     });
     return () => ctx.revert();
   }, []);
 
   return (
-    <section className="hero-section relative min-h-[100svh] overflow-hidden bg-[#030712] text-white">
-      {/* Dark ground, then the rotating wireframe mark, then the ambient glow
-          and the bottom scrim that keeps the copy readable over it. */}
+    <section className="hero-section relative flex min-h-[100svh] flex-col overflow-hidden bg-[#030712] text-white">
+      {/* Dark ground, the arching torus, the ambient glow, then the scrim that
+          keeps the copy readable where it sits under the arch. */}
       <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_50%,#0b1330_0%,#040716_60%,#000_100%)]" />
       <HeroMesh />
       <div className="pointer-events-none absolute top-[-10%] left-1/2 -translate-x-1/2 w-[80%] aspect-square rounded-full bg-[#2563eb] opacity-10 blur-[150px]" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-[#030712] via-[#030712]/80 to-transparent" />
 
-      {/* Content */}
-      <div className="relative z-10 max-w-[1240px] mx-auto px-6 pt-40 pb-12 min-h-[100svh] flex flex-col">
-        <div className="hero-content will-change-transform flex-1 flex flex-col justify-center">
-          <h1 className="text-[clamp(48px,7vw,92px)] leading-[1.02] font-medium tracking-[-0.02em] max-w-4xl">
+      {/* Content sits at the bottom of the frame, centred under the arch. */}
+      <div className="hero-content will-change-transform relative z-10 flex flex-1 flex-col items-center justify-end px-6 pb-16 pt-40 text-center md:pb-24">
+        {/* The reference pairs its title with a vertical hairline on the right.
+            That reads as a deliberate accent beside a single word; beside a
+            two-line headline it just floats in the gutter, so it is dropped. */}
+        <div className="relative flex items-center justify-center">
+          <h1 className="hero-title max-w-[15ch] text-[clamp(44px,6.6vw,88px)] font-medium leading-[1.02] tracking-[-0.03em]">
             <span className="block">
               {["Know", "where"].map((w, i) => (
                 <CurtainWord key={`l1-${i}`} word={w} delay={0.1 + i * 0.08} />
@@ -173,104 +163,40 @@ export function Hero({ scrolled }: { scrolled: boolean }) {
               />
             </span>
           </h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, delay: 0.7, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-8 text-white/70 max-w-md text-[15px] leading-relaxed"
-          >
-            PursuitOS scores the intersection of customer, product, partner,
-            <br />
-            seller and timing, then assembles the motion to pursue it.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, delay: 0.85, ease: [0.22, 1, 0.36, 1] }}
-            className="mt-10 flex items-center gap-6"
-          >
-            <motion.a
-              href="#request"
-              className="btn-pill"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              Request access
-            </motion.a>
-            <motion.a
-              href="#evidence"
-              className="text-white/80 text-sm link-quiet inline-flex"
-              whileHover={{ x: 5, color: "#fff" }}
-            >
-              See the methodology
-            </motion.a>
-          </motion.div>
         </div>
 
-        {/* Pipeline card */}
-        <motion.div
-          style={{ y: cardY }}
-          /* Absolute on desktop as specced; hidden below lg so it never covers
-             the headline on narrow viewports. */
-          className="revenue-card will-change-transform hidden lg:block absolute right-6 top-32 w-[320px] rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-5 text-white shadow-[0_30px_80px_-30px_rgba(0,0,0,.8)]"
+        <motion.p
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.9, delay: 0.7, ease: [0.22, 1, 0.36, 1] }}
+          className="mx-auto mt-6 max-w-md text-[15px] leading-relaxed text-white/70"
         >
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2 text-white/80">
-              <span className="inline-block h-4 w-4">
-                <svg viewBox="0 0 24 14" fill="none">
-                  <path
-                    d="M21.95 1.25L12.29 10.91L8.61 5.39L1.25 12.75"
-                    stroke="white"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
-              Est. pipeline
-            </div>
-            <div className="flex gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-white/60" />
-              <span className="w-1.5 h-1.5 rounded-full bg-white/30" />
-              <span className="w-1.5 h-1.5 rounded-full bg-white/30" />
-            </div>
-          </div>
-          <div className="mt-4 flex items-end gap-3">
-            <div className="text-[40px] font-medium tracking-tight tabular-nums">
-              ${formatNum(pipeline)}
-            </div>
-            <div className="text-xs text-white/60 pb-2">Per motion</div>
-          </div>
-          <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white text-ink px-3 py-1 text-xs font-medium">
-            {multiple.toFixed(1)}× <span className="text-ink-soft font-normal">vs. baseline</span>
-          </div>
-        </motion.div>
+          PursuitOS scores the intersection of customer, product, partner, seller and timing, then
+          assembles the motion to pursue it.
+        </motion.p>
 
-        {/* Bottom row */}
-        <div className="relative flex flex-col items-start gap-5 text-xs text-white/70 mt-auto pt-10 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-          <div className="flex items-center gap-2 tracking-[.2em] uppercase">
-            SCROLL{" "}
-            <motion.span
-              animate={{ y: [0, 4, 0] }}
-              transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-            >
-              ↓
-            </motion.span>
-          </div>
-          <motion.div
-            animate={{ opacity: scrolled ? 0 : 1, y: scrolled ? -10 : 0 }}
-            transition={{ duration: 0.5 }}
-            className="flex items-center gap-3"
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.9, delay: 0.85, ease: [0.22, 1, 0.36, 1] }}
+          className="mt-8 flex flex-wrap items-center justify-center gap-5"
+        >
+          <motion.a
+            href="#request"
+            className="btn-pill"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
           >
-            <span className="text-white/80">Now taking design partners</span>
-            <div className="flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-md border border-white/15 pl-1 pr-3 py-1">
-              <img src={usersImg} alt="Design partners" className="h-7" />
-              <span className="text-white">Design partners</span>
-            </div>
-          </motion.div>
-        </div>
+            Request access
+          </motion.a>
+          <motion.a
+            href="#evidence"
+            className="link-quiet inline-flex text-sm text-white/80"
+            whileHover={{ x: 5, color: "#fff" }}
+          >
+            See the methodology
+          </motion.a>
+        </motion.div>
       </div>
     </section>
   );
