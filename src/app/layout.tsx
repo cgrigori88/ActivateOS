@@ -1,7 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Instrument_Sans } from "next/font/google";
+import { Instrument_Sans, Playfair_Display } from "next/font/google";
 import { Shell } from "@/components/shell";
 
 /**
@@ -15,6 +15,15 @@ const brand = Instrument_Sans({
   variable: "--font-brand",
 });
 
+/** Display serif for the landing page's emphasis words (docs/DESIGN.md §7). */
+const display = Playfair_Display({
+  subsets: ["latin"],
+  style: ["italic"],
+  weight: ["400"],
+  display: "swap",
+  variable: "--font-display-serif",
+});
+
 export const metadata: Metadata = {
   title: "PursuitOS",
   description: "The AI decision and orchestration layer for partner-led revenue.",
@@ -22,7 +31,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={brand.variable}>
+    <html lang="en" className={`${brand.variable} ${display.variable}`}>
       <body className="min-h-screen font-sans">
         <Shell>{children}</Shell>
       </body>

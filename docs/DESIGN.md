@@ -105,14 +105,47 @@ neutral, light-and-dark-equal system described in §3.
 ## 7. The public landing page
 
 `/landing` is the marketing surface and the one route excluded from the Basic
-Auth gate in `src/middleware.ts` — it holds no customer data. It is a server
-component with no database access, so it prerenders as static.
+Auth gate in `src/middleware.ts` — it holds no customer data and reads nothing
+from the database.
 
-Its argument is the one from PROJECT_BRIEF §1: the channel has an activation
-problem, not a recruitment problem. The page runs problem → proof → mechanism →
-offer, with the pursuit surface embedded mid-page as evidence rather than as the
-pitch, because what we are selling today is a 30-Day Partner Activation
-engagement, not self-serve SaaS.
+It is a recreation of a supplied reference design (a QClay-style animated
+fintech landing page), rebuilt around our own copy, mark and wordmark. Ten
+sections: navbar, hero, about, numbers, bento grid, performance dashboard,
+expense/motion grid, product truths, FAQ, footer CTA.
 
-Pricing is deliberately absent. The brief carries real numbers; publishing them
-is a commercial decision, not a design one.
+**This section is deliberately exempt from §3.** The cockpit is calm, neutral
+and dense; the landing page is cinematic and animated, and that is the point —
+it has a different job and a different audience. §3 still governs every
+authenticated screen. The landing styles live in `src/app/landing/landing.css`,
+scoped under `.cirform` so nothing leaks into the app.
+
+### Stack notes
+
+The reference was written for TanStack Start + Vite. Ported to the Next.js App
+Router: the route files became `page.tsx` (server, metadata) plus `Landing.tsx`
+(client), the shadcn `Button` import was inlined, and the reference's global
+`@theme` block was *not* reproduced — redefining `--background` / `--card` /
+`--border` globally would have restyled every cockpit screen. Only new colour
+names (`ink`, `night`, `brand`) were added to the app theme.
+
+Motion: Framer Motion for component animation, count-ups, cursor and marquee;
+GSAP + ScrollTrigger for scroll reveals and the dashboard; Lenis for desktop
+smooth scroll only (disabled under 1024px). All animation is clamped under
+`prefers-reduced-motion`.
+
+### Two things to settle before this goes public
+
+1. **Media is hot-linked from `qclay.design`.** The hero video, portraits and
+   icons all load from the reference's origin. That is someone else's CDN and
+   someone else's media — fine for a preview, not for a production site. These
+   need to be replaced with our own assets, or at minimum self-hosted with
+   permission, before launch.
+2. **The testimonial carousel carries no testimonials.** The reference had
+   named people at named banks. We have no customers yet — we are taking our
+   first design partners — so inventing quotes would be publishing fabricated
+   endorsements. The section keeps its design and animation and carries the
+   three product truths from §1 instead. Swap in real quotes once a design
+   partner has agreed to be named.
+
+Pricing is also absent. The brief carries real numbers; publishing them is a
+commercial decision, not a design one.

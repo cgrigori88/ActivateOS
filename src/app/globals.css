@@ -10,6 +10,16 @@
   --color-negative: #b91c1c;
   --color-accent: #1d4ed8;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Landing-page palette (docs/DESIGN.md §7). New names only — no existing
+     app class resolves to these, so the cockpit's styling is unaffected. */
+  --color-ink: oklch(0.16 0.04 260);
+  --color-ink-soft: oklch(0.4 0.05 260);
+  --color-brand: oklch(0.55 0.22 260);
+  --color-brand-deep: oklch(0.36 0.2 263);
+  --color-brand-glow: oklch(0.78 0.15 250);
+  --color-night: oklch(0.13 0.045 260);
+  --color-night-2: oklch(0.08 0.04 260);
 }
 
 html { color-scheme: light dark; }
