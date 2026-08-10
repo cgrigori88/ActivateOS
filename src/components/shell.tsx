@@ -79,10 +79,30 @@ const icons = {
       <path d="M2 8h3l1.5-3.5L9 12l1.5-4H14" />
     </svg>
   ),
+  intake: (
+    <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+      <path d="M8 2v7M5 6l3 3 3-3M3 12h10" />
+    </svg>
+  ),
+  mapping: (
+    <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+      <circle cx="4" cy="4" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="12" cy="4" r="2" />
+      <path d="M4 6v4a2 2 0 002 2h4M12 6v4" />
+    </svg>
+  ),
 };
 
 const NAV: NavGroup[] = [
   { label: null, items: [{ href: "/", label: "Today", icon: icons.today }] },
+  {
+    label: "Ecosystem",
+    items: [
+      { href: "/intake", label: "Intake", icon: icons.intake },
+      { href: "/mapping", label: "Mapping", icon: icons.mapping },
+    ],
+  },
   {
     label: "Intelligence",
     items: [
