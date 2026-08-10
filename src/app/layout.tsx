@@ -1,24 +1,18 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Instrument_Sans, JetBrains_Mono } from "next/font/google";
+import { Instrument_Sans } from "next/font/google";
 import { Shell } from "@/components/shell";
 
 /**
- * Meridian type pairing: Instrument Sans for display and interface, JetBrains
- * Mono for every number without exception. Exposed as CSS variables so the
- * brand surface can opt in without changing the app's default font stack.
+ * The brand typeface is loaded for the wordmark only (docs/DESIGN.md §6).
+ * Interface and body type stay on the system stack defined in globals.css.
  */
-const instrumentSans = Instrument_Sans({
+const brand = Instrument_Sans({
   subsets: ["latin"],
+  weight: ["500"],
   display: "swap",
-  variable: "--font-pos-sans",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-pos-mono",
+  variable: "--font-brand",
 });
 
 export const metadata: Metadata = {
@@ -28,7 +22,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${instrumentSans.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" className={brand.variable}>
       <body className="min-h-screen font-sans">
         <Shell>{children}</Shell>
       </body>

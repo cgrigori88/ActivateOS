@@ -81,45 +81,38 @@ Three product truths drive every screen:
 
 ---
 
-## 6. Meridian — the brand system (added in the design lane)
+## 6. The mark and wordmark
 
-The client-supplied kit `design_handoff_pursuitos_brand` ("Meridian") is now the
-authority on colour, type, radii and motion for the **marketing surface**. It is
-high-fidelity: values are final and exact, and are reproduced rather than tuned.
+The brand handoff supplies the identity; §3 above still governs the visual
+language. We take **only the mark and the wordmark** from that kit. Its palette,
+type scale, dark navy ground and motion rules are deliberately *not* adopted:
+they are derived from a third party's brand guidelines and would contradict the
+neutral, light-and-dark-equal system described in §3.
 
-- **Tokens** live in `src/app/globals.css` as `--pos-*` custom properties, taken
-  verbatim from the kit's `tokens.css`.
-- **Primitives** live in `src/components/brand.tsx`, deliberately separate from
-  `src/components/ui.tsx` so the marketing surface can adopt the brand without
-  colliding with the platform lane's edits to the app primitives.
-- **Type**: Instrument Sans (display/interface) + JetBrains Mono (every number,
-  without exception, tabular figures always on), loaded in `src/app/layout.tsx`
-  as `--font-pos-sans` / `--font-pos-mono`.
-- **Ground** is fixed at `--pos-canvas` (#040D43) and must never be shifted by a
-  background treatment.
-- **Accent** `--pos-accent` marks exactly one thing per screen — what the system
-  is asserting — and stays under 6% of any surface. The warm pair (honey,
-  canary) is emphasis only: section numbers and timing, never a button or fill.
-- **Market-signal colours are data.** They describe the market; they never mean
-  success or error in the interface. Use the accent for that.
+- `src/components/brand.tsx` holds `Mark` and `Lockup`, and nothing else.
+- The mark is a circle carrying two voids on one axis. Never rotate it (the
+  bearing is fixed at 29°), never colour the counters separately, never outline
+  it. At 16px and below the forward counter is dropped and it runs solid — the
+  favicon in `src/app/icon.svg` uses that solid variant.
+- The wordmark is "PursuitOS" at weight 500, tracking tightening as size grows
+  (-0.046em at 34px, -0.040em at 23px, -0.026em at 15px). Instrument Sans is
+  loaded for this one purpose via `--font-brand`; interface and body type stay
+  on the system stack.
+- Primary lockup only: mark + wordmark on one line, gap 40% of the mark's
+  height. It is the sidebar wordmark in `shell.tsx` and the header and footer
+  lockup on `/landing`.
 
-### The background field
+## 7. The public landing page
 
-The kit ships without one by design. Ours is `src/app/landing/beam.tsx` and
-satisfies the four stated constraints: the ground value is never shifted; no
-colour sits under body copy (beams are parked outside the reading column and
-panels carry opaque surfaces); the field resolves into the ground through an
-~800px scrim rather than ending on an edge; and scroll is the only clock — it
-translates against page progress at ~a fifth of scroll speed and crossfades
-three fixed temperatures, with no timeline of its own. Clamped to none under
-`prefers-reduced-motion`.
+`/landing` is the marketing surface and the one route excluded from the Basic
+Auth gate in `src/middleware.ts` — it holds no customer data. It is a server
+component with no database access, so it prerenders as static.
 
-### Open: does Meridian apply app-wide?
+Its argument is the one from PROJECT_BRIEF §1: the channel has an activation
+problem, not a recruitment problem. The page runs problem → proof → mechanism →
+offer, with the pursuit surface embedded mid-page as evidence rather than as the
+pitch, because what we are selling today is a 30-Day Partner Activation
+engagement, not self-serve SaaS.
 
-§3 above describes the current app chrome — neutral base, light and dark of
-equal quality. Meridian is a fixed dark navy ground with a different palette and
-type pairing. **The two cannot both be true.** Meridian is currently scoped to
-the `.meridian` class so only `/landing` uses it; the app screens are untouched.
-Rolling it through the cockpit is a large, separate change to screens the
-platform lane is actively building, and needs an explicit decision before it
-starts. Until then, §3 governs the app and §6 governs the marketing surface.
+Pricing is deliberately absent. The brief carries real numbers; publishing them
+is a commercial decision, not a design one.

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { Lockup } from "@/components/brand";
 
 /**
  * Application shell: grouped left sidebar on desktop, horizontal nav on
@@ -135,13 +136,8 @@ function isActive(pathname: string, href: string): boolean {
 
 function Wordmark() {
   return (
-    <Link href="/" className="flex items-center gap-2">
-      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-700 text-[11px] font-bold text-white">
-        P
-      </span>
-      <span className="text-sm font-semibold tracking-tight">
-        Pursuit<span className="text-blue-700 dark:text-blue-400">OS</span>
-      </span>
+    <Link href="/" className="flex items-center">
+      <Lockup size={15} />
     </Link>
   );
 }

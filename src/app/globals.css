@@ -12,128 +12,15 @@
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-/* ---------------------------------------------------------------------------
-   Meridian — PursuitOS brand system (design_handoff_pursuitos_brand).
-   Palette, type scale, radii and motion are FINAL and exact; reproduce them.
-   Ground is fixed at --pos-canvas and must never be shifted by a background.
-   Scoped to `.meridian` for now so the existing app chrome is untouched; see
-   docs/DESIGN.md §6 for the app-wide rollout decision.
-   --------------------------------------------------------------------------- */
-:root {
-  /* Ground */
-  --pos-void: #02071f;
-  --pos-canvas: #040d43;
-  --pos-surface: #0a1550;
-  --pos-raised: #16226a;
-  --pos-panel-glass: rgba(255, 255, 255, 0.035);
-
-  /* Type */
-  --pos-fg: #f8f8f9;
-  --pos-fg-muted: #8088a7;
-  --pos-fg-on-light: #040d43;
-  --pos-fg-muted-light: #535983;
-
-  /* Hairlines */
-  --pos-line: rgba(255, 255, 255, 0.12);
-  --pos-line-soft: rgba(255, 255, 255, 0.07);
-  --pos-line-strong: rgba(255, 255, 255, 0.22);
-  --pos-line-on-light: #cbd0e5;
-
-  /* Accent — the assertion. One per screen, under 6% of any surface. */
-  --pos-accent: #14cbde;
-  --pos-accent-press: #0f94a4;
-  --pos-accent-tint: #9be9f2;
-  --pos-accent-deep: #062c46;
-  --pos-accent-fg: #040d43;
-
-  /* Warm pair — emphasis only, never a surface */
-  --pos-honey: #ea9d00;
-  --pos-canary: #f4cb4e;
-
-  /* Light ground */
-  --pos-snow: #ffffff;
-  --pos-white: #f8f8f9;
-  --pos-light: #f4eff2;
-
-  /* Market signal — data only, never interface state */
-  --pos-signal-negative: #da2d2c;
-  --pos-signal-timing: #ea9d00;
-  --pos-signal-neutral: #1d86ff;
-  --pos-signal-positive: #2fb57a;
-
-  /* Conviction ramp — propensity heat, 0.00 -> 1.00 */
-  --pos-ramp-0: #0a1550;
-  --pos-ramp-1: #1b2a8c;
-  --pos-ramp-2: #3c2cda;
-  --pos-ramp-3: #1d86ff;
-  --pos-ramp-4: #14cbde;
-
-  /* Background light — values for light, never ink */
-  --pos-light-1-core: #7edcff;
-  --pos-light-1-falloff: #1d86ff;
-  --pos-light-2-core: #968cff;
-  --pos-light-2-falloff: #3c2cda;
-  --pos-light-3-core: #f4cb4e;
-  --pos-light-3-falloff: #ea9d00;
-
-  /* Radii, motion */
-  --pos-r-button: 8px;
-  --pos-r-panel: 3px;
-  --pos-r-appicon: 14px;
-  --pos-dur-reaction: 120ms;
-  --pos-dur-advance: 440ms;
-  --pos-ease-advance: cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Every number, price, timestamp, score and identifier is mono, tabular. */
-.pos-num {
-  font-family: var(--font-pos-mono), ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.04em;
-}
-
-/* Bracketed micro-label — precedes almost every section heading. */
-.pos-micro {
-  font-family: var(--font-pos-mono), ui-monospace, monospace;
-  font-size: 10.5px;
-  line-height: 1.2;
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--pos-fg-muted);
-}
-
-/* Meridian surface: fixed navy ground, light type, brand sans. */
-.meridian {
-  background-color: var(--pos-canvas);
-  color: var(--pos-fg);
-  font-family: var(--font-pos-sans), system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-.meridian ::selection {
-  background: var(--pos-accent);
-  color: var(--pos-accent-fg);
-}
-
-/* Reaction: border and surface step up together — never opacity alone. */
-.pos-reaction {
-  transition:
-    background-color var(--pos-dur-reaction) linear,
-    border-color var(--pos-dur-reaction) linear,
-    color var(--pos-dur-reaction) linear;
-}
-
-/* Scroll is the only clock. Nothing animates on its own timeline. */
-@media (prefers-reduced-motion: reduce) {
-  .pos-beam { transform: none !important; }
-  .pos-reaction { transition: none; }
-}
-
 html { color-scheme: light dark; }
 body { @apply bg-neutral-50 text-neutral-900 antialiased; }
 @media (prefers-color-scheme: dark) {
   body { @apply bg-neutral-950 text-neutral-100; }
 }
 .tnum { font-variant-numeric: tabular-nums; }
+
+/* The wordmark is the one place the brand typeface is used (docs/DESIGN.md §6). */
+.wordmark { font-family: var(--font-brand), var(--font-sans); }
 
 /* Dense data tables */
 .data-table { @apply w-full text-sm; }
