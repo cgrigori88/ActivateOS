@@ -20,7 +20,8 @@ import { useEffect, useRef } from "react";
  * handoff's fixed bearing.
  */
 
-const CURVE_SEGMENTS = 110;
+/** Along-contour density, matching the reference torus's 250 tubular segments. */
+const CURVE_SEGMENTS = 220;
 
 export function HeroMesh() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -56,26 +57,42 @@ export function HeroMesh() {
       container.appendChild(renderer.domElement);
 
       // ---- The mark as a solid with two voids --------------------------
+      /**
+       * The bevel grows the outer edge outward and eats each hole inward by
+       * `BEVEL`, so the profile is pre-compensated: the outer circle is drawn
+       * BEVEL smaller and both counters BEVEL larger. After bevelling, the
+       * silhouette is the mark at its true proportions — outer r20, large
+       * counter r10 at (-5, -2), small counter r4 at (11, 7). Without this the
+       * small counter loses half its radius and the mark stops reading as aim.
+       */
+      const BEVEL = 1;
+
       const shape = new THREE.Shape();
-      shape.absarc(0, 0, 20, 0, Math.PI * 2, false);
+      shape.absarc(0, 0, 20 - BEVEL, 0, Math.PI * 2, false);
 
       const largeCounter = new THREE.Path();
-      largeCounter.absarc(-5, -2, 10, 0, Math.PI * 2, true);
+      largeCounter.absarc(-5, -2, 10 + BEVEL, 0, Math.PI * 2, true);
 
       const smallCounter = new THREE.Path();
-      smallCounter.absarc(11, 7, 4, 0, Math.PI * 2, true);
+      smallCounter.absarc(11, 7, 4 + BEVEL, 0, Math.PI * 2, true);
 
       shape.holes.push(largeCounter, smallCounter);
 
+      /**
+       * Segment counts follow the reference torus (radialSegments 120,
+       * tubularSegments 250): CURVE_SEGMENTS runs along each contour, and the
+       * bevel/step rings run around the profile, so the swept wall comes out as
+       * the same dense, even quad grid.
+       */
       const solid = new THREE.ExtrudeGeometry(shape, {
-        depth: 9,
-        steps: 22,
+        depth: 6,
+        steps: 10,
         curveSegments: CURVE_SEGMENTS,
         bevelEnabled: true,
-        bevelThickness: 2,
-        bevelSize: 2,
+        bevelThickness: BEVEL,
+        bevelSize: BEVEL,
         bevelOffset: 0,
-        bevelSegments: 14,
+        bevelSegments: 24,
       });
 
       /**

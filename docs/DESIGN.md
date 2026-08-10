@@ -157,6 +157,13 @@ Two things worth knowing if you tune it:
   1) are wireframed. The caps are earcut-triangulated and read as coarse
   triangle fans across the face; the walls are a regular ring grid, which is
   what gives the reference's torus its even density.
+- **The profile is pre-compensated for the bevel.** Bevelling grows the outer
+  edge outward and eats each hole inward, so the shape is drawn with its outer
+  circle one unit smaller and both counters one unit larger. After bevelling the
+  silhouette is the mark at true proportions. Without it the small counter loses
+  half its radius and the mark stops reading as aim.
+- **Segment counts track the reference torus** (radialSegments 120, tubular 250):
+  220 along each contour, 58 rings around the profile.
 - **The mark scales with aspect ratio.** On a narrow viewport the visible width
   collapses, so it shrinks and recentres rather than pushing the small counter
   off the right edge.
