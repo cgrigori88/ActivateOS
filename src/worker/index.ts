@@ -1,7 +1,8 @@
 import http from "node:http";
 import { getPool } from "../db/client";
+import { importAccountsCsv } from "../lib/ingest/ingest-accounts";
 import { runPendingResearchLocked } from "../lib/intel/research-runner";
-import { runScreeningSweepAllOrgs } from "../lib/intel/screen-runner";
+import { runScreeningSweepAllOrgs, runScreeningSweepLocked } from "../lib/intel/screen-runner";
 
 /**
  * Pipeline worker (Railway). A single long-lived process that drives the
@@ -61,6 +62,48 @@ async function queueStatus() {
   return Object.fromEntries(rows.map((r) => [r.status, Number(r.n)]));
 }
 
+async function runImport(
+  csv: string,
+  meta: { orgName: string; partnerName?: string; partnerType?: string; filename?: string; uploadedBy?: string },
+) {
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    return await importAccountsCsv(db, { ...meta, csv });
+  } finally {
+    db.release();
+  }
+}
+
+/**
+ * Fire-and-forget screen of an org after an import (user chose auto-queue).
+ * Bounded so a large upload doesn't run up a surprise bill in one shot — the
+ * daily scheduler drains the rest over subsequent passes.
+ */
+function screenOrgInBackground(orgId: string, limit = 50): void {
+  void (async () => {
+    const pool = getPool();
+    const db = await pool.connect();
+    try {
+      const r = await runScreeningSweepLocked(db, orgId, { limit });
+      log("post-import screen", r.locked ? { locked: true } : { screened: r.screened, enqueued: r.enqueued });
+    } catch (err) {
+      log("post-import screen error", { error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      db.release();
+    }
+  })();
+}
+
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => chunks.push(c));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
 // ── HTTP trigger server ──────────────────────────────────────────────────────
 
 function authorized(req: http.IncomingMessage, url: URL): boolean {
@@ -100,6 +143,22 @@ const server = http.createServer(async (req, res) => {
       log("http: research", { limit });
       const result = await runResearch(limit);
       return send(res, result.locked ? 409 : 200, result);
+    }
+    if (method === "POST" && url.pathname === "/import") {
+      const csv = await readBody(req);
+      if (!csv.trim()) return send(res, 400, { error: "empty body — POST the CSV content" });
+      const meta = {
+        orgName: url.searchParams.get("org") ?? "Production",
+        partnerName: url.searchParams.get("partner") ?? undefined,
+        partnerType: url.searchParams.get("partnerType") ?? undefined,
+        filename: url.searchParams.get("filename") ?? undefined,
+        uploadedBy: url.searchParams.get("by") ?? undefined,
+      };
+      log("http: import", { org: meta.orgName, partner: meta.partnerName, bytes: csv.length });
+      const result = await runImport(csv, meta);
+      // Auto-queue a screen of the just-imported accounts (user's choice).
+      screenOrgInBackground(result.orgId);
+      return send(res, 200, { status: "ok", ...result });
     }
     return send(res, 404, { error: "not found" });
   } catch (err) {
