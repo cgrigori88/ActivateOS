@@ -20,8 +20,12 @@
   --color-neutral-600: #475569;
   --color-neutral-700: #334155;
   --color-neutral-800: #1e293b;
-  --color-neutral-900: #111a2b;
-  --color-neutral-950: #080d17;
+  /* Light ink, straight from the v2 kit. These were previously carrying the
+     kit's DARK surface values (#111a2b / #080d17), which made body text read as
+     a dark-mode colour on a light page — a dark-first mapping. The dark canvas
+     drops to keep the same surface separation the kit specifies. */
+  --color-neutral-900: #0b1220;
+  --color-neutral-950: #05080e;
 
   /* Signal — the one accent. */
   --color-blue-50: #eff5ff;

@@ -7,6 +7,8 @@ import {
   EvidenceLine,
   FEATURE_LABELS,
   PageHeader,
+  Prose,
+  SectionHeading,
   StatusBadge,
 } from "@/components/ui";
 import { loadCompanyIntel } from "@/lib/intel/company-intel";
@@ -220,9 +222,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
             </p>
           )}
 
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Why now
-          </h2>
+          <SectionHeading>Why now</SectionHeading>
           {features.map((f) => (
             <div key={f.feature} className="mb-3 last:mb-0">
               <p className="text-sm font-medium">
@@ -256,12 +256,9 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
       )}
 
       <Card className="mb-6">
-        <div className="mb-3 flex items-center gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Data completeness
-          </h2>
-          <span className="text-xs text-neutral-400">how thoroughly researched — not propensity</span>
-        </div>
+        <SectionHeading hint="how thoroughly researched — not propensity">
+          Data completeness
+        </SectionHeading>
         <CompletenessGrid byCategory={intel.completeness.byCategory} overall={intel.completeness.overall} />
         {intel.completeness.gaps.length > 0 && (
           <p className="mt-3 text-xs text-neutral-500">
@@ -294,8 +291,8 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
 
       {intel.evidence.length > 0 && (
         <Card className="mb-6">
-          <div className="mb-3 flex items-center gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.09em] text-neutral-500 dark:text-neutral-400">
               Evidence
             </h2>
             <span className="text-xs text-neutral-400">
@@ -328,9 +325,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
 
       {partnerFits.length > 0 && (
         <Card className="mb-6">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Pursuit team
-          </h2>
+          <SectionHeading count={partnerFits.length}>Pursuit team</SectionHeading>
           <div className="space-y-3">
             {partnerFits.map((f) => {
               const isRouted = team?.partner_id === f.partner_id;
@@ -402,14 +397,14 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
 
       {motions.length > 0 && (
         <Card className="mb-6">
-          <div className="mb-2 flex items-center gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.09em] text-neutral-500 dark:text-neutral-400">
               Revenue motion
             </h2>
             <StatusBadge status={motions[0].status} />
             <span className="text-xs text-neutral-400">confidence: {motions[0].confidence}</span>
           </div>
-          <p className="mb-3 leading-relaxed">{motions[0].thesis}</p>
+          <Prose className="mb-3">{motions[0].thesis}</Prose>
           <dl className="space-y-1 text-sm text-neutral-600 dark:text-neutral-400">
             <div>
               <dt className="inline font-medium text-neutral-800 dark:text-neutral-200">Trigger: </dt>
@@ -448,9 +443,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
 
       {events.length > 0 && (
         <Card>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Timeline
-          </h2>
+          <SectionHeading count={events.length}>Timeline</SectionHeading>
           <ul className="space-y-1.5">
             {events.map((e, i) => (
               <li key={i} className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
