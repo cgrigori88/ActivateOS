@@ -56,6 +56,46 @@ export function Card({
   );
 }
 
+/**
+ * A coloured tile behind an icon. Gives a panel or a row an anchor the eye
+ * finds before it reads anything, and lets a list of like-shaped things stay
+ * distinguishable — the pattern the reference dashboards use for file types and
+ * section headers.
+ */
+const TILE_TONES: Record<string, string> = {
+  indigo: "bg-indigo-wash text-indigo",
+  violet: "bg-violet-wash text-violet",
+  teal: "bg-teal-wash text-teal",
+  emerald: "bg-emerald-wash text-emerald",
+  amber: "bg-amber-wash text-amber",
+  rose: "bg-rose-wash text-rose",
+  blue: "bg-accent-wash text-accent",
+  neutral: "bg-neutral-100 text-neutral-500",
+};
+
+export type Tone = keyof typeof TILE_TONES;
+
+export function IconTile({
+  children,
+  tone = "blue",
+  size = "md",
+}: {
+  children: ReactNode;
+  tone?: Tone;
+  size?: "sm" | "md";
+}) {
+  return (
+    <span
+      aria-hidden
+      className={`inline-grid shrink-0 place-items-center rounded-inner ${
+        size === "sm" ? "h-6 w-6" : "h-8 w-8"
+      } ${TILE_TONES[tone] ?? TILE_TONES.blue}`}
+    >
+      {children}
+    </span>
+  );
+}
+
 export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <header className="mb-7">
@@ -78,12 +118,15 @@ export function SectionHeading({
   count,
   hint,
   tone,
+  icon,
 }: {
   children: ReactNode;
   count?: number | string;
   hint?: string;
-  /** Optional accent dot, for a bento grid where each panel owns a hue. */
-  tone?: "indigo" | "violet" | "teal" | "emerald" | "amber" | "rose" | "blue";
+  /** Hue for the dot or icon tile, when a bento panel owns a colour. */
+  tone?: Tone;
+  /** Renders in a tinted tile instead of a bare dot. */
+  icon?: ReactNode;
 }) {
   const dot: Record<string, string> = {
     indigo: "bg-indigo",
@@ -96,7 +139,13 @@ export function SectionHeading({
   };
   return (
     <div className="mb-3.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
-      {tone && <span className={`h-2 w-2 shrink-0 rounded-full ${dot[tone]}`} />}
+      {icon ? (
+        <IconTile tone={tone ?? "blue"} size="sm">
+          {icon}
+        </IconTile>
+      ) : (
+        tone && <span className={`h-2 w-2 shrink-0 rounded-full ${dot[tone] ?? ""}`} />
+      )}
       {/* Titles are ink and bold. A grey uppercase micro-label reads as chrome,
           and a screen made entirely of chrome has no hierarchy at all. */}
       <h2 className="text-[15px] font-bold tracking-[-0.015em] text-neutral-900 dark:text-neutral-100">
@@ -152,10 +201,10 @@ export function Tab({
 
 /** Bands describe the data. Quiet fills, no rings — the label carries the meaning. */
 const BAND_STYLES: Record<string, string> = {
-  very_high: "bg-green-50 text-green-700 dark:bg-green-950/60 dark:text-green-300",
-  high: "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300",
-  medium: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
-  low: "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400",
+  very_high: "bg-emerald-wash text-emerald",
+  high: "bg-accent-wash text-accent",
+  medium: "bg-amber-wash text-amber",
+  low: "bg-neutral-100 text-neutral-500",
 };
 
 export const BAND_LABELS: Record<string, string> = {
@@ -168,7 +217,9 @@ export const BAND_LABELS: Record<string, string> = {
 export function BandBadge({ band }: { band: string }) {
   return (
     <span
-      className={`inline-flex items-center rounded-inner px-2 py-0.5 text-[11.5px] font-semibold ${
+      /* The table tints its row off this attribute — see globals.css. */
+      data-band={band}
+      className={`inline-flex items-center rounded-inner px-2 py-0.5 text-[11.5px] font-bold ${
         BAND_STYLES[band] ?? BAND_STYLES.low
       }`}
     >
@@ -210,7 +261,8 @@ export function StatusBadge({ status }: { status: string }) {
   const dot = STATUS_DOTS[status];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-inner px-2 py-0.5 text-[11.5px] font-semibold capitalize ${
+      data-status={status}
+      className={`inline-flex items-center gap-1.5 rounded-inner px-2 py-0.5 text-[11.5px] font-bold capitalize ${
         STATUS_STYLES[status] ?? STATUS_STYLES.completed
       }`}
     >
@@ -444,17 +496,22 @@ export function SortHeader({
   );
 }
 
-/** Tiny 7-bar dimension sparkline for table rows, on the conviction ramp. */
+/**
+ * The seven dimension bars are seven *named features*, not seven samples of one
+ * value — so they take the categorical order rather than a heat ramp. A given
+ * feature keeps its colour everywhere it appears, which is what makes the
+ * sparkline readable at 16px. Height still encodes the score.
+ */
+const CAT = ["bg-cat-1", "bg-cat-2", "bg-cat-3", "bg-cat-4", "bg-cat-5", "bg-cat-6", "bg-cat-7"];
+
 export function DimensionBars({ values }: { values: number[] }) {
-  const fill = (v: number) =>
-    v >= 80 ? "bg-ramp-4" : v >= 60 ? "bg-ramp-3" : v >= 40 ? "bg-ramp-2" : v >= 20 ? "bg-ramp-1" : "bg-ramp-0";
   return (
-    <span className="inline-flex h-4 items-end gap-[2px]" title="dimensions">
+    <span className="inline-flex h-5 items-end gap-[3px]" title="dimension contributions">
       {values.map((v, i) => (
         <span
           key={i}
-          className={`w-[3px] rounded-[1px] ${fill(v)}`}
-          style={{ height: `${Math.max(12, v)}%` }}
+          className={`w-[4px] rounded-[1.5px] ${CAT[i % CAT.length]}`}
+          style={{ height: `${Math.max(14, v)}%`, opacity: v < 20 ? 0.35 : 1 }}
         />
       ))}
     </span>

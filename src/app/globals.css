@@ -167,6 +167,28 @@ body { @apply bg-neutral-50 text-neutral-900 antialiased; }
 .data-table tbody tr:last-child td { border-bottom: 0; }
 
 /**
+ * Tinted row states. A ranked table is read by band before it is read by name,
+ * so the row carries its band as a coloured edge — picked up from the badge's
+ * data attribute, which means no table markup changes and any page rendering a
+ * BandBadge gets it for free. The edge is inset, so it never shifts the grid.
+ */
+.data-table tbody tr:has([data-band="very_high"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-emerald); }
+.data-table tbody tr:has([data-band="high"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-accent); }
+.data-table tbody tr:has([data-band="medium"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-amber); }
+.data-table tbody tr:has([data-band="low"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-neutral-300); }
+
+.data-table tbody tr:has([data-status="failed"]) td:first-child,
+.data-table tbody tr:has([data-status="rejected"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-rose); }
+.data-table tbody tr:has([data-status="quarantined"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-amber); }
+.data-table tbody tr:has([data-status="succeeded"]) td:first-child,
+.data-table tbody tr:has([data-status="verified"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-emerald); }
+.data-table tbody tr:has([data-status="running"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-accent); }
+
+/* A row whose outcome is "nothing happened" should not wear a colour. */
+.data-table tbody tr:has([data-status="skipped"]) td:first-child,
+.data-table tbody tr:has([data-status="disabled"]) td:first-child { box-shadow: none; }
+
+/**
  * Scroll affordance. A dense table silently clips its most important columns on
  * a phone — on Accounts the score, band and partner all disappeared with no hint
  * that anything was there. These shadows appear only when there is more to
