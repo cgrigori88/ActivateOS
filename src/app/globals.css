@@ -1,6 +1,16 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
+   Light is the product's primary mode (docs/BRAND.md). By default Tailwind's
+   `dark:` variant follows prefers-color-scheme, so an operator with a dark OS
+   got a dark cockpit whether they asked for it or not. Pointing the variant at
+   a `.dark` class instead makes the app light-only, while leaving every `dark:`
+   utility already written in the feature pages valid for the day we ship an
+   explicit toggle — add `class="dark"` to <html> and the whole dark set wakes up.
+   --------------------------------------------------------------------------- */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
    PursuitOS design tokens (docs/BRAND.md).
 
    The `neutral` and `blue` ramps are overridden at the theme level on purpose:
@@ -79,15 +89,14 @@
   --ease-move: cubic-bezier(.2, 0, 0, 1);
 }
 
-html { color-scheme: light dark; }
+html { color-scheme: light; }
+.dark { color-scheme: dark; }
 body { @apply bg-neutral-50 text-neutral-900 antialiased; }
 
-@media (prefers-color-scheme: dark) {
-  body { @apply bg-neutral-950 text-neutral-100; }
-  :root {
-    --shadow-raise: 0 1px 1px rgba(0, 0, 0, .4), 0 4px 12px -6px rgba(0, 0, 0, .6);
-    --shadow-pop: 0 2px 4px rgba(0, 0, 0, .5), 0 12px 32px -12px rgba(0, 0, 0, .8);
-  }
+.dark body { @apply bg-neutral-950 text-neutral-100; }
+.dark {
+  --shadow-raise: 0 1px 1px rgba(0, 0, 0, .4), 0 4px 12px -6px rgba(0, 0, 0, .6);
+  --shadow-pop: 0 2px 4px rgba(0, 0, 0, .5), 0 12px 32px -12px rgba(0, 0, 0, .8);
 }
 
 .tnum { font-variant-numeric: tabular-nums; }
@@ -141,11 +150,11 @@ body { @apply bg-neutral-50 text-neutral-900 antialiased; }
   background-attachment: local, local, scroll, scroll;
 }
 
-@media (prefers-color-scheme: dark) {
-  .data-table thead th { @apply border-neutral-800 bg-neutral-900/95 text-neutral-400; }
-  .data-table tbody td { @apply border-neutral-800/60; }
-  .data-table tbody tr:hover { @apply bg-blue-950/30; }
-  :where(div, section):has(> table.data-table) {
+.dark {
+  & .data-table thead th { @apply border-neutral-800 bg-neutral-900/95 text-neutral-400; }
+  & .data-table tbody td { @apply border-neutral-800/60; }
+  & .data-table tbody tr:hover { @apply bg-blue-950/30; }
+  & :where(div, section):has(> table.data-table) {
     background:
       linear-gradient(to right, #111a2b 30%, rgba(17, 26, 43, 0)) left center,
       linear-gradient(to left, #111a2b 30%, rgba(17, 26, 43, 0)) right center,
