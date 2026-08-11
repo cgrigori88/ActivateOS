@@ -6,18 +6,29 @@ import type { ReactNode } from "react";
  *
  * Export names and prop signatures are stable — the platform lane's screens
  * consume these unchanged. Everything here is styling.
+ *
+ * The organising rule is **weight follows information**: a surface holding data
+ * looks alive, a surface holding zeros recedes. That is what stops Sources
+ * spending 2,000px of height on eighteen empty cards.
  */
 
 export function Card({
   children,
   className = "",
+  muted = false,
 }: {
   children: ReactNode;
   className?: string;
+  /** Dim a panel that has nothing in it yet. Optional — defaults to the full-weight surface. */
+  muted?: boolean;
 }) {
   return (
     <section
-      className={`rounded-[14px] border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900 ${className}`}
+      className={`rounded-card border p-5 transition-colors duration-[140ms] ${
+        muted
+          ? "border-neutral-200/70 bg-neutral-50/40 dark:border-neutral-800/60 dark:bg-neutral-900/30"
+          : "border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"
+      } ${className}`}
     >
       {children}
     </section>
@@ -27,9 +38,9 @@ export function Card({
 export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <header className="mb-7">
-      <h1 className="text-2xl font-semibold tracking-[-0.02em]">{title}</h1>
+      <h1 className="text-2xl font-bold tracking-[-0.022em]">{title}</h1>
       {subtitle && (
-        <p className="mt-1.5 text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
+        <p className="mt-1.5 max-w-[72ch] text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
           {subtitle}
         </p>
       )}
@@ -38,9 +49,72 @@ export function PageHeader({ title, subtitle }: { title: string; subtitle?: stri
 }
 
 /**
- * Bands describe the data, not interface state. Quiet fills, no rings — the
- * label carries the meaning and the colour reinforces it.
+ * A scannable landmark for a panel. The Account room stacks six panels of equal
+ * weight; a heading with its count gives the eye somewhere to land.
  */
+export function SectionHeading({
+  children,
+  count,
+  hint,
+}: {
+  children: ReactNode;
+  count?: number | string;
+  hint?: string;
+}) {
+  return (
+    <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <h2 className="text-[11px] font-bold uppercase tracking-[0.09em] text-neutral-500 dark:text-neutral-400">
+        {children}
+      </h2>
+      {count !== undefined && (
+        <span className="tnum rounded-full bg-neutral-100 px-1.5 text-[11px] font-semibold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+          {count}
+        </span>
+      )}
+      {hint && <span className="text-[11.5px] text-neutral-400 dark:text-neutral-500">{hint}</span>}
+    </div>
+  );
+}
+
+/** Caps the measure. A 120-word motion narrative at full width runs ~160 characters per line. */
+export function Prose({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={`max-w-[72ch] text-sm leading-relaxed text-neutral-700 dark:text-neutral-300 ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+/** Selection reads the same everywhere: accent wash, never a black pill. */
+export function Tabs({ children }: { children: ReactNode }) {
+  return <div className="flex flex-wrap items-center gap-1.5">{children}</div>;
+}
+
+export function Tab({
+  children,
+  href,
+  active = false,
+}: {
+  children: ReactNode;
+  href: string;
+  active?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`inline-flex min-h-[32px] items-center rounded-control px-3 text-[13px] font-semibold transition-colors duration-[140ms] ${
+        active
+          ? "bg-accent-wash text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+          : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800"
+      }`}
+    >
+      {children}
+    </Link>
+  );
+}
+
+/** Bands describe the data. Quiet fills, no rings — the label carries the meaning. */
 const BAND_STYLES: Record<string, string> = {
   very_high: "bg-green-50 text-green-700 dark:bg-green-950/60 dark:text-green-300",
   high: "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300",
@@ -58,7 +132,7 @@ export const BAND_LABELS: Record<string, string> = {
 export function BandBadge({ band }: { band: string }) {
   return (
     <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11.5px] font-medium ${
+      className={`inline-flex items-center rounded-inner px-2 py-0.5 text-[11.5px] font-semibold ${
         BAND_STYLES[band] ?? BAND_STYLES.low
       }`}
     >
@@ -73,21 +147,17 @@ const STATUS_STYLES: Record<string, string> = {
   active: "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300",
   completed: "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400",
   abandoned: "bg-neutral-100 text-neutral-500 line-through dark:bg-neutral-800",
-  // Evidence quality-gate outcomes + provider-run states (intelligence surface).
   verified: "bg-green-50 text-green-700 dark:bg-green-950/60 dark:text-green-300",
   succeeded: "bg-green-50 text-green-700 dark:bg-green-950/60 dark:text-green-300",
   quarantined: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
-  skipped: "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400",
+  skipped: "bg-neutral-50 text-neutral-400 dark:bg-neutral-900 dark:text-neutral-600",
   running: "bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300",
   rejected: "bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300",
   failed: "bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300",
-  disabled: "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-500",
+  disabled: "bg-neutral-50 text-neutral-400 dark:bg-neutral-900 dark:text-neutral-600",
 };
 
-/**
- * A dot carries the state at a glance; the word confirms it. Sentence case
- * rather than uppercase — these read as data, not as chrome.
- */
+/** A dot carries the state at a glance; the word confirms it — never colour alone. */
 const STATUS_DOTS: Record<string, string> = {
   draft: "bg-amber-500",
   approved: "bg-green-600",
@@ -104,7 +174,7 @@ export function StatusBadge({ status }: { status: string }) {
   const dot = STATUS_DOTS[status];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11.5px] font-medium capitalize ${
+      className={`inline-flex items-center gap-1.5 rounded-inner px-2 py-0.5 text-[11.5px] font-semibold capitalize ${
         STATUS_STYLES[status] ?? STATUS_STYLES.completed
       }`}
     >
@@ -115,9 +185,10 @@ export function StatusBadge({ status }: { status: string }) {
 }
 
 export function Score({ value }: { value: number }) {
-  return <span className="tnum text-lg font-semibold tracking-[-0.02em]">{value.toFixed(0)}</span>;
+  return <span className="tnum text-lg font-bold tracking-[-0.02em]">{value.toFixed(0)}</span>;
 }
 
+/** Zero recedes. A count of nothing should not shout as loudly as a count of 24. */
 export function StatChip({
   label,
   value,
@@ -129,16 +200,25 @@ export function StatChip({
   href?: string;
   tone?: "default" | "attention";
 }) {
-  const attention = tone === "attention" && Number(value) > 0;
+  const empty = Number(value) === 0;
+  const attention = tone === "attention" && !empty;
   const body = (
     <div
-      className={`rounded-[14px] border px-4 py-3.5 transition-colors duration-[120ms] ${
+      className={`rounded-card border px-4 py-3.5 transition-colors duration-[140ms] ${
         attention
           ? "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/50"
-          : "border-neutral-200 bg-white hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700"
+          : empty
+            ? "border-neutral-200/70 bg-neutral-50/40 dark:border-neutral-800/60 dark:bg-neutral-900/30"
+            : "border-neutral-200 bg-white hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700"
       }`}
     >
-      <div className="tnum text-2xl font-semibold tracking-[-0.02em]">{value}</div>
+      <div
+        className={`tnum text-2xl font-bold tracking-[-0.02em] ${
+          empty ? "text-neutral-300 dark:text-neutral-700" : ""
+        }`}
+      >
+        {value}
+      </div>
       <div className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{label}</div>
     </div>
   );
@@ -152,10 +232,9 @@ export function StatChip({
 }
 
 /**
- * Count chip that doubles as a filter (the stat-row pattern: every number is
- * clickable and filters the table below). `active` renders the selected state;
- * `href` toggles it. The tone is carried by the number itself rather than by a
- * bar of colour on top of the card.
+ * Count chip that doubles as a filter. `active` renders the selected state;
+ * `href` toggles it. Tone rides the number rather than a bar of colour on top,
+ * and a zero drops back so the row reads as "one very high" not "five numbers".
  */
 export function CountChip({
   label,
@@ -170,6 +249,7 @@ export function CountChip({
   active?: boolean;
   tone?: "green" | "sky" | "amber" | "neutral" | "red";
 }) {
+  const empty = Number(value) === 0;
   const toneText: Record<string, string> = {
     green: "text-green-700 dark:text-green-400",
     sky: "text-blue-700 dark:text-blue-400",
@@ -179,22 +259,32 @@ export function CountChip({
   };
   const body = (
     <div
-      className={`min-w-[6.5rem] rounded-[12px] border px-3.5 py-2.5 transition-colors duration-[120ms] ${
+      className={`min-w-[6.5rem] rounded-input border px-3.5 py-2.5 transition-colors duration-[140ms] ${
         active
           ? "border-accent bg-accent text-white"
-          : "border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700"
+          : empty
+            ? "border-neutral-200/70 bg-neutral-50/40 dark:border-neutral-800/60 dark:bg-neutral-900/30"
+            : "border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700"
       }`}
     >
       <div
-        className={`tnum text-xl font-semibold leading-none tracking-[-0.02em] ${
-          active ? "text-white" : (tone && toneText[tone]) || ""
+        className={`tnum text-xl font-bold leading-none tracking-[-0.02em] ${
+          active
+            ? "text-white"
+            : empty
+              ? "text-neutral-300 dark:text-neutral-700"
+              : (tone && toneText[tone]) || ""
         }`}
       >
         {value}
       </div>
       <div
-        className={`mt-1.5 text-[11px] font-medium ${
-          active ? "text-white/75" : "text-neutral-500 dark:text-neutral-400"
+        className={`mt-1.5 text-[11px] font-semibold ${
+          active
+            ? "text-white/75"
+            : empty
+              ? "text-neutral-400 dark:text-neutral-600"
+              : "text-neutral-500 dark:text-neutral-400"
         }`}
       >
         {label}
@@ -242,7 +332,7 @@ export function SearchBox({
         className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400"
         fill="none"
         stroke="currentColor"
-        strokeWidth="1.6"
+        strokeWidth="1.7"
       >
         <circle cx="7" cy="7" r="4.5" />
         <path d="M10.5 10.5L14 14" strokeLinecap="round" />
@@ -252,7 +342,8 @@ export function SearchBox({
         name={name}
         defaultValue={defaultValue}
         placeholder={placeholder}
-        className="w-60 rounded-[10px] border border-neutral-200 bg-white py-2 pl-9 pr-3 text-sm transition-colors duration-[120ms] placeholder:text-neutral-400 hover:border-neutral-300 focus:border-accent focus:outline-none dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700"
+        spellCheck={false}
+        className="w-60 rounded-input border border-neutral-300 bg-white py-2 pl-9 pr-3 text-sm transition-colors duration-[140ms] placeholder:text-neutral-400 hover:border-neutral-400 focus:border-accent focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-neutral-600"
       />
     </form>
   );
@@ -261,12 +352,12 @@ export function SearchBox({
 /** Active-filter pill with an ✕ that removes just this filter. */
 export function FilterPill({ label, clearHref }: { label: string; clearHref: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-wash py-1 pl-3 pr-1.5 text-xs font-medium text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-wash py-1 pl-3 pr-1.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
       {label}
       <Link
         href={clearHref}
         aria-label={`Clear ${label}`}
-        className="flex h-4 w-4 items-center justify-center rounded-full text-blue-500 transition-colors duration-[120ms] hover:bg-blue-600 hover:text-white"
+        className="flex h-5 w-5 items-center justify-center rounded-full text-blue-500 transition-colors duration-[140ms] hover:bg-blue-600 hover:text-white"
       >
         ✕
       </Link>
@@ -293,8 +384,11 @@ export function SortHeader({
   return (
     <Link
       href={makeHref(next)}
-      className={`inline-flex items-center gap-1 transition-colors duration-[120ms] ${
-        active ? "text-neutral-900 dark:text-neutral-100" : "hover:text-neutral-800 dark:hover:text-neutral-200"
+      aria-sort={active ? (activeAsc ? "ascending" : "descending") : undefined}
+      className={`inline-flex items-center gap-1 transition-colors duration-[140ms] ${
+        active
+          ? "text-neutral-900 dark:text-neutral-100"
+          : "hover:text-neutral-800 dark:hover:text-neutral-200"
       }`}
     >
       {label}
@@ -305,14 +399,16 @@ export function SortHeader({
   );
 }
 
-/** Tiny 7-bar dimension sparkline for table rows. */
+/** Tiny 7-bar dimension sparkline for table rows, on the conviction ramp. */
 export function DimensionBars({ values }: { values: number[] }) {
+  const fill = (v: number) =>
+    v >= 80 ? "bg-ramp-4" : v >= 60 ? "bg-ramp-3" : v >= 40 ? "bg-ramp-2" : v >= 20 ? "bg-ramp-1" : "bg-ramp-0";
   return (
     <span className="inline-flex h-4 items-end gap-[2px]" title="dimensions">
       {values.map((v, i) => (
         <span
           key={i}
-          className="w-[3px] rounded-[1px] bg-blue-500/70 dark:bg-blue-400/70"
+          className={`w-[3px] rounded-[1px] ${fill(v)}`}
           style={{ height: `${Math.max(12, v)}%` }}
         />
       ))}
@@ -321,14 +417,19 @@ export function DimensionBars({ values }: { values: number[] }) {
 }
 
 /**
- * Evidence styling: the claim reads first, its provenance sits quietly beneath
- * it. Source, date and confidence are meta — never the same weight as the claim.
+ * Evidence: the claim reads first, its provenance sits quietly beneath in mono.
+ * The old form buried source and confidence in parentheses at the end of the
+ * sentence, where they competed with the claim instead of supporting it.
  */
 export function EvidenceLine({ claim, meta }: { claim: string; meta: string }) {
   return (
-    <li className="border-l-2 border-neutral-200 py-1 pl-3 text-sm leading-relaxed text-neutral-700 dark:border-neutral-700 dark:text-neutral-300">
-      {claim}
-      <span className="mt-0.5 block text-xs text-neutral-400 dark:text-neutral-500">{meta}</span>
+    <li className="border-l-2 border-neutral-200 py-1 pl-3 dark:border-neutral-700">
+      <span className="block text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
+        {claim}
+      </span>
+      <span className="mt-0.5 block font-mono text-[11px] text-neutral-400 dark:text-neutral-500">
+        {meta}
+      </span>
     </li>
   );
 }
@@ -336,7 +437,7 @@ export function EvidenceLine({ claim, meta }: { claim: string; meta: string }) {
 /**
  * Data-completeness by category (§24): coverage, kept strictly separate from
  * propensity. Covered categories are solid; gaps are the research to-do list —
- * a gap is NOT low intent. Renders the 8 coverage categories as a chip row.
+ * a gap is NOT low intent.
  */
 export function CompletenessGrid({
   byCategory,
@@ -348,12 +449,12 @@ export function CompletenessGrid({
   return (
     <div>
       <div className="mb-3 flex items-baseline gap-2">
-        <span className="tnum text-2xl font-semibold tracking-[-0.02em]">{overall}%</span>
+        <span className="tnum text-2xl font-bold tracking-[-0.02em]">{overall}%</span>
         <span className="text-xs text-neutral-500">categories with coverage</span>
       </div>
-      <div className="mb-3 h-1 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+      <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
         <div
-          className="h-full rounded-full bg-accent transition-[width] duration-[200ms]"
+          className="h-full rounded-full bg-accent transition-[width] duration-[220ms]"
           style={{ width: `${Math.min(100, Math.max(0, overall))}%` }}
         />
       </div>
@@ -361,7 +462,7 @@ export function CompletenessGrid({
         {Object.entries(byCategory).map(([cat, covered]) => (
           <span
             key={cat}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${
+            className={`inline-flex items-center gap-1.5 rounded-inner px-2 py-1 text-xs font-medium ${
               covered
                 ? "bg-green-50 text-green-700 dark:bg-green-950/60 dark:text-green-300"
                 : "bg-neutral-50 text-neutral-400 dark:bg-neutral-900 dark:text-neutral-600"
