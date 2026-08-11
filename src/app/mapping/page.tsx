@@ -1,6 +1,18 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
 import { BandBadge, Card, PageHeader } from "@/components/ui";
+import {
+  CATEGORIES,
+  CATEGORY_LABEL,
+  availableFields,
+  intersection,
+  listPopulations,
+  matrix,
+  partnersWithPopulations,
+  type Category,
+  type Population,
+} from "@/lib/mapping/populations";
+import { createPopulationAction, setPopulationStatusAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -11,12 +23,33 @@ export const dynamic = "force-dynamic";
  * shared targets.
  */
 
-type View = "overlap" | "coverage" | "targets";
+type View = "matrix" | "overlap" | "coverage" | "targets";
 const VIEWS: { key: View; label: string }[] = [
+  { key: "matrix", label: "Account mapping" },
   { key: "overlap", label: "Overlap + motion" },
   { key: "coverage", label: "Coverage & conflict" },
   { key: "targets", label: "Ranked targets" },
 ];
+
+function ViewTabs({ view }: { view: View }) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      {VIEWS.map((v) => (
+        <Link
+          key={v.key}
+          href={`/mapping?view=${v.key}`}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+            view === v.key
+              ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+              : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
+          }`}
+        >
+          {v.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
 
 interface FlatRow {
   company_id: string;
@@ -51,12 +84,31 @@ function motion(anyInstalled: boolean): { label: string; tone: string } {
 export default async function MappingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; partner?: string }>;
+  searchParams: Promise<{ view?: string; partner?: string; row?: string; col?: string; cols?: string }>;
 }) {
   const sp = await searchParams;
-  const view: View = (["overlap", "coverage", "targets"].includes(sp.view ?? "") ? sp.view : "overlap") as View;
-  const partnerFilter = sp.partner;
+  const view: View = (["matrix", "overlap", "coverage", "targets"].includes(sp.view ?? "") ? sp.view : "matrix") as View;
 
+  // ── Account-mapping matrix (Phase 10) ────────────────────────────────────
+  if (view === "matrix") {
+    return (
+      <main>
+        <PageHeader
+          title="Account mapping"
+          subtitle="Cross your populations with a partner's — every cell is the accounts you share, rolled up with propensity. Click a cell to drill in."
+        />
+        <ViewTabs view={view} />
+        {sp.row && sp.col ? (
+          <CellView rowId={sp.row} colId={sp.col} cols={sp.cols} partnerId={sp.partner} />
+        ) : (
+          <MatrixSection partnerId={sp.partner} />
+        )}
+        <PopulationManager />
+      </main>
+    );
+  }
+
+  const partnerFilter = sp.partner;
   const pool = getPool();
   const { rows } = await pool.query<FlatRow>(
     `select c.id as company_id, c.legal_name, c.primary_domain,
@@ -300,4 +352,305 @@ function TargetsView({ overlaps }: { overlaps: Grouped[] }) {
       </table>
     </div>
   );
+}
+
+// ── Account-mapping matrix components (Phase 10) ─────────────────────────────
+
+async function soleOrgId(db: import("pg").PoolClient): Promise<string | null> {
+  const { rows } = await db.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
+  return rows[0]?.id ?? null;
+}
+
+const CAT_TONE: Record<string, string> = {
+  customer: "bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300",
+  open_opportunity: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950 dark:text-amber-300",
+  prospect: "bg-violet-50 text-violet-700 ring-violet-600/20 dark:bg-violet-950 dark:text-violet-300",
+  target: "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-950 dark:text-green-300",
+};
+function catTone(c: string): string {
+  return CAT_TONE[c] ?? "bg-neutral-100 text-neutral-600 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-300";
+}
+
+async function MatrixSection({ partnerId }: { partnerId?: string }) {
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    const orgId = await soleOrgId(db);
+    if (!orgId) return <Card><p className="text-sm text-neutral-500">No organization yet.</p></Card>;
+
+    const partners = await partnersWithPopulations(db, orgId);
+    if (partners.length === 0) {
+      return (
+        <Card>
+          <p className="text-sm text-neutral-500">
+            No partner populations yet. Create populations for your side and a partner below, then the overlap matrix
+            appears here — like Crossbeam&apos;s account mapping, scored by propensity.
+          </p>
+        </Card>
+      );
+    }
+    const selected = partnerId && partners.some((p) => p.id === partnerId) ? partnerId : partners[0].id;
+    const { rows, cols, cells } = await matrix(db, { orgId, partnerId: selected });
+
+    const totalOverlap = [...cells.values()].reduce((s, c) => s + c.count, 0);
+
+    return (
+      <>
+        {/* KPI strip + partner picker */}
+        <div className="mb-4 flex flex-wrap items-center gap-6">
+          <div>
+            <div className="tnum text-2xl font-semibold">{totalOverlap.toLocaleString()}</div>
+            <div className="text-xs text-neutral-500">overlapping account-cells</div>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-neutral-500">Partner</span>
+            <div className="flex flex-wrap gap-1">
+              {partners.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/mapping?view=matrix&partner=${p.id}`}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                    p.id === selected
+                      ? "bg-blue-700 text-white"
+                      : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
+                  }`}
+                >
+                  {p.name}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {rows.length === 0 || cols.length === 0 ? (
+          <Card>
+            <p className="text-sm text-neutral-500">
+              Approve at least one population on each side to populate the matrix (your side and this partner). Manage
+              populations below.
+            </p>
+          </Card>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 bg-white dark:bg-neutral-900">Your populations ↓ / Partner →</th>
+                  {cols.map((c) => (
+                    <th key={c.id} className="text-center align-bottom">
+                      <div className="font-medium">{c.name}</div>
+                      <div className="text-[10px] font-normal text-neutral-400">{CATEGORY_LABEL[c.category]}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td className="sticky left-0 bg-white dark:bg-neutral-900">
+                      <span className={`inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${catTone(r.category)}`}>
+                        {r.name}
+                      </span>
+                      <div className="text-[10px] text-neutral-400">{r.members} accounts</div>
+                    </td>
+                    {cols.map((c) => {
+                      const cell = cells.get(`${r.id}:${c.id}`);
+                      if (!cell || cell.count === 0) {
+                        return <td key={c.id} className="text-center text-neutral-300 dark:text-neutral-700">None</td>;
+                      }
+                      return (
+                        <td key={c.id} className="text-center">
+                          <Link
+                            href={`/mapping?view=matrix&partner=${selected}&row=${r.id}&col=${c.id}`}
+                            className="inline-flex flex-col items-center rounded-lg px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-950"
+                          >
+                            <span className="tnum text-lg font-semibold text-blue-700 dark:text-blue-400">{cell.count.toLocaleString()}</span>
+                            <span className="text-[10px] text-neutral-500">
+                              {cell.avgScore != null ? `avg ${cell.avgScore.toFixed(0)}` : "—"}
+                              {cell.highCount > 0 ? ` · ${cell.highCount} hot` : ""}
+                            </span>
+                          </Link>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="border-t border-neutral-100 px-3 py-2 text-[11px] text-neutral-500 dark:border-neutral-800">
+              Each cell = accounts on both lists · avg = mean propensity · hot = high/very-high band · click to drill in.
+            </p>
+          </div>
+        )}
+      </>
+    );
+  } finally {
+    db.release();
+  }
+}
+
+const BASE_COLS = ["industry", "employees", "propensity"];
+
+async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colId: string; cols?: string; partnerId?: string }) {
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    const { row, col, accounts } = await intersection(db, { rowPopId: rowId, colPopId: colId });
+    const fields = await availableFields(db, { rowPopId: rowId, colPopId: colId });
+    const selected = (cols ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    const active = selected.length ? selected : BASE_COLS;
+    const backHref = `/mapping?view=matrix${partnerId ? `&partner=${partnerId}` : ""}`;
+    const cellBase = `/mapping?view=matrix${partnerId ? `&partner=${partnerId}` : ""}&row=${rowId}&col=${colId}`;
+
+    const allToggles = [...BASE_COLS, ...fields];
+    const toggleHref = (key: string) => {
+      const next = active.includes(key) ? active.filter((k) => k !== key) : [...active, key];
+      return `${cellBase}${next.length ? `&cols=${next.join(",")}` : ""}`;
+    };
+
+    return (
+      <div>
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <Link href={backHref} className="text-xs text-blue-700 hover:underline dark:text-blue-400">← Matrix</Link>
+          <h2 className="text-base font-semibold">
+            {row?.name ?? "?"} <span className="text-neutral-400">vs</span> {col?.name ?? "?"}
+          </h2>
+          <span className="text-xs text-neutral-500">{accounts.length} account(s)</span>
+          <details className="relative ml-auto">
+            <summary className="cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900">
+              Columns
+            </summary>
+            <div className="absolute right-0 z-10 mt-1 w-56 rounded-lg border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+              <p className="mb-1 px-1 text-[10px] uppercase tracking-wide text-neutral-400">Toggle columns (from the data)</p>
+              {allToggles.map((k) => (
+                <Link
+                  key={k}
+                  href={toggleHref(k)}
+                  className={`flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 ${active.includes(k) ? "font-medium text-neutral-900 dark:text-neutral-100" : "text-neutral-500"}`}
+                >
+                  <span className={`inline-block h-3 w-3 rounded-sm border ${active.includes(k) ? "border-blue-600 bg-blue-600" : "border-neutral-300 dark:border-neutral-600"}`} />
+                  {k.replace(/_/g, " ")}
+                </Link>
+              ))}
+            </div>
+          </details>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Record</th>
+                {active.map((k) => <th key={k} className="capitalize">{k.replace(/_/g, " ")}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map((a) => (
+                <tr key={a.company_id}>
+                  <td>
+                    <Link href={`/accounts/${a.company_id}`} className="font-medium hover:underline">{a.legal_name}</Link>
+                    {a.primary_domain && <div className="text-[11px] text-neutral-400">{a.primary_domain}</div>}
+                  </td>
+                  {active.map((k) => {
+                    if (k === "industry") return <td key={k} className="text-neutral-600 dark:text-neutral-300">{a.industry ?? "—"}</td>;
+                    if (k === "employees") return <td key={k} className="tnum text-neutral-600 dark:text-neutral-300">{a.employee_count?.toLocaleString() ?? "—"}</td>;
+                    if (k === "propensity") return (
+                      <td key={k}>
+                        {a.score == null ? <span className="text-neutral-400">—</span> : (
+                          <span className="inline-flex items-center gap-2">
+                            <span className="tnum font-semibold">{a.score.toFixed(0)}</span>
+                            {a.band && <BandBadge band={a.band} />}
+                          </span>
+                        )}
+                      </td>
+                    );
+                    const v = a.attributes?.[k];
+                    return <td key={k} className="text-neutral-600 dark:text-neutral-300">{v == null || v === "" ? "—" : String(v)}</td>;
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  } finally {
+    db.release();
+  }
+}
+
+async function PopulationManager() {
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    const orgId = await soleOrgId(db);
+    if (!orgId) return null;
+
+    const { rows: partners } = await db.query<{ id: string; name: string }>(
+      `select id, name from partners where org_id = $1 order by name`,
+      [orgId],
+    );
+    const pending = await listPopulations(db, { orgId, partnerId: null, status: "pending" });
+    const pendingPartner: Population[] = [];
+    for (const p of partners) pendingPartner.push(...(await listPopulations(db, { orgId, partnerId: p.id, status: "pending" })));
+    const allPending = [...pending, ...pendingPartner];
+
+    const nameFor = (pid: string | null) => (pid ? partners.find((p) => p.id === pid)?.name ?? "Partner" : "Your side");
+
+    return (
+      <Card className="mt-6">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Populations</h2>
+
+        {allPending.length > 0 && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+            <p className="mb-2 text-xs font-medium text-amber-800 dark:text-amber-300">Pending approval — vet before they map</p>
+            <div className="space-y-1.5">
+              {allPending.map((p) => (
+                <div key={p.id} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium">{p.name}</span>
+                  <span className="text-xs text-neutral-500">{nameFor(p.partner_id)} · {CATEGORY_LABEL[p.category]} · {p.members} accounts</span>
+                  <span className="ml-auto flex gap-1">
+                    <form action={setPopulationStatusAction.bind(null, p.id, "approved")}>
+                      <button className="text-xs font-medium text-green-700 hover:underline dark:text-green-400">approve</button>
+                    </form>
+                    <form action={setPopulationStatusAction.bind(null, p.id, "rejected")}>
+                      <button className="text-xs font-medium text-red-700 hover:underline dark:text-red-400">reject</button>
+                    </form>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <form action={createPopulationAction} className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-neutral-500">Name</span>
+            <input name="name" placeholder="e.g. Corporate Territory East" className="w-52 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-neutral-500">Category</span>
+            <select name="category" defaultValue="customer" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+              {(CATEGORIES as readonly Category[]).map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
+            </select>
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-neutral-500">Side</span>
+            <select name="side" defaultValue="org" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+              <option value="org">Your side</option>
+              {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">
+            Propose population
+          </button>
+        </form>
+        <p className="mt-2 text-[11px] text-neutral-400">
+          Members + fields (territory, vertical, segment, owner, contacts) come from a CSV ingest — the attributes model
+          is ready; the ingest wiring is the next step. Proposed lists start pending until approved.
+        </p>
+      </Card>
+    );
+  } finally {
+    db.release();
+  }
 }
