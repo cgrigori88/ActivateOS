@@ -79,6 +79,7 @@ export interface OutboundRequest {
   to: string[];
   subject: string;
   body: string; // human-approved final text
+  html?: string | null; // human-approved branded HTML (campaigns); text is the fallback
   aiDraft?: string | null; // untouched AI draft, if one existed
   sellerId?: string | null;
   mode: "facilitated" | "seller_assisted";
@@ -113,8 +114,8 @@ export async function sendOutbound(
   // Persist FIRST — the provider call may fail; the record must not.
   const { rows: msgRows } = await db.query<{ id: string }>(
     `insert into messages (thread_id, direction, from_email, from_name, to_emails, cc_emails,
-        subject, text_body, ai_draft, status)
-     values ($1, 'outbound', $2, $3, $4, $5, $6, $7, $8, $9)
+        subject, text_body, html_body, ai_draft, status)
+     values ($1, 'outbound', $2, $3, $4, $5, $6, $7, $8, $9, $10)
      returning id`,
     [
       threadId,
@@ -124,6 +125,7 @@ export async function sendOutbound(
       req.mode === "seller_assisted" ? [replyTo] : [],
       req.subject,
       req.body,
+      req.html ?? null,
       req.aiDraft ?? null,
       req.mode === "facilitated" ? "queued" : "draft",
     ],
@@ -157,6 +159,7 @@ export async function sendOutbound(
     replyTo,
     subject: req.subject,
     text: req.body,
+    html: req.html ?? undefined,
   });
 
   await db.query(

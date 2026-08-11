@@ -92,6 +92,17 @@ const icons = {
       <path d="M4 6v4a2 2 0 002 2h4M12 6v4" />
     </svg>
   ),
+  contacts: (
+    <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+      <circle cx="8" cy="5" r="2.5" />
+      <path d="M3.5 13c0-2.2 2-3.5 4.5-3.5s4.5 1.3 4.5 3.5" />
+    </svg>
+  ),
+  campaigns: (
+    <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+      <path d="M2 4l6 4 6-4M2 4h12v8H2z" />
+    </svg>
+  ),
 };
 
 const NAV: NavGroup[] = [
@@ -101,6 +112,13 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/intake", label: "Intake", icon: icons.intake },
       { href: "/mapping", label: "Mapping", icon: icons.mapping },
+      { href: "/contacts", label: "Contacts", icon: icons.contacts },
+    ],
+  },
+  {
+    label: "Outreach",
+    items: [
+      { href: "/campaigns", label: "Campaigns", icon: icons.campaigns },
     ],
   },
   {
