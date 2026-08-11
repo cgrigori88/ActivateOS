@@ -101,7 +101,33 @@ export async function deleteTouchAction(touchId: string): Promise<void> {
   revalidatePath(`/campaigns/${campaignId}`);
 }
 
-/** Arm the whole sequence: fix the recipient, schedule every approved touch. */
+/**
+ * Schedule the whole sequence in one step: approve every unsent, non-rejected
+ * touch, then launch on the chosen start date so each fires on its offset.
+ * (Reject individual touches first if you want to hold them back.)
+ */
+export async function scheduleSequenceAction(campaignId: string, formData: FormData): Promise<void> {
+  const to = String(formData.get("to") ?? "").trim().toLowerCase();
+  if (!to) throw new Error("a recipient is required to schedule");
+  const startRaw = String(formData.get("startDate") ?? "").trim();
+  const startDate = startRaw ? new Date(`${startRaw}T09:00:00Z`) : null;
+
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    await db.query(
+      `update campaign_touches set status = 'approved', approved_by = 'web', approved_at = now()
+       where campaign_id = $1 and status = 'draft'`,
+      [campaignId],
+    );
+    await launchCampaign(db, { campaignId, recipientEmail: to, startDate });
+  } finally {
+    db.release();
+  }
+  revalidatePath(`/campaigns/${campaignId}`);
+}
+
+/** Arm the sequence using only the touches already approved. */
 export async function launchCampaignAction(campaignId: string, formData: FormData): Promise<void> {
   const to = String(formData.get("to") ?? "").trim().toLowerCase();
   if (!to) throw new Error("a recipient is required to launch");

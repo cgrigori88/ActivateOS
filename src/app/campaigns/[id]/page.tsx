@@ -6,7 +6,7 @@ import {
   approveTouchAction,
   rejectTouchAction,
   sendTouchAction,
-  launchCampaignAction,
+  scheduleSequenceAction,
   addTouchAction,
   editTouchAction,
   deleteTouchAction,
@@ -116,8 +116,9 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   );
   const e = eng[0];
 
-  const approvedCount = touches.filter((t) => t.status === "approved").length;
   const launched = Boolean(ca.launched_at);
+  const schedulable = touches.filter((t) => t.status === "draft" || t.status === "approved").length;
+  const rejectedCount = touches.filter((t) => t.status === "rejected").length;
 
   return (
     <main>
@@ -158,25 +159,26 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         </div>
       </Card>
 
-      {/* Launch — arm the sequence once at least one touch is approved */}
-      {!launched && approvedCount > 0 && (
-        <Card className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Launch sequence</h2>
+      {/* Schedule the sequence — the primary way to launch a multi-touch cadence */}
+      {!launched && schedulable > 0 && (
+        <Card className="mb-6 border-blue-200 dark:border-blue-900">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-blue-800 dark:text-blue-300">Schedule the sequence</h2>
           <p className="mb-3 text-xs text-neutral-500">
-            Schedules all {approvedCount} approved touch{approvedCount === 1 ? "" : "es"} to one recipient on their cadence
-            offsets. Sends wait for your go — the worker only auto-sends when explicitly armed.
+            Pick who receives it and when it starts. All {schedulable} touch{schedulable === 1 ? "" : "es"} get scheduled on their
+            day-offsets — touch 1 on the start date, later touches after their offset.
+            {rejectedCount > 0 && ` ${rejectedCount} rejected touch${rejectedCount === 1 ? "" : "es"} stay held back.`}
           </p>
-          <form action={launchCampaignAction.bind(null, ca.id)} className="flex flex-wrap items-end gap-3">
+          <form action={scheduleSequenceAction.bind(null, ca.id)} className="flex flex-wrap items-end gap-3">
             <label className="text-sm">
               <span className="mb-1 block text-xs text-neutral-500">Recipient</span>
               {contacts.length > 0 ? (
-                <select name="to" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                <select name="to" className="w-60 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
                   {contacts.map((c) => (
                     <option key={c.email} value={c.email}>{c.name ? `${c.name} — ${c.email}` : c.email}</option>
                   ))}
                 </select>
               ) : (
-                <input name="to" type="email" required placeholder="recipient@company.com" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+                <input name="to" type="email" required placeholder="recipient@company.com" className="w-60 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
               )}
             </label>
             <label className="text-sm">
@@ -184,15 +186,19 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               <input name="startDate" type="date" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
             </label>
             <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
-              Launch
+              Approve all &amp; schedule
             </button>
           </form>
-          <p className="mt-2 text-[11px] text-neutral-400">Touches fire on the start date plus each touch&apos;s day-offset. Leave the date blank to start today.</p>
+          <p className="mt-2 text-[11px] text-neutral-400">
+            Nothing sends automatically — scheduled touches wait on <Link href="/upcoming" className="underline">Upcoming</Link> for
+            your &ldquo;send now,&rdquo; unless the worker is explicitly armed. Prefer to vet each touch first? Approve or reject them
+            individually below, then schedule.
+          </p>
         </Card>
       )}
       {launched && ca.recipient_email && (
         <p className="mb-6 text-sm text-neutral-500">
-          Launched — sequence targeting <span className="font-medium text-neutral-700 dark:text-neutral-300">{ca.recipient_email}</span>.{" "}
+          Scheduled — sequence targeting <span className="font-medium text-neutral-700 dark:text-neutral-300">{ca.recipient_email}</span>.{" "}
           <Link href="/upcoming" className="text-blue-700 hover:underline dark:text-blue-400">See Upcoming</Link>.
         </p>
       )}
@@ -269,7 +275,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
                 {t.status === "approved" && (
                   <form action={sendTouchAction.bind(null, t.id)} className="flex items-end gap-2">
                     <label className="text-sm">
-                      <span className="mb-1 block text-xs text-neutral-500">Recipient</span>
+                      <span className="mb-1 block text-xs text-neutral-500">Send now (skip schedule) — recipient</span>
                       {contacts.length > 0 ? (
                         <select name="to" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
                           {contacts.map((c) => (

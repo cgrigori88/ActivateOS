@@ -18,7 +18,8 @@ export async function generateSequenceAction(formData: FormData): Promise<void> 
 
   const pool = getPool();
   const db = await pool.connect();
-  let campaignId: string;
+  let campaignId: string | null = null;
+  let notice: string | null = null;
   try {
     const res = await generateCampaignSequence(db, {
       motionId,
@@ -26,11 +27,15 @@ export async function generateSequenceAction(formData: FormData): Promise<void> 
       touchCount: Number.isFinite(touchCount) ? touchCount : 3,
     });
     campaignId = res.campaignId;
+  } catch (err) {
+    // AI generation needs Anthropic credentials in this environment; surface a
+    // notice rather than a crash screen.
+    notice = `Couldn't generate: ${err instanceof Error ? err.message : String(err)}`;
   } finally {
     db.release();
   }
   revalidatePath("/campaigns");
-  redirect(`/campaigns/${campaignId}`);
+  redirect(campaignId ? `/campaigns/${campaignId}` : `/campaigns?notice=${encodeURIComponent(notice ?? "generation failed")}`);
 }
 
 /**
@@ -42,15 +47,26 @@ export async function generateSequenceAction(formData: FormData): Promise<void> 
 export async function suggestCampaignsAction(): Promise<void> {
   const base = process.env.WORKER_URL;
   const secret = process.env.RESEARCH_TRIGGER_SECRET;
+  let notice: string;
   if (!base || !secret) {
-    throw new Error("Suggestions need the worker: set WORKER_URL and RESEARCH_TRIGGER_SECRET.");
+    notice = "AI suggestions run on the pipeline worker — set WORKER_URL and RESEARCH_TRIGGER_SECRET (not configured here).";
+  } else {
+    try {
+      const res = await fetch(`${base.replace(/\/$/, "")}/suggest?limit=3`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${secret}` },
+      });
+      if (!res.ok) notice = `Suggestion request failed (${res.status}).`;
+      else {
+        const data = (await res.json()) as { suggested?: number };
+        notice = data.suggested ? `Drafted ${data.suggested} suggestion(s) for review.` : "No new motions to suggest campaigns for.";
+      }
+    } catch {
+      notice = "Couldn't reach the pipeline worker for suggestions.";
+    }
   }
-  const res = await fetch(`${base.replace(/\/$/, "")}/suggest?limit=3`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${secret}` },
-  });
-  if (!res.ok) throw new Error(`Suggest failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
   revalidatePath("/campaigns");
+  redirect(`/campaigns?notice=${encodeURIComponent(notice)}`);
 }
 
 /** Dismiss an AI-suggested campaign the seller doesn't want. */
@@ -75,9 +91,18 @@ export async function createBlankCampaignAction(formData: FormData): Promise<voi
   const db = await pool.connect();
   let campaignId: string;
   try {
-    const { rows } = await db.query<{ org_id: string | null }>(`select org_id from companies where id = $1`, [companyId]);
-    if (rows.length === 0) throw new Error("account not found");
-    const res = await createBlankCampaign(db, { orgId: rows[0].org_id, companyId, name, senderName });
+    // Companies aren't org-scoped by a column — resolve the org from any related
+    // row, falling back to the sole organization.
+    const { rows } = await db.query<{ org_id: string | null }>(
+      `select coalesce(
+         (select org_id from revenue_motions where company_id = $1 and org_id is not null limit 1),
+         (select org_id from propensity_scores where company_id = $1 and org_id is not null limit 1),
+         (select org_id from partner_accounts where company_id = $1 and org_id is not null limit 1),
+         (select id from organizations order by created_at asc limit 1)
+       ) as org_id`,
+      [companyId],
+    );
+    const res = await createBlankCampaign(db, { orgId: rows[0]?.org_id ?? null, companyId, name, senderName });
     campaignId = res.campaignId;
   } finally {
     db.release();

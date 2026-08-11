@@ -36,7 +36,12 @@ interface MotionOption {
   primary_persona: string | null;
 }
 
-export default async function CampaignsPage() {
+export default async function CampaignsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ notice?: string }>;
+}) {
+  const notice = (await searchParams).notice;
   const pool = getPool();
 
   const { rows: campaigns } = await pool.query<CampaignRow>(
@@ -76,6 +81,12 @@ export default async function CampaignsPage() {
         title="Campaigns"
         subtitle="Branded, multi-touch email sequences composed from approved motions — preview, approve per touch, then send."
       />
+
+      {notice && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          {notice}
+        </div>
+      )}
 
       {/* Compose — two paths: AI-generated from a motion, or hand-authored from an account */}
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
