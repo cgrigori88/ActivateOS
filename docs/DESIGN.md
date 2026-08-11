@@ -1,5 +1,9 @@
 # PursuitOS Front-End Design Brief
 
+> **Brand kit: [BRAND.md](BRAND.md).** That document is the source of truth for
+> colour, type, shape and density, derived from the marketing site. This file
+> remains the UX thesis, information architecture and interaction standards.
+
 The front end must be top-of-class against ecosystem-revenue platforms
 (Crossbeam-style data browsers) and internal vendor outreach consoles. We do
 not win by matching their dashboards feature-for-feature — we win by shipping
@@ -78,3 +82,102 @@ Three product truths drive every screen:
   is added per-component only where needed (queues, palette).
 - Design tokens defined once: band scale, status scale, surface/ink ramps,
   spacing, radii. Charts (later) follow the same tokens.
+
+---
+
+## 6. The mark and wordmark
+
+The brand handoff supplies the identity; §3 above still governs the visual
+language. We take **only the mark and the wordmark** from that kit. Its palette,
+type scale, dark navy ground and motion rules are deliberately *not* adopted:
+they are derived from a third party's brand guidelines and would contradict the
+neutral, light-and-dark-equal system described in §3.
+
+- `src/components/brand.tsx` holds `Mark` and `Lockup`, and nothing else.
+- The mark is a circle carrying two voids on one axis. Never rotate it (the
+  bearing is fixed at 29°), never colour the counters separately, never outline
+  it. At 16px and below the forward counter is dropped and it runs solid — the
+  favicon in `src/app/icon.svg` uses that solid variant.
+- The wordmark is "PursuitOS" at weight 500, tracking tightening as size grows
+  (-0.046em at 34px, -0.040em at 23px, -0.026em at 15px). Instrument Sans is
+  loaded for this one purpose via `--font-brand`; interface and body type stay
+  on the system stack.
+- Primary lockup only: mark + wordmark on one line, gap 40% of the mark's
+  height. It is the sidebar wordmark in `shell.tsx` and the header and footer
+  lockup on `/landing`.
+
+## 7. The public landing page
+
+`/landing` is the marketing surface and the one route excluded from the Basic
+Auth gate in `src/middleware.ts` — it holds no customer data and reads nothing
+from the database.
+
+It is a recreation of a supplied reference design (a QClay-style animated
+fintech landing page), rebuilt around our own copy, mark and wordmark. Ten
+sections: navbar, hero, about, numbers, bento grid, performance dashboard,
+expense/motion grid, product truths, FAQ, footer CTA.
+
+**This section is deliberately exempt from §3.** The cockpit is calm, neutral
+and dense; the landing page is cinematic and animated, and that is the point —
+it has a different job and a different audience. §3 still governs every
+authenticated screen. The landing styles live in `src/app/landing/landing.css`,
+scoped under `.cirform` so nothing leaks into the app.
+
+### Stack notes
+
+The reference was written for TanStack Start + Vite. Ported to the Next.js App
+Router: the route files became `page.tsx` (server, metadata) plus `Landing.tsx`
+(client), the shadcn `Button` import was inlined, and the reference's global
+`@theme` block was *not* reproduced — redefining `--background` / `--card` /
+`--border` globally would have restyled every cockpit screen. Only new colour
+names (`ink`, `night`, `brand`) were added to the app theme.
+
+Motion: Framer Motion for component animation, count-ups, cursor and marquee;
+GSAP + ScrollTrigger for scroll reveals and the dashboard; Lenis for desktop
+smooth scroll only (disabled under 1024px). All animation is clamped under
+`prefers-reduced-motion`.
+
+### The hero mesh
+
+`src/app/landing/HeroMesh.tsx` is the reference's torus, reproduced as-is:
+`TorusGeometry(22, 7, 120, 250)` wireframed, two layered `LineBasicMaterial`s
+(#2563eb at 0.15 and #60a5fa at 0.10, additive, `depthWrite` off, the inner copy
+scaled to 0.98 and offset half a segment), parked at y 18 so the tube arches
+over the top of the frame, tilted 0.1π, turning at `time += 0.0015` with
+`rotation.z = time * 0.5`. Three is imported dynamically so it stays out of the
+initial bundle; reduced motion renders one static frame.
+
+The hero layout follows the reference too — content centred and bottom-aligned
+under the arch: headline, then a `max-w-md` lead, then the CTA pair. The
+reference's vertical hairline beside the title is dropped, since that reads as
+an accent next to a single word and as a stray mark next to a two-line headline.
+
+One addition the reference doesn't need: **the torus scales with aspect ratio.**
+Its camera framing assumes a landscape container, and on a phone the arch falls
+entirely outside the frame, leaving a slab of tube across the bottom. Below an
+aspect of 1.25 the torus and its height scale down together so the arch stays in
+shot. At the reference's own proportions it is a no-op.
+
+An earlier version made our mark the subject instead of the torus — the same
+wireframe treatment applied to a `Shape` with two circular holes. It is in the
+git history if we want it back. It cannot carry a tube this fat, though: the
+mark's wall between its outer edge and the large counter is only 4.6 units, and
+3.0 to the small counter, so a tube of radius 7 collides with itself and the
+mark stops reading. A thin rimmed profile is the most that shape allows.
+
+### Two things to settle before this goes public
+
+1. **Media is hot-linked from `qclay.design`.** The hero video, portraits and
+   icons all load from the reference's origin. That is someone else's CDN and
+   someone else's media — fine for a preview, not for a production site. These
+   need to be replaced with our own assets, or at minimum self-hosted with
+   permission, before launch.
+2. **The testimonial carousel carries no testimonials.** The reference had
+   named people at named banks. We have no customers yet — we are taking our
+   first design partners — so inventing quotes would be publishing fabricated
+   endorsements. The section keeps its design and animation and carries the
+   three product truths from §1 instead. Swap in real quotes once a design
+   partner has agreed to be named.
+
+Pricing is also absent. The brief carries real numbers; publishing them is a
+commercial decision, not a design one.

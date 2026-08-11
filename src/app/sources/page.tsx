@@ -36,7 +36,7 @@ export default async function SourcesPage() {
           const total = Number(s.total);
           const verifiedPct = total ? Math.round((Number(s.verified) / total) * 100) : 0;
           return (
-            <Card key={s.name}>
+            <Card key={s.name} muted={total === 0}>
               <div className="mb-2 flex items-baseline justify-between">
                 <h2 className="font-semibold">{s.name}</h2>
                 <span className="text-xs uppercase tracking-wide text-neutral-400">{s.kind}</span>

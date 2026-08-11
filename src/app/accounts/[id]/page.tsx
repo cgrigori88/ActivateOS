@@ -6,7 +6,10 @@ import {
   CompletenessGrid,
   EvidenceLine,
   FEATURE_LABELS,
+  IconTile,
   PageHeader,
+  Prose,
+  SectionHeading,
   StatusBadge,
 } from "@/components/ui";
 import { loadCompanyIntel } from "@/lib/intel/company-intel";
@@ -220,9 +223,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
             </p>
           )}
 
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Why now
-          </h2>
+          <SectionHeading tone="indigo" icon={<svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2v3M8 11v3M2 8h3M11 8h3M4.2 4.2l2 2M9.8 9.8l2 2M11.8 4.2l-2 2M6.2 9.8l-2 2"/></svg>}>Why now</SectionHeading>
           {features.map((f) => (
             <div key={f.feature} className="mb-3 last:mb-0">
               <p className="text-sm font-medium">
@@ -256,12 +257,9 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
       )}
 
       <Card className="mb-6">
-        <div className="mb-3 flex items-center gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Data completeness
-          </h2>
-          <span className="text-xs text-neutral-400">how thoroughly researched — not propensity</span>
-        </div>
+        <SectionHeading tone="teal" icon={<svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 1 0 12"/></svg>} hint="how thoroughly researched — not propensity">
+          Data completeness
+        </SectionHeading>
         <CompletenessGrid byCategory={intel.completeness.byCategory} overall={intel.completeness.overall} />
         {intel.completeness.gaps.length > 0 && (
           <p className="mt-3 text-xs text-neutral-500">
@@ -294,8 +292,9 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
 
       {intel.evidence.length > 0 && (
         <Card className="mb-6">
-          <div className="mb-3 flex items-center gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <div className="mb-3 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <IconTile tone="emerald" size="sm"><svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2l5 2v4c0 3-2 5-5 6-3-1-5-3-5-6V4z"/><path d="M6 8l1.5 1.5L10.5 6.5"/></svg></IconTile>
+            <h2 className="text-[15px] font-bold tracking-[-0.015em] text-neutral-900 dark:text-neutral-100">
               Evidence
             </h2>
             <span className="text-xs text-neutral-400">
@@ -328,9 +327,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
 
       {partnerFits.length > 0 && (
         <Card className="mb-6">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Pursuit team
-          </h2>
+          <SectionHeading tone="violet" icon={<svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="2.4"/><path d="M2 13.5c0-2.2 1.8-3.5 4-3.5s4 1.3 4 3.5"/><path d="M11 4.2a2.4 2.4 0 0 1 0 4.6M12 13.5c0-1.6-.6-2.7-1.6-3.3"/></svg>} count={partnerFits.length}>Pursuit team</SectionHeading>
           <div className="space-y-3">
             {partnerFits.map((f) => {
               const isRouted = team?.partner_id === f.partner_id;
@@ -402,14 +399,15 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
 
       {motions.length > 0 && (
         <Card className="mb-6">
-          <div className="mb-2 flex items-center gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <div className="mb-2 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <IconTile tone="amber" size="sm"><svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 8h8M8 4l4 4-4 4"/></svg></IconTile>
+            <h2 className="text-[15px] font-bold tracking-[-0.015em] text-neutral-900 dark:text-neutral-100">
               Revenue motion
             </h2>
             <StatusBadge status={motions[0].status} />
             <span className="text-xs text-neutral-400">confidence: {motions[0].confidence}</span>
           </div>
-          <p className="mb-3 leading-relaxed">{motions[0].thesis}</p>
+          <Prose className="mb-3">{motions[0].thesis}</Prose>
           <dl className="space-y-1 text-sm text-neutral-600 dark:text-neutral-400">
             <div>
               <dt className="inline font-medium text-neutral-800 dark:text-neutral-200">Trigger: </dt>
@@ -448,9 +446,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
 
       {events.length > 0 && (
         <Card>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Timeline
-          </h2>
+          <SectionHeading tone="neutral" icon={<svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>} count={events.length}>Timeline</SectionHeading>
           <ul className="space-y-1.5">
             {events.map((e, i) => (
               <li key={i} className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">

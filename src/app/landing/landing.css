@@ -1,0 +1,253 @@
+/**
+ * Landing-page styles, ported from the supplied `src/styles.css`.
+ *
+ * Two deliberate departures from the source file:
+ *  - The shadcn/Tailwind-v4 `@theme` block and the oklch surface tokens are not
+ *    reproduced. This repo already has its own theme, and redefining
+ *    --background / --card / --border globally would restyle every cockpit
+ *    screen. The landing palette lives under `.cirform` instead.
+ *  - `body { cursor: none }` is scoped to `.cirform` so the custom cursor only
+ *    takes over on this route, not across the authenticated app.
+ */
+
+.cirform {
+  --ink: oklch(0.16 0.04 260);
+  --ink-soft: oklch(0.4 0.05 260);
+  --brand: oklch(0.55 0.22 260);
+  --brand-deep: oklch(0.36 0.2 263);
+  --brand-glow: oklch(0.78 0.15 250);
+  --night: oklch(0.13 0.045 260);
+  --night-2: oklch(0.08 0.04 260);
+
+  --gradient-number: linear-gradient(180deg, oklch(0.62 0.21 260) 0%, oklch(0.28 0.18 263) 100%);
+  --gradient-footer: linear-gradient(
+    180deg,
+    oklch(0.36 0.2 274) 0%,
+    oklch(0.22 0.14 269) 24%,
+    oklch(0.12 0.055 260) 58%,
+    oklch(0.055 0.025 260) 100%
+  );
+  --gradient-footer-transition: linear-gradient(
+    180deg,
+    oklch(1 0 0) 0%,
+    oklch(0.91 0.055 270) 18%,
+    oklch(0.55 0.2 275) 48%,
+    oklch(0.25 0.16 268) 76%,
+    transparent 100%
+  );
+  --gradient-testimonials-flow: linear-gradient(
+    180deg,
+    oklch(1 0 0) 0%,
+    oklch(1 0 0) 67%,
+    oklch(0.96 0.035 248) 100%
+  );
+  --gradient-faq-flow: linear-gradient(
+    180deg,
+    oklch(0.96 0.035 248) 0%,
+    oklch(0.86 0.085 245) 45%,
+    oklch(0.94 0.035 245) 78%,
+    oklch(1 0 0) 100%
+  );
+
+  --shadow-card: 0 30px 80px -30px oklch(0.3 0.15 265 / 0.35);
+  --shadow-soft: 0 12px 40px -16px oklch(0.3 0.15 265 / 0.25);
+
+  color: var(--ink);
+  /* Shares the product's interface face so site and app read as one company.
+     To put the marketing page back on the system stack, drop var(--font-ui). */
+  font-family: var(--font-ui), "SF Pro Display", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", Arial, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The custom cursor replaces the pointer on this route only. */
+.cirform,
+.cirform * {
+  cursor: none;
+}
+@media (hover: none) {
+  .cirform,
+  .cirform * {
+    cursor: auto;
+  }
+}
+
+/* Display serif italic used for the emphasis words in every heading. */
+.cirform .font-display {
+  font-family: var(--font-display-serif), Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.cirform .text-num-gradient {
+  background: var(--gradient-number);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.cirform .bg-testimonials-flow {
+  background: var(--gradient-testimonials-flow);
+}
+.cirform .bg-faq-flow {
+  background: var(--gradient-faq-flow);
+}
+.cirform .bg-footer-transition {
+  background: var(--gradient-footer-transition);
+}
+
+.cirform .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 1rem;
+  border: 1px solid oklch(0.18 0.04 260 / 0.12);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.cirform .chip-dark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  background: oklch(0.16 0.04 260);
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.cirform .btn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.85rem 1.6rem;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 500;
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s;
+  box-shadow: 0 10px 30px -10px oklch(0.55 0.22 260 / 0.5);
+}
+.cirform .btn-pill:hover {
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 18px 50px -10px oklch(0.55 0.22 260 / 0.8);
+}
+
+.cirform .link-quiet {
+  position: relative;
+  color: inherit;
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+.cirform .link-quiet:hover {
+  opacity: 1;
+}
+
+.cirform .no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.cirform .no-scrollbar {
+  scrollbar-width: none;
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+.cirform .float-slow {
+  animation: float-slow 6s ease-in-out infinite;
+}
+
+@keyframes lowfee-marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-528px, 0, 0);
+  }
+}
+
+/* ============ Responsive overrides — SmarterBanking & Performance ============ */
+@media (max-width: 1023px) {
+  .smarter-section .grid.grid-cols-12 {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 1.5rem !important;
+  }
+  .smarter-section .grid.grid-cols-12 > * {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: 100% !important;
+    max-width: 360px !important;
+    height: auto !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    margin-top: 0 !important;
+  }
+  .smarter-section .grid.grid-cols-12 [style*="height: 77px"],
+  .smarter-section .grid.grid-cols-12 [style*="width: 255px"],
+  .smarter-section .grid.grid-cols-12 [style*="width: 374px"] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .smarter-section .grid.grid-cols-12 [style*="width: 270px"] {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .perf-section .grid.grid-cols-12 {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 1.5rem !important;
+  }
+  .perf-section .grid.grid-cols-12 > * {
+    grid-column: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  .perf-section .grid.grid-cols-12 > div[style*="height: 462px"] {
+    height: auto !important;
+    min-height: 360px;
+  }
+  .perf-section .flex.items-end.justify-between {
+    gap: 0.75rem !important;
+  }
+  .perf-section .perf-bar {
+    width: 100% !important;
+    max-width: 60px;
+  }
+}
+@media (max-width: 640px) {
+  .perf-section .flex.items-center.justify-between.border-b .flex.gap-6 {
+    gap: 1rem !important;
+    font-size: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cirform *,
+  .cirform *::before,
+  .cirform *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

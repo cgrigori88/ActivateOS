@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
 import { rankNextActions, type PortfolioState } from "@/lib/portfolio/next-best";
-import { BandBadge, Card, CountChip, PageHeader, StatusBadge } from "@/components/ui";
+import { BandBadge, Card, CountChip, PageHeader, SectionHeading, StatusBadge } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -114,10 +114,8 @@ export default async function TodayPage() {
       </div>
 
       {nextActions.length > 0 && (
-        <Card className="mb-6">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Next best actions
-          </h2>
+        <Card className="mb-6" tone="indigo">
+          <SectionHeading tone="indigo">Next best actions</SectionHeading>
           <ol className="space-y-2">
             {nextActions.map((a, i) => (
               <li key={i} className="flex items-baseline gap-3 text-sm">
@@ -135,10 +133,8 @@ export default async function TodayPage() {
       )}
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Pending approvals
-          </h2>
+        <Card tone="amber">
+          <SectionHeading tone="amber" count={drafts.length}>Pending approvals</SectionHeading>
           {drafts.length === 0 ? (
             <p className="text-sm text-neutral-500">
               All clear — new motions appear here when the designer drafts them.
@@ -160,10 +156,8 @@ export default async function TodayPage() {
           )}
         </Card>
 
-        <Card>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Top opportunities
-          </h2>
+        <Card tone="teal">
+          <SectionHeading tone="teal" count={topRanked.length}>Top opportunities</SectionHeading>
           {topRanked.length === 0 ? (
             <p className="text-sm text-neutral-500">Run the scoring pipeline to populate.</p>
           ) : (
@@ -185,9 +179,7 @@ export default async function TodayPage() {
       </div>
 
       <Card className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-          Recent activity
-        </h2>
+        <SectionHeading tone="violet" count={activity.length}>Recent activity</SectionHeading>
         {activity.length === 0 ? (
           <p className="text-sm text-neutral-500">Outcome events land here.</p>
         ) : (
