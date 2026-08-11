@@ -126,6 +126,7 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/campaigns", label: "Campaigns", icon: icons.campaigns },
       { href: "/upcoming", label: "Upcoming", icon: icons.upcoming },
+      { href: "/analytics", label: "Analytics", icon: icons.insights },
     ],
   },
   {
