@@ -22,9 +22,17 @@ export interface LaunchResult {
 /** Arm a campaign: fix the recipient and schedule every approved touch. */
 export async function launchCampaign(
   db: pg.PoolClient,
-  args: { campaignId: string; recipientEmail: string; recipientContactId?: string | null; now?: Date },
+  args: {
+    campaignId: string;
+    recipientEmail: string;
+    recipientContactId?: string | null;
+    startDate?: Date | null; // cadence anchor; defaults to now
+    now?: Date;
+  },
 ): Promise<LaunchResult> {
   const now = args.now ?? new Date();
+  // Anchor the cadence on the chosen start date (never before now).
+  const anchor = args.startDate && args.startDate.getTime() > now.getTime() ? args.startDate : now;
   const to = args.recipientEmail.trim().toLowerCase();
   if (!to) throw new Error("a recipient is required to launch");
 
@@ -36,14 +44,15 @@ export async function launchCampaign(
   if (approved.length === 0) throw new Error("no approved touches — approve at least one before launching");
 
   await db.query(
-    `update campaigns set status = 'launched', launched_at = $2, recipient_email = $3, recipient_contact_id = $4
+    `update campaigns set status = 'launched', launched_at = $2, start_date = $5,
+       recipient_email = $3, recipient_contact_id = $4
      where id = $1`,
-    [args.campaignId, now, to, args.recipientContactId ?? null],
+    [args.campaignId, now, to, args.recipientContactId ?? null, anchor],
   );
 
   let firstAt: Date | null = null;
   for (const t of approved) {
-    const at = new Date(now.getTime() + t.send_offset_days * DAY_MS);
+    const at = new Date(anchor.getTime() + t.send_offset_days * DAY_MS);
     if (!firstAt || at < firstAt) firstAt = at;
     await db.query(`update campaign_touches set status = 'scheduled', scheduled_at = $2 where id = $1`, [t.id, at]);
   }
@@ -63,17 +72,20 @@ export async function sendTouchNow(
     html_body: string | null;
     recipient_email: string | null;
     org_id: string | null;
-    company_id: string;
-    motion_id: string;
+    company_id: string | null;
+    m_company: string | null;
+    motion_id: string | null;
+    campaign_sender: string | null;
     seller_id: string | null;
     seller_name: string | null;
   }>(
     `select t.campaign_id, t.status, t.subject, t.text_body, t.html_body,
-            ca.recipient_email, m.org_id, m.company_id, m.id as motion_id,
+            ca.recipient_email, ca.org_id, ca.company_id, ca.sender_name as campaign_sender,
+            m.company_id as m_company, m.id as motion_id,
             m.partner_seller_id as seller_id, s.name as seller_name
      from campaign_touches t
      join campaigns ca on ca.id = t.campaign_id
-     join revenue_motions m on m.id = ca.motion_id
+     left join revenue_motions m on m.id = ca.motion_id
      left join sellers s on s.id = m.partner_seller_id
      where t.id = $1`,
     [args.touchId],
@@ -83,15 +95,17 @@ export async function sendTouchNow(
   if (t.status !== "approved" && t.status !== "scheduled") {
     throw new Error(`touch is '${t.status}' — only approved/scheduled touches send`);
   }
+  const companyId = t.company_id ?? t.m_company;
+  if (!companyId) throw new Error("campaign has no account");
   const to = (args.overrideTo ?? t.recipient_email ?? "").trim().toLowerCase();
   if (!to) throw new Error("no recipient set — launch the campaign or pass a recipient");
 
-  const senderName = t.seller_name ?? "The PursuitOS Team";
+  const senderName = t.campaign_sender ?? t.seller_name ?? "The PursuitOS Team";
   const localPart = senderName.toLowerCase().replace(/[^a-z]+/g, ".").replace(/^\.|\.$/g, "") || "team";
 
   const result = await sendOutbound(db, {
     orgId: t.org_id,
-    companyId: t.company_id,
+    companyId,
     motionId: t.motion_id,
     identity: { displayName: senderName, localPart },
     to: [to],
@@ -113,7 +127,7 @@ export async function sendTouchNow(
      )`,
     [t.campaign_id],
   );
-  await deriveEngagement(db, { orgId: t.org_id, companyId: t.company_id });
+  await deriveEngagement(db, { orgId: t.org_id, companyId });
   return { messageId: result.messageId };
 }
 

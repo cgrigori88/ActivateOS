@@ -2,7 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPool } from "@/db/client";
 import { Card, PageHeader, StatusBadge } from "@/components/ui";
-import { approveTouchAction, rejectTouchAction, sendTouchAction, launchCampaignAction } from "./actions";
+import {
+  approveTouchAction,
+  rejectTouchAction,
+  sendTouchAction,
+  launchCampaignAction,
+  addTouchAction,
+  editTouchAction,
+  deleteTouchAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -21,11 +29,32 @@ interface Touch {
   headline: string | null;
   status: string;
   html_body: string | null;
+  body: string;
+  highlights: string[];
   cta_label: string | null;
+  cta_url: string | null;
   send_offset_days: number;
   scheduled_at: Date | null;
   rejected_reason: string | null;
   sent_at: Date | null;
+}
+
+/** Shared field set for adding or editing a touch by hand. */
+function TouchFormFields({ t }: { t?: Touch }) {
+  const input = "w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Label</span><input name="name" defaultValue={t?.name ?? ""} placeholder="e.g. Trigger intro" className={input} /></label>
+      <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Day offset</span><input name="sendOffsetDays" type="number" min="0" defaultValue={t?.send_offset_days ?? 0} className={input} /></label>
+      <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Subject</span><input name="subject" required defaultValue={t?.subject ?? ""} className={input} /></label>
+      <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Preheader</span><input name="preheader" defaultValue={t?.preheader ?? ""} className={input} /></label>
+      <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Headline</span><input name="headline" defaultValue={t?.headline ?? ""} className={input} /></label>
+      <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Body (blank line between paragraphs)</span><textarea name="body" required defaultValue={t?.body ?? ""} rows={4} className={input} /></label>
+      <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Highlights (one per line)</span><textarea name="highlights" defaultValue={(t?.highlights ?? []).join("\n")} rows={2} className={input} /></label>
+      <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">CTA label</span><input name="ctaLabel" defaultValue={t?.cta_label ?? ""} placeholder="Book 20 minutes" className={input} /></label>
+      <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">CTA link (optional)</span><input name="ctaUrl" defaultValue={t?.cta_url ?? ""} placeholder="https://…" className={input} /></label>
+    </div>
+  );
 }
 
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -50,8 +79,8 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             c.id as company_id, c.legal_name, c.primary_domain, m.id as motion_id,
             bp.wordmark, ca.recipient_email, ca.launched_at
      from campaigns ca
-     join revenue_motions m on m.id = ca.motion_id
-     join companies c on c.id = m.company_id
+     left join revenue_motions m on m.id = ca.motion_id
+     join companies c on c.id = coalesce(ca.company_id, m.company_id)
      left join brand_profiles bp on bp.id = ca.brand_id
      where ca.id = $1`,
     [id],
@@ -61,7 +90,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
 
   const { rows: touches } = await pool.query<Touch>(
     `select id, touch_no, name, subject, preheader, headline, status, html_body,
-            cta_label, send_offset_days, scheduled_at, rejected_reason, sent_at
+            body, highlights, cta_label, cta_url, send_offset_days, scheduled_at, rejected_reason, sent_at
      from campaign_touches where campaign_id = $1 order by touch_no`,
     [id],
   );
@@ -141,19 +170,24 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             <label className="text-sm">
               <span className="mb-1 block text-xs text-neutral-500">Recipient</span>
               {contacts.length > 0 ? (
-                <select name="to" className="w-72 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                <select name="to" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
                   {contacts.map((c) => (
                     <option key={c.email} value={c.email}>{c.name ? `${c.name} — ${c.email}` : c.email}</option>
                   ))}
                 </select>
               ) : (
-                <input name="to" type="email" required placeholder="recipient@company.com" className="w-72 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+                <input name="to" type="email" required placeholder="recipient@company.com" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
               )}
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">Start date</span>
+              <input name="startDate" type="date" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
             </label>
             <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
               Launch
             </button>
           </form>
+          <p className="mt-2 text-[11px] text-neutral-400">Touches fire on the start date plus each touch&apos;s day-offset. Leave the date blank to start today.</p>
         </Card>
       )}
       {launched && ca.recipient_email && (
@@ -255,8 +289,40 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
                 )}
               </div>
             )}
+
+            {/* Edit / delete (unsent touches only) */}
+            {t.status !== "sent" && (
+              <div className="mt-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+                <details>
+                  <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
+                    Edit copy & timing
+                  </summary>
+                  <form action={editTouchAction.bind(null, t.id)} className="mt-3 space-y-3">
+                    <TouchFormFields t={t} />
+                    <div className="flex items-center gap-3">
+                      <button className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-800">Save & re-render</button>
+                      <span className="text-[11px] text-neutral-400">Editing resets a rejected touch to draft.</span>
+                    </div>
+                  </form>
+                  <form action={deleteTouchAction.bind(null, t.id)} className="mt-2">
+                    <button className="text-xs font-medium text-red-700 hover:underline dark:text-red-400">Delete touch</button>
+                  </form>
+                </details>
+              </div>
+            )}
           </Card>
         ))}
+
+        {/* Add a hand-authored touch */}
+        <Card>
+          <details>
+            <summary className="cursor-pointer text-sm font-semibold text-neutral-700 dark:text-neutral-200">+ Add touch</summary>
+            <form action={addTouchAction.bind(null, ca.id)} className="mt-3 space-y-3">
+              <TouchFormFields />
+              <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">Add touch</button>
+            </form>
+          </details>
+        </Card>
       </div>
     </main>
   );

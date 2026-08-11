@@ -152,9 +152,9 @@ Design the ${touchCount}-touch sequence.`,
   const brandId = brandRows[0]?.id ?? null;
 
   const { rows: campaigns } = await db.query<{ id: string }>(
-    `insert into campaigns (org_id, motion_id, name, status, brand_id, objective, audience)
-     values ($1, $2, $3, 'draft', $4, $5, $6) returning id`,
-    [m.org_id, args.motionId, sequence.campaign_name, brandId, sequence.objective, sequence.audience],
+    `insert into campaigns (org_id, company_id, motion_id, name, status, brand_id, objective, audience)
+     values ($1, $2, $3, $4, 'draft', $5, $6, $7) returning id`,
+    [m.org_id, m.company_id, args.motionId, sequence.campaign_name, brandId, sequence.objective, sequence.audience],
   );
   const campaignId = campaigns[0].id;
 

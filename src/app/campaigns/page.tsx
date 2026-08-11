@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
 import { Card, PageHeader, StatusBadge } from "@/components/ui";
-import { generateSequenceAction } from "./actions";
+import { generateSequenceAction, createBlankCampaignAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -43,8 +43,8 @@ export default async function CampaignsPage() {
               where es.company_id = c.id and es.contact_id is null
               order by es.computed_at desc limit 1) as engagement
      from campaigns ca
-     join revenue_motions m on m.id = ca.motion_id
-     join companies c on c.id = m.company_id
+     left join revenue_motions m on m.id = ca.motion_id
+     join companies c on c.id = coalesce(ca.company_id, m.company_id)
      order by ca.created_at desc`,
   );
 
@@ -53,8 +53,11 @@ export default async function CampaignsPage() {
      from revenue_motions m
      join companies c on c.id = m.company_id
      where m.status in ('approved','active')
-       and not exists (select 1 from campaigns ca where ca.motion_id = m.id)
-     order by m.created_at desc limit 25`,
+     order by m.created_at desc limit 50`,
+  );
+
+  const { rows: accounts } = await pool.query<{ id: string; legal_name: string }>(
+    `select id, legal_name from companies order by legal_name asc limit 300`,
   );
 
   return (
@@ -64,46 +67,65 @@ export default async function CampaignsPage() {
         subtitle="Branded, multi-touch email sequences composed from approved motions — preview, approve per touch, then send."
       />
 
-      {/* Compose */}
-      <Card className="mb-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">New sequence</h2>
-        {motions.length === 0 ? (
-          <p className="text-sm text-neutral-500">
-            No approved motions without a campaign yet. Approve a motion on the{" "}
-            <Link href="/motions" className="text-blue-700 hover:underline dark:text-blue-400">Motions</Link> page first.
-          </p>
-        ) : (
-          <form action={generateSequenceAction} className="flex flex-wrap items-end gap-3">
+      {/* Compose — two paths: AI-generated from a motion, or hand-authored from an account */}
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Generate from a motion</h2>
+          <p className="mb-3 text-xs text-neutral-500">AI drafts a grounded sequence from an approved/active motion. Each touch is a draft until you approve it.</p>
+          {motions.length === 0 ? (
+            <p className="text-sm text-neutral-500">
+              No active or approved motions yet — the pipeline creates these from account intelligence. You can still
+              build a campaign by hand on the right.
+            </p>
+          ) : (
+            <form action={generateSequenceAction} className="flex flex-wrap items-end gap-3">
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Motion</span>
+                <select name="motionId" className="w-56 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                  {motions.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.legal_name}{m.primary_persona ? ` — ${m.primary_persona}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Touches</span>
+                <select name="touchCount" defaultValue="3" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                  {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Sender</span>
+                <input name="senderName" placeholder="Dana Whitfield" className="w-36 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+              </label>
+              <button type="submit" className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">Compose</button>
+            </form>
+          )}
+        </Card>
+
+        <Card>
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Build by hand</h2>
+          <p className="mb-3 text-xs text-neutral-500">Start an empty campaign on any account, then add and schedule your own touches — no motion needed.</p>
+          <form action={createBlankCampaignAction} className="flex flex-wrap items-end gap-3">
             <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">Approved motion</span>
-              <select name="motionId" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
-                {motions.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.legal_name}{m.primary_persona ? ` — ${m.primary_persona}` : ""}
-                  </option>
-                ))}
+              <span className="mb-1 block text-xs text-neutral-500">Account</span>
+              <select name="companyId" required className="w-56 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.legal_name}</option>)}
               </select>
             </label>
             <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">Touches</span>
-              <select name="touchCount" defaultValue="3" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
-                {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
+              <span className="mb-1 block text-xs text-neutral-500">Name</span>
+              <input name="name" placeholder="Q3 expansion play" className="w-40 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
             </label>
             <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">Sender name</span>
-              <input name="senderName" placeholder="e.g. Dana Whitfield" className="w-44 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+              <span className="mb-1 block text-xs text-neutral-500">Sender</span>
+              <input name="senderName" placeholder="Dana Whitfield" className="w-36 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
             </label>
-            <button type="submit" className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
-              Compose
-            </button>
+            <button type="submit" className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">Create</button>
           </form>
-        )}
-        <p className="mt-2 text-xs text-neutral-500">
-          The sequence is grounded in the approved motion and verified evidence — no invented facts. Each touch is a
-          draft until you approve it.
-        </p>
-      </Card>
+        </Card>
+      </div>
 
       {/* Sequences */}
       {campaigns.length === 0 ? (

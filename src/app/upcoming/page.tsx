@@ -32,8 +32,8 @@ export default async function UpcomingPage() {
             c.id as company_id, c.legal_name
      from campaign_touches t
      join campaigns ca on ca.id = t.campaign_id
-     join revenue_motions m on m.id = ca.motion_id
-     join companies c on c.id = m.company_id
+     left join revenue_motions m on m.id = ca.motion_id
+     join companies c on c.id = coalesce(ca.company_id, m.company_id)
      where t.status = 'scheduled'
      order by t.scheduled_at asc nulls last`,
   );
