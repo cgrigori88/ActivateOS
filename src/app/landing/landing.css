@@ -53,7 +53,10 @@
   --shadow-soft: 0 12px 40px -16px oklch(0.3 0.15 265 / 0.25);
 
   color: var(--ink);
-  font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  /* Shares the product's interface face so site and app read as one company.
+     To put the marketing page back on the system stack, drop var(--font-ui). */
+  font-family: var(--font-ui), "SF Pro Display", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", Arial, sans-serif;
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
 }
