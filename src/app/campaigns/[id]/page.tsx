@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPool } from "@/db/client";
 import { Card, PageHeader, StatusBadge } from "@/components/ui";
+import { TZ_OPTIONS, formatInTz } from "@/lib/comms/tz";
 import {
   approveTouchAction,
   rejectTouchAction,
@@ -10,6 +11,7 @@ import {
   addTouchAction,
   editTouchAction,
   deleteTouchAction,
+  aiDraftTouchesAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +32,7 @@ interface Touch {
   status: string;
   html_body: string | null;
   body: string;
+  custom_html: string | null;
   highlights: string[];
   cta_label: string | null;
   cta_url: string | null;
@@ -49,16 +52,27 @@ function TouchFormFields({ t }: { t?: Touch }) {
       <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Subject</span><input name="subject" required defaultValue={t?.subject ?? ""} className={input} /></label>
       <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Preheader</span><input name="preheader" defaultValue={t?.preheader ?? ""} className={input} /></label>
       <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Headline</span><input name="headline" defaultValue={t?.headline ?? ""} className={input} /></label>
-      <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Body (blank line between paragraphs)</span><textarea name="body" required defaultValue={t?.body ?? ""} rows={4} className={input} /></label>
+      <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Body (blank line between paragraphs)</span><textarea name="body" defaultValue={t?.body ?? ""} rows={4} className={input} /></label>
       <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Highlights (one per line)</span><textarea name="highlights" defaultValue={(t?.highlights ?? []).join("\n")} rows={2} className={input} /></label>
       <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">CTA label</span><input name="ctaLabel" defaultValue={t?.cta_label ?? ""} placeholder="Book 20 minutes" className={input} /></label>
       <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">CTA link (optional)</span><input name="ctaUrl" defaultValue={t?.cta_url ?? ""} placeholder="https://…" className={input} /></label>
+      <label className="text-sm sm:col-span-2">
+        <span className="mb-1 block text-xs text-neutral-500">Custom HTML (optional — replaces the body, keeps the branded header/footer)</span>
+        <textarea name="customHtml" defaultValue={t?.custom_html ?? ""} rows={3} placeholder="<p>Paste your own HTML…</p>" className={`${input} font-mono text-xs`} />
+      </label>
     </div>
   );
 }
 
-export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CampaignDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ notice?: string }>;
+}) {
   const { id } = await params;
+  const notice = (await searchParams).notice;
   const pool = getPool();
 
   const { rows: caRows } = await pool.query<{
@@ -74,10 +88,11 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     wordmark: string | null;
     recipient_email: string | null;
     launched_at: Date | null;
+    send_tz: string | null;
   }>(
     `select ca.id, ca.name, ca.status, ca.objective, ca.audience,
             c.id as company_id, c.legal_name, c.primary_domain, m.id as motion_id,
-            bp.wordmark, ca.recipient_email, ca.launched_at
+            bp.wordmark, ca.recipient_email, ca.launched_at, ca.send_tz
      from campaigns ca
      left join revenue_motions m on m.id = ca.motion_id
      join companies c on c.id = coalesce(ca.company_id, m.company_id)
@@ -90,7 +105,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
 
   const { rows: touches } = await pool.query<Touch>(
     `select id, touch_no, name, subject, preheader, headline, status, html_body,
-            body, highlights, cta_label, cta_url, send_offset_days, scheduled_at, rejected_reason, sent_at
+            body, custom_html, highlights, cta_label, cta_url, send_offset_days, scheduled_at, rejected_reason, sent_at
      from campaign_touches where campaign_id = $1 order by touch_no`,
     [id],
   );
@@ -127,6 +142,12 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         <Link href={`/accounts/${ca.company_id}`} className="hover:underline">{ca.legal_name}</Link>
       </div>
       <PageHeader title={ca.name} subtitle={ca.objective ?? undefined} />
+
+      {notice && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          {notice}
+        </div>
+      )}
 
       <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
         <StatusBadge status={ca.status === "launched" ? "active" : ca.status} />
@@ -184,6 +205,16 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             <label className="text-sm">
               <span className="mb-1 block text-xs text-neutral-500">Start date</span>
               <input name="startDate" type="date" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">Time</span>
+              <input name="sendTime" type="time" defaultValue="09:00" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">Timezone</span>
+              <select name="sendTz" defaultValue="America/New_York" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                {TZ_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
             </label>
             <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
               Approve all &amp; schedule
@@ -247,7 +278,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             ) : t.status === "scheduled" ? (
               <div className="flex flex-wrap items-center gap-3">
                 <span className="text-xs text-neutral-500">
-                  Scheduled for {t.scheduled_at ? new Date(t.scheduled_at).toISOString().slice(0, 16).replace("T", " ") : "—"}
+                  Scheduled for {t.scheduled_at ? formatInTz(new Date(t.scheduled_at), ca.send_tz ?? "UTC") : "—"}
                 </span>
                 <form action={sendTouchAction.bind(null, t.id)}>
                   <button className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
@@ -319,10 +350,22 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           </Card>
         ))}
 
-        {/* Add a hand-authored touch */}
+        {/* Add touches — either/or: let AI draft, or author by hand */}
         <Card>
+          <div className="mb-3 flex flex-wrap items-center gap-3 border-b border-neutral-100 pb-3 dark:border-neutral-800">
+            <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-200">Add touches</span>
+            <form action={aiDraftTouchesAction.bind(null, ca.id)} className="flex items-center gap-2">
+              <select name="touchCount" defaultValue="3" className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-900">
+                {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <button className="rounded-md px-3 py-1.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
+                Let AI draft touches
+              </button>
+              <span className="text-[11px] text-neutral-400">{ca.motion_id ? "grounded in this account's motion" : "needs a linked motion"}</span>
+            </form>
+          </div>
           <details>
-            <summary className="cursor-pointer text-sm font-semibold text-neutral-700 dark:text-neutral-200">+ Add touch</summary>
+            <summary className="cursor-pointer text-sm font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100">+ Write a touch by hand</summary>
             <form action={addTouchAction.bind(null, ca.id)} className="mt-3 space-y-3">
               <TouchFormFields />
               <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">Add touch</button>

@@ -1,6 +1,7 @@
 import type pg from "pg";
 import { sendOutbound } from "./send";
 import { deriveEngagement } from "../intel/engagement";
+import { addDays, normalizeTz, zonedToUtc } from "./tz";
 
 /**
  * Sequence cadence (Phase 9B). Launching a campaign turns its approved touches
@@ -12,29 +13,36 @@ import { deriveEngagement } from "../intel/engagement";
  * are a later refinement).
  */
 
-const DAY_MS = 86_400_000;
-
 export interface LaunchResult {
   scheduled: number;
   firstAt: Date | null;
 }
 
-/** Arm a campaign: fix the recipient and schedule every approved touch. */
+/**
+ * Arm a campaign: fix the recipient and schedule every approved touch at a real
+ * local wall time (send time + timezone) on its offset day, DST-correct.
+ */
 export async function launchCampaign(
   db: pg.PoolClient,
   args: {
     campaignId: string;
     recipientEmail: string;
     recipientContactId?: string | null;
-    startDate?: Date | null; // cadence anchor; defaults to now
+    startDate?: string | null; // 'YYYY-MM-DD'; defaults to today
+    sendTime?: string | null; // 'HH:MM' local; defaults to 09:00
+    sendTz?: string | null; // IANA zone; defaults to Eastern
     now?: Date;
   },
 ): Promise<LaunchResult> {
   const now = args.now ?? new Date();
-  // Anchor the cadence on the chosen start date (never before now).
-  const anchor = args.startDate && args.startDate.getTime() > now.getTime() ? args.startDate : now;
   const to = args.recipientEmail.trim().toLowerCase();
   if (!to) throw new Error("a recipient is required to launch");
+
+  const tz = normalizeTz(args.sendTz);
+  const time = args.sendTime && /^\d{1,2}:\d{2}$/.test(args.sendTime) ? args.sendTime : "09:00";
+  const startStr = args.startDate && /^\d{4}-\d{2}-\d{2}$/.test(args.startDate)
+    ? args.startDate
+    : now.toISOString().slice(0, 10);
 
   const { rows: approved } = await db.query<{ id: string; send_offset_days: number }>(
     `select id, send_offset_days from campaign_touches
@@ -45,14 +53,16 @@ export async function launchCampaign(
 
   await db.query(
     `update campaigns set status = 'launched', launched_at = $2, start_date = $5,
-       recipient_email = $3, recipient_contact_id = $4
+       send_time = $6, send_tz = $7, recipient_email = $3, recipient_contact_id = $4
      where id = $1`,
-    [args.campaignId, now, to, args.recipientContactId ?? null, anchor],
+    [args.campaignId, now, to, args.recipientContactId ?? null, startStr, time, tz],
   );
 
   let firstAt: Date | null = null;
   for (const t of approved) {
-    const at = new Date(anchor.getTime() + t.send_offset_days * DAY_MS);
+    // Each touch fires at the chosen local time on (start + offset) days.
+    let at = zonedToUtc(addDays(startStr, t.send_offset_days), time, tz);
+    if (at.getTime() < now.getTime()) at = now; // never schedule into the past
     if (!firstAt || at < firstAt) firstAt = at;
     await db.query(`update campaign_touches set status = 'scheduled', scheduled_at = $2 where id = $1`, [t.id, at]);
   }

@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getPool } from "@/db/client";
 import { launchCampaign, sendTouchNow } from "@/lib/comms/sequence";
 import { deleteTouch, upsertTouch, type TouchFields } from "@/lib/comms/authoring";
+import { appendAiTouches } from "@/lib/agents/campaign-email";
 
 function touchFieldsFrom(formData: FormData): TouchFields {
   const highlights = String(formData.get("highlights") ?? "")
@@ -20,7 +22,26 @@ function touchFieldsFrom(formData: FormData): TouchFields {
     ctaLabel: String(formData.get("ctaLabel") ?? "").trim() || null,
     ctaUrl: String(formData.get("ctaUrl") ?? "").trim() || null,
     sendOffsetDays: Number(formData.get("sendOffsetDays") ?? 0) || 0,
+    customHtml: String(formData.get("customHtml") ?? "").trim() || null,
   };
+}
+
+/** Let AI draft touches into this campaign (needs a linked motion for grounding). */
+export async function aiDraftTouchesAction(campaignId: string, formData: FormData): Promise<void> {
+  const touchCount = Number(formData.get("touchCount") ?? 3) || 3;
+  const senderName = String(formData.get("senderName") ?? "").trim() || undefined;
+  const pool = getPool();
+  const db = await pool.connect();
+  let notice: string | null = null;
+  try {
+    await appendAiTouches(db, { campaignId, touchCount, senderName });
+  } catch (err) {
+    notice = err instanceof Error ? err.message : String(err);
+  } finally {
+    db.release();
+  }
+  revalidatePath(`/campaigns/${campaignId}`);
+  if (notice) redirect(`/campaigns/${campaignId}?notice=${encodeURIComponent(notice)}`);
 }
 
 /**
@@ -63,7 +84,9 @@ export async function rejectTouchAction(touchId: string, formData: FormData): Pr
 /** Add a hand-authored touch to a campaign. */
 export async function addTouchAction(campaignId: string, formData: FormData): Promise<void> {
   const fields = touchFieldsFrom(formData);
-  if (!fields.subject || !fields.body) throw new Error("subject and body are required");
+  if (!fields.subject || (!fields.body && !fields.customHtml)) {
+    throw new Error("a subject and either a body or custom HTML are required");
+  }
   const pool = getPool();
   const db = await pool.connect();
   try {
@@ -78,7 +101,9 @@ export async function addTouchAction(campaignId: string, formData: FormData): Pr
 export async function editTouchAction(touchId: string, formData: FormData): Promise<void> {
   const campaignId = await touchCampaign(touchId);
   const fields = touchFieldsFrom(formData);
-  if (!fields.subject || !fields.body) throw new Error("subject and body are required");
+  if (!fields.subject || (!fields.body && !fields.customHtml)) {
+    throw new Error("a subject and either a body or custom HTML are required");
+  }
   const pool = getPool();
   const db = await pool.connect();
   try {
@@ -106,11 +131,18 @@ export async function deleteTouchAction(touchId: string): Promise<void> {
  * touch, then launch on the chosen start date so each fires on its offset.
  * (Reject individual touches first if you want to hold them back.)
  */
+function scheduleArgsFrom(formData: FormData) {
+  return {
+    recipientEmail: String(formData.get("to") ?? "").trim().toLowerCase(),
+    startDate: String(formData.get("startDate") ?? "").trim() || null,
+    sendTime: String(formData.get("sendTime") ?? "").trim() || null,
+    sendTz: String(formData.get("sendTz") ?? "").trim() || null,
+  };
+}
+
 export async function scheduleSequenceAction(campaignId: string, formData: FormData): Promise<void> {
-  const to = String(formData.get("to") ?? "").trim().toLowerCase();
-  if (!to) throw new Error("a recipient is required to schedule");
-  const startRaw = String(formData.get("startDate") ?? "").trim();
-  const startDate = startRaw ? new Date(`${startRaw}T09:00:00Z`) : null;
+  const args = scheduleArgsFrom(formData);
+  if (!args.recipientEmail) throw new Error("a recipient is required to schedule");
 
   const pool = getPool();
   const db = await pool.connect();
@@ -120,7 +152,7 @@ export async function scheduleSequenceAction(campaignId: string, formData: FormD
        where campaign_id = $1 and status = 'draft'`,
       [campaignId],
     );
-    await launchCampaign(db, { campaignId, recipientEmail: to, startDate });
+    await launchCampaign(db, { campaignId, ...args });
   } finally {
     db.release();
   }
@@ -129,14 +161,12 @@ export async function scheduleSequenceAction(campaignId: string, formData: FormD
 
 /** Arm the sequence using only the touches already approved. */
 export async function launchCampaignAction(campaignId: string, formData: FormData): Promise<void> {
-  const to = String(formData.get("to") ?? "").trim().toLowerCase();
-  if (!to) throw new Error("a recipient is required to launch");
-  const startRaw = String(formData.get("startDate") ?? "").trim();
-  const startDate = startRaw ? new Date(`${startRaw}T09:00:00Z`) : null;
+  const args = scheduleArgsFrom(formData);
+  if (!args.recipientEmail) throw new Error("a recipient is required to launch");
   const pool = getPool();
   const db = await pool.connect();
   try {
-    await launchCampaign(db, { campaignId, recipientEmail: to, startDate });
+    await launchCampaign(db, { campaignId, ...args });
   } finally {
     db.release();
   }

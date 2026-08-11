@@ -72,17 +72,28 @@ async function resolveBrand(db: pg.PoolClient, orgId: string | null): Promise<Em
   };
 }
 
-export async function generateCampaignSequence(
+interface MotionRow {
+  id: string;
+  org_id: string | null;
+  company_id: string;
+  thesis: string | null;
+  trigger_summary: string | null;
+  primary_persona: string | null;
+  secondary_persona: string | null;
+  cta: string | null;
+  status: string;
+  legal_name: string;
+  industry: string | null;
+  employee_count: number | null;
+  primary_domain: string | null;
+}
+
+/** Shared AI core: draft a grounded sequence from a motion (no campaign writes). */
+async function draftSequenceForMotion(
   db: pg.PoolClient,
-  args: {
-    motionId: string;
-    senderName: string;
-    touchCount?: number;
-    bookingUrl?: string | null;
-    source?: "user" | "ai_suggested";
-  },
-): Promise<{ campaignId: string; sequence: CampaignSequence }> {
-  const { rows: motions } = await db.query(
+  args: { motionId: string; senderName: string; touchCount?: number },
+): Promise<{ sequence: CampaignSequence; motion: MotionRow; brand: Awaited<ReturnType<typeof resolveBrand>>; brandId: string | null }> {
+  const { rows: motions } = await db.query<MotionRow>(
     `select m.id, m.org_id, m.company_id, m.thesis, m.trigger_summary,
             m.primary_persona, m.secondary_persona, m.cta, m.status,
             c.legal_name, c.industry, c.employee_count, c.primary_domain
@@ -93,7 +104,7 @@ export async function generateCampaignSequence(
   if (motions.length === 0) throw new Error(`motion not found: ${args.motionId}`);
   const m = motions[0];
   if (m.status !== "approved" && m.status !== "active") {
-    throw new Error(`motion is '${m.status}' — sequences generate only from APPROVED motions`);
+    throw new Error(`motion is '${m.status}' — sequences generate only from approved/active motions`);
   }
 
   const { rows: evidence } = await db.query<{ claim: string }>(
@@ -106,6 +117,11 @@ export async function generateCampaignSequence(
 
   const touchCount = Math.min(Math.max(args.touchCount ?? 3, 1), 5);
   const brand = await resolveBrand(db, m.org_id);
+  const { rows: brandRows } = await db.query<{ id: string }>(
+    `select id from brand_profiles where org_id is not distinct from $1 order by is_default desc, created_at asc limit 1`,
+    [m.org_id],
+  );
+  const brandId = brandRows[0]?.id ?? null;
 
   const { output: sequence, meta } = await completeStructuredMeta({
     tier: "frontier",
@@ -151,11 +167,20 @@ Design the ${touchCount}-touch sequence.`,
     ],
   );
 
-  const { rows: brandRows } = await db.query<{ id: string }>(
-    `select id from brand_profiles where org_id is not distinct from $1 order by is_default desc, created_at asc limit 1`,
-    [m.org_id],
-  );
-  const brandId = brandRows[0]?.id ?? null;
+  return { sequence, motion: m, brand, brandId };
+}
+
+export async function generateCampaignSequence(
+  db: pg.PoolClient,
+  args: {
+    motionId: string;
+    senderName: string;
+    touchCount?: number;
+    bookingUrl?: string | null;
+    source?: "user" | "ai_suggested";
+  },
+): Promise<{ campaignId: string; sequence: CampaignSequence }> {
+  const { sequence, motion: m, brand, brandId } = await draftSequenceForMotion(db, args);
 
   const { rows: campaigns } = await db.query<{ id: string }>(
     `insert into campaigns (org_id, company_id, motion_id, name, status, brand_id, objective, audience, source)
@@ -208,6 +233,63 @@ Design the ${touchCount}-touch sequence.`,
   );
 
   return { campaignId, sequence };
+}
+
+/**
+ * AI-draft touches into an EXISTING campaign (the "either/or" on the composer:
+ * hand-author, or let AI draft, in the same campaign). Requires the campaign to
+ * be linked to a motion for grounding; appends after the current last touch.
+ */
+export async function appendAiTouches(
+  db: pg.PoolClient,
+  args: { campaignId: string; senderName?: string; touchCount?: number },
+): Promise<{ added: number }> {
+  const senderName = args.senderName ?? "The PursuitOS Team";
+  const { rows: caRows } = await db.query<{ motion_id: string | null }>(
+    `select motion_id from campaigns where id = $1`,
+    [args.campaignId],
+  );
+  if (caRows.length === 0) throw new Error("campaign not found");
+  const motionId = caRows[0].motion_id;
+  if (!motionId) {
+    throw new Error("This campaign isn't linked to a motion. Add touches by hand here, or generate from a motion on the Campaigns page.");
+  }
+
+  const { sequence, motion: m, brand } = await draftSequenceForMotion(db, {
+    motionId,
+    senderName,
+    touchCount: args.touchCount,
+  });
+
+  const { rows: maxRows } = await db.query<{ n: number }>(
+    `select coalesce(max(touch_no), 0) as n from campaign_touches where campaign_id = $1`,
+    [args.campaignId],
+  );
+  let no = Number(maxRows[0].n);
+  const snapshot = buildSnapshot(m);
+  for (const t of sequence.touches) {
+    no += 1;
+    const { html, text } = renderBrandedEmail(brand, {
+      preheader: t.preheader,
+      eyebrow: `Touch ${no}`,
+      headline: t.headline,
+      paragraphs: t.paragraphs,
+      highlights: t.highlights,
+      snapshot: no === 1 ? snapshot : undefined,
+      ctaLabel: t.cta_label,
+      ctaUrl: null,
+      signoff: senderName,
+    });
+    await db.query(
+      `insert into campaign_touches
+        (campaign_id, touch_no, name, subject, preheader, headline, body, highlights,
+         cta_label, html_body, text_body, send_offset_days, status)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'draft')`,
+      [args.campaignId, no, t.name, t.subject, t.preheader, t.headline, t.paragraphs.join("\n\n"),
+       t.highlights, t.cta_label, html, text, t.send_offset_days],
+    );
+  }
+  return { added: sequence.touches.length };
 }
 
 function buildSnapshot(m: {

@@ -19,6 +19,8 @@ export interface TouchFields {
   ctaLabel?: string | null;
   ctaUrl?: string | null;
   sendOffsetDays?: number;
+  /** Optional seller HTML — replaces the structured body, keeps the brand shell. */
+  customHtml?: string | null;
 }
 
 export async function resolveBrand(
@@ -79,12 +81,13 @@ export function renderTouch(
     preheader: f.preheader,
     eyebrow: `Touch ${touchNo}`,
     headline: f.headline,
-    paragraphs: f.body.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean),
+    paragraphs: (f.body ?? "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean),
     highlights: f.highlights,
-    snapshot: opts?.snapshot,
+    snapshot: f.customHtml ? undefined : opts?.snapshot,
     ctaLabel: f.ctaLabel,
     ctaUrl: f.ctaUrl ?? null,
     signoff: opts?.signoff ?? null,
+    customHtml: f.customHtml ?? null,
   });
 }
 
@@ -154,20 +157,20 @@ export async function upsertTouch(
     await db.query(
       `update campaign_touches set name=$2, subject=$3, preheader=$4, headline=$5, body=$6,
          highlights=$7, cta_label=$8, cta_url=$9, html_body=$10, text_body=$11, send_offset_days=$12,
-         status = case when status = 'rejected' then 'draft' else status end
+         custom_html=$13, status = case when status = 'rejected' then 'draft' else status end
        where id = $1`,
-      [args.touchId, f.name, f.subject, f.preheader ?? null, f.headline ?? null, f.body,
-       f.highlights ?? [], f.ctaLabel ?? null, f.ctaUrl ?? null, html, text, offset],
+      [args.touchId, f.name, f.subject, f.preheader ?? null, f.headline ?? null, f.body ?? "",
+       f.highlights ?? [], f.ctaLabel ?? null, f.ctaUrl ?? null, html, text, offset, f.customHtml ?? null],
     );
     return { touchId: args.touchId };
   }
   const { rows } = await db.query<{ id: string }>(
     `insert into campaign_touches
        (campaign_id, touch_no, name, subject, preheader, headline, body, highlights,
-        cta_label, cta_url, html_body, text_body, send_offset_days, status)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft') returning id`,
-    [args.campaignId, touchNo, f.name, f.subject, f.preheader ?? null, f.headline ?? null, f.body,
-     f.highlights ?? [], f.ctaLabel ?? null, f.ctaUrl ?? null, html, text, offset],
+        cta_label, cta_url, html_body, text_body, send_offset_days, custom_html, status)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'draft') returning id`,
+    [args.campaignId, touchNo, f.name, f.subject, f.preheader ?? null, f.headline ?? null, f.body ?? "",
+     f.highlights ?? [], f.ctaLabel ?? null, f.ctaUrl ?? null, html, text, offset, f.customHtml ?? null],
   );
   return { touchId: rows[0].id };
 }

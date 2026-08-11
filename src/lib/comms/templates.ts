@@ -32,6 +32,9 @@ export interface EmailContent {
   ctaLabel?: string | null;
   ctaUrl?: string | null;
   signoff?: string | null; // e.g. "Dana Whitfield"
+  /** Seller-provided body HTML. When set, it replaces the structured body
+   *  (paragraphs/highlights/snapshot) but keeps the branded header + footer. */
+  customHtml?: string | null;
 }
 
 const DEFAULT_BRAND: EmailBrand = {
@@ -145,7 +148,11 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;"
         <span style="font-size:16px;font-weight:700;color:#ffffff;letter-spacing:-0.01em;">${esc(brand.wordmark)}</span>
       </td></tr>
       <tr><td style="padding:28px 28px 8px;">
-        ${eyebrowHtml}${headlineHtml}${snapshotHtml}${paragraphsHtml}${highlightsHtml}${ctaHtml}${signoffHtml}
+        ${eyebrowHtml}${headlineHtml}${
+          content.customHtml && content.customHtml.trim()
+            ? `<div style="font-size:15px;line-height:1.6;color:#1f2937;">${content.customHtml}</div>`
+            : `${snapshotHtml}${paragraphsHtml}${highlightsHtml}`
+        }${ctaHtml}${signoffHtml}
       </td></tr>
       <tr><td style="padding:18px 28px 24px;border-top:1px solid #f1f5f9;">
         <div style="font-size:12px;line-height:1.6;color:#94a3b8;">
@@ -165,6 +172,10 @@ ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;"
 export function renderPlainText(brand: EmailBrand, content: EmailContent): string {
   const lines: string[] = [];
   if (content.headline) lines.push(content.headline, "");
+  if (content.customHtml && content.customHtml.trim()) {
+    const stripped = content.customHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    if (stripped) lines.push(stripped, "");
+  }
   for (const p of content.paragraphs.filter((p) => p.trim())) lines.push(p, "");
   const highlights = (content.highlights ?? []).filter((h) => h.trim());
   if (highlights.length) {
