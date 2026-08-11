@@ -34,6 +34,56 @@ export async function promoteMotionAction(motionId: string): Promise<void> {
   revalidatePath(`/briefs/${motionId}`);
 }
 
+/** Register a co-sell deal on an opportunity (Phase 9E). */
+export async function registerDealAction(opportunityId: string, formData: FormData): Promise<void> {
+  const vendor = String(formData.get("vendor") ?? "").trim() || null;
+  const product = String(formData.get("product") ?? "").trim() || null;
+  const protectDays = Number(formData.get("protectDays") ?? 90) || 90;
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    const { rows } = await db.query<{
+      org_id: string | null;
+      company_id: string;
+      motion_id: string | null;
+      amount_usd: string | null;
+      partner_id: string | null;
+    }>(
+      `select o.org_id, o.company_id, o.motion_id, o.amount_usd, m.partner_id
+       from opportunities o left join revenue_motions m on m.id = o.motion_id
+       where o.id = $1`,
+      [opportunityId],
+    );
+    if (rows.length === 0) throw new Error("opportunity not found");
+    const o = rows[0];
+    await db.query(
+      `insert into deal_registrations
+        (org_id, opportunity_id, company_id, motion_id, partner_id, vendor, product,
+         amount_usd, status, submitted_at, protected_until)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, 'submitted', now(), (now() + make_interval(days => $9))::date)`,
+      [o.org_id, opportunityId, o.company_id, o.motion_id, o.partner_id, vendor, product, o.amount_usd, protectDays],
+    );
+  } finally {
+    db.release();
+  }
+  revalidatePath("/pipeline");
+}
+
+/** Advance a registration's status (submitted → approved/rejected/expired). */
+export async function setRegistrationStatusAction(registrationId: string, status: string): Promise<void> {
+  const allowed = ["submitted", "approved", "rejected", "expired"];
+  if (!allowed.includes(status)) throw new Error("invalid status");
+  const pool = getPool();
+  await pool.query(
+    `update deal_registrations
+       set status = $2, decided_at = case when $2 in ('approved','rejected') then now() else decided_at end,
+           updated_at = now()
+     where id = $1`,
+    [registrationId, status],
+  );
+  revalidatePath("/pipeline");
+}
+
 export async function setStakeholderAction(
   opportunityId: string,
   contactId: string,

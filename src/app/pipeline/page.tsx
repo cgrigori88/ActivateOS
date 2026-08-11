@@ -7,15 +7,34 @@ import {
   weightedPipelineValue,
   type Stage,
 } from "@/lib/opportunities/lifecycle";
-import { Card, PageHeader } from "@/components/ui";
-import { advanceOpportunityAction, setStakeholderAction } from "./actions";
+import { Card, PageHeader, StatusBadge } from "@/components/ui";
+import {
+  advanceOpportunityAction,
+  registerDealAction,
+  setRegistrationStatusAction,
+  setStakeholderAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
 const ROLES = ["economic_buyer", "technical_buyer", "champion", "influencer", "blocker", "end_user"];
 const SENTIMENTS = ["unknown", "positive", "neutral", "negative"];
 
-export default async function PipelinePage() {
+interface DealReg {
+  id: string;
+  opportunity_id: string | null;
+  vendor: string | null;
+  product: string | null;
+  status: string;
+  protected_until: string | null;
+}
+
+export default async function PipelinePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>;
+}) {
+  const view = (await searchParams).view === "review" ? "review" : "board";
   const pool = getPool();
   const { rows: opps } = await pool.query(
     `select o.id, o.name, o.stage, o.amount_usd, o.next_step, o.expected_close_date,
@@ -41,6 +60,15 @@ export default async function PipelinePage() {
     list.push(s);
     stakeholdersByOpp.set(s.opportunity_id, list);
   }
+
+  const { rows: regRows } = await pool.query<DealReg>(
+    `select id, opportunity_id, vendor, product, status, protected_until
+     from deal_registrations where opportunity_id = any($1)
+     order by created_at desc`,
+    [opps.map((o) => o.id)],
+  );
+  const regByOpp = new Map<string, DealReg>();
+  for (const r of regRows) if (r.opportunity_id && !regByOpp.has(r.opportunity_id)) regByOpp.set(r.opportunity_id, r);
 
   const open = opps.filter((o) => !o.stage.startsWith("closed"));
   const weighted = weightedPipelineValue(
@@ -70,6 +98,22 @@ export default async function PipelinePage() {
         </div>
       </div>
 
+      <div className="mb-4 flex items-center gap-2">
+        {(["board", "review"] as const).map((v) => (
+          <Link
+            key={v}
+            href={`/pipeline?view=${v}`}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+              view === v
+                ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
+            }`}
+          >
+            {v === "board" ? "Board" : "Review + deal reg"}
+          </Link>
+        ))}
+      </div>
+
       {opps.length === 0 && (
         <p className="text-sm text-neutral-500">
           No opportunities yet — promote an active motion from its brief when a conversation
@@ -77,6 +121,75 @@ export default async function PipelinePage() {
         </p>
       )}
 
+      {view === "review" && opps.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Opportunity</th>
+                <th>Partner</th>
+                <th>Stage</th>
+                <th className="text-right">Amount</th>
+                <th className="text-right">Weighted</th>
+                <th>Close</th>
+                <th>Deal registration</th>
+              </tr>
+            </thead>
+            <tbody>
+              {opps.map((o) => {
+                const reg = regByOpp.get(o.id);
+                const closed = o.stage.startsWith("closed");
+                const amt = o.amount_usd != null ? Number(o.amount_usd) : null;
+                return (
+                  <tr key={o.id}>
+                    <td>
+                      <Link href={`/accounts/${o.company_id}`} className="font-medium hover:underline">{o.name}</Link>
+                      <div className="text-[11px] text-neutral-400">{o.legal_name}</div>
+                    </td>
+                    <td className="text-xs text-neutral-500">{o.partner_name ?? "—"}</td>
+                    <td className="text-xs uppercase tracking-wide text-neutral-500">{o.stage.replace(/_/g, " ")}</td>
+                    <td className="tnum text-right">{amt != null ? `$${Math.round(amt / 1000)}k` : "—"}</td>
+                    <td className="tnum text-right text-neutral-500">
+                      {amt != null && !closed ? `$${Math.round((amt * STAGE_PROBABILITY[o.stage as Stage]) / 1000)}k` : "—"}
+                    </td>
+                    <td className="text-xs text-neutral-500">{o.expected_close_date ? new Date(o.expected_close_date).toISOString().slice(0, 10) : "—"}</td>
+                    <td>
+                      {reg ? (
+                        <div className="flex items-center gap-2">
+                          <StatusBadge status={reg.status === "approved" ? "approved" : reg.status === "rejected" ? "rejected" : reg.status === "submitted" ? "running" : "skipped"} />
+                          <span className="text-[11px] text-neutral-400">
+                            {reg.vendor ?? "vendor"}{reg.protected_until ? ` · until ${reg.protected_until}` : ""}
+                          </span>
+                          {reg.status === "submitted" && (
+                            <span className="flex gap-1">
+                              <form action={setRegistrationStatusAction.bind(null, reg.id, "approved")}>
+                                <button className="text-[11px] font-medium text-green-700 hover:underline dark:text-green-400">approve</button>
+                              </form>
+                              <form action={setRegistrationStatusAction.bind(null, reg.id, "rejected")}>
+                                <button className="text-[11px] font-medium text-red-700 hover:underline dark:text-red-400">reject</button>
+                              </form>
+                            </span>
+                          )}
+                        </div>
+                      ) : closed ? (
+                        <span className="text-xs text-neutral-400">—</span>
+                      ) : (
+                        <form action={registerDealAction.bind(null, o.id)} className="flex items-center gap-1">
+                          <input name="vendor" placeholder="vendor" className="w-20 rounded border border-neutral-300 bg-transparent px-1.5 py-0.5 text-[11px] dark:border-neutral-700" />
+                          <input name="product" placeholder="product" className="w-24 rounded border border-neutral-300 bg-transparent px-1.5 py-0.5 text-[11px] dark:border-neutral-700" />
+                          <button className="rounded bg-blue-700 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-blue-800">Register</button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {view === "board" && (
       <div className="space-y-4">
         {opps.map((o) => {
           const stakeholders = stakeholdersByOpp.get(o.id) ?? [];
@@ -198,6 +311,7 @@ export default async function PipelinePage() {
           );
         })}
       </div>
+      )}
     </main>
   );
 }
