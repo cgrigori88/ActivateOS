@@ -1,27 +1,38 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Instrument_Sans, Playfair_Display } from "next/font/google";
+import { Instrument_Sans, JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import { Shell } from "@/components/shell";
 
 /**
- * The brand typeface is loaded for the wordmark only (docs/DESIGN.md §6).
- * Interface and body type stay on the system stack defined in globals.css.
+ * Interface typeface (docs/BRAND.md §4). Plus Jakarta Sans is a humanist
+ * geometric with open counters that holds up at 13px in a dense table, which is
+ * where this product lives.
+ *
+ * To revert to the system stack, drop `--font-ui` from `--font-sans` in
+ * globals.css — one line, no other change needed.
  */
+const ui = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  variable: "--font-ui",
+});
+
+/** Identifiers, timestamps, confidences — anything read character by character. */
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  display: "swap",
+  variable: "--font-mono-ui",
+});
+
+/** The wordmark only (docs/BRAND.md §2). */
 const brand = Instrument_Sans({
   subsets: ["latin"],
   weight: ["500"],
   display: "swap",
   variable: "--font-brand",
-});
-
-/** Display serif for the landing page's emphasis words (docs/DESIGN.md §7). */
-const display = Playfair_Display({
-  subsets: ["latin"],
-  style: ["italic"],
-  weight: ["400"],
-  display: "swap",
-  variable: "--font-display-serif",
 });
 
 export const metadata: Metadata = {
@@ -31,7 +42,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${brand.variable} ${display.variable}`}>
+    <html lang="en" className={`${ui.variable} ${mono.variable} ${brand.variable}`}>
       <body className="min-h-screen font-sans">
         <Shell>{children}</Shell>
       </body>
