@@ -34,6 +34,33 @@ export async function generateSequenceAction(formData: FormData): Promise<void> 
 }
 
 /**
+ * Ask the pipeline (worker) to draft AI-suggested campaigns for motions that
+ * don't have one yet. Generation runs on the worker — where the AI pipeline
+ * lives — not in the serverless request. Everything it drafts is a suggestion
+ * the human still reviews and decides on.
+ */
+export async function suggestCampaignsAction(): Promise<void> {
+  const base = process.env.WORKER_URL;
+  const secret = process.env.RESEARCH_TRIGGER_SECRET;
+  if (!base || !secret) {
+    throw new Error("Suggestions need the worker: set WORKER_URL and RESEARCH_TRIGGER_SECRET.");
+  }
+  const res = await fetch(`${base.replace(/\/$/, "")}/suggest?limit=3`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+  if (!res.ok) throw new Error(`Suggest failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
+  revalidatePath("/campaigns");
+}
+
+/** Dismiss an AI-suggested campaign the seller doesn't want. */
+export async function dismissCampaignAction(campaignId: string): Promise<void> {
+  const pool = getPool();
+  await pool.query(`update campaigns set dismissed_at = now() where id = $1`, [campaignId]);
+  revalidatePath("/campaigns");
+}
+
+/**
  * Create an empty campaign on an account — no motion required. The seller
  * authors touches by hand on the detail page. This is the manual path that
  * doesn't wait on the AI pipeline.

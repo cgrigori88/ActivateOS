@@ -4,6 +4,7 @@ import { importAccountsCsv } from "../lib/ingest/ingest-accounts";
 import { runPendingResearchLocked } from "../lib/intel/research-runner";
 import { runScreeningSweepAllOrgs, runScreeningSweepLocked } from "../lib/intel/screen-runner";
 import { drainScheduledTouches } from "../lib/comms/sequence";
+import { suggestCampaigns } from "../lib/comms/suggest";
 
 /**
  * Pipeline worker (Railway). A single long-lived process that drives the
@@ -60,6 +61,16 @@ async function runOutreach() {
   const db = await pool.connect();
   try {
     return await drainScheduledTouches(db);
+  } finally {
+    db.release();
+  }
+}
+
+async function runSuggest(limit: number) {
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    return await suggestCampaigns(db, { limit });
   } finally {
     db.release();
   }
@@ -154,6 +165,11 @@ const server = http.createServer(async (req, res) => {
       log("http: research", { limit });
       const result = await runResearch(limit);
       return send(res, result.locked ? 409 : 200, result);
+    }
+    if (method === "POST" && url.pathname === "/suggest") {
+      const limit = Number(url.searchParams.get("limit") ?? 3) || 3;
+      log("http: suggest", { limit });
+      return send(res, 200, await runSuggest(limit));
     }
     if (method === "POST" && url.pathname === "/outreach") {
       log("http: outreach drain");
