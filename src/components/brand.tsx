@@ -52,15 +52,18 @@ export function Lockup({
   size = 15,
   markSize,
   className = "",
+  markClass = "text-accent dark:text-blue-400",
 }: {
   size?: number;
   markSize?: number;
   className?: string;
+  /** The mark's colour. On the dark rail it lifts to the accent tint. */
+  markClass?: string;
 }) {
   const mark = markSize ?? Math.round(size * 1.2);
   return (
     <span className={`inline-flex items-center ${className}`} style={{ gap: `${mark * 0.4}px` }}>
-      <Mark size={mark} className="text-accent dark:text-blue-400" />
+      <Mark size={mark} className={markClass} />
       <span
         className="wordmark"
         style={{

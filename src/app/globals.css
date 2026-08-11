@@ -62,6 +62,41 @@
   --color-positive: #15803d;
   --color-negative: #b91c1c;
 
+  /* ---------------------------------------------------------------------
+     Expanded palette. Blue stays the action accent — these are for surfaces,
+     categories and charts, so a screen can carry colour without every coloured
+     thing looking clickable. Each hue ships a solid (charts, icons, figures)
+     and a wash (card grounds).
+     --------------------------------------------------------------------- */
+  --color-indigo: #6366f1;
+  --color-indigo-wash: #eef0ff;
+  --color-violet: #8b5cf6;
+  --color-violet-wash: #f4efff;
+  --color-teal: #0891b2;
+  --color-teal-wash: #e6f7fb;
+  --color-emerald: #059669;
+  --color-emerald-wash: #e7f8f0;
+  --color-amber: #d97706;
+  --color-amber-wash: #fef3e2;
+  --color-rose: #e11d48;
+  --color-rose-wash: #ffeef2;
+
+  /* Rail — the dark side of the room. */
+  --color-rail: #0d1526;
+  --color-rail-2: #151f36;
+  --color-rail-line: #24304a;
+  --color-rail-ink: #e8edf7;
+  --color-rail-ink-soft: #93a1bd;
+
+  /* Categorical order for charts and dimension bars. */
+  --color-cat-1: #2563eb;
+  --color-cat-2: #8b5cf6;
+  --color-cat-3: #0891b2;
+  --color-cat-4: #d97706;
+  --color-cat-5: #059669;
+  --color-cat-6: #e11d48;
+  --color-cat-7: #6366f1;
+
   /* Conviction ramp — propensity heat, 0.00 -> 1.00. */
   --color-ramp-0: #e2e8f0;
   --color-ramp-1: #bfd4fe;

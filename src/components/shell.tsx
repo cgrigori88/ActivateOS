@@ -206,21 +206,21 @@ export function Shell({ children }: { children: ReactNode }) {
         href={item.href}
         aria-current={active ? "page" : undefined}
         title={collapsed ? item.label : undefined}
-        className={`group relative flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 py-[7px] text-[13px] transition-colors duration-[140ms] ${
+        className={`group relative flex min-h-[36px] items-center gap-3 rounded-control px-2.5 py-[8px] text-[13.5px] transition-colors duration-[140ms] ${
           active
-            ? "bg-accent-wash font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300"
-            : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-100"
+            ? "bg-white/10 font-bold text-white"
+            : "font-medium text-rail-ink-soft hover:bg-white/[0.06] hover:text-rail-ink"
         }`}
       >
         {/* The accent marks one thing on the screen, and this is it. */}
         {active && (
-          <span className="absolute -left-2.5 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-accent" />
+          <span className="absolute -left-2.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-accent-tint" />
         )}
         <span
           className={
             active
-              ? "shrink-0 text-blue-600 dark:text-blue-400"
-              : "shrink-0 text-neutral-400 transition-colors duration-[140ms] group-hover:text-neutral-600 dark:group-hover:text-neutral-300"
+              ? "shrink-0 text-accent-tint"
+              : "shrink-0 text-rail-ink-soft/70 transition-colors duration-[140ms] group-hover:text-rail-ink"
           }
         >
           {item.icon}
@@ -234,38 +234,45 @@ export function Shell({ children }: { children: ReactNode }) {
     <>
       <div className={`flex min-h-[60px] items-center px-4 py-4 ${collapsed ? "justify-center" : ""}`}>
         {collapsed ? (
-          <Link href="/" aria-label="PursuitOS home" className="text-accent">
+          <Link href="/" aria-label="PursuitOS home" className="text-accent-tint">
             <Mark size={22} />
           </Link>
         ) : (
-          <Wordmark />
+          <Link href="/" className="flex items-center text-rail-ink">
+            <Lockup size={16} markClass="text-accent-tint" />
+          </Link>
         )}
       </div>
       <nav className="scroll-thin flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-3.5 pb-4">
         {NAV.map((group, i) => (
           <div key={i}>
             {group.label && !collapsed && (
-              <p className="mb-1.5 px-2.5 text-[10.5px] font-bold uppercase tracking-[0.1em] text-neutral-400">
+              <p className="mb-2 px-2.5 text-[10.5px] font-bold uppercase tracking-[0.12em] text-rail-ink-soft/60">
                 {group.label}
               </p>
             )}
-            {group.label && collapsed && <div className="mx-2 mb-2 h-px bg-neutral-200 dark:bg-neutral-800" />}
+            {group.label && collapsed && <div className="mx-2 mb-2 h-px bg-rail-line" />}
             <div className="space-y-0.5">{group.items.map((item) => link(item))}</div>
           </div>
         ))}
       </nav>
-      <div className={`border-t border-neutral-100 px-4 py-3.5 dark:border-neutral-800 ${collapsed ? "text-center" : ""}`}>
+      <div className={`border-t border-rail-line px-4 py-3.5 ${collapsed ? "text-center" : ""}`}>
         {collapsed ? (
-          <span className="text-[10px] font-bold text-neutral-400" title="Design Partner Demo">DP</span>
+          <span className="text-[10px] font-bold text-rail-ink-soft" title="Design Partner Demo">DP</span>
         ) : (
-          <>
-            <p className="text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">
-              Design Partner Demo
-            </p>
-            <p className="mt-0.5 text-[11px] text-neutral-400 dark:text-neutral-500">
-              Partner revenue graph
-            </p>
-          </>
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent text-[11px] font-bold text-white">
+              DP
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-[12.5px] font-semibold text-rail-ink">
+                Design Partner Demo
+              </span>
+              <span className="block truncate text-[11px] text-rail-ink-soft">
+                Partner revenue graph
+              </span>
+            </span>
+          </div>
         )}
       </div>
     </>
@@ -275,7 +282,7 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="min-h-screen">
       {/* Desktop rail — 240 collapses to 64. */}
       <aside
-        className={`fixed inset-y-0 left-0 z-20 hidden flex-col border-r border-neutral-200 bg-white transition-[width] duration-[220ms] md:flex dark:border-neutral-800 dark:bg-neutral-900 ${
+        className={`fixed inset-y-0 left-0 z-20 hidden flex-col bg-rail text-rail-ink transition-[width] duration-[220ms] md:flex ${
           collapsed ? "w-[64px]" : "w-[240px]"
         }`}
       >
@@ -291,7 +298,7 @@ export function Shell({ children }: { children: ReactNode }) {
             className="absolute inset-0 bg-neutral-950/50"
             onClick={() => setDrawer(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-[264px] flex-col border-r border-neutral-200 bg-white shadow-[var(--shadow-pop)] dark:border-neutral-800 dark:bg-neutral-900">
+          <aside className="absolute inset-y-0 left-0 flex w-[264px] flex-col bg-rail text-rail-ink shadow-[var(--shadow-pop)]">
             {railBody}
           </aside>
         </div>

@@ -12,22 +12,43 @@ import type { ReactNode } from "react";
  * spending 2,000px of height on eighteen empty cards.
  */
 
+/**
+ * Tones give a grid of cards a shape you can read before you read it — the
+ * bento pattern. Colour here is categorical, never a call to action; blue stays
+ * reserved for things you click.
+ */
+const CARD_TONES: Record<string, string> = {
+  default: "border-neutral-200 bg-white",
+  indigo: "border-indigo/15 bg-indigo-wash",
+  violet: "border-violet/15 bg-violet-wash",
+  teal: "border-teal/15 bg-teal-wash",
+  emerald: "border-emerald/15 bg-emerald-wash",
+  amber: "border-amber/15 bg-amber-wash",
+  rose: "border-rose/15 bg-rose-wash",
+  ink: "border-transparent bg-rail text-rail-ink",
+};
+
+export type CardTone = keyof typeof CARD_TONES;
+
 export function Card({
   children,
   className = "",
   muted = false,
+  tone = "default",
 }: {
   children: ReactNode;
   className?: string;
-  /** Dim a panel that has nothing in it yet. Optional — defaults to the full-weight surface. */
+  /** Dim a panel that has nothing in it yet. */
   muted?: boolean;
+  /** Categorical tint for bento grids. */
+  tone?: CardTone;
 }) {
   return (
     <section
       className={`rounded-card border p-5 transition-colors duration-[140ms] ${
         muted
           ? "border-neutral-200/70 bg-neutral-50/40 dark:border-neutral-800/60 dark:bg-neutral-900/30"
-          : "border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"
+          : `${CARD_TONES[tone] ?? CARD_TONES.default} dark:border-neutral-800 dark:bg-neutral-900`
       } ${className}`}
     >
       {children}
@@ -38,9 +59,9 @@ export function Card({
 export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <header className="mb-7">
-      <h1 className="text-2xl font-bold tracking-[-0.022em]">{title}</h1>
+      <h1 className="text-[30px] font-extrabold leading-[1.1] tracking-[-0.03em]">{title}</h1>
       {subtitle && (
-        <p className="mt-1.5 max-w-[72ch] text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
+        <p className="mt-2 max-w-[72ch] text-[15px] leading-relaxed text-neutral-500 dark:text-neutral-400">
           {subtitle}
         </p>
       )}
@@ -56,22 +77,37 @@ export function SectionHeading({
   children,
   count,
   hint,
+  tone,
 }: {
   children: ReactNode;
   count?: number | string;
   hint?: string;
+  /** Optional accent dot, for a bento grid where each panel owns a hue. */
+  tone?: "indigo" | "violet" | "teal" | "emerald" | "amber" | "rose" | "blue";
 }) {
+  const dot: Record<string, string> = {
+    indigo: "bg-indigo",
+    violet: "bg-violet",
+    teal: "bg-teal",
+    emerald: "bg-emerald",
+    amber: "bg-amber",
+    rose: "bg-rose",
+    blue: "bg-accent",
+  };
   return (
-    <div className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-      <h2 className="text-[11px] font-bold uppercase tracking-[0.09em] text-neutral-500 dark:text-neutral-400">
+    <div className="mb-3.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+      {tone && <span className={`h-2 w-2 shrink-0 rounded-full ${dot[tone]}`} />}
+      {/* Titles are ink and bold. A grey uppercase micro-label reads as chrome,
+          and a screen made entirely of chrome has no hierarchy at all. */}
+      <h2 className="text-[15px] font-bold tracking-[-0.015em] text-neutral-900 dark:text-neutral-100">
         {children}
       </h2>
       {count !== undefined && (
-        <span className="tnum rounded-full bg-neutral-100 px-1.5 text-[11px] font-semibold text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+        <span className="tnum rounded-full bg-neutral-900/8 px-2 py-0.5 text-[11.5px] font-bold text-neutral-600 dark:bg-neutral-100/10 dark:text-neutral-300">
           {count}
         </span>
       )}
-      {hint && <span className="text-[11.5px] text-neutral-400 dark:text-neutral-500">{hint}</span>}
+      {hint && <span className="text-[12.5px] text-neutral-400 dark:text-neutral-500">{hint}</span>}
     </div>
   );
 }
@@ -250,12 +286,21 @@ export function CountChip({
   tone?: "green" | "sky" | "amber" | "neutral" | "red";
 }) {
   const empty = Number(value) === 0;
+  // The figure carries the hue and the card carries its wash, so a row of
+  // chips reads as distinct measures rather than five identical boxes.
   const toneText: Record<string, string> = {
-    green: "text-green-700 dark:text-green-400",
-    sky: "text-blue-700 dark:text-blue-400",
-    amber: "text-amber-700 dark:text-amber-400",
-    red: "text-red-700 dark:text-red-400",
+    green: "text-emerald",
+    sky: "text-accent",
+    amber: "text-amber",
+    red: "text-rose",
     neutral: "",
+  };
+  const toneSkin: Record<string, string> = {
+    green: "border-emerald/20 bg-emerald-wash hover:border-emerald/35",
+    sky: "border-accent/20 bg-accent-wash hover:border-accent/35",
+    amber: "border-amber/20 bg-amber-wash hover:border-amber/35",
+    red: "border-rose/20 bg-rose-wash hover:border-rose/35",
+    neutral: "border-neutral-200 bg-white hover:border-neutral-300",
   };
   const body = (
     <div
@@ -264,11 +309,11 @@ export function CountChip({
           ? "border-accent bg-accent text-white"
           : empty
             ? "border-neutral-200/70 bg-neutral-50/40 dark:border-neutral-800/60 dark:bg-neutral-900/30"
-            : "border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700"
+            : `${(tone && toneSkin[tone]) || toneSkin.neutral} dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700`
       }`}
     >
       <div
-        className={`tnum text-xl font-bold leading-none tracking-[-0.02em] ${
+        className={`tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${
           active
             ? "text-white"
             : empty
