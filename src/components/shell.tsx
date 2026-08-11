@@ -206,15 +206,15 @@ export function Shell({ children }: { children: ReactNode }) {
         href={item.href}
         aria-current={active ? "page" : undefined}
         title={collapsed ? item.label : undefined}
-        className={`group relative flex min-h-[36px] items-center gap-3 rounded-control px-2.5 py-[8px] text-[13.5px] transition-colors duration-[140ms] ${
+        className={`group relative flex min-h-[38px] items-center gap-3 rounded-full px-3 py-[8px] text-[13.5px] transition-colors duration-[140ms] ${
           active
-            ? "bg-white/10 font-bold text-white"
-            : "font-medium text-rail-ink-soft hover:bg-white/[0.06] hover:text-rail-ink"
+            ? "bg-white/[0.14] font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]"
+            : "font-medium text-rail-ink-soft hover:bg-white/[0.07] hover:text-rail-ink"
         }`}
       >
         {/* The accent marks one thing on the screen, and this is it. */}
-        {active && (
-          <span className="absolute -left-2.5 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-accent-tint" />
+        {active && !collapsed && (
+          <span className="absolute right-3 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-accent-tint" />
         )}
         <span
           className={
@@ -243,7 +243,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </Link>
         )}
       </div>
-      <nav className="scroll-thin flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-3.5 pb-4">
+      <nav className="scroll-thin flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-3 pb-4">
         {NAV.map((group, i) => (
           <div key={i}>
             {group.label && !collapsed && (
@@ -251,12 +251,12 @@ export function Shell({ children }: { children: ReactNode }) {
                 {group.label}
               </p>
             )}
-            {group.label && collapsed && <div className="mx-2 mb-2 h-px bg-rail-line" />}
+            {group.label && collapsed && <div className="mx-3 mb-2 h-px bg-white/[0.07]" />}
             <div className="space-y-0.5">{group.items.map((item) => link(item))}</div>
           </div>
         ))}
       </nav>
-      <div className={`border-t border-rail-line px-4 py-3.5 ${collapsed ? "text-center" : ""}`}>
+      <div className={`border-t border-white/[0.07] px-4 py-3.5 ${collapsed ? "text-center" : ""}`}>
         {collapsed ? (
           <span className="text-[10px] font-bold text-rail-ink-soft" title="Design Partner Demo">DP</span>
         ) : (
@@ -282,8 +282,8 @@ export function Shell({ children }: { children: ReactNode }) {
     <div className="min-h-screen">
       {/* Desktop rail — 240 collapses to 64. */}
       <aside
-        className={`fixed inset-y-0 left-0 z-20 hidden flex-col bg-rail text-rail-ink transition-[width] duration-[220ms] md:flex ${
-          collapsed ? "w-[64px]" : "w-[240px]"
+        className={`glass-rail fixed bottom-3 left-3 top-3 z-20 hidden flex-col overflow-hidden rounded-panel text-rail-ink transition-[width] duration-[220ms] md:flex ${
+          collapsed ? "w-[68px]" : "w-[236px]"
         }`}
       >
         {railBody}
@@ -295,42 +295,47 @@ export function Shell({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-40 md:hidden">
           <button
             aria-label="Close navigation"
-            className="absolute inset-0 bg-neutral-950/50"
+            className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm"
             onClick={() => setDrawer(false)}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-[264px] flex-col bg-rail text-rail-ink shadow-[var(--shadow-pop)]">
+          <aside className="glass-rail absolute bottom-3 left-3 top-3 flex w-[264px] flex-col overflow-hidden rounded-panel text-rail-ink">
             {railBody}
           </aside>
         </div>
       )}
 
-      <div className={collapsed ? "md:pl-[64px]" : "md:pl-[240px]"}>
-        <div className="sticky top-0 z-30 flex min-h-[56px] items-center gap-2 border-b border-neutral-200 bg-neutral-50/85 px-4 backdrop-blur sm:px-6 dark:border-neutral-800 dark:bg-neutral-950/85">
+      <div className={collapsed ? "md:pl-[92px]" : "md:pl-[260px]"}>
+        {/* Mobile keeps a bar because it carries the menu and the wordmark. On
+            desktop the only global control is the rail toggle, and a full-width
+            slab holding one button reads as hollow — so it floats instead. */}
+        <div className="glass sticky top-3 z-30 mx-3 mt-3 flex min-h-[52px] items-center gap-2 rounded-card px-3 md:hidden">
           <button
             type="button"
             onClick={() => setDrawer(true)}
             aria-label="Open navigation"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-control text-neutral-600 transition-colors duration-[140ms] hover:bg-neutral-100 md:hidden dark:text-neutral-300 dark:hover:bg-neutral-800"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-600 transition-colors duration-[140ms] hover:bg-neutral-900/6"
           >
             <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}><path d="M2 4h12M2 8h12M2 12h12" /></svg>
           </button>
-          <button
-            type="button"
-            onClick={toggleRail}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-expanded={!collapsed}
-            title={collapsed ? "Expand sidebar  [" : "Collapse sidebar  ["}
-            className="hidden h-9 w-9 items-center justify-center rounded-control text-neutral-500 transition-colors duration-[140ms] hover:bg-neutral-100 md:inline-flex dark:text-neutral-400 dark:hover:bg-neutral-800"
-          >
-            <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
-              <rect x="2" y="3" width="12" height="10" rx="2" />
-              <path d="M6.5 3v10" />
-            </svg>
-          </button>
-          <span className="md:hidden"><Wordmark /></span>
+          <Wordmark />
         </div>
 
-        <div className="mx-auto max-w-[1400px] px-4 py-7 sm:px-6 lg:px-8">{children}</div>
+        <button
+          type="button"
+          onClick={toggleRail}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
+          title={collapsed ? "Expand sidebar  [" : "Collapse sidebar  ["}
+          className="glass fixed top-4 z-30 hidden h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition-[left,color] duration-[220ms] hover:text-neutral-900 md:inline-flex"
+          style={{ left: collapsed ? 104 : 272 }}
+        >
+          <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+            <rect x="2" y="3" width="12" height="10" rx="2" />
+            <path d="M6.5 3v10" />
+          </svg>
+        </button>
+
+        <div className="mx-auto max-w-[1400px] px-4 pb-10 pt-4 sm:px-6 md:pt-16 lg:px-7">{children}</div>
       </div>
     </div>
   );

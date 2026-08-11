@@ -17,15 +17,19 @@ import type { ReactNode } from "react";
  * bento pattern. Colour here is categorical, never a call to action; blue stays
  * reserved for things you click.
  */
+/**
+ * Tones are gradients now, not flat fills — a wash that fades toward the card's
+ * bottom edge so a surface reads as lit from above, the way the glass layers do.
+ */
 const CARD_TONES: Record<string, string> = {
-  default: "border-neutral-200 bg-white",
-  indigo: "border-indigo/15 bg-indigo-wash",
-  violet: "border-violet/15 bg-violet-wash",
-  teal: "border-teal/15 bg-teal-wash",
-  emerald: "border-emerald/15 bg-emerald-wash",
-  amber: "border-amber/15 bg-amber-wash",
-  rose: "border-rose/15 bg-rose-wash",
-  ink: "border-transparent bg-rail text-rail-ink",
+  default: "border-white/70 bg-white/75 backdrop-blur-xl",
+  indigo: "border-indigo/12 bg-gradient-to-b from-indigo-wash to-white/70",
+  violet: "border-violet/12 bg-gradient-to-b from-violet-wash to-white/70",
+  teal: "border-teal/12 bg-gradient-to-b from-teal-wash to-white/70",
+  emerald: "border-emerald/12 bg-gradient-to-b from-emerald-wash to-white/70",
+  amber: "border-amber/12 bg-gradient-to-b from-amber-wash to-white/70",
+  rose: "border-rose/12 bg-gradient-to-b from-rose-wash to-white/70",
+  ink: "border-white/10 bg-rail text-rail-ink",
 };
 
 export type CardTone = keyof typeof CARD_TONES;
@@ -45,10 +49,10 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-card border p-5 transition-colors duration-[140ms] ${
+      className={`rounded-card border p-5 shadow-[var(--glass-specular),var(--shadow-float)] transition-colors duration-[140ms] ${
         muted
-          ? "border-neutral-200/70 bg-neutral-50/40 dark:border-neutral-800/60 dark:bg-neutral-900/30"
-          : `${CARD_TONES[tone] ?? CARD_TONES.default} dark:border-neutral-800 dark:bg-neutral-900`
+          ? "border-neutral-200/60 bg-white/35 shadow-none backdrop-blur-sm"
+          : `${CARD_TONES[tone] ?? CARD_TONES.default}`
       } ${className}`}
     >
       {children}
@@ -87,7 +91,7 @@ export function IconTile({
   return (
     <span
       aria-hidden
-      className={`inline-grid shrink-0 place-items-center rounded-inner ${
+      className={`inline-grid shrink-0 place-items-center rounded-[10px] ${
         size === "sm" ? "h-6 w-6" : "h-8 w-8"
       } ${TILE_TONES[tone] ?? TILE_TONES.blue}`}
     >
@@ -188,7 +192,7 @@ export function Tab({
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`inline-flex min-h-[32px] items-center rounded-control px-3 text-[13px] font-semibold transition-colors duration-[140ms] ${
+      className={`inline-flex min-h-[34px] items-center rounded-full px-3.5 text-[13px] font-semibold transition-colors duration-[140ms] ${
         active
           ? "bg-accent-wash text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
           : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800"
@@ -219,7 +223,7 @@ export function BandBadge({ band }: { band: string }) {
     <span
       /* The table tints its row off this attribute — see globals.css. */
       data-band={band}
-      className={`inline-flex items-center rounded-inner px-2 py-0.5 text-[11.5px] font-bold ${
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ${
         BAND_STYLES[band] ?? BAND_STYLES.low
       }`}
     >
@@ -262,7 +266,7 @@ export function StatusBadge({ status }: { status: string }) {
   return (
     <span
       data-status={status}
-      className={`inline-flex items-center gap-1.5 rounded-inner px-2 py-0.5 text-[11.5px] font-bold capitalize ${
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11.5px] font-bold capitalize ${
         STATUS_STYLES[status] ?? STATUS_STYLES.completed
       }`}
     >
@@ -292,7 +296,7 @@ export function StatChip({
   const attention = tone === "attention" && !empty;
   const body = (
     <div
-      className={`rounded-card border px-4 py-3.5 transition-colors duration-[140ms] ${
+      className={`rounded-card border px-4 py-4 transition-colors duration-[140ms] ${
         attention
           ? "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/50"
           : empty
@@ -356,7 +360,7 @@ export function CountChip({
   };
   const body = (
     <div
-      className={`min-w-[6.5rem] rounded-input border px-3.5 py-2.5 transition-colors duration-[140ms] ${
+      className={`min-w-[6.5rem] rounded-card border px-4 py-3 transition-colors duration-[140ms] ${
         active
           ? "border-accent bg-accent text-white"
           : empty
@@ -440,7 +444,7 @@ export function SearchBox({
         defaultValue={defaultValue}
         placeholder={placeholder}
         spellCheck={false}
-        className="w-60 rounded-input border border-neutral-300 bg-white py-2 pl-9 pr-3 text-sm transition-colors duration-[140ms] placeholder:text-neutral-400 hover:border-neutral-400 focus:border-accent focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-neutral-600"
+        className="w-60 rounded-full border border-neutral-300/80 bg-white/80 py-2 pl-9 pr-4 text-sm backdrop-blur transition-colors duration-[140ms] placeholder:text-neutral-400 hover:border-neutral-400 focus:border-accent focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-neutral-600"
       />
     </form>
   );
@@ -564,7 +568,7 @@ export function CompletenessGrid({
         {Object.entries(byCategory).map(([cat, covered]) => (
           <span
             key={cat}
-            className={`inline-flex items-center gap-1.5 rounded-inner px-2 py-1 text-xs font-medium ${
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
               covered
                 ? "bg-green-50 text-green-700 dark:bg-green-950/60 dark:text-green-300"
                 : "bg-neutral-50 text-neutral-400 dark:bg-neutral-900 dark:text-neutral-600"

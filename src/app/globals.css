@@ -108,14 +108,36 @@
   --font-sans: var(--font-ui), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-mono-ui), ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Concentric — a child is never rounder than its parent. */
-  --radius-inner: 5px;
-  --radius-control: 7px;
-  --radius-input: 10px;
-  --radius-card: 14px;
+  /* Concentric — a child is never rounder than its parent. Radii grow across
+     the board: softer edges are most of what reads as "current". */
+  --radius-inner: 8px;
+  --radius-control: 10px;
+  --radius-input: 12px;
+  --radius-card: 18px;
+  --radius-panel: 22px;
 }
 
 :root {
+  /* ---------------------------------------------------------------------
+     Adapted from Apple's Liquid Glass direction (iOS/macOS 26): chrome is a
+     translucent layer floating over content, depth comes from blur and a
+     specular top edge rather than from a drop shadow, and the ground carries a
+     soft luminous wash instead of a flat fill. The literal material is
+     OS-level — real-time refraction is not available to a web page — so this
+     is the principle, executed with backdrop-filter.
+     --------------------------------------------------------------------- */
+  --glass-blur: saturate(180%) blur(20px);
+  --glass-light: rgba(255, 255, 255, 0.72);
+  --glass-light-edge: rgba(255, 255, 255, 0.75);
+  --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --glass-dark: linear-gradient(180deg, rgba(21, 32, 56, 0.92) 0%, rgba(11, 18, 34, 0.95) 100%);
+  --glass-dark-edge: rgba(255, 255, 255, 0.09);
+  --glass-dark-specular: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+
+  /* Float, not drop. Wide and soft, tinted toward the ground's hue. */
+  --shadow-float: 0 18px 44px -22px rgba(11, 18, 32, 0.22), 0 2px 8px -4px rgba(11, 18, 32, 0.10);
+  --shadow-rail: 0 24px 60px -28px rgba(5, 8, 18, 0.55);
+
   /* Layered: a tight direct edge plus a wider ambient spread. */
   --shadow-raise: 0 1px 1px rgba(11, 18, 32, .04), 0 4px 12px -6px rgba(11, 18, 32, .14);
   --shadow-pop: 0 2px 4px rgba(11, 18, 32, .06), 0 12px 32px -12px rgba(11, 18, 32, .28);
@@ -126,7 +148,40 @@
 
 html { color-scheme: light; }
 .dark { color-scheme: dark; }
-body { @apply bg-neutral-50 text-neutral-900 antialiased; }
+body {
+  @apply text-neutral-900 antialiased;
+  /* Two very low-opacity pools of light, so the ground is a room rather than a
+     sheet of paper. Under 10% alpha — this must never compete with content. */
+  background:
+    radial-gradient(1100px 620px at 12% -12%, rgba(99, 102, 241, 0.10), transparent 62%),
+    radial-gradient(900px 520px at 88% -6%, rgba(8, 145, 178, 0.085), transparent 58%),
+    radial-gradient(700px 700px at 78% 108%, rgba(139, 92, 246, 0.07), transparent 60%),
+    var(--color-neutral-50);
+  background-attachment: fixed;
+}
+
+/* Materials. `.glass` is the floating light layer, `.glass-rail` the dark one. */
+.glass {
+  background: var(--glass-light);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-light-edge);
+  box-shadow: var(--glass-specular), var(--shadow-float);
+}
+.glass-rail {
+  background: var(--glass-dark);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-dark-edge);
+  box-shadow: var(--glass-dark-specular), var(--shadow-rail);
+}
+
+/* Where backdrop-filter is unavailable the layers go opaque rather than
+   transparent, so nothing ever renders as unreadable text on content. */
+@supports not (backdrop-filter: blur(4px)) {
+  .glass { background: #ffffff; }
+  .glass-rail { background: #0d1526; }
+}
 
 .dark body { @apply bg-neutral-950 text-neutral-100; }
 .dark {
