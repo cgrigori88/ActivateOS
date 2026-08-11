@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { getPool } from "@/db/client";
-import { sendOutbound } from "@/lib/comms/send";
-import { deriveEngagement } from "@/lib/intel/engagement";
+import { launchCampaign, sendTouchNow } from "@/lib/comms/sequence";
 
 /**
- * Per-touch approval + send. Approval is the human-in-the-loop gate: a touch
- * cannot send until a person approves it, and each touch is approved on its
- * own so a seller can green-light touch 1 and hold the rest.
+ * Per-touch approval, campaign launch, and send. Approval is the human gate:
+ * a touch cannot send or be scheduled until a person approves it, and each
+ * touch is approved on its own.
  */
 
 async function touchCampaign(touchId: string): Promise<string> {
@@ -42,65 +41,29 @@ export async function rejectTouchAction(touchId: string, formData: FormData): Pr
   revalidatePath(`/campaigns/${await touchCampaign(touchId)}`);
 }
 
-export async function sendTouchAction(touchId: string, formData: FormData): Promise<void> {
+/** Arm the whole sequence: fix the recipient, schedule every approved touch. */
+export async function launchCampaignAction(campaignId: string, formData: FormData): Promise<void> {
   const to = String(formData.get("to") ?? "").trim().toLowerCase();
-  if (!to) throw new Error("a recipient is required");
-
+  if (!to) throw new Error("a recipient is required to launch");
   const pool = getPool();
   const db = await pool.connect();
   try {
-    const { rows } = await db.query<{
-      campaign_id: string;
-      status: string;
-      subject: string;
-      text_body: string | null;
-      html_body: string | null;
-      org_id: string | null;
-      company_id: string;
-      motion_id: string;
-      seller_id: string | null;
-      seller_name: string | null;
-    }>(
-      `select t.campaign_id, t.status, t.subject, t.text_body, t.html_body,
-              m.org_id, m.company_id, m.id as motion_id, m.partner_seller_id as seller_id,
-              s.name as seller_name
-       from campaign_touches t
-       join campaigns ca on ca.id = t.campaign_id
-       join revenue_motions m on m.id = ca.motion_id
-       left join sellers s on s.id = m.partner_seller_id
-       where t.id = $1`,
-      [touchId],
-    );
-    if (rows.length === 0) throw new Error("touch not found");
-    const t = rows[0];
-    if (t.status !== "approved") throw new Error("touch must be approved before it can send");
-
-    const senderName = t.seller_name ?? "The PursuitOS Team";
-    const localPart =
-      senderName.toLowerCase().replace(/[^a-z]+/g, ".").replace(/^\.|\.$/g, "") || "team";
-
-    const result = await sendOutbound(db, {
-      orgId: t.org_id,
-      companyId: t.company_id,
-      motionId: t.motion_id,
-      identity: { displayName: senderName, localPart },
-      to: [to],
-      subject: t.subject,
-      body: t.text_body ?? t.subject,
-      html: t.html_body,
-      sellerId: t.seller_id,
-      mode: "facilitated",
-    });
-
-    await db.query(
-      `update campaign_touches set status = 'sent', sent_at = now(), message_id = $2 where id = $1`,
-      [touchId, result.messageId],
-    );
-    // Refresh the engagement rollup so downstream intelligence sees the send.
-    await deriveEngagement(db, { orgId: t.org_id, companyId: t.company_id });
-
-    revalidatePath(`/campaigns/${t.campaign_id}`);
+    await launchCampaign(db, { campaignId, recipientEmail: to });
   } finally {
     db.release();
   }
+  revalidatePath(`/campaigns/${campaignId}`);
+}
+
+/** Send a single touch now (pre-launch to a chosen recipient, or a due scheduled touch). */
+export async function sendTouchAction(touchId: string, formData: FormData): Promise<void> {
+  const override = String(formData.get("to") ?? "").trim().toLowerCase() || null;
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    await sendTouchNow(db, { touchId, overrideTo: override });
+  } finally {
+    db.release();
+  }
+  revalidatePath(`/campaigns/${await touchCampaign(touchId)}`);
 }

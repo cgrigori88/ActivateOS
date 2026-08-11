@@ -3,6 +3,7 @@ import { getPool } from "../db/client";
 import { importAccountsCsv } from "../lib/ingest/ingest-accounts";
 import { runPendingResearchLocked } from "../lib/intel/research-runner";
 import { runScreeningSweepAllOrgs, runScreeningSweepLocked } from "../lib/intel/screen-runner";
+import { drainScheduledTouches } from "../lib/comms/sequence";
 
 /**
  * Pipeline worker (Railway). A single long-lived process that drives the
@@ -49,6 +50,16 @@ async function runResearch(limit = RESEARCH_LIMIT) {
   const db = await pool.connect();
   try {
     return await runPendingResearchLocked(db, { limit });
+  } finally {
+    db.release();
+  }
+}
+
+async function runOutreach() {
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    return await drainScheduledTouches(db);
   } finally {
     db.release();
   }
@@ -144,6 +155,11 @@ const server = http.createServer(async (req, res) => {
       const result = await runResearch(limit);
       return send(res, result.locked ? 409 : 200, result);
     }
+    if (method === "POST" && url.pathname === "/outreach") {
+      log("http: outreach drain");
+      const result = await runOutreach();
+      return send(res, 200, result);
+    }
     if (method === "POST" && url.pathname === "/import") {
       const csv = await readBody(req);
       if (!csv.trim()) return send(res, 400, { error: "empty body — POST the CSV content" });
@@ -176,10 +192,11 @@ function startScheduler(): void {
   }
   const screenHour = Number(process.env.SCREEN_HOUR_UTC ?? 7);
   const researchIntervalMs = Number(process.env.RESEARCH_INTERVAL_HOURS ?? 6) * 3_600_000;
+  const autosend = process.env.OUTREACH_AUTOSEND === "on";
   let lastResearch = Date.now(); // first research fires after one interval
   let lastScreenDay = ""; // YYYY-MM-DD of the last screening sweep
 
-  log("scheduler on", { screenHour, researchIntervalHours: researchIntervalMs / 3_600_000 });
+  log("scheduler on", { screenHour, researchIntervalHours: researchIntervalMs / 3_600_000, outreachAutosend: autosend });
 
   const tick = async () => {
     const now = new Date();
@@ -191,6 +208,15 @@ function startScheduler(): void {
         log("cron: research", r.locked ? { locked: true } : { done: r.done, failed: r.failed });
       } catch (err) {
         log("cron: research error", { error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    // Outreach: drain due scheduled touches (only sends when armed).
+    if (autosend) {
+      try {
+        const o = await runOutreach();
+        if (o.sent > 0 || o.errors.length > 0) log("cron: outreach", o);
+      } catch (err) {
+        log("cron: outreach error", { error: err instanceof Error ? err.message : String(err) });
       }
     }
     // Screen: once per day at the target UTC hour.

@@ -103,6 +103,12 @@ const icons = {
       <path d="M2 4l6 4 6-4M2 4h12v8H2z" />
     </svg>
   ),
+  upcoming: (
+    <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 5v3l2 1.5" />
+    </svg>
+  ),
 };
 
 const NAV: NavGroup[] = [
@@ -119,6 +125,7 @@ const NAV: NavGroup[] = [
     label: "Outreach",
     items: [
       { href: "/campaigns", label: "Campaigns", icon: icons.campaigns },
+      { href: "/upcoming", label: "Upcoming", icon: icons.upcoming },
     ],
   },
   {

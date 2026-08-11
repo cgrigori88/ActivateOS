@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPool } from "@/db/client";
 import { Card, PageHeader, StatusBadge } from "@/components/ui";
-import { approveTouchAction, rejectTouchAction, sendTouchAction } from "./actions";
+import { approveTouchAction, rejectTouchAction, sendTouchAction, launchCampaignAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +23,7 @@ interface Touch {
   html_body: string | null;
   cta_label: string | null;
   send_offset_days: number;
+  scheduled_at: Date | null;
   rejected_reason: string | null;
   sent_at: Date | null;
 }
@@ -42,10 +43,12 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     primary_domain: string | null;
     motion_id: string;
     wordmark: string | null;
+    recipient_email: string | null;
+    launched_at: Date | null;
   }>(
     `select ca.id, ca.name, ca.status, ca.objective, ca.audience,
             c.id as company_id, c.legal_name, c.primary_domain, m.id as motion_id,
-            bp.wordmark
+            bp.wordmark, ca.recipient_email, ca.launched_at
      from campaigns ca
      join revenue_motions m on m.id = ca.motion_id
      join companies c on c.id = m.company_id
@@ -58,7 +61,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
 
   const { rows: touches } = await pool.query<Touch>(
     `select id, touch_no, name, subject, preheader, headline, status, html_body,
-            cta_label, send_offset_days, rejected_reason, sent_at
+            cta_label, send_offset_days, scheduled_at, rejected_reason, sent_at
      from campaign_touches where campaign_id = $1 order by touch_no`,
     [id],
   );
@@ -83,6 +86,9 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     [ca.company_id],
   );
   const e = eng[0];
+
+  const approvedCount = touches.filter((t) => t.status === "approved").length;
+  const launched = Boolean(ca.launched_at);
 
   return (
     <main>
@@ -122,6 +128,40 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
           </p>
         </div>
       </Card>
+
+      {/* Launch — arm the sequence once at least one touch is approved */}
+      {!launched && approvedCount > 0 && (
+        <Card className="mb-6">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Launch sequence</h2>
+          <p className="mb-3 text-xs text-neutral-500">
+            Schedules all {approvedCount} approved touch{approvedCount === 1 ? "" : "es"} to one recipient on their cadence
+            offsets. Sends wait for your go — the worker only auto-sends when explicitly armed.
+          </p>
+          <form action={launchCampaignAction.bind(null, ca.id)} className="flex flex-wrap items-end gap-3">
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">Recipient</span>
+              {contacts.length > 0 ? (
+                <select name="to" className="w-72 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                  {contacts.map((c) => (
+                    <option key={c.email} value={c.email}>{c.name ? `${c.name} — ${c.email}` : c.email}</option>
+                  ))}
+                </select>
+              ) : (
+                <input name="to" type="email" required placeholder="recipient@company.com" className="w-72 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+              )}
+            </label>
+            <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+              Launch
+            </button>
+          </form>
+        </Card>
+      )}
+      {launched && ca.recipient_email && (
+        <p className="mb-6 text-sm text-neutral-500">
+          Launched — sequence targeting <span className="font-medium text-neutral-700 dark:text-neutral-300">{ca.recipient_email}</span>.{" "}
+          <Link href="/upcoming" className="text-blue-700 hover:underline dark:text-blue-400">See Upcoming</Link>.
+        </p>
+      )}
 
       {/* Touches */}
       <div className="space-y-6">
@@ -164,6 +204,17 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
               <p className="text-xs text-neutral-500">
                 Sent {t.sent_at ? new Date(t.sent_at).toISOString().slice(0, 16).replace("T", " ") : ""}.
               </p>
+            ) : t.status === "scheduled" ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-xs text-neutral-500">
+                  Scheduled for {t.scheduled_at ? new Date(t.scheduled_at).toISOString().slice(0, 16).replace("T", " ") : "—"}
+                </span>
+                <form action={sendTouchAction.bind(null, t.id)}>
+                  <button className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+                    Send now
+                  </button>
+                </form>
+              </div>
             ) : (
               <div className="flex flex-wrap items-end gap-3">
                 {t.status !== "approved" && (
