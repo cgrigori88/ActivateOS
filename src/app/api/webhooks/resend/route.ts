@@ -3,6 +3,10 @@ import { getPool } from "@/db/client";
 import { processInboundMessage } from "@/lib/comms/inbound";
 import { ResendProvider, verifyWebhookSignature } from "@/lib/comms/resend";
 import { suppress } from "@/lib/comms/send";
+import { deriveEngagement, emitEngagementSignals } from "@/lib/intel/engagement";
+import { scoreOrg } from "@/lib/scoring/score";
+
+const ENGAGEMENT_TARGET_SLUG = "infrastructure-automation";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +69,24 @@ export async function POST(req: Request): Promise<NextResponse> {
            values ($1, $2, $3, $4)`,
           [rows[0].id, rows[0].thread_id, mapped, JSON.stringify(payload.data ?? {})],
         );
+
+        // Engagement → intelligence (Phase 9D). Opens refresh the rollup; a
+        // click is meaningful enough to emit a scoring signal and rescore.
+        if (mapped === "OPENED" || mapped === "CLICKED") {
+          const { rows: ctx } = await db.query<{ org_id: string | null; company_id: string }>(
+            `select org_id, company_id from communication_threads where id = $1`,
+            [rows[0].thread_id],
+          );
+          if (ctx.length > 0) {
+            const { org_id, company_id } = ctx[0];
+            if (mapped === "CLICKED") {
+              await emitEngagementSignals(db, { orgId: org_id, companyId: company_id });
+              if (org_id) await scoreOrg(db, org_id, ENGAGEMENT_TARGET_SLUG).catch(() => undefined);
+            } else {
+              await deriveEngagement(db, { orgId: org_id, companyId: company_id });
+            }
+          }
+        }
       }
       // Bounces and complaints suppress immediately — no exceptions.
       if (mapped === "BOUNCED" || mapped === "SPAM_COMPLAINT") {

@@ -28,7 +28,7 @@ function pct(n: number, d: number): string {
 export default async function AnalyticsPage() {
   const pool = getPool();
 
-  const [{ rows: eventAgg }, { rows: outcomeAgg }, { rows: trend }, { rows: cadence }, { rows: segments }] =
+  const [{ rows: eventAgg }, { rows: outcomeAgg }, { rows: trend }, { rows: cadence }, { rows: segments }, { rows: surges }] =
     await Promise.all([
       pool.query<{ sent: string; opened: string; clicked: string; replied: string }>(
         `select
@@ -76,6 +76,13 @@ export default async function AnalyticsPage() {
          left join latest l on l.company_id = t.company_id
          group by 1`,
       ),
+      pool.query<{ company_id: string; legal_name: string; payload: { clicks?: number; replies?: number; positive?: number } | null; occurred_at: Date }>(
+        `select ie.company_id, c.legal_name, ie.payload, ie.occurred_at
+         from interaction_events ie
+         join companies c on c.id = ie.company_id
+         where ie.type = 'ENGAGEMENT_SURGE'
+         order by ie.occurred_at desc limit 12`,
+      ),
     ]);
 
   const f: Funnel = {
@@ -115,6 +122,35 @@ export default async function AnalyticsPage() {
             No outreach activity yet. Compose and send a sequence on the{" "}
             <Link href="/campaigns" className="text-blue-700 hover:underline dark:text-blue-400">Campaigns</Link> page —
             every send, open, and reply lands here.
+          </p>
+        </Card>
+      )}
+
+      {/* Compelling events — engagement surges feeding the intelligence layer */}
+      {surges.length > 0 && (
+        <Card className="mb-6">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            Compelling events — engagement surges
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {surges.map((s, i) => {
+              const p = s.payload ?? {};
+              const bits = [p.positive ? `${p.positive} positive` : null, p.replies ? `${p.replies} reply` : null, p.clicks ? `${p.clicks} click` : null].filter(Boolean).join(" · ");
+              return (
+                <Link
+                  key={i}
+                  href={`/accounts/${s.company_id}`}
+                  className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950 dark:hover:bg-amber-900"
+                >
+                  <span aria-hidden>⚡</span>
+                  <span className="font-medium">{s.legal_name}</span>
+                  <span className="text-xs text-amber-700 dark:text-amber-400">{bits || "engaged"}</span>
+                </Link>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-[11px] text-neutral-400">
+            Each surge lifts the account&apos;s momentum feature in propensity — engagement is scored, not just logged.
           </p>
         </Card>
       )}

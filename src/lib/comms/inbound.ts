@@ -3,6 +3,7 @@ import { analyzeReply } from "../agents/conversation";
 import { crossCheckLLM } from "../agents/extractor";
 import { mapSignals } from "../agents/taxonomy-mapper";
 import { verifyEvidence } from "../quality/verify";
+import { emitEngagementSignals } from "../intel/engagement";
 import { scoreOrg } from "../scoring/score";
 import type { InboundMessage } from "./provider";
 import { commsConfig } from "./provider";
@@ -233,9 +234,14 @@ export async function processInboundMessage(
     if (outcome.status === "verified") claimsVerified++;
   }
 
-  // 5. New evidence → signals → rescore; "what changed" surfaces it.
+  // 5. New evidence → signals → rescore; "what changed" surfaces it. A reply is
+  //    also first-party engagement (Phase 9D): emit the engagement momentum
+  //    signal + compelling-event flag so propensity reflects the response.
   let rescored = false;
-  if (claimsVerified > 0 && thread.org_id) {
+  if (thread.org_id) {
+    await emitEngagementSignals(db, { orgId: thread.org_id, companyId: thread.company_id });
+  }
+  if ((claimsVerified > 0 || thread.org_id) && thread.org_id) {
     await mapSignals(db, thread.org_id, { useLLM: Boolean(process.env.ANTHROPIC_API_KEY) });
     await scoreOrg(db, thread.org_id, opts.targetSlug ?? "infrastructure-automation");
     rescored = true;

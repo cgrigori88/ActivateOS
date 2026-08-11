@@ -155,6 +155,71 @@ export async function deriveEngagement(
   return { company, contacts };
 }
 
+/**
+ * The learning loop (Phase 9D): turn account engagement into a first-party
+ * momentum signal that the propensity scorer consumes, and flag engagement
+ * surges as compelling events. Deterministic — no LLM, no invented facts.
+ *
+ * Gating matters: opens alone are weak (prefetch, bots) and never emit a
+ * scoring signal; clicks and replies do. The signal is idempotent — one
+ * current engagement signal per account, rewritten each time.
+ */
+export async function emitEngagementSignals(
+  db: pg.PoolClient,
+  args: { orgId: string | null; companyId: string },
+): Promise<{ emitted: boolean; signalType: string | null; surge: boolean }> {
+  const { company } = await deriveEngagement(db, args);
+
+  // Always clear the prior engagement signal so this stays a single current one.
+  await db.query(
+    `delete from evidence where company_id = $1 and source_type = 'campaign_engagement'`,
+    [args.companyId],
+  );
+
+  const meaningful = company.clicks + company.replies + company.positiveReplies;
+  if (meaningful === 0) return { emitted: false, signalType: null, surge: false };
+
+  const magnitude = Math.min(
+    1,
+    company.clicks * 0.15 + company.replies * 0.4 + company.positiveReplies * 0.6,
+  );
+  const signalType = company.replies + company.positiveReplies > 0 ? "CAMPAIGN_REPLY" : "CAMPAIGN_ENGAGEMENT";
+  const observedAt = company.lastEngagedAt ?? new Date();
+  const claim =
+    `Buying committee engaged with outreach: ${company.opens} open(s), ${company.clicks} click(s), ` +
+    `${company.replies} repl(y/ies)${company.positiveReplies ? `, ${company.positiveReplies} positive` : ""}`;
+
+  const { rows: ev } = await db.query<{ id: string }>(
+    `insert into evidence (org_id, company_id, source_type, claim, confidence, observed_at, status, computed_confidence)
+     values ($1, $2, 'campaign_engagement', $3, 0.9, $4, 'verified', 0.9) returning id`,
+    [args.orgId, args.companyId, claim, observedAt],
+  );
+  const evidenceId = ev[0].id;
+
+  await db.query(
+    `insert into signals (org_id, company_id, signal_type, direction, magnitude, confidence,
+        observed_at, half_life_days, evidence_id)
+     values ($1, $2, $3, 1, $4, 0.9, $5, $6, $7)`,
+    [args.orgId, args.companyId, signalType, magnitude, observedAt, signalType === "CAMPAIGN_REPLY" ? 60 : 45, evidenceId],
+  );
+
+  // Compelling event: a positive reply, or multiple clicks, is a buying signal
+  // worth surfacing. Deduped to one surge per account per rolling week.
+  const surge = company.positiveReplies > 0 || company.replies > 0 || company.clicks >= 2;
+  if (surge) {
+    await db.query(
+      `insert into interaction_events (org_id, company_id, actor, type, channel, payload)
+       select $1, $2, 'customer', 'ENGAGEMENT_SURGE', 'EMAIL', $3
+       where not exists (
+         select 1 from interaction_events
+         where company_id = $2 and type = 'ENGAGEMENT_SURGE' and occurred_at > now() - interval '7 days')`,
+      [args.orgId, args.companyId, JSON.stringify({ clicks: company.clicks, replies: company.replies, positive: company.positiveReplies })],
+    );
+  }
+
+  return { emitted: true, signalType, surge };
+}
+
 function scoreContact(c: ContactEngagement): number {
   const raw =
     c.opens * WEIGHTS.open +

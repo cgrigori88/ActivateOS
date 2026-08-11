@@ -105,8 +105,9 @@ export const SIGNAL_DEFS: Record<string, SignalDef> = {
   PARTNER_PURCHASE_HISTORY: { halfLifeDays: 365, family: "partner", direction: 1 },
   SELLER_RELATIONSHIP: { halfLifeDays: 365, family: "partner", direction: 1 },
   // Engagement (populated by Execute/Advance layers)
-  CAMPAIGN_REPLY: { halfLifeDays: 60, family: "momentum", direction: 1 },
-  MEETING: { halfLifeDays: 90, family: "momentum", direction: 1 },
+  CAMPAIGN_REPLY: { halfLifeDays: 60, family: "momentum", direction: 1, canonical: "CUSTOMER_ENGAGEMENT" },
+  CAMPAIGN_ENGAGEMENT: { halfLifeDays: 45, family: "momentum", direction: 1, canonical: "CUSTOMER_ENGAGEMENT" },
+  MEETING: { halfLifeDays: 90, family: "momentum", direction: 1, canonical: "CUSTOMER_ENGAGEMENT" },
   OPPORTUNITY: { halfLifeDays: 180, family: "trigger", direction: 1 },
   CLOSED_WON: { halfLifeDays: 720, family: "technology", direction: 1 },
   // Hiring intelligence (DIRECTIVE P0-A/B): change-over-time features, not
