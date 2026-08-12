@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getPool } from "@/db/client";
-import { CATEGORIES, type Category } from "@/lib/mapping/populations";
+import { CATEGORIES, targetFromCell, type Category } from "@/lib/mapping/populations";
 
 async function soleOrgId(db: import("pg").PoolClient): Promise<string | null> {
   const { rows } = await db.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
@@ -41,4 +42,25 @@ export async function setPopulationStatusAction(populationId: string, status: st
   const pool = getPool();
   await pool.query(`update account_populations set status = $2 where id = $1`, [populationId, status]);
   revalidatePath("/mapping");
+}
+
+/**
+ * Turn a matrix cell into a target list — mapping becomes targeting. Creates an
+ * approved org-side 'target' population from the cell's shared accounts.
+ */
+export async function targetFromCellAction(rowPopId: string, colPopId: string, formData: FormData): Promise<void> {
+  const name = String(formData.get("name") ?? "").trim() || "Target list";
+  const partnerId = String(formData.get("partner") ?? "").trim();
+  const pool = getPool();
+  const db = await pool.connect();
+  let added = 0;
+  try {
+    const orgId = await soleOrgId(db);
+    const res = await targetFromCell(db, { orgId, rowPopId, colPopId, name });
+    added = res.added;
+  } finally {
+    db.release();
+  }
+  revalidatePath("/mapping");
+  redirect(`/mapping?view=matrix${partnerId ? `&partner=${partnerId}` : ""}&notice=${encodeURIComponent(`Created target list "${name}" with ${added} account(s).`)}`);
 }

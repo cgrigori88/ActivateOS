@@ -78,19 +78,33 @@ export async function listPopulations(
   return rows;
 }
 
+export interface MatrixKpi {
+  accounts: number; // distinct overlapping accounts
+  hot: number; // distinct high/very-high band overlapping accounts
+  avg: number | null; // mean propensity across overlapping accounts
+}
+
 /** The overlap matrix: rows = org populations, cols = a partner's populations. */
 export async function matrix(
   db: pg.PoolClient,
   args: { orgId: string; partnerId: string },
-): Promise<{ rows: Population[]; cols: Population[]; cells: Map<string, Cell> }> {
+): Promise<{
+  rows: Population[];
+  cols: Population[];
+  cells: Map<string, Cell>;
+  rowTotals: Map<string, number>;
+  colTotals: Map<string, number>;
+  kpi: MatrixKpi;
+}> {
   const [rows, cols] = await Promise.all([
     listPopulations(db, { orgId: args.orgId, partnerId: null, status: "approved" }),
     listPopulations(db, { orgId: args.orgId, partnerId: args.partnerId, status: "approved" }),
   ]);
 
+  // One pass yields cells AND per-row / per-col distinct totals (grouping sets).
   const { rows: cellRows } = await db.query<{
-    row_id: string;
-    col_id: string;
+    row_id: string | null;
+    col_id: string | null;
     n: string;
     avg_score: string | null;
     high_n: string;
@@ -107,19 +121,75 @@ export async function matrix(
        select score, band from propensity_scores p
        where p.company_id = rm.company_id order by computed_at desc limit 1
      ) ps on true
-     group by rm.population_id, cm.population_id`,
+     group by grouping sets ((rm.population_id, cm.population_id), (rm.population_id), (cm.population_id))`,
     [args.orgId, args.partnerId],
   );
 
   const cells = new Map<string, Cell>();
+  const rowTotals = new Map<string, number>();
+  const colTotals = new Map<string, number>();
   for (const c of cellRows) {
-    cells.set(`${c.row_id}:${c.col_id}`, {
-      count: Number(c.n),
-      avgScore: c.avg_score == null ? null : Number(c.avg_score),
-      highCount: Number(c.high_n),
-    });
+    if (c.row_id && c.col_id) {
+      cells.set(`${c.row_id}:${c.col_id}`, {
+        count: Number(c.n),
+        avgScore: c.avg_score == null ? null : Number(c.avg_score),
+        highCount: Number(c.high_n),
+      });
+    } else if (c.row_id) {
+      rowTotals.set(c.row_id, Number(c.n));
+    } else if (c.col_id) {
+      colTotals.set(c.col_id, Number(c.n));
+    }
   }
-  return { rows, cols, cells };
+
+  const { rows: kpiRows } = await db.query<{ accounts: string; hot: string; avg: string | null }>(
+    `with overlap as (
+       select distinct rm.company_id
+       from population_members rm
+       join population_members cm on cm.company_id = rm.company_id
+       join account_populations rp on rp.id = rm.population_id and rp.partner_id is null and rp.org_id = $1 and rp.status = 'approved'
+       join account_populations cp on cp.id = cm.population_id and cp.partner_id = $2 and cp.status = 'approved'
+     )
+     select count(*) as accounts,
+            count(*) filter (where ps.band in ('high','very_high')) as hot,
+            round(avg(ps.score)) as avg
+     from overlap o
+     left join lateral (
+       select score, band from propensity_scores p where p.company_id = o.company_id order by computed_at desc limit 1
+     ) ps on true`,
+    [args.orgId, args.partnerId],
+  );
+  const k = kpiRows[0];
+  const kpi: MatrixKpi = {
+    accounts: Number(k?.accounts ?? 0),
+    hot: Number(k?.hot ?? 0),
+    avg: k?.avg == null ? null : Number(k.avg),
+  };
+
+  return { rows, cols, cells, rowTotals, colTotals, kpi };
+}
+
+/** Create an org-side 'target' population from a cell's shared accounts (mapping → targeting). */
+export async function targetFromCell(
+  db: pg.PoolClient,
+  args: { orgId: string | null; rowPopId: string; colPopId: string; name: string },
+): Promise<{ populationId: string; added: number }> {
+  const { rows } = await db.query<{ id: string }>(
+    `insert into account_populations (org_id, partner_id, name, category, status, created_by)
+     values ($1, null, $2, 'target', 'approved', 'web') returning id`,
+    [args.orgId, args.name],
+  );
+  const populationId = rows[0].id;
+  const res = await db.query(
+    `insert into population_members (population_id, company_id)
+     select $1, rm.company_id
+     from population_members rm
+     join population_members cm on cm.company_id = rm.company_id and cm.population_id = $3
+     where rm.population_id = $2
+     on conflict do nothing`,
+    [populationId, args.rowPopId, args.colPopId],
+  );
+  return { populationId, added: res.rowCount ?? 0 };
 }
 
 export interface IntersectionRow {

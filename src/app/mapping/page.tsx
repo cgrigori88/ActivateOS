@@ -12,7 +12,7 @@ import {
   type Category,
   type Population,
 } from "@/lib/mapping/populations";
-import { createPopulationAction, setPopulationStatusAction } from "./actions";
+import { createPopulationAction, setPopulationStatusAction, targetFromCellAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -84,7 +84,7 @@ function motion(anyInstalled: boolean): { label: string; tone: string } {
 export default async function MappingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; partner?: string; row?: string; col?: string; cols?: string }>;
+  searchParams: Promise<{ view?: string; partner?: string; row?: string; col?: string; cols?: string; hide?: string; notice?: string }>;
 }) {
   const sp = await searchParams;
   const view: View = (["matrix", "overlap", "coverage", "targets"].includes(sp.view ?? "") ? sp.view : "matrix") as View;
@@ -98,10 +98,15 @@ export default async function MappingPage({
           subtitle="Cross your populations with a partner's — every cell is the accounts you share, rolled up with propensity. Click a cell to drill in."
         />
         <ViewTabs view={view} />
+        {sp.notice && (
+          <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+            {sp.notice}
+          </div>
+        )}
         {sp.row && sp.col ? (
           <CellView rowId={sp.row} colId={sp.col} cols={sp.cols} partnerId={sp.partner} />
         ) : (
-          <MatrixSection partnerId={sp.partner} />
+          <MatrixSection partnerId={sp.partner} hideEmpty={sp.hide === "1"} />
         )}
         <PopulationManager />
       </main>
@@ -371,7 +376,14 @@ function catTone(c: string): string {
   return CAT_TONE[c] ?? "bg-neutral-100 text-neutral-600 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-300";
 }
 
-async function MatrixSection({ partnerId }: { partnerId?: string }) {
+/** Subtle propensity heatmap — blue with alpha, legible on light and dark. */
+function cellShade(avg: number | null): string | undefined {
+  if (avg == null) return undefined;
+  const alpha = Math.max(0.05, Math.min(0.3, 0.05 + (avg / 100) * 0.25));
+  return `rgba(37, 99, 235, ${alpha.toFixed(3)})`;
+}
+
+async function MatrixSection({ partnerId, hideEmpty }: { partnerId?: string; hideEmpty?: boolean }) {
   const pool = getPool();
   const db = await pool.connect();
   try {
@@ -390,43 +402,60 @@ async function MatrixSection({ partnerId }: { partnerId?: string }) {
       );
     }
     const selected = partnerId && partners.some((p) => p.id === partnerId) ? partnerId : partners[0].id;
-    const { rows, cols, cells } = await matrix(db, { orgId, partnerId: selected });
+    const { rows: allRows, cols: allCols, cells, rowTotals, colTotals, kpi } = await matrix(db, { orgId, partnerId: selected });
 
-    const totalOverlap = [...cells.values()].reduce((s, c) => s + c.count, 0);
+    // Hide-empty drops rows/cols with no overlap at all.
+    const rows = hideEmpty ? allRows.filter((r) => (rowTotals.get(r.id) ?? 0) > 0) : allRows;
+    const cols = hideEmpty ? allCols.filter((c) => (colTotals.get(c.id) ?? 0) > 0) : allCols;
+    const base = `/mapping?view=matrix&partner=${selected}`;
+
+    const kpis: { label: string; value: string }[] = [
+      { label: "overlapping accounts", value: kpi.accounts.toLocaleString() },
+      { label: "high-propensity (hot)", value: kpi.hot.toLocaleString() },
+      { label: "avg propensity", value: kpi.avg == null ? "—" : String(kpi.avg) },
+    ];
 
     return (
       <>
         {/* KPI strip + partner picker */}
         <div className="mb-4 flex flex-wrap items-center gap-6">
-          <div>
-            <div className="tnum text-2xl font-semibold">{totalOverlap.toLocaleString()}</div>
-            <div className="text-xs text-neutral-500">overlapping account-cells</div>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-neutral-500">Partner</span>
-            <div className="flex flex-wrap gap-1">
-              {partners.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/mapping?view=matrix&partner=${p.id}`}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium ${
-                    p.id === selected
-                      ? "bg-blue-700 text-white"
-                      : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
-                  }`}
-                >
-                  {p.name}
-                </Link>
-              ))}
+          {kpis.map((k) => (
+            <div key={k.label}>
+              <div className="tnum text-2xl font-semibold">{k.value}</div>
+              <div className="text-xs text-neutral-500">{k.label}</div>
             </div>
+          ))}
+          <div className="ml-auto flex flex-col items-end gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-neutral-500">Partner</span>
+              <div className="flex flex-wrap gap-1">
+                {partners.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/mapping?view=matrix&partner=${p.id}${hideEmpty ? "&hide=1" : ""}`}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                      p.id === selected
+                        ? "bg-blue-700 text-white"
+                        : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
+                    }`}
+                  >
+                    {p.name}
+                  </Link>
+                ))}
+              </div>
+            </div>
+            <Link href={`${base}${hideEmpty ? "" : "&hide=1"}`} className="text-[11px] text-neutral-500 hover:underline">
+              {hideEmpty ? "Show empty populations" : "Hide empty populations"}
+            </Link>
           </div>
         </div>
 
         {rows.length === 0 || cols.length === 0 ? (
           <Card>
             <p className="text-sm text-neutral-500">
-              Approve at least one population on each side to populate the matrix (your side and this partner). Manage
-              populations below.
+              {allRows.length === 0 || allCols.length === 0
+                ? "Approve at least one population on each side to populate the matrix. Manage populations below."
+                : "No overlaps to show with empty populations hidden."}
             </p>
           </Card>
         ) : (
@@ -434,7 +463,8 @@ async function MatrixSection({ partnerId }: { partnerId?: string }) {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th className="sticky left-0 bg-white dark:bg-neutral-900">Your populations ↓ / Partner →</th>
+                  <th className="sticky left-0 z-10 bg-white dark:bg-neutral-900">Your populations ↓ / Partner →</th>
+                  <th className="text-center text-neutral-500">Total</th>
                   {cols.map((c) => (
                     <th key={c.id} className="text-center align-bottom">
                       <div className="font-medium">{c.name}</div>
@@ -446,25 +476,26 @@ async function MatrixSection({ partnerId }: { partnerId?: string }) {
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id}>
-                    <td className="sticky left-0 bg-white dark:bg-neutral-900">
+                    <td className="sticky left-0 z-10 bg-white dark:bg-neutral-900">
                       <span className={`inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${catTone(r.category)}`}>
                         {r.name}
                       </span>
                       <div className="text-[10px] text-neutral-400">{r.members} accounts</div>
                     </td>
+                    <td className="text-center tnum font-semibold text-neutral-500">{(rowTotals.get(r.id) ?? 0).toLocaleString()}</td>
                     {cols.map((c) => {
                       const cell = cells.get(`${r.id}:${c.id}`);
                       if (!cell || cell.count === 0) {
                         return <td key={c.id} className="text-center text-neutral-300 dark:text-neutral-700">None</td>;
                       }
                       return (
-                        <td key={c.id} className="text-center">
+                        <td key={c.id} className="p-0 text-center" style={{ backgroundColor: cellShade(cell.avgScore) }}>
                           <Link
-                            href={`/mapping?view=matrix&partner=${selected}&row=${r.id}&col=${c.id}`}
-                            className="inline-flex flex-col items-center rounded-lg px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-950"
+                            href={`${base}&row=${r.id}&col=${c.id}`}
+                            className="flex flex-col items-center px-3 py-2.5 hover:ring-2 hover:ring-inset hover:ring-blue-500"
                           >
-                            <span className="tnum text-lg font-semibold text-blue-700 dark:text-blue-400">{cell.count.toLocaleString()}</span>
-                            <span className="text-[10px] text-neutral-500">
+                            <span className="tnum text-lg font-semibold text-blue-800 dark:text-blue-300">{cell.count.toLocaleString()}</span>
+                            <span className="text-[10px] text-neutral-600 dark:text-neutral-400">
                               {cell.avgScore != null ? `avg ${cell.avgScore.toFixed(0)}` : "—"}
                               {cell.highCount > 0 ? ` · ${cell.highCount} hot` : ""}
                             </span>
@@ -474,10 +505,19 @@ async function MatrixSection({ partnerId }: { partnerId?: string }) {
                     })}
                   </tr>
                 ))}
+                {/* Column totals */}
+                <tr className="border-t-2 border-neutral-200 dark:border-neutral-700">
+                  <td className="sticky left-0 z-10 bg-white text-xs font-semibold text-neutral-500 dark:bg-neutral-900">Total (distinct)</td>
+                  <td className="text-center tnum font-bold">{kpi.accounts.toLocaleString()}</td>
+                  {cols.map((c) => (
+                    <td key={c.id} className="text-center tnum font-semibold text-neutral-500">{(colTotals.get(c.id) ?? 0).toLocaleString()}</td>
+                  ))}
+                </tr>
               </tbody>
             </table>
             <p className="border-t border-neutral-100 px-3 py-2 text-[11px] text-neutral-500 dark:border-neutral-800">
-              Each cell = accounts on both lists · avg = mean propensity · hot = high/very-high band · click to drill in.
+              Cell = accounts on both lists, shaded by avg propensity · hot = high/very-high band · Total = distinct
+              accounts (a company on two columns counts once) · click a cell to drill in.
             </p>
           </div>
         )}
@@ -515,7 +555,23 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
             {row?.name ?? "?"} <span className="text-neutral-400">vs</span> {col?.name ?? "?"}
           </h2>
           <span className="text-xs text-neutral-500">{accounts.length} account(s)</span>
+
+          {/* Mapping → targeting: turn this cell into a target list */}
           <details className="relative ml-auto">
+            <summary className="cursor-pointer rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800">
+              Build target list
+            </summary>
+            <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+              <p className="mb-2 text-[11px] text-neutral-500">Creates an approved target population from these {accounts.length} accounts — ready to score, sequence, and campaign.</p>
+              <form action={targetFromCellAction.bind(null, rowId, colId)} className="flex items-end gap-2">
+                <input type="hidden" name="partner" value={partnerId ?? ""} />
+                <input name="name" defaultValue={`${row?.name ?? ""} × ${col?.name ?? ""}`} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+                <button className="shrink-0 rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800">Create</button>
+              </form>
+            </div>
+          </details>
+
+          <details className="relative">
             <summary className="cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900">
               Columns
             </summary>
