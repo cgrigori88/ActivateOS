@@ -6,6 +6,25 @@ import { getPool } from "@/db/client";
 import { launchCampaign, sendTouchNow } from "@/lib/comms/sequence";
 import { deleteTouch, upsertTouch, type TouchFields } from "@/lib/comms/authoring";
 import { appendAiTouches } from "@/lib/agents/campaign-email";
+import { linkPopulation, unlinkPopulation } from "@/lib/campaigns/lists";
+
+/** Attach a target list (population) so its accounts roll into the campaign. */
+export async function linkListAction(campaignId: string, formData: FormData): Promise<void> {
+  const populationId = String(formData.get("populationId") ?? "").trim();
+  if (!populationId) return;
+  const pool = getPool();
+  await linkPopulation(pool, campaignId, populationId, "web");
+  revalidatePath(`/campaigns/${campaignId}`);
+  revalidatePath("/campaigns");
+}
+
+/** Remove a target list from the campaign (accounts stop rolling in). */
+export async function unlinkListAction(campaignId: string, populationId: string): Promise<void> {
+  const pool = getPool();
+  await unlinkPopulation(pool, campaignId, populationId);
+  revalidatePath(`/campaigns/${campaignId}`);
+  revalidatePath("/campaigns");
+}
 
 function touchFieldsFrom(formData: FormData): TouchFields {
   const highlights = String(formData.get("highlights") ?? "")
@@ -23,6 +42,7 @@ function touchFieldsFrom(formData: FormData): TouchFields {
     ctaUrl: String(formData.get("ctaUrl") ?? "").trim() || null,
     sendOffsetDays: Number(formData.get("sendOffsetDays") ?? 0) || 0,
     customHtml: String(formData.get("customHtml") ?? "").trim() || null,
+    accountAngle: String(formData.get("accountAngle") ?? "").trim() || null,
   };
 }
 

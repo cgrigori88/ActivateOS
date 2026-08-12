@@ -30,6 +30,8 @@ interface CampaignRow {
   source: string;
   partner_name: string | null;
   solution: string | null;
+  lists: string;
+  reach: string;
   created_at: Date;
 }
 
@@ -54,6 +56,14 @@ export default async function CampaignsPage({
             (select count(*) from campaign_touches t where t.campaign_id = ca.id) as touches,
             (select count(*) from campaign_touches t where t.campaign_id = ca.id and t.status = 'approved') as approved,
             (select count(*) from campaign_touches t where t.campaign_id = ca.id and t.status = 'sent') as sent,
+            (select count(*) from campaign_populations cp where cp.campaign_id = ca.id) as lists,
+            (select count(distinct company_id) from (
+               select pm.company_id from campaign_populations cp
+                 join population_members pm on pm.population_id = cp.population_id
+                 where cp.campaign_id = ca.id
+               union
+               select ca.company_id where ca.company_id is not null
+             ) r) as reach,
             (select es.engagement_score from engagement_scores es
               where es.company_id = c.id and es.contact_id is null
               order by es.computed_at desc limit 1) as engagement
@@ -72,6 +82,8 @@ export default async function CampaignsPage({
   // Bentos (computed before filtering the list)
   const liveN = rest.filter((c) => c.status === "launched" || c.status === "completed").length;
   const touchesSent = rest.reduce((s, c) => s + Number(c.sent), 0);
+  const reachTotal = rest.reduce((s, c) => s + Number(c.reach), 0);
+  const listsLinked = rest.reduce((s, c) => s + Number(c.lists), 0);
   const engs = rest.map((c) => (c.engagement == null ? null : Number(c.engagement))).filter((v): v is number => v != null);
   const avgEng = engs.length ? Math.round(engs.reduce((a, b) => a + b, 0) / engs.length) : null;
 
@@ -110,9 +122,10 @@ export default async function CampaignsPage({
       )}
 
       {/* Bentos */}
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Bento label="campaigns" value={rest.length} />
         <Bento label="live" value={liveN} subs={["launched / completed"]} />
+        <Bento label="accounts in reach" value={reachTotal} subs={[`${listsLinked} list${listsLinked === 1 ? "" : "s"} linked`]} />
         <Bento label="touches sent" value={touchesSent} />
         <Bento label="avg engagement" value={avgEng ?? "—"} />
         <Bento label="AI suggestions" value={suggestions.length} subs={["awaiting review"]} />
@@ -233,6 +246,7 @@ export default async function CampaignsPage({
               <tr>
                 <th>Campaign</th>
                 <th>Account</th>
+                <th>Reach</th>
                 <th>Status</th>
                 <th className="text-right">Touches</th>
                 <th className="text-right">Approved</th>
@@ -254,6 +268,15 @@ export default async function CampaignsPage({
                   </td>
                   <td>
                     <Link href={`/accounts/${ca.company_id}`} className="hover:underline">{ca.legal_name}</Link>
+                  </td>
+                  <td>
+                    {Number(ca.lists) > 0 ? (
+                      <Link href={`/campaigns/${ca.id}`} className="text-xs text-blue-700 hover:underline dark:text-blue-400">
+                        {ca.reach} account{Number(ca.reach) === 1 ? "" : "s"} · {ca.lists} list{Number(ca.lists) === 1 ? "" : "s"}
+                      </Link>
+                    ) : (
+                      <Link href={`/campaigns/${ca.id}`} className="text-xs text-neutral-400 hover:underline">seed only · + list</Link>
+                    )}
                   </td>
                   <td><StatusBadge status={ca.status === "launched" ? "active" : ca.status} /></td>
                   <td className="tnum text-right">{ca.touches}</td>

@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPool } from "@/db/client";
 import { Card, PageHeader, StatusBadge } from "@/components/ui";
+import { QuerySelect } from "@/components/query-select";
 import { TZ_OPTIONS, formatInTz } from "@/lib/comms/tz";
+import { campaignAccounts, linkedLists, attachableLists, mergeAccountData, renderAngle } from "@/lib/campaigns/lists";
 import {
   approveTouchAction,
   rejectTouchAction,
@@ -12,6 +14,8 @@ import {
   editTouchAction,
   deleteTouchAction,
   aiDraftTouchesAction,
+  linkListAction,
+  unlinkListAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +37,7 @@ interface Touch {
   html_body: string | null;
   body: string;
   custom_html: string | null;
+  account_angle: string | null;
   highlights: string[];
   cta_label: string | null;
   cta_url: string | null;
@@ -57,6 +62,12 @@ function TouchFormFields({ t }: { t?: Touch }) {
       <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">CTA label</span><input name="ctaLabel" defaultValue={t?.cta_label ?? ""} placeholder="Book 20 minutes" className={input} /></label>
       <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">CTA link (optional)</span><input name="ctaUrl" defaultValue={t?.cta_url ?? ""} placeholder="https://…" className={input} /></label>
       <label className="text-sm sm:col-span-2">
+        <span className="mb-1 block text-xs text-neutral-500">
+          Account angle — per-recipient layer (tokens: <code className="text-neutral-400">{"{{account}} {{industry}} {{solution}} {{trigger}}"}</code>)
+        </span>
+        <textarea name="accountAngle" defaultValue={t?.account_angle ?? ""} rows={2} placeholder="For {{account}}, {{trigger}} is why {{industry}} teams are prioritizing {{solution}}." className={input} />
+      </label>
+      <label className="text-sm sm:col-span-2">
         <span className="mb-1 block text-xs text-neutral-500">Custom HTML (optional — replaces the body, keeps the branded header/footer)</span>
         <textarea name="customHtml" defaultValue={t?.custom_html ?? ""} rows={3} placeholder="<p>Paste your own HTML…</p>" className={`${input} font-mono text-xs`} />
       </label>
@@ -69,10 +80,11 @@ export default async function CampaignDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ notice?: string }>;
+  searchParams: Promise<{ notice?: string; preview?: string }>;
 }) {
   const { id } = await params;
-  const notice = (await searchParams).notice;
+  const sp = await searchParams;
+  const notice = sp.notice;
   const pool = getPool();
 
   const { rows: caRows } = await pool.query<{
@@ -81,6 +93,7 @@ export default async function CampaignDetailPage({
     status: string;
     objective: string | null;
     audience: string | null;
+    org_id: string | null;
     company_id: string;
     legal_name: string;
     primary_domain: string | null;
@@ -91,6 +104,7 @@ export default async function CampaignDetailPage({
     send_tz: string | null;
   }>(
     `select ca.id, ca.name, ca.status, ca.objective, ca.audience,
+            coalesce(ca.org_id, (select id from organizations order by created_at asc limit 1)) as org_id,
             c.id as company_id, c.legal_name, c.primary_domain, m.id as motion_id,
             bp.wordmark, ca.recipient_email, ca.launched_at, ca.send_tz
      from campaigns ca
@@ -103,9 +117,22 @@ export default async function CampaignDetailPage({
   if (caRows.length === 0) notFound();
   const ca = caRows[0];
 
+  // Reach: the accounts that roll into this campaign, its linked lists, and
+  // lists it could attach (top-fit ones surfaced as suggestions).
+  const accounts = await campaignAccounts(pool, id);
+  const lists = await linkedLists(pool, id);
+  const attachable = ca.org_id ? await attachableLists(pool, id, ca.org_id) : [];
+  const suggestions = attachable.filter((l) => l.suggested);
+
+  // Per-recipient preview: resolve the account-angle layer against one account's
+  // real data so the two layers (shared paragraphs + account angle) are visible.
+  const previewId = sp.preview && accounts.some((a) => a.companyId === sp.preview) ? sp.preview : accounts[0]?.companyId;
+  const previewAccount = accounts.find((a) => a.companyId === previewId) ?? null;
+  const previewVars = previewId ? await mergeAccountData(pool, previewId) : null;
+
   const { rows: touches } = await pool.query<Touch>(
     `select id, touch_no, name, subject, preheader, headline, status, html_body,
-            body, custom_html, highlights, cta_label, cta_url, send_offset_days, scheduled_at, rejected_reason, sent_at
+            body, custom_html, account_angle, highlights, cta_label, cta_url, send_offset_days, scheduled_at, rejected_reason, sent_at
      from campaign_touches where campaign_id = $1 order by touch_no`,
     [id],
   );
@@ -180,6 +207,62 @@ export default async function CampaignDetailPage({
         </div>
       </Card>
 
+      {/* Reach — the target lists that roll into this campaign, and the accounts they resolve to. */}
+      <Card className="mb-6">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Reach</h2>
+          <span className="text-xs text-neutral-400">{accounts.length} account{accounts.length === 1 ? "" : "s"} · {lists.length} list{lists.length === 1 ? "" : "s"}</span>
+        </div>
+
+        {/* Linked lists */}
+        {lists.length > 0 ? (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {lists.map((l) => (
+              <span key={l.populationId} className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-800">
+                <span className="font-medium">{l.name}</span>
+                <span className="text-neutral-400">{l.partnerName ?? "org"} · {l.members}</span>
+                <form action={unlinkListAction.bind(null, ca.id, l.populationId)}>
+                  <button className="text-neutral-400 hover:text-red-600" title="Remove list" aria-label="Remove list">×</button>
+                </form>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="mb-3 text-xs text-neutral-500">No lists linked yet — this campaign covers just its seed account. Attach a target list so one approved sequence scales across the whole list.</p>
+        )}
+
+        {/* Add a list + AI/heuristic suggestions */}
+        {attachable.length > 0 && (
+          <div className="flex flex-wrap items-end gap-3">
+            <form action={linkListAction.bind(null, ca.id)} className="flex items-end gap-2">
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Add a list</span>
+                <select name="populationId" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                  {attachable.map((l) => (
+                    <option key={l.populationId} value={l.populationId}>{l.name} — {l.reason}</option>
+                  ))}
+                </select>
+              </label>
+              <button className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">Attach</button>
+            </form>
+            {suggestions.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-blue-700 dark:text-blue-400">Suggested</span>
+                {suggestions.map((l) => (
+                  <form key={l.populationId} action={linkListAction.bind(null, ca.id)}>
+                    <input type="hidden" name="populationId" value={l.populationId} />
+                    <button className="rounded-full border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300" title={l.reason}>
+                      + {l.name} <span className="text-blue-400">({l.reason})</span>
+                    </button>
+                  </form>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <p className="mt-2 text-[11px] text-neutral-400">Suggestions are ranked by average account fit; attaching a list is always your call. Nothing sends until you approve each touch.</p>
+      </Card>
+
       {/* Schedule the sequence — the primary way to launch a multi-touch cadence */}
       {!launched && schedulable > 0 && (
         <Card className="mb-6 border-blue-200 dark:border-blue-900">
@@ -234,6 +317,58 @@ export default async function CampaignDetailPage({
         </p>
       )}
 
+      {/* Per-recipient preview — resolve the account-angle layer against real data. */}
+      {accounts.length > 0 && (
+        <Card className="mb-6">
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Personalize per recipient</h2>
+            <QuerySelect
+              param="preview"
+              value={previewId ?? ""}
+              label="Preview for"
+              options={accounts.map((a) => ({ value: a.companyId, label: a.legalName }))}
+            />
+            <span className="text-[11px] text-neutral-400">shared paragraphs stay constant across the list; the angle below is resolved from this account&rsquo;s data</span>
+          </div>
+          {previewVars && previewAccount && (
+            <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                ["account", previewVars.account],
+                ["industry", previewVars.industry],
+                ["top-fit solution", previewVars.solution],
+                ["latest signal", previewVars.trigger],
+              ].map(([k, v]) => (
+                <div key={k} className="rounded-md border border-neutral-200 p-2 dark:border-neutral-800">
+                  <div className="text-[10px] uppercase tracking-wide text-neutral-400">{k}</div>
+                  <div className="truncate text-neutral-700 dark:text-neutral-300" title={String(v)}>{v || "—"}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
+              All {accounts.length} accounts in reach
+            </summary>
+            <div className="mt-2 overflow-x-auto rounded-lg border border-neutral-200 scroll-thin dark:border-neutral-800">
+              <table className="data-table">
+                <thead><tr><th>Account</th><th>Top-fit solution</th><th className="text-right">Fit</th><th className="text-right">Eng.</th><th>From list</th></tr></thead>
+                <tbody>
+                  {accounts.map((a) => (
+                    <tr key={a.companyId}>
+                      <td><Link href={`/accounts/${a.companyId}`} className="font-medium hover:underline">{a.legalName}</Link></td>
+                      <td className="text-neutral-500">{a.solution ?? "—"}</td>
+                      <td className="tnum text-right">{a.score ?? "—"}</td>
+                      <td className="tnum text-right text-neutral-500">{a.engagement ?? "—"}</td>
+                      <td className="text-[11px] text-neutral-400">{a.sources}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </Card>
+      )}
+
       {/* Touches */}
       <div className="space-y-6">
         {touches.map((t) => (
@@ -253,6 +388,17 @@ export default async function CampaignDetailPage({
               <div><span className="text-neutral-400">Subject:</span> <span className="font-medium">{t.subject}</span></div>
               {t.preheader && <div className="text-xs text-neutral-500">{t.preheader}</div>}
             </div>
+
+            {/* Two-layer personalization: shared body (in the preview iframe) + this per-recipient angle. */}
+            {previewVars && (
+              <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-400">
+                  Account angle · for {previewAccount?.legalName}
+                </div>
+                <p className="text-sm italic text-neutral-700 dark:text-neutral-300">{renderAngle(t.account_angle, previewVars)}</p>
+                {!t.account_angle && <p className="mt-1 text-[11px] text-neutral-400">Using the default template — edit this touch to tailor the angle, or let AI draft it.</p>}
+              </div>
+            )}
 
             {/* Live branded preview */}
             {t.html_body && (

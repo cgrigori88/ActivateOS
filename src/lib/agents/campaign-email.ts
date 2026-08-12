@@ -30,6 +30,14 @@ const touchSchema = z.object({
     .max(3)
     .describe("0–3 scannable proof points drawn only from evidence/motion"),
   cta_label: z.string().describe("Button text for the single call to action, e.g. 'Book 20 minutes'"),
+  account_angle: z
+    .string()
+    .describe(
+      "One sentence, the PER-RECIPIENT layer. Use these tokens verbatim where they fit: " +
+        "{{account}} {{industry}} {{solution}} {{trigger}}. Keep the shared paragraphs generic enough to " +
+        "scale across the whole list, and put the account-specific framing here — it is resolved from each " +
+        "account's own data at send time.",
+    ),
   send_offset_days: z
     .number()
     .int()
@@ -206,8 +214,8 @@ export async function generateCampaignSequence(
     await db.query(
       `insert into campaign_touches
         (campaign_id, touch_no, name, subject, preheader, headline, body, highlights,
-         cta_label, cta_url, html_body, text_body, send_offset_days, status)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'draft')`,
+         cta_label, cta_url, html_body, text_body, send_offset_days, account_angle, status)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'draft')`,
       [
         campaignId,
         i + 1,
@@ -222,6 +230,7 @@ export async function generateCampaignSequence(
         html,
         text,
         t.send_offset_days,
+        t.account_angle ?? null,
       ],
     );
   }
@@ -283,10 +292,10 @@ export async function appendAiTouches(
     await db.query(
       `insert into campaign_touches
         (campaign_id, touch_no, name, subject, preheader, headline, body, highlights,
-         cta_label, html_body, text_body, send_offset_days, status)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'draft')`,
+         cta_label, html_body, text_body, send_offset_days, account_angle, status)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'draft')`,
       [args.campaignId, no, t.name, t.subject, t.preheader, t.headline, t.paragraphs.join("\n\n"),
-       t.highlights, t.cta_label, html, text, t.send_offset_days],
+       t.highlights, t.cta_label, html, text, t.send_offset_days, t.account_angle ?? null],
     );
   }
   return { added: sequence.touches.length };
