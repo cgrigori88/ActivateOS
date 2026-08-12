@@ -18,6 +18,7 @@ import {
   meddpiccGaps,
   type Status,
 } from "@/lib/opportunities/meddpicc";
+import { quoteSignals } from "@/lib/opportunities/quotes";
 import {
   advanceOpportunityAction,
   registerDealAction,
@@ -46,7 +47,7 @@ interface DealReg {
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; timeframe?: string }>;
+  searchParams: Promise<{ view?: string; timeframe?: string; stage?: string; partner?: string; quote?: string }>;
 }) {
   const sp = await searchParams;
   const view = sp.view === "review" ? "review" : "board";
@@ -98,6 +99,20 @@ export default async function PipelinePage({
     return m ? meddpiccScore(m) : 0;
   };
 
+  // Quote-delivered signal, read from each opportunity's email conversation.
+  const quotes = await quoteSignals(pool, opps.map((o) => o.id));
+  const quoteOf = (id: string) => quotes.get(id) ?? { delivered: false, note: null, at: null };
+
+  // Atomic filters (apply to both board and review; bentos/chart stay on the
+  // full timeframe set so the totals don't move as you slice).
+  const partnerOptions = [...new Set(allOpps.map((o) => o.partner_name).filter(Boolean) as string[])];
+  const visible = opps.filter(
+    (o) =>
+      (!sp.stage || sp.stage === "all" || o.stage === sp.stage) &&
+      (!sp.partner || sp.partner === "all" || (o.partner_name ?? "Direct") === sp.partner) &&
+      (!sp.quote || sp.quote === "all" || (sp.quote === "yes" ? quoteOf(o.id).delivered : !quoteOf(o.id).delivered)),
+  );
+
   const open = opps.filter((o) => !o.stage.startsWith("closed"));
   const weighted = weightedPipelineValue(
     opps.map((o) => ({ stage: o.stage as Stage, amountUsd: o.amount_usd ? Number(o.amount_usd) : null })),
@@ -116,7 +131,9 @@ export default async function PipelinePage({
         const wonUsd = opps.filter((o) => o.stage === "closed_won").reduce((s, o) => s + Number(o.amount_usd ?? 0), 0);
         const stageCounts = new Map<string, number>();
         for (const o of open) stageCounts.set(o.stage, (stageCounts.get(o.stage) ?? 0) + 1);
-        const stageRows = STAGES.filter((s) => stageCounts.has(s)).map((s) => ({ label: s.replace(/_/g, " "), value: stageCounts.get(s) ?? 0 }));
+        // Show every open stage, including the empty ones, so the shape of the
+        // funnel is always visible.
+        const stageRows = STAGES.map((s) => ({ label: s.replace(/_/g, " "), value: stageCounts.get(s) ?? 0 }));
         const avgQual = open.length ? Math.round(open.reduce((s, o) => s + scoreOf(o.id), 0) / open.length) : null;
         // Learned signal: qualification strength of past wins vs losses.
         const avg = (list: typeof opps) => (list.length ? Math.round(list.reduce((s, o) => s + scoreOf(o.id), 0) / list.length) : null);
@@ -155,20 +172,31 @@ export default async function PipelinePage({
       })()}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        {(["board", "review"] as const).map((v) => (
-          <Link
-            key={v}
-            href={`/pipeline?view=${v}${timeframe ? `&timeframe=${timeframe}` : ""}`}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-              view === v
-                ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
-            }`}
-          >
-            {v === "board" ? "Board" : "Review + deal reg"}
-          </Link>
-        ))}
+        {(["board", "review"] as const).map((v) => {
+          const qs = new URLSearchParams();
+          qs.set("view", v);
+          for (const k of ["timeframe", "stage", "partner", "quote"] as const) if (sp[k]) qs.set(k, sp[k]!);
+          return (
+            <Link
+              key={v}
+              href={`/pipeline?${qs.toString()}`}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                view === v
+                  ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                  : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
+              }`}
+            >
+              {v === "board" ? "Board" : "Review + deal reg"}
+            </Link>
+          );
+        })}
+        <QuerySelect param="stage" value={sp.stage ?? "all"} label="Stage" options={[{ value: "all", label: "Any stage" }, ...STAGES.map((s) => ({ value: s, label: s.replace(/_/g, " ") })), { value: "closed_won", label: "closed won" }, { value: "closed_lost", label: "closed lost" }]} />
+        {partnerOptions.length > 0 && (
+          <QuerySelect param="partner" value={sp.partner ?? "all"} label="Partner" options={[{ value: "all", label: "Any partner" }, { value: "Direct", label: "Direct" }, ...partnerOptions.map((p) => ({ value: p, label: p }))]} />
+        )}
+        <QuerySelect param="quote" value={sp.quote ?? "all"} label="Quote" options={[{ value: "all", label: "Any" }, { value: "yes", label: "Quote sent" }, { value: "no", label: "No quote" }]} />
         <QuerySelect param="timeframe" value={sp.timeframe ?? "all"} label="Closing within" options={[{ value: "all", label: "Any time" }, { value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }]} />
+        <span className="ml-auto text-xs text-neutral-500">{visible.length} of {opps.length}</span>
       </div>
 
       {opps.length === 0 && (
@@ -177,8 +205,11 @@ export default async function PipelinePage({
           earns a meeting.
         </p>
       )}
+      {opps.length > 0 && visible.length === 0 && (
+        <p className="text-sm text-neutral-500">No opportunities match these filters — clear one above.</p>
+      )}
 
-      {view === "review" && opps.length > 0 && (
+      {view === "review" && visible.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
           <table className="data-table">
             <thead>
@@ -189,15 +220,17 @@ export default async function PipelinePage({
                 <th className="text-right">Amount</th>
                 <th className="text-right">Weighted</th>
                 <th className="text-right">MEDDPICC</th>
+                <th>Quote</th>
                 <th>Close</th>
                 <th>Deal registration</th>
               </tr>
             </thead>
             <tbody>
-              {opps.map((o) => {
+              {visible.map((o) => {
                 const reg = regByOpp.get(o.id);
                 const closed = o.stage.startsWith("closed");
                 const amt = o.amount_usd != null ? Number(o.amount_usd) : null;
+                const quote = quoteOf(o.id);
                 return (
                   <tr key={o.id}>
                     <td>
@@ -216,6 +249,13 @@ export default async function PipelinePage({
                         const tone = s >= 70 ? "text-green-700 dark:text-green-400" : s >= 40 ? "text-amber-700 dark:text-amber-400" : "text-red-700 dark:text-red-400";
                         return <span className={tone}>{s}</span>;
                       })()}
+                    </td>
+                    <td className="text-xs">
+                      {quote.delivered ? (
+                        <span className="text-green-700 dark:text-green-400" title={quote.note ?? undefined}>✓ sent{quote.at ? ` ${quote.at}` : ""}</span>
+                      ) : (
+                        <span className="text-neutral-400">—</span>
+                      )}
                     </td>
                     <td className="text-xs text-neutral-500">{o.expected_close_date ? new Date(o.expected_close_date).toISOString().slice(0, 10) : "—"}</td>
                     <td>
@@ -254,19 +294,22 @@ export default async function PipelinePage({
         </div>
       )}
 
-      {view === "board" && (
+      {view === "board" && visible.length > 0 && (
       <div className="space-y-4">
-        {opps.map((o) => {
+        {visible.map((o) => {
           const stakeholders = stakeholdersByOpp.get(o.id) ?? [];
           const gaps = o.stage.startsWith("closed") ? [] : stakeholderGaps(stakeholders);
           const stageIdx = STAGES.indexOf(o.stage as (typeof STAGES)[number]);
+          const won = o.stage === "closed_won";
+          const lost = o.stage === "closed_lost";
+          const quote = quoteOf(o.id);
           return (
             <Card key={o.id}>
-              <div className="mb-1 flex items-baseline gap-3">
+              <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <Link href={`/accounts/${o.company_id}`} className="font-semibold hover:underline">
                   {o.name}
                 </Link>
-                <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                <span className={`text-xs font-medium uppercase tracking-wide ${won ? "text-green-700 dark:text-green-400" : lost ? "text-red-700 dark:text-red-400" : "text-neutral-500"}`}>
                   {o.stage.replace(/_/g, " ")}
                 </span>
                 {o.amount_usd != null && (
@@ -279,6 +322,16 @@ export default async function PipelinePage({
                 {o.partner_name && (
                   <span className="text-xs text-neutral-400">via {o.partner_name}</span>
                 )}
+                {o.expected_close_date && (
+                  <span className="text-xs text-neutral-400">· close {new Date(o.expected_close_date).toISOString().slice(0, 10)}</span>
+                )}
+                {quote.delivered ? (
+                  <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-950 dark:text-green-300" title={quote.note ?? "detected in email conversation"}>
+                    quote sent{quote.at ? ` · ${quote.at}` : ""}
+                  </span>
+                ) : (
+                  <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 dark:bg-neutral-800" title="no priced document detected in the conversation yet">no quote</span>
+                )}
                 {o.motion_id && (
                   <Link
                     href={`/briefs/${o.motion_id}`}
@@ -289,14 +342,21 @@ export default async function PipelinePage({
                 )}
               </div>
 
-              {!o.stage.startsWith("closed") && (
-                <div className="mb-2 flex h-1.5 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
-                  <div
-                    className="bg-blue-600"
-                    style={{ width: `${((stageIdx + 1) / STAGES.length) * 100}%` }}
-                  />
-                </div>
-              )}
+              {/* Stage timeline — shown for every opportunity, won or lost or open. */}
+              <div className="mb-2 flex gap-1">
+                {STAGES.map((s, idx) => {
+                  const on = won ? true : lost ? false : idx <= stageIdx;
+                  const isCurrent = !o.stage.startsWith("closed") && idx === stageIdx;
+                  const tone = won ? "bg-green-500" : on ? (isCurrent ? "bg-blue-600" : "bg-blue-400") : "bg-neutral-200 dark:bg-neutral-700";
+                  return (
+                    <div key={s} className="flex-1" title={s.replace(/_/g, " ")}>
+                      <div className={`h-1.5 rounded-full ${tone}`} />
+                      <div className={`mt-0.5 hidden text-[9px] uppercase tracking-wide sm:block ${isCurrent ? "font-semibold text-blue-700 dark:text-blue-400" : "text-neutral-400"}`}>{s.replace(/_/g, " ")}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              {lost && <p className="mb-2 text-[11px] font-medium text-red-700 dark:text-red-400">Closed lost — stages shown for the record.</p>}
 
               {gaps.length > 0 && (
                 <p className="mb-2 text-xs font-medium text-amber-700 dark:text-amber-400">

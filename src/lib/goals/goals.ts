@@ -135,8 +135,10 @@ export async function listGoals(db: Db, orgId: string): Promise<Goal[]> {
       baseline,
       current,
       unit: r.unit,
-      startDate: r.start_date,
-      dueDate: r.due_date,
+      // pg returns `date` columns as Date objects — normalize to YYYY-MM-DD
+      // strings so they're safe to render directly in JSX.
+      startDate: r.start_date ? new Date(r.start_date).toISOString().slice(0, 10) : null,
+      dueDate: r.due_date ? new Date(r.due_date).toISOString().slice(0, 10) : null,
       status: r.status,
       owner: r.owner,
       motionsLinked: Number(r.motions_linked),

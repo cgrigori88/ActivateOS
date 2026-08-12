@@ -79,8 +79,11 @@ interface Row {
   legalName: string;
   domain: string | null;
   partnerName: string | null;
+  brand: string | null;
   territory: string | null;
   vertical: string | null;
+  segment: string | null;
+  location: string | null;
   engagementStatus: string | null;
   engagementScore: number | null;
 }
@@ -131,6 +134,17 @@ export default async function ContactsPage({
      left join partners p on p.id = c.partner_id`,
   );
 
+  // Per-account context: HQ location (for end users) + the brand/solution in
+  // play at the account (its top-fit product line). Keyed by company.
+  const { rows: metaRows } = await pool.query<{ company_id: string; location: string | null; brand: string | null }>(
+    `select c.id as company_id,
+            nullif(concat_ws(', ', c.state, c.country), '') as location,
+            (select n.name from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
+              where p.company_id = c.id order by p.score desc nulls last, p.computed_at desc limit 1) as brand
+     from companies c`,
+  );
+  const companyMeta = new Map(metaRows.map((r) => [r.company_id, { location: r.location, brand: r.brand }]));
+
   // Discovered committee — latest PDL people observation per company (end users).
   const { rows: discovered } = await pool.query<{
     company_id: string;
@@ -156,6 +170,8 @@ export default async function ContactsPage({
   // typed
   for (const t of typed) {
     const attrs = t.attributes ?? {};
+    const meta = t.company_id ? companyMeta.get(t.company_id) : undefined;
+    const territory = (attrs.territory as string | undefined) ?? t.location ?? null;
     rows.push({
       id: t.id,
       name: t.name ?? t.email ?? "—",
@@ -168,8 +184,12 @@ export default async function ContactsPage({
       legalName: t.legal_name ?? "Unattributed",
       domain: t.primary_domain,
       partnerName: t.partner_name,
-      territory: t.location ?? (attrs.territory as string | undefined) ?? null,
+      brand: meta?.brand ?? null,
+      territory,
       vertical: (attrs.vertical as string | undefined) ?? null,
+      segment: (attrs.segment as string | undefined) ?? null,
+      // Reps carry their coverage territory; end users show their account HQ.
+      location: t.contact_type === "end_user" ? meta?.location ?? null : t.location ?? territory,
       engagementStatus: t.contact_type === "end_user" ? t.engagement_status : null,
       engagementScore: t.engagement_score == null ? null : Number(t.engagement_score),
     });
@@ -193,8 +213,11 @@ export default async function ContactsPage({
       legalName: d.legal_name,
       domain: d.primary_domain,
       partnerName: null,
+      brand: companyMeta.get(d.company_id)?.brand ?? null,
       territory: null,
       vertical: null,
+      segment: null,
+      location: companyMeta.get(d.company_id)?.location ?? null,
       engagementStatus: null,
       engagementScore: null,
     });
@@ -219,7 +242,7 @@ export default async function ContactsPage({
       if (sp.eng === "no_address" && r.email) return false;
     }
     if (q) {
-      const hay = `${r.name} ${r.title ?? ""} ${r.email ?? ""} ${r.legalName} ${r.partnerName ?? ""} ${r.territory ?? ""} ${r.vertical ?? ""}`.toLowerCase();
+      const hay = `${r.name} ${r.title ?? ""} ${r.email ?? ""} ${r.phone ?? ""} ${r.legalName} ${r.partnerName ?? ""} ${r.brand ?? ""} ${r.territory ?? ""} ${r.vertical ?? ""} ${r.segment ?? ""} ${r.location ?? ""}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -318,58 +341,96 @@ export default async function ContactsPage({
           </p>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {grouped.map((g) => (
-            <Card key={g.companyId ?? g.name} className="p-0">
-              <details open={grouped.length <= 4}>
-                <summary className="flex cursor-pointer items-center gap-2 px-4 py-3">
-                  {groupKey !== "company" && (
-                    <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">{groupKey}</span>
-                  )}
-                  <span className="font-semibold">{g.name}</span>
-                  {g.sub && <span className="text-[11px] text-neutral-400">{g.sub}</span>}
-                  {groupKey === "company" && g.companyId && (
-                    <Link href={`/accounts/${g.companyId}`} className="text-xs text-blue-700 hover:underline dark:text-blue-400">account →</Link>
-                  )}
-                  <span className="ml-auto tnum text-xs text-neutral-400">{g.items.length}</span>
-                </summary>
-                <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                  {g.items.map((r) => (
-                    <li key={r.id} className="flex items-center gap-2 px-4 py-2">
-                      <span className={`inline-flex shrink-0 justify-center rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${TYPE_TONE[r.contactType] ?? TYPE_TONE.other}`}>
-                        {TYPE_LABELS[r.contactType] ?? r.contactType}
-                      </span>
-                      {r.contactType === "end_user" && r.level !== "other" && (
-                        <span className="hidden shrink-0 text-[10px] font-medium text-neutral-400 sm:inline">{LEVEL_LABEL[r.level]}</span>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-x-2 text-sm">
-                          <span className="font-medium">{r.name}</span>
-                          {groupKey !== "company" && r.companyId && (
-                            <Link href={`/accounts/${r.companyId}`} className="text-[11px] text-blue-700 hover:underline dark:text-blue-400">{r.legalName}</Link>
-                          )}
-                        </div>
-                        <div className="truncate text-[11px] text-neutral-500">
-                          {r.title}
-                          {r.partnerName && groupKey !== "partner" && <span> · via {r.partnerName}</span>}
-                          {(r.territory || r.vertical) && <span className="text-neutral-400"> · {[r.territory, r.vertical].filter(Boolean).join(" / ")}</span>}
-                        </div>
-                      </div>
-                      {r.phone && <span className="hidden text-[11px] text-neutral-400 md:inline">{r.phone}</span>}
-                      {r.email ? (
-                        <span className={`shrink-0 text-[11px] ${ENGAGEMENT_TONE[r.engagementStatus ?? "unknown"]}`} title={r.email}>
-                          {r.engagementScore != null && r.engagementScore > 0 ? `${r.engagementScore.toFixed(0)} · ` : ""}
-                          {r.engagementStatus ?? "reachable"}
-                        </span>
-                      ) : (
-                        <span className="shrink-0 text-[11px] text-neutral-300 dark:text-neutral-600">no address</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            </Card>
-          ))}
+        <div className="space-y-2">
+          {grouped.map((g) => {
+            // Type breakdown chip set for the collapsed row.
+            const byType = new Map<string, number>();
+            for (const r of g.items) byType.set(r.contactType, (byType.get(r.contactType) ?? 0) + 1);
+            const reachableN = g.items.filter((r) => r.email).length;
+            const showCompanyCol = groupKey !== "company";
+            return (
+              <Card key={g.companyId ?? g.name} className="p-0">
+                <details open={grouped.length === 1} className="group">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                    <span className="text-neutral-400 transition-transform group-open:rotate-90" aria-hidden>▸</span>
+                    {groupKey !== "company" && (
+                      <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">{groupKey}</span>
+                    )}
+                    <span className="font-semibold">{g.name}</span>
+                    {g.sub && <span className="text-[11px] text-neutral-400">{g.sub}</span>}
+                    {groupKey === "company" && g.companyId && (
+                      <Link href={`/accounts/${g.companyId}`} className="text-xs text-blue-700 hover:underline dark:text-blue-400">account →</Link>
+                    )}
+                    <span className="ml-auto flex flex-wrap items-center gap-1.5">
+                      {[...byType.entries()].map(([t, n]) => (
+                        <span key={t} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${TYPE_TONE[t] ?? TYPE_TONE.other}`}>{n} {TYPE_LABELS[t] ?? t}</span>
+                      ))}
+                      <span className="tnum ml-1 text-xs text-neutral-400">{g.items.length} contact{g.items.length === 1 ? "" : "s"} · {reachableN} reachable</span>
+                    </span>
+                  </summary>
+                  <div className="overflow-x-auto border-t border-neutral-100 scroll-thin dark:border-neutral-800">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Contact</th>
+                          {showCompanyCol && <th>Company</th>}
+                          <th>Type</th>
+                          <th>Email</th>
+                          <th>Phone</th>
+                          <th>Partner</th>
+                          <th>Brand / product</th>
+                          <th>Territory</th>
+                          <th>Vertical</th>
+                          <th>Segment</th>
+                          <th>Location</th>
+                          <th>Engagement</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.items.map((r) => (
+                          <tr key={r.id}>
+                            <td>
+                              <div className="font-medium">{r.name}</div>
+                              <div className="text-[11px] text-neutral-400">
+                                {r.title ?? "—"}
+                                {r.contactType === "end_user" && r.level !== "other" && <span className="ml-1 text-neutral-500">· {LEVEL_LABEL[r.level]}</span>}
+                              </div>
+                            </td>
+                            {showCompanyCol && (
+                              <td className="text-xs">
+                                {r.companyId ? <Link href={`/accounts/${r.companyId}`} className="text-blue-700 hover:underline dark:text-blue-400">{r.legalName}</Link> : r.legalName}
+                              </td>
+                            )}
+                            <td>
+                              <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${TYPE_TONE[r.contactType] ?? TYPE_TONE.other}`}>{TYPE_LABELS[r.contactType] ?? r.contactType}</span>
+                            </td>
+                            <td className="text-xs">{r.email ? <a href={`mailto:${r.email}`} className="text-blue-700 hover:underline dark:text-blue-400">{r.email}</a> : <span className="text-neutral-300 dark:text-neutral-600">—</span>}</td>
+                            <td className="text-xs text-neutral-500">{r.phone ?? "—"}</td>
+                            <td className="text-xs text-neutral-500">{r.partnerName ?? "—"}</td>
+                            <td className="text-xs text-neutral-500">{r.brand ?? "—"}</td>
+                            <td className="text-xs text-neutral-500">{r.territory ?? "—"}</td>
+                            <td className="text-xs text-neutral-500">{r.vertical ?? "—"}</td>
+                            <td className="text-xs text-neutral-500">{r.segment ?? "—"}</td>
+                            <td className="text-xs text-neutral-500">{r.location ?? "—"}</td>
+                            <td className="text-xs">
+                              {r.email ? (
+                                <span className={ENGAGEMENT_TONE[r.engagementStatus ?? "unknown"]}>
+                                  {r.engagementScore != null && r.engagementScore > 0 ? `${r.engagementScore.toFixed(0)} · ` : ""}
+                                  {r.engagementStatus ?? "reachable"}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-300 dark:text-neutral-600">no address</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              </Card>
+            );
+          })}
         </div>
       )}
     </main>

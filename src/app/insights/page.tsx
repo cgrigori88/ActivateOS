@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function InsightsPage() {
   const pool = getPool();
 
-  const [{ rows: events }, { rows: closed }, { rows: edits }, { rows: agents }, { rows: replies }] =
+  const [{ rows: events }, { rows: closed }, { rows: edits }, { rows: replies }] =
     await Promise.all([
       pool.query(`select event_type, motion_id from outcome_events`),
       pool.query(
@@ -27,12 +27,6 @@ export default async function InsightsPage() {
          group by o.id`,
       ),
       pool.query(`select edit_distance, length(ai_original) as draft_length from message_edits`),
-      pool.query(
-        `select workflow, count(*) as runs, sum(cost_usd) as cost,
-                avg(latency_ms)::int as avg_latency
-         from agent_runs where cost_usd is not null
-         group by workflow order by cost desc`,
-      ),
       pool.query(
         `select raw_output->>'response_type' as response_type, count(*) as n
          from agent_runs where workflow = 'conversation'
@@ -48,11 +42,9 @@ export default async function InsightsPage() {
   const intensity = editIntensity(
     edits.map((e) => ({ editDistance: Number(e.edit_distance), draftLength: Number(e.draft_length) })),
   );
-  const totalCost = agents.reduce((s, a) => s + Number(a.cost ?? 0), 0);
   const closedN = closed.length;
   const wonN = closed.filter((o) => o.won).length;
   const winRate = closedN > 0 ? Math.round((wonN / closedN) * 100) : null;
-  const agentRuns = agents.reduce((s, a) => s + Number(a.runs ?? 0), 0);
 
   return (
     <main>
@@ -61,12 +53,11 @@ export default async function InsightsPage() {
         subtitle="What the outcome log says. Declared assumptions stay visibly declared until observed data earns the right to replace them."
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Bento label="closed deals" value={closedN} />
         <Bento label="win rate" value={winRate == null ? "—" : `${winRate}%`} subs={[`${wonN} won`]} />
+        <Bento label="deals won" value={wonN} />
         <Bento label="edit intensity" value={intensity ?? "—"} subs={["0 sent as-is · 1 rewritten"]} />
-        <Bento label="AI runs" value={agentRuns} />
-        <Bento label="AI spend" value={`$${totalCost.toFixed(2)}`} />
       </div>
 
       <Card className="mb-6">
@@ -133,56 +124,30 @@ export default async function InsightsPage() {
         </table>
       </Card>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Conversation outcomes
-          </h2>
-          {replies.length === 0 ? (
-            <p className="text-sm text-neutral-500">No customer replies analyzed yet.</p>
-          ) : (
-            <ul className="space-y-1 text-sm">
-              {replies.map((r) => (
-                <li key={r.response_type} className="flex justify-between">
-                  <span>{(r.response_type ?? "unknown").toLowerCase().replace(/_/g, " ")}</span>
-                  <span className="tnum font-semibold">{r.n}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="mt-3 border-t border-neutral-100 pt-2 text-sm text-neutral-500 dark:border-neutral-800">
-            Seller edit intensity:{" "}
-            <span className="font-semibold text-neutral-800 dark:text-neutral-200">
-              {intensity != null ? intensity : "no edited drafts yet"}
-            </span>
-            {intensity != null && <span className="text-xs"> (0 = sent as drafted, 1 = rewritten)</span>}
-          </p>
-        </Card>
-
-        <Card>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Agent spend
-          </h2>
+      <Card>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          Conversation outcomes
+        </h2>
+        {replies.length === 0 ? (
+          <p className="text-sm text-neutral-500">No customer replies analyzed yet.</p>
+        ) : (
           <ul className="space-y-1 text-sm">
-            {agents.map((a) => (
-              <li key={a.workflow} className="flex justify-between">
-                <span>
-                  {a.workflow.replace(/_/g, " ")}{" "}
-                  <span className="text-xs text-neutral-400">×{a.runs}</span>
-                </span>
-                <span className="tnum">
-                  ${Number(a.cost).toFixed(3)}
-                  <span className="ml-2 text-xs text-neutral-400">{a.avg_latency}ms</span>
-                </span>
+            {replies.map((r) => (
+              <li key={r.response_type} className="flex justify-between">
+                <span>{(r.response_type ?? "unknown").toLowerCase().replace(/_/g, " ")}</span>
+                <span className="tnum font-semibold">{r.n}</span>
               </li>
             ))}
           </ul>
-          <p className="mt-3 border-t border-neutral-100 pt-2 text-sm dark:border-neutral-800">
-            Total AI spend:{" "}
-            <span className="tnum font-semibold">${totalCost.toFixed(2)}</span>
-          </p>
-        </Card>
-      </div>
+        )}
+        <p className="mt-3 border-t border-neutral-100 pt-2 text-sm text-neutral-500 dark:border-neutral-800">
+          Seller edit intensity:{" "}
+          <span className="font-semibold text-neutral-800 dark:text-neutral-200">
+            {intensity != null ? intensity : "no edited drafts yet"}
+          </span>
+          {intensity != null && <span className="text-xs"> (0 = sent as drafted, 1 = rewritten)</span>}
+        </p>
+      </Card>
     </main>
   );
 }
