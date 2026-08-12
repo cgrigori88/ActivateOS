@@ -37,6 +37,7 @@ export interface Population {
   category: Category;
   status: string;
   partner_id: string | null;
+  partner_name?: string | null; // set when listing across all partners
   members: number;
 }
 
@@ -78,16 +79,113 @@ export async function listPopulations(
   return rows;
 }
 
+export interface CoverageAccount {
+  companyId: string;
+  name: string;
+  domain: string | null;
+  score: number | null;
+  band: string | null;
+  isCustomer: boolean;
+  partners: { id: string; name: string; type: string | null }[];
+  segments: string[]; // partner population categories the account sits in
+}
+
+/**
+ * Co-sell coverage from populations: accounts that appear in BOTH one of the
+ * org's populations and a partner's population. Feeds the overlap / coverage /
+ * ranked-target views so they read from the same source as the matrix.
+ */
+export async function partnerCoverage(db: pg.PoolClient, orgId: string): Promise<CoverageAccount[]> {
+  const { rows } = await db.query<{
+    company_id: string;
+    legal_name: string;
+    primary_domain: string | null;
+    is_customer: boolean;
+    partner_id: string;
+    partner_name: string;
+    partner_type: string | null;
+    category: Category;
+  }>(
+    `with org_cos as (
+       select pm.company_id, bool_or(ap.category = 'customer') as is_customer
+       from population_members pm
+       join account_populations ap on ap.id = pm.population_id
+       where ap.partner_id is null and ap.status = 'approved' and ap.org_id = $1
+       group by pm.company_id
+     )
+     select pm.company_id, c.legal_name, c.primary_domain, oc.is_customer,
+            p.id as partner_id, p.name as partner_name, p.partner_type, ap.category
+     from population_members pm
+     join account_populations ap on ap.id = pm.population_id
+       and ap.partner_id is not null and ap.status = 'approved' and ap.org_id = $1
+     join org_cos oc on oc.company_id = pm.company_id
+     join partners p on p.id = ap.partner_id
+     join companies c on c.id = pm.company_id`,
+    [orgId],
+  );
+
+  const companyIds = [...new Set(rows.map((r) => r.company_id))];
+  const scoreMap = new Map<string, { score: number; band: string | null }>();
+  if (companyIds.length) {
+    const { rows: sc } = await db.query<{ company_id: string; score: string; band: string | null }>(
+      `select distinct on (company_id) company_id, score, band
+       from propensity_scores where company_id = any($1) order by company_id, computed_at desc`,
+      [companyIds],
+    );
+    for (const s of sc) scoreMap.set(s.company_id, { score: Number(s.score), band: s.band });
+  }
+
+  const byCo = new Map<string, CoverageAccount>();
+  for (const r of rows) {
+    let g = byCo.get(r.company_id);
+    if (!g) {
+      g = {
+        companyId: r.company_id,
+        name: r.legal_name,
+        domain: r.primary_domain,
+        isCustomer: r.is_customer,
+        partners: [],
+        segments: [],
+        score: scoreMap.get(r.company_id)?.score ?? null,
+        band: scoreMap.get(r.company_id)?.band ?? null,
+      };
+      byCo.set(r.company_id, g);
+    }
+    if (!g.partners.some((p) => p.id === r.partner_id)) {
+      g.partners.push({ id: r.partner_id, name: r.partner_name, type: r.partner_type });
+    }
+    if (r.category && !g.segments.includes(r.category)) g.segments.push(r.category);
+  }
+  return [...byCo.values()];
+}
+
 export interface MatrixKpi {
   accounts: number; // distinct overlapping accounts
   hot: number; // distinct high/very-high band overlapping accounts
   avg: number | null; // mean propensity across overlapping accounts
 }
 
-/** The overlap matrix: rows = org populations, cols = a partner's populations. */
+async function listColPopulations(db: pg.PoolClient, orgId: string, partnerId: string | null): Promise<Population[]> {
+  const { rows } = await db.query<Population>(
+    `select ap.id, ap.name, ap.category, ap.status, ap.partner_id, p.name as partner_name,
+            (select count(*) from population_members m where m.population_id = ap.id)::int as members
+     from account_populations ap
+     join partners p on p.id = ap.partner_id
+     where ap.org_id = $1 and ap.status = 'approved'
+       and ($2::uuid is null or ap.partner_id = $2)
+     order by p.name, ap.category, ap.name`,
+    [orgId, partnerId],
+  );
+  return rows;
+}
+
+/**
+ * The overlap matrix: rows = org populations, cols = a partner's populations
+ * (or every partner's, when partnerId is null — the "All partners" view).
+ */
 export async function matrix(
   db: pg.PoolClient,
-  args: { orgId: string; partnerId: string },
+  args: { orgId: string; partnerId: string | null },
 ): Promise<{
   rows: Population[];
   cols: Population[];
@@ -98,7 +196,7 @@ export async function matrix(
 }> {
   const [rows, cols] = await Promise.all([
     listPopulations(db, { orgId: args.orgId, partnerId: null, status: "approved" }),
-    listPopulations(db, { orgId: args.orgId, partnerId: args.partnerId, status: "approved" }),
+    listColPopulations(db, args.orgId, args.partnerId),
   ]);
 
   // One pass yields cells AND per-row / per-col distinct totals (grouping sets).
@@ -116,7 +214,7 @@ export async function matrix(
      from population_members rm
      join population_members cm on cm.company_id = rm.company_id
      join account_populations rp on rp.id = rm.population_id and rp.partner_id is null and rp.org_id = $1 and rp.status = 'approved'
-     join account_populations cp on cp.id = cm.population_id and cp.partner_id = $2 and cp.status = 'approved'
+     join account_populations cp on cp.id = cm.population_id and cp.partner_id is not null and cp.status = 'approved' and ($2::uuid is null or cp.partner_id = $2)
      left join lateral (
        select score, band from propensity_scores p
        where p.company_id = rm.company_id order by computed_at desc limit 1
@@ -148,7 +246,7 @@ export async function matrix(
        from population_members rm
        join population_members cm on cm.company_id = rm.company_id
        join account_populations rp on rp.id = rm.population_id and rp.partner_id is null and rp.org_id = $1 and rp.status = 'approved'
-       join account_populations cp on cp.id = cm.population_id and cp.partner_id = $2 and cp.status = 'approved'
+       join account_populations cp on cp.id = cm.population_id and cp.partner_id is not null and cp.status = 'approved' and ($2::uuid is null or cp.partner_id = $2)
      )
      select count(*) as accounts,
             count(*) filter (where ps.band in ('high','very_high')) as hot,

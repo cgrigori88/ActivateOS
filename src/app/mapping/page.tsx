@@ -12,6 +12,7 @@ import {
   type Category,
   type Population,
 } from "@/lib/mapping/populations";
+import { partnerCoverage } from "@/lib/mapping/populations";
 import { partnerHub } from "@/lib/mapping/partner-hub";
 import { createPopulationAction, setPopulationStatusAction, targetFromCellAction } from "./actions";
 import { ViewSelect } from "./view-select";
@@ -41,19 +42,6 @@ function ViewTabs({ view }: { view: View }) {
   );
 }
 
-interface FlatRow {
-  company_id: string;
-  legal_name: string;
-  primary_domain: string | null;
-  partner_id: string;
-  partner: string;
-  partner_type: string | null;
-  installed: boolean;
-  target_product: string | null;
-  score: string | null;
-  band: string | null;
-}
-
 interface Grouped {
   companyId: string;
   name: string;
@@ -74,7 +62,7 @@ function motion(anyInstalled: boolean): { label: string; tone: string } {
 export default async function MappingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; partner?: string; row?: string; col?: string; cols?: string; hide?: string; notice?: string }>;
+  searchParams: Promise<{ view?: string; partner?: string; row?: string; col?: string; cols?: string; hide?: string; notice?: string; mr?: string; mc?: string }>;
 }) {
   const sp = await searchParams;
   const view: View = (["matrix", "overlap", "coverage", "targets"].includes(sp.view ?? "") ? sp.view : "matrix") as View;
@@ -96,57 +84,42 @@ export default async function MappingPage({
         {sp.row && sp.col ? (
           <CellView rowId={sp.row} colId={sp.col} cols={sp.cols} partnerId={sp.partner} />
         ) : (
-          <MatrixSection partnerId={sp.partner} hideEmpty={sp.hide === "1"} />
+          <MatrixSection partnerId={sp.partner} hideEmpty={sp.hide === "1"} mr={sp.mr} mc={sp.mc} />
         )}
         <PopulationManager />
       </main>
     );
   }
 
+  // Overlap / coverage / targets all read from the SAME populations data as the
+  // matrix — a co-sell overlap is an account in both an org and a partner list.
   const partnerFilter = sp.partner;
   const pool = getPool();
-  const { rows } = await pool.query<FlatRow>(
-    `select c.id as company_id, c.legal_name, c.primary_domain,
-            p.id as partner_id, p.name as partner, p.partner_type,
-            pa.installed, pa.target_product,
-            (select ps.score from propensity_scores ps where ps.company_id = c.id order by ps.computed_at desc limit 1) as score,
-            (select ps.band from propensity_scores ps where ps.company_id = c.id order by ps.computed_at desc limit 1) as band
-     from partner_accounts pa
-     join companies c on c.id = pa.company_id
-     join partners p on p.id = pa.partner_id
-     where c.id in (
-       select company_id from partner_accounts group by company_id having count(distinct partner_id) >= 2
-     )
-     order by c.legal_name, p.name`,
-  );
-
-  // Group flat (company × partner) rows into overlap records.
-  const byCompany = new Map<string, Grouped>();
-  const partnerCols = new Map<string, string>(); // id → name, for the coverage grid
-  for (const r of rows) {
-    partnerCols.set(r.partner_id, r.partner);
-    let g = byCompany.get(r.company_id);
-    if (!g) {
-      g = {
-        companyId: r.company_id,
-        name: r.legal_name,
-        domain: r.primary_domain,
-        partners: [],
-        anyInstalled: false,
-        score: r.score == null ? null : Number(r.score),
-        band: r.band,
-        targets: [],
-      };
-      byCompany.set(r.company_id, g);
+  const db = await pool.connect();
+  let overlaps: Grouped[] = [];
+  let partnerList: { id: string; name: string }[] = [];
+  try {
+    const orgId = await soleOrgId(db);
+    if (orgId) {
+      const coverage = await partnerCoverage(db, orgId);
+      overlaps = coverage.map((a) => ({
+        companyId: a.companyId,
+        name: a.name,
+        domain: a.domain,
+        partners: a.partners.map((p) => ({ ...p, installed: a.isCustomer })),
+        anyInstalled: a.isCustomer,
+        score: a.score,
+        band: a.band,
+        targets: a.segments.map((s) => CATEGORY_LABEL[s as keyof typeof CATEGORY_LABEL] ?? s),
+      }));
+      const pmap = new Map<string, string>();
+      for (const a of coverage) for (const p of a.partners) pmap.set(p.id, p.name);
+      partnerList = [...pmap.entries()].map(([id, name]) => ({ id, name }));
     }
-    g.partners.push({ id: r.partner_id, name: r.partner, type: r.partner_type, installed: r.installed });
-    if (r.installed) g.anyInstalled = true;
-    if (r.target_product && !g.targets.includes(r.target_product)) g.targets.push(r.target_product);
+  } finally {
+    db.release();
   }
-  let overlaps = [...byCompany.values()];
   if (partnerFilter) overlaps = overlaps.filter((o) => o.partners.some((p) => p.id === partnerFilter));
-
-  const partnerList = [...partnerCols.entries()].map(([id, name]) => ({ id, name }));
 
   return (
     <main>
@@ -163,8 +136,8 @@ export default async function MappingPage({
       {overlaps.length === 0 ? (
         <Card>
           <p className="text-sm text-neutral-500">
-            No overlapping accounts yet. Overlap appears once the same company is on two or more partners&apos; lists —
-            upload a second partner&apos;s book on the <Link href="/intake" className="text-blue-700 hover:underline dark:text-blue-400">Intake</Link> page.
+            No co-sell overlaps yet. An overlap is an account that sits in one of your populations AND a partner&apos;s —
+            build populations on both sides in the <Link href="/mapping?view=matrix" className="text-blue-700 hover:underline dark:text-blue-400">Account mapping</Link> view.
           </p>
         </Card>
       ) : view === "overlap" ? (
@@ -394,7 +367,7 @@ function cellShade(avg: number | null): string | undefined {
   return `rgba(37, 99, 235, ${alpha.toFixed(3)})`;
 }
 
-async function MatrixSection({ partnerId, hideEmpty }: { partnerId?: string; hideEmpty?: boolean }) {
+async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: string; hideEmpty?: boolean; mr?: string; mc?: string }) {
   const pool = getPool();
   const db = await pool.connect();
   try {
@@ -412,17 +385,38 @@ async function MatrixSection({ partnerId, hideEmpty }: { partnerId?: string; hid
         </Card>
       );
     }
-    const selected = partnerId && partners.some((p) => p.id === partnerId) ? partnerId : partners[0].id;
-    const selectedName = partners.find((p) => p.id === selected)?.name ?? "Partner";
-    const [{ rows: allRows, cols: allCols, cells, rowTotals, colTotals, kpi }, hub] = await Promise.all([
-      matrix(db, { orgId, partnerId: selected }),
-      partnerHub(db, { orgId, partnerId: selected }),
-    ]);
 
-    // Hide-empty drops rows/cols with no overlap at all.
-    const rows = hideEmpty ? allRows.filter((r) => (rowTotals.get(r.id) ?? 0) > 0) : allRows;
-    const cols = hideEmpty ? allCols.filter((c) => (colTotals.get(c.id) ?? 0) > 0) : allCols;
-    const base = `/mapping?view=matrix&partner=${selected}`;
+    const isAll = partnerId === "all";
+    const selected = isAll ? "all" : partnerId && partners.some((p) => p.id === partnerId) ? partnerId : partners[0].id;
+    const matrixPartner = isAll ? null : selected;
+    const selectedName = isAll ? "All partners" : partners.find((p) => p.id === selected)?.name ?? "Partner";
+
+    const { rows: allRows, cols: allCols, cells, rowTotals, colTotals, kpi } = await matrix(db, { orgId, partnerId: matrixPartner });
+    const hub = isAll ? null : await partnerHub(db, { orgId, partnerId: selected });
+
+    // Organize matrix: mr / mc explicitly list included row / column populations.
+    const mrSet = mr ? new Set(mr.split(",").filter(Boolean)) : null;
+    const mcSet = mc ? new Set(mc.split(",").filter(Boolean)) : null;
+    let rows = mrSet ? allRows.filter((r) => mrSet.has(r.id)) : allRows;
+    let cols = mcSet ? allCols.filter((c) => mcSet.has(c.id)) : allCols;
+    if (hideEmpty) {
+      rows = rows.filter((r) => (rowTotals.get(r.id) ?? 0) > 0);
+      cols = cols.filter((c) => (colTotals.get(c.id) ?? 0) > 0);
+    }
+
+    // URL builder that preserves matrix state; pass undefined to drop a param.
+    const q = (over: Record<string, string | undefined> = {}): string => {
+      const p = new URLSearchParams();
+      p.set("view", "matrix");
+      const merged: Record<string, string | undefined> = { partner: isAll ? "all" : selected, hide: hideEmpty ? "1" : undefined, mr, mc, ...over };
+      for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v);
+      return `/mapping?${p.toString()}`;
+    };
+    const toggleCsv = (all: { id: string }[], set: Set<string> | null, id: string): string | undefined => {
+      const inc = set ? new Set(set) : new Set(all.map((x) => x.id));
+      if (inc.has(id)) inc.delete(id); else inc.add(id);
+      return inc.size === all.length ? undefined : [...inc].join(",");
+    };
 
     const kpis: { label: string; value: string }[] = [
       { label: "overlapping accounts", value: kpi.accounts.toLocaleString() },
@@ -432,7 +426,7 @@ async function MatrixSection({ partnerId, hideEmpty }: { partnerId?: string; hid
 
     return (
       <>
-        {/* KPI strip + partner picker */}
+        {/* KPI strip + partner picker + organize */}
         <div className="mb-4 flex flex-wrap items-center gap-6">
           {kpis.map((k) => (
             <div key={k.label}>
@@ -444,72 +438,93 @@ async function MatrixSection({ partnerId, hideEmpty }: { partnerId?: string; hid
             <div className="flex items-center gap-2">
               <span className="text-xs text-neutral-500">Partner</span>
               <div className="flex flex-wrap gap-1">
+                <Link
+                  href={q({ partner: "all", mr: undefined, mc: undefined })}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium ${isAll ? "bg-blue-700 text-white" : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"}`}
+                >
+                  All partners
+                </Link>
                 {partners.map((p) => (
                   <Link
                     key={p.id}
-                    href={`/mapping?view=matrix&partner=${p.id}${hideEmpty ? "&hide=1" : ""}`}
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium ${
-                      p.id === selected
-                        ? "bg-blue-700 text-white"
-                        : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
-                    }`}
+                    href={q({ partner: p.id, mr: undefined, mc: undefined })}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium ${p.id === selected && !isAll ? "bg-blue-700 text-white" : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"}`}
                   >
                     {p.name}
                   </Link>
                 ))}
               </div>
             </div>
-            <Link href={`${base}${hideEmpty ? "" : "&hide=1"}`} className="text-[11px] text-neutral-500 hover:underline">
-              {hideEmpty ? "Show empty populations" : "Hide empty populations"}
-            </Link>
+            <div className="flex items-center gap-3">
+              {/* Organize matrix — choose which populations are rows / columns */}
+              <details className="relative">
+                <summary className="cursor-pointer text-[11px] font-medium text-blue-700 hover:underline dark:text-blue-400">Organize matrix</summary>
+                <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+                  <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">Rows — your populations</p>
+                  <div className="mb-3 space-y-0.5">
+                    {allRows.map((r) => {
+                      const on = mrSet ? mrSet.has(r.id) : true;
+                      return (
+                        <Link key={r.id} href={q({ mr: toggleCsv(allRows, mrSet, r.id) })} className={`flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 ${on ? "" : "text-neutral-400"}`}>
+                          <span className={`inline-block h-3 w-3 rounded-sm border ${on ? "border-blue-600 bg-blue-600" : "border-neutral-300 dark:border-neutral-600"}`} />
+                          {r.name}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                  <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">Columns — partner populations</p>
+                  <div className="space-y-0.5">
+                    {allCols.map((c) => {
+                      const on = mcSet ? mcSet.has(c.id) : true;
+                      return (
+                        <Link key={c.id} href={q({ mc: toggleCsv(allCols, mcSet, c.id) })} className={`flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 ${on ? "" : "text-neutral-400"}`}>
+                          <span className={`inline-block h-3 w-3 rounded-sm border ${on ? "border-blue-600 bg-blue-600" : "border-neutral-300 dark:border-neutral-600"}`} />
+                          {isAll && c.partner_name ? `${c.partner_name}: ${c.name}` : c.name}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              </details>
+              <Link href={q({ hide: hideEmpty ? undefined : "1" })} className="text-[11px] text-neutral-500 hover:underline">
+                {hideEmpty ? "Show empty populations" : "Hide empty populations"}
+              </Link>
+            </div>
           </div>
         </div>
 
-        {/* Partner hub — everything built for this connected partner */}
-        <Card className="mb-4">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold">{selectedName}</h2>
-            <span className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 ring-1 ring-inset ring-neutral-300/50 dark:ring-neutral-700">connected partner</span>
-            <div className="ml-auto flex flex-wrap gap-4 text-xs text-neutral-500">
-              <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">{hub.populations}</span> populations</span>
-              <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">{kpi.accounts}</span> overlapping</span>
-              <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">{hub.activeMotions}/{hub.totalMotions}</span> motions</span>
-              <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">{hub.campaigns.length}</span> campaigns</span>
-              <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">${Math.round(hub.pipelineUsd / 1000)}k</span> pipeline</span>
+        {/* Partner hub — everything built for this connected partner (single-partner view only) */}
+        {hub && (
+          <Card className="mb-4">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-semibold">{selectedName}</h2>
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 ring-1 ring-inset ring-neutral-300/50 dark:ring-neutral-700">connected partner</span>
+              <div className="ml-auto flex flex-wrap gap-4 text-xs text-neutral-500">
+                <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">{hub.populations}</span> populations</span>
+                <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">{kpi.accounts}</span> overlapping</span>
+                <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">{hub.activeMotions}/{hub.totalMotions}</span> motions</span>
+                <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">{hub.campaigns.length}</span> campaigns</span>
+                <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">${Math.round(hub.pipelineUsd / 1000)}k</span> pipeline</span>
+              </div>
             </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <HubList
-              title="Motions"
-              allHref="/motions"
-              empty="No partner-attributed motions yet."
-              items={hub.motions.map((m) => ({ href: `/briefs/${m.id}`, label: m.company, meta: m.status }))}
-            />
-            <HubList
-              title="Campaigns"
-              allHref="/campaigns"
-              empty="No campaigns for this partner yet."
-              items={hub.campaigns.map((c) => ({ href: `/campaigns/${c.id}`, label: c.name, meta: `${c.status} · ${c.touches} touch${c.touches === 1 ? "" : "es"}` }))}
-            />
-            <HubList
-              title="Open opportunities"
-              allHref="/pipeline"
-              empty="No open opportunities for this partner yet."
-              items={hub.opportunities.map((o) => ({ href: `/accounts/${o.company_id}`, label: o.name, meta: `${o.stage.replace(/_/g, " ")}${o.amount != null ? ` · $${Math.round(o.amount / 1000)}k` : ""}` }))}
-            />
-          </div>
-          <p className="mt-3 text-[11px] text-neutral-400">
-            Scoped to {selectedName}: their populations + fields stay theirs; motions, campaigns, and pipeline appear here
-            when attributed to this partner. Your own populations (the vendor side) map against every partner.
-          </p>
-        </Card>
+            <div className="grid gap-4 md:grid-cols-3">
+              <HubList title="Motions" allHref="/motions" empty="No partner-attributed motions yet." items={hub.motions.map((m) => ({ href: `/briefs/${m.id}`, label: m.company, meta: m.status }))} />
+              <HubList title="Campaigns" allHref="/campaigns" empty="No campaigns for this partner yet." items={hub.campaigns.map((c) => ({ href: `/campaigns/${c.id}`, label: c.name, meta: `${c.status} · ${c.touches} touch${c.touches === 1 ? "" : "es"}` }))} />
+              <HubList title="Open opportunities" allHref="/pipeline" empty="No open opportunities for this partner yet." items={hub.opportunities.map((o) => ({ href: `/accounts/${o.company_id}`, label: o.name, meta: `${o.stage.replace(/_/g, " ")}${o.amount != null ? ` · $${Math.round(o.amount / 1000)}k` : ""}` }))} />
+            </div>
+            <p className="mt-3 text-[11px] text-neutral-400">
+              Scoped to {selectedName}: their populations + fields stay theirs; motions, campaigns, and pipeline appear
+              here when attributed to this partner. Your own populations (the vendor side) map against every partner.
+            </p>
+          </Card>
+        )}
 
         {rows.length === 0 || cols.length === 0 ? (
           <Card>
             <p className="text-sm text-neutral-500">
               {allRows.length === 0 || allCols.length === 0
                 ? "Approve at least one population on each side to populate the matrix. Manage populations below."
-                : "No overlaps to show with empty populations hidden."}
+                : "Nothing to show with the current organize / hide-empty settings."}
             </p>
           </Card>
         ) : (
@@ -521,6 +536,7 @@ async function MatrixSection({ partnerId, hideEmpty }: { partnerId?: string; hid
                   <th className="text-center text-neutral-500">Total</th>
                   {cols.map((c) => (
                     <th key={c.id} className="text-center align-bottom">
+                      {isAll && c.partner_name && <div className="text-[10px] font-semibold text-blue-700 dark:text-blue-400">{c.partner_name}</div>}
                       <div className="font-medium">{c.name}</div>
                       <div className="text-[10px] font-normal text-neutral-400">{CATEGORY_LABEL[c.category]}</div>
                     </th>
@@ -544,10 +560,7 @@ async function MatrixSection({ partnerId, hideEmpty }: { partnerId?: string; hid
                       }
                       return (
                         <td key={c.id} className="p-0 text-center" style={{ backgroundColor: cellShade(cell.avgScore) }}>
-                          <Link
-                            href={`${base}&row=${r.id}&col=${c.id}`}
-                            className="flex flex-col items-center px-3 py-2.5 hover:ring-2 hover:ring-inset hover:ring-blue-500"
-                          >
+                          <Link href={q({ row: r.id, col: c.id })} className="flex flex-col items-center px-3 py-2.5 hover:ring-2 hover:ring-inset hover:ring-blue-500">
                             <span className="tnum text-lg font-semibold text-blue-800 dark:text-blue-300">{cell.count.toLocaleString()}</span>
                             <span className="text-[10px] text-neutral-600 dark:text-neutral-400">
                               {cell.avgScore != null ? `avg ${cell.avgScore.toFixed(0)}` : "—"}
@@ -559,7 +572,6 @@ async function MatrixSection({ partnerId, hideEmpty }: { partnerId?: string; hid
                     })}
                   </tr>
                 ))}
-                {/* Column totals */}
                 <tr className="border-t-2 border-neutral-200 dark:border-neutral-700">
                   <td className="sticky left-0 z-10 bg-white text-xs font-semibold text-neutral-500 dark:bg-neutral-900">Total (distinct)</td>
                   <td className="text-center tnum font-bold">{kpi.accounts.toLocaleString()}</td>
@@ -571,7 +583,7 @@ async function MatrixSection({ partnerId, hideEmpty }: { partnerId?: string; hid
             </table>
             <p className="border-t border-neutral-100 px-3 py-2 text-[11px] text-neutral-500 dark:border-neutral-800">
               Cell = accounts on both lists, shaded by avg propensity · hot = high/very-high band · Total = distinct
-              accounts (a company on two columns counts once) · click a cell to drill in.
+              accounts · {isAll ? "columns span every partner" : "click a cell to drill in"} · use Organize matrix to choose rows/columns.
             </p>
           </div>
         )}
