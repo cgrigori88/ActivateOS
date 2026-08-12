@@ -5,6 +5,16 @@ import { redirect } from "next/navigation";
 import { getPool } from "@/db/client";
 import { currentOrgId, requireOwner } from "@/lib/auth/org";
 import { authConfigured, supabaseAdmin } from "@/lib/auth/supabase";
+import {
+  acceptListGrant,
+  audit,
+  createPartnershipInvite,
+  declineListGrant,
+  offerListGrant,
+  redeemPartnershipInvite,
+  revokeListGrant,
+  revokePartnership,
+} from "@/lib/partnerships/partnerships";
 
 function notice(msg: string): never {
   redirect(`/admin?notice=${encodeURIComponent(msg)}`);
@@ -43,6 +53,7 @@ export async function inviteMemberAction(formData: FormData): Promise<void> {
      on conflict (org_id, user_id) do update set role = excluded.role`,
     [orgId, userId, role],
   );
+  await audit(pool, orgId, "member.invited", { email, role });
   revalidatePath("/admin");
   notice(`${email} added as ${role}. Share the temporary password out-of-band; they can change it after signing in.`);
 }
@@ -66,6 +77,7 @@ export async function setMemberRoleAction(userId: string, formData: FormData): P
     if (target[0]?.role === "owner" && Number(rows[0].n) === 0) notice("Can't demote the last owner.");
   }
   await pool.query(`update org_members set role = $3 where org_id = $1 and user_id = $2`, [orgId, userId, role]);
+  if (orgId) await audit(pool, orgId, "member.role_changed", { user_id: userId, role });
   revalidatePath("/admin");
 }
 
@@ -87,5 +99,97 @@ export async function removeMemberAction(userId: string): Promise<void> {
   // Membership is the grant — removing it cuts all access; the auth account
   // remains (harmless without a membership) in case they're re-invited.
   await pool.query(`delete from org_members where org_id = $1 and user_id = $2`, [orgId, userId]);
+  if (orgId) await audit(pool, orgId, "member.removed", { user_id: userId });
   revalidatePath("/admin");
+}
+
+// ── Partnerships (multi-tenant slice 5) — owner-only, like everything here ──
+
+async function ownerOrg(): Promise<{ pool: ReturnType<typeof getPool>; orgId: string }> {
+  const pool = getPool();
+  await requireOwner(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) notice("No organization.");
+  return { pool, orgId };
+}
+
+/** Run the work; return the failure message (never throw) so callers can
+    redirect OUTSIDE try/catch — notice() throws Next's redirect internally. */
+async function attempt(work: () => Promise<void>, fallback: string): Promise<string | null> {
+  try {
+    await work();
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : fallback;
+  }
+}
+
+export async function createInviteAction(formData: FormData): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const partnerId = String(formData.get("partnerId") ?? "");
+  if (!partnerId) notice("Pick which partner this invite is for.");
+  let code = "";
+  const failed = await attempt(async () => {
+    code = (await createPartnershipInvite(pool, orgId, partnerId)).inviteCode;
+  }, "Couldn't create the invite.");
+  if (failed) notice(failed);
+  revalidatePath("/admin");
+  notice(`Invite created. Share this code with the partner's owner (they redeem it on their Admin page): ${code}`);
+}
+
+export async function redeemInviteAction(formData: FormData): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const code = String(formData.get("code") ?? "").trim();
+  if (!code) notice("Paste the invite code.");
+  const failed = await attempt(() => redeemPartnershipInvite(pool, orgId, code), "Couldn't redeem the invite.");
+  if (failed) notice(failed);
+  revalidatePath("/admin");
+  notice("Partnership active. Their organization now appears in your partners.");
+}
+
+export async function revokePartnershipAction(partnershipId: string): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const failed = await attempt(() => revokePartnership(pool, orgId, partnershipId), "Couldn't revoke the partnership.");
+  if (failed) notice(failed);
+  revalidatePath("/admin");
+  notice("Partnership revoked — all shared lists withdrawn on both sides.");
+}
+
+export async function offerGrantAction(formData: FormData): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const partnershipId = String(formData.get("partnershipId") ?? "");
+  const populationId = String(formData.get("populationId") ?? "");
+  const fieldsRaw = String(formData.get("fields") ?? "").trim();
+  const fields = fieldsRaw ? fieldsRaw.split(",").map((f) => f.trim()).filter(Boolean) : null;
+  if (!partnershipId || !populationId) notice("Pick a partnership and a list to share.");
+  const failed = await attempt(
+    () => offerListGrant(pool, orgId, partnershipId, populationId, fields),
+    "Couldn't offer the list.",
+  );
+  if (failed) notice(failed);
+  revalidatePath("/admin");
+  notice("List offered — nothing is visible to them until their owner accepts.");
+}
+
+export async function acceptGrantAction(grantId: string): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const failed = await attempt(() => acceptListGrant(pool, orgId, grantId), "Couldn't accept the share.");
+  if (failed) notice(failed);
+  revalidatePath("/admin");
+  notice("Share accepted — the list is now in your account populations.");
+}
+
+export async function declineGrantAction(grantId: string): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const failed = await attempt(() => declineListGrant(pool, orgId, grantId), "Couldn't decline the share.");
+  if (failed) notice(failed);
+  revalidatePath("/admin");
+}
+
+export async function revokeGrantAction(grantId: string): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const failed = await attempt(() => revokeListGrant(pool, orgId, grantId), "Couldn't revoke the share.");
+  if (failed) notice(failed);
+  revalidatePath("/admin");
+  notice("Share revoked — their copy is withdrawn.");
 }

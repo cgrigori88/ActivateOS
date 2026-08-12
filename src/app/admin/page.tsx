@@ -3,7 +3,12 @@ import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { currentOrgId, currentRole } from "@/lib/auth/org";
 import { authConfigured } from "@/lib/auth/supabase";
-import { inviteMemberAction, setMemberRoleAction, removeMemberAction } from "./actions";
+import {
+  inviteMemberAction, setMemberRoleAction, removeMemberAction,
+  createInviteAction, redeemInviteAction, revokePartnershipAction,
+  offerGrantAction, acceptGrantAction, declineGrantAction, revokeGrantAction,
+} from "./actions";
+import { auditEntries, listGrantViews, listPartnerships } from "@/lib/partnerships/partnerships";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +58,26 @@ export default async function AdminPage({
         [orgId],
       )
     : { rows: [] };
+
+  // ── Partnerships + ledger ─────────────────────────────────────────────────
+  const [partnerships, grants, ledger, { rows: myPartners }, { rows: myLists }] = orgId
+    ? await Promise.all([
+        listPartnerships(pool, orgId),
+        listGrantViews(pool, orgId),
+        auditEntries(pool, orgId, 25),
+        pool.query<{ id: string; name: string }>(
+          `select id, name from partners where org_id = $1 order by name asc`,
+          [orgId],
+        ),
+        pool.query<{ id: string; name: string }>(
+          `select id, name from account_populations
+           where org_id = $1 and status = 'approved' and created_by is distinct from 'partner share'
+           order by name asc`,
+          [orgId],
+        ),
+      ])
+    : [[], [], [], { rows: [] }, { rows: [] }];
+  const activePartnerships = partnerships.filter((p) => p.status === "active");
 
   // ── AI operations ─────────────────────────────────────────────────────────
   const [{ rows: agents }, { rows: recentRuns }, { rows: providerErrors }, { rows: queues }] = await Promise.all([
@@ -167,6 +192,191 @@ export default async function AdminPage({
             </form>
           </>
         )}
+      </Card>
+
+      {/* ── Partnerships ── */}
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Partnerships</h2>
+      <Card className="mb-4">
+        <p className="mb-4 text-xs text-neutral-500">
+          A partnership connects two tenants. You invite with a code bound to one of your partners; their owner
+          redeems it on their own Admin page. Nothing crosses the boundary except lists you explicitly share —
+          and those only appear after <em>their</em> owner accepts. Either side can revoke at any time.
+        </p>
+
+        {partnerships.length > 0 && (
+          <div className="mb-4 overflow-x-auto scroll-thin">
+            <table className="data-table">
+              <thead><tr><th>Counterpart</th><th>Status</th><th>Your role</th><th>Shared out / in</th><th>Since</th><th></th></tr></thead>
+              <tbody>
+                {partnerships.map((p) => (
+                  <tr key={p.id}>
+                    <td className="font-medium">
+                      {p.otherOrgName ?? p.myLensName ?? "—"}
+                      {p.inviteCode && (
+                        <div className="mt-0.5 font-mono text-[11px] text-neutral-500" title="Share this code with their owner">
+                          code: {p.inviteCode}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <span className={
+                        p.status === "active" ? "text-green-700 dark:text-green-400"
+                        : p.status === "invited" ? "text-amber-700 dark:text-amber-400"
+                        : "text-neutral-400"
+                      }>{p.status}</span>
+                    </td>
+                    <td className="text-xs text-neutral-500">{p.role}</td>
+                    <td className="tnum text-xs text-neutral-500">{p.grantsOut} / {p.grantsIn}</td>
+                    <td className="text-xs text-neutral-500">{p.activatedAt ?? p.createdAt}</td>
+                    <td className="text-right">
+                      {p.status !== "revoked" && (
+                        <form action={revokePartnershipAction.bind(null, p.id)}>
+                          <button className="text-[11px] font-medium text-red-700 hover:underline dark:text-red-400">revoke</button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Invite a partner org</h3>
+            <p className="mb-2 text-xs text-neutral-500">Bound to one of your partners; share the code out-of-band.</p>
+            {myPartners.length === 0 ? (
+              <p className="text-sm text-neutral-500">No partners yet — add one first.</p>
+            ) : (
+              <form action={createInviteAction} className="flex flex-wrap items-end gap-2">
+                <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Partner</span>
+                  <select name="partnerId" className={input}>
+                    {myPartners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </label>
+                <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">Create invite</button>
+              </form>
+            )}
+          </div>
+          <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Redeem an invite</h3>
+            <p className="mb-2 text-xs text-neutral-500">Paste the code another org&apos;s owner gave you.</p>
+            <form action={redeemInviteAction} className="flex flex-wrap items-end gap-2">
+              <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Invite code</span>
+                <input name="code" required placeholder="XXXXX-XXXXX-XXXXX-XXXXX" className={`${input} w-64 font-mono`} />
+              </label>
+              <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">Redeem</button>
+            </form>
+          </div>
+        </div>
+      </Card>
+
+      {/* ── Shared lists ── */}
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Shared lists</h2>
+      <Card className="mb-4">
+        {grants.length === 0 ? (
+          <p className="mb-4 text-sm text-neutral-500">Nothing shared in either direction yet.</p>
+        ) : (
+          <div className="mb-4 overflow-x-auto scroll-thin">
+            <table className="data-table">
+              <thead><tr><th>List</th><th>Direction</th><th>With</th><th>Fields</th><th>Status</th><th>Offered</th><th></th></tr></thead>
+              <tbody>
+                {grants.map((g) => (
+                  <tr key={g.id}>
+                    <td className="font-medium">{g.listName}</td>
+                    <td className="text-xs text-neutral-500">{g.direction === "outgoing" ? "→ out" : "← in"}</td>
+                    <td className="text-xs">{g.otherOrgName ?? "—"}</td>
+                    <td className="text-xs text-neutral-500">{g.fields ? g.fields.join(", ") : "all"}</td>
+                    <td>
+                      <span className={
+                        g.status === "accepted" ? "text-green-700 dark:text-green-400"
+                        : g.status === "offered" ? "text-amber-700 dark:text-amber-400"
+                        : "text-neutral-400"
+                      }>{g.status}</span>
+                    </td>
+                    <td className="text-xs text-neutral-500">{g.createdAt}</td>
+                    <td className="text-right">
+                      {g.direction === "incoming" && g.status === "offered" && (
+                        <div className="flex justify-end gap-2">
+                          <form action={acceptGrantAction.bind(null, g.id)}>
+                            <button className="text-[11px] font-medium text-green-700 hover:underline dark:text-green-400">accept</button>
+                          </form>
+                          <form action={declineGrantAction.bind(null, g.id)}>
+                            <button className="text-[11px] font-medium text-neutral-500 hover:underline">decline</button>
+                          </form>
+                        </div>
+                      )}
+                      {g.direction === "outgoing" && (g.status === "offered" || g.status === "accepted") && (
+                        <form action={revokeGrantAction.bind(null, g.id)}>
+                          <button className="text-[11px] font-medium text-red-700 hover:underline dark:text-red-400">revoke</button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Share a list</h3>
+        {activePartnerships.length === 0 ? (
+          <p className="text-sm text-neutral-500">Sharing needs an active partnership first.</p>
+        ) : myLists.length === 0 ? (
+          <p className="text-sm text-neutral-500">No approved lists of your own to share yet.</p>
+        ) : (
+          <form action={offerGrantAction} className="flex flex-wrap items-end gap-3">
+            <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Partnership</span>
+              <select name="partnershipId" className={input}>
+                {activePartnerships.map((p) => <option key={p.id} value={p.id}>{p.otherOrgName ?? p.myLensName ?? p.id.slice(0, 8)}</option>)}
+              </select>
+            </label>
+            <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">List</span>
+              <select name="populationId" className={input}>
+                {myLists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </label>
+            <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Fields (comma-separated; blank = all)</span>
+              <input name="fields" placeholder="territory, vertical" className={`${input} w-56`} />
+            </label>
+            <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">Offer</button>
+          </form>
+        )}
+        <p className="mt-3 border-t border-neutral-100 pt-2 text-[11px] text-neutral-400 dark:border-neutral-800">
+          Field scoping limits which member attributes travel with the list. Their copy materializes only on accept;
+          revoking flips it off on their side immediately.
+        </p>
+      </Card>
+
+      {/* ── Audit log ── */}
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Audit log</h2>
+      <Card className="mb-6">
+        {ledger.length === 0 ? (
+          <p className="text-sm text-neutral-500">No entries yet — membership and cross-tenant events land here.</p>
+        ) : (
+          <div className="overflow-x-auto scroll-thin">
+            <table className="data-table">
+              <thead><tr><th>When</th><th>Actor</th><th>Event</th><th>Detail</th></tr></thead>
+              <tbody>
+                {ledger.map((e, i) => (
+                  <tr key={i}>
+                    <td className="whitespace-nowrap text-xs text-neutral-500">{e.createdAt}</td>
+                    <td className="text-xs">{e.actor}</td>
+                    <td className="text-xs font-medium">{e.event}</td>
+                    <td className="max-w-md truncate font-mono text-[11px] text-neutral-500" title={JSON.stringify(e.detail)}>
+                      {JSON.stringify(e.detail)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="mt-3 border-t border-neutral-100 pt-2 text-[11px] text-neutral-400 dark:border-neutral-800">
+          Your organization&apos;s own ledger — every membership change and every cross-tenant event (invites, handshakes,
+          shares, revocations) with who did it and when. The counterpart org gets its own mirror entries.
+        </p>
       </Card>
 
       {/* ── AI operations ── */}

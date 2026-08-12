@@ -50,9 +50,25 @@ release gate, not a wishlist.
   live: viewer write 403, operator write 201, operator self-promotion filtered
   to a no-op. App mirrors it: requireWrite() guards all 46 mutating server
   actions; the rail chip shows the signed-in user with sign-out.
-  Remaining for later slices: per-request scoped DB connections, member
-  invites (owner-only UI), the partnership handshake, and the cross-tenant
-  audit log.
+- **Admin room (multi-tenant slice 4).** `/admin`, owner-only: member
+  management (invite with out-of-band temp password, role changes, removal —
+  all with last-owner guards) and AI-operations observability (agent runs /
+  spend / overrides, provider failures, queue depths, worker heartbeat).
+- **Partnership handshake + cross-tenant audit log (multi-tenant slice 5).**
+  Migration 0031: `partnerships` connect two tenants (invite code → their
+  owner redeems → active → either side revokes), while `partners` rows remain
+  each org's private lens so every existing screen keeps working; `list_grants`
+  are the ONLY thing that crosses the boundary — field-scoped, materialized in
+  the receiving org only after THEIR owner accepts, flipped off on revocation
+  (severing a partnership sweeps all its grants); `audit_log` is each org's
+  own ledger of every membership + cross-tenant event (both sides get mirror
+  entries). All owner-driven from `/admin`. RLS: each side reads its own
+  partnerships/grants/ledger; API writes refused (app-only ledger). Verified
+  live end-to-end with a second tenant: 18/18 checks (handshake, field
+  stripping, revocation sweep, anon/member/outsider visibility, forged-ledger
+  write refused).
+  Remaining for later slices: per-request scoped DB connections; live grant
+  sync (accept is copy-at-accept today, not a continuing feed).
 
 ## Accepted risk — open items, tracked
 
