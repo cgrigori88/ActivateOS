@@ -1,7 +1,7 @@
 import { getPool } from "@/db/client";
 import { Card } from "@/components/ui";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
-import { createOwnerAction, signInAction, signOutAction } from "./actions";
+import { changePasswordAction, createOwnerAction, signInAction, signOutAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +52,7 @@ export default async function LoginPage({
           <p className="mb-3 text-sm">
             Signed in as <span className="font-medium">{signedInAs}</span>.
           </p>
-          <div className="flex gap-3">
+          <div className="mb-4 flex gap-3">
             <a href="/" className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">Open the app</a>
             <form action={signOutAction}>
               <button className="rounded-md px-4 py-1.5 text-sm font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900">
@@ -60,6 +60,16 @@ export default async function LoginPage({
               </button>
             </form>
           </div>
+          <details>
+            <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:underline">Change password</summary>
+            <form action={changePasswordAction} className="mt-3 flex items-end gap-2">
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">New password (12+ characters)</span>
+                <input name="password" type="password" required minLength={12} autoComplete="new-password" className={input} />
+              </label>
+              <button className="rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-700">Update</button>
+            </form>
+          </details>
         </Card>
       ) : (
         <>

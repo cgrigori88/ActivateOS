@@ -55,6 +55,19 @@ export async function createOwnerAction(formData: FormData): Promise<void> {
   redirect("/");
 }
 
+/** Signed-in users change their own password (e.g. after a temp-password invite). */
+export async function changePasswordAction(formData: FormData): Promise<void> {
+  if (!authConfigured()) fail("Identity is not configured on this deployment.");
+  const password = String(formData.get("password") ?? "");
+  if (password.length < 12) fail("New password needs 12+ characters.");
+  const supabase = await supabaseServer();
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) fail("Sign in first.");
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) fail(`Couldn't change the password: ${error.message}`);
+  redirect("/login?error=" + encodeURIComponent("Password updated."));
+}
+
 export async function signOutAction(): Promise<void> {
   if (authConfigured()) {
     const supabase = await supabaseServer();

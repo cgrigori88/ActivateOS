@@ -156,6 +156,22 @@ const NAV: NavGroup[] = [
   },
 ];
 
+const ADMIN_GROUP: NavGroup = {
+  label: "Platform",
+  items: [
+    {
+      href: "/admin",
+      label: "Admin",
+      icon: (
+        <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+          <circle cx="8" cy="8" r="2.2" />
+          <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6L11 5M5 11l-1.4 1.4" />
+        </svg>
+      ),
+    },
+  ],
+};
+
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -187,11 +203,14 @@ export function Shell({
   children,
   user,
   signOut,
+  isOwner,
 }: {
   children: ReactNode;
   /** Signed-in identity email; null in Basic-Auth / local-dev mode. */
   user?: string | null;
   signOut?: () => Promise<void>;
+  /** Owners see the Platform/Admin group. */
+  isOwner?: boolean;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -200,6 +219,8 @@ export function Shell({
 
   // Auth surfaces stand alone: no rail, no chrome — you aren't "inside" yet.
   const bare = pathname.startsWith("/login");
+
+  const navGroups = isOwner === false ? NAV : [...NAV, ADMIN_GROUP];
 
   /* Light is the default: the app opens light regardless of the OS setting, and
      only a stored choice turns it dark. */
@@ -325,7 +346,7 @@ export function Shell({
         </Link>
       </div>
       <nav className="scroll-thin flex-1 space-y-3.5 overflow-y-auto overflow-x-hidden px-3 pb-3">
-        {NAV.map((group, i) => (
+        {navGroups.map((group, i) => (
           <div key={i}>
             {group.label && !collapsed && (
               <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-rail-ink-soft/60">

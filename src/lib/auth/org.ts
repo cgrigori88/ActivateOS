@@ -73,3 +73,10 @@ export async function requireWrite(db: Db): Promise<void> {
   if (role === "owner" || role === "operator") return;
   throw new Error("Read-only access — ask an owner to make you an operator.");
 }
+
+/** Gate for platform administration (members, roles, ops): owners only. */
+export async function requireOwner(db: Db): Promise<void> {
+  const role = await currentRole(db);
+  if (role === "owner") return;
+  throw new Error("Owner access required.");
+}
