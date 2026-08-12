@@ -67,8 +67,30 @@ release gate, not a wishlist.
   live end-to-end with a second tenant: 18/18 checks (handshake, field
   stripping, revocation sweep, anon/member/outsider visibility, forged-ledger
   write refused).
-  Remaining for later slices: per-request scoped DB connections; live grant
-  sync (accept is copy-at-accept today, not a continuing feed).
+- **Live grant sync + deletion safety (slice 5b).** Migration 0032: accepted
+  shares are no longer frozen snapshots — a "source changed" flag appears when
+  the list behind a share drifts from the copy, and either side can re-sync
+  (wipe + re-copy, still field-scoped). A DB trigger closes two deletion
+  holes: the sharer deleting a granted source list now withdraws every
+  materialized copy and writes `grant.source_deleted` to both ledgers (it
+  used to cascade the grant away silently, leaving the copy live); the
+  receiver deleting their copy marks the grant declined so the sharer's view
+  never claims a live share that isn't. Verified live: 11/11 checks.
+- **Rate limiting on auth + trigger surfaces (#66).** Fixed-window in-memory
+  limiter (edge- and Node-safe). Wrong-but-presented Basic credentials: 20 /
+  10 min per IP (no-header prompts and valid creds never limited); sign-in /
+  owner-create / password-change actions: 10 / 5 min per IP + 10 / 15 min per
+  account; research trigger + worker trigger endpoints: 10 failed auths /
+  10 min per IP → 429 (correct secrets never limited). Honest caveat: counters
+  are per serverless instance, so the real ceiling is limit × warm instances —
+  still collapses credential stuffing; a Redis-class shared store is the
+  upgrade if the app outgrows it.
+  Remaining for a later slice: per-request scoped DB connections (the app's
+  own pool still connects as table owner, so DB-level RLS backs the API path
+  only; app-path scoping is enforced in code via `currentOrgId`). Deferred
+  deliberately: switching `DATABASE_URL` to a non-owner role needs a staging
+  environment to verify against — this sandbox cannot open raw Postgres
+  connections, and a blind role switch could take down the deployment.
 
 ## Accepted risk — open items, tracked
 
@@ -76,9 +98,9 @@ release gate, not a wishlist.
 |---|------|--------------|----------------|
 | 1 | **Credential rotation** (Supabase password + access token, Anthropic, Tavily, PDL, trigger secret, Basic Auth) — keys were shared in a chat session | Owner action pending | **Immediately**, and before the demo video circulates |
 | 2 | **No Content-Security-Policy** | Needs nonce plumbing for the theme-boot inline script and Next's inline chunks; a wrong CSP silently blanks pages | First hardening sprint |
-| 3 | **No rate limiting** on Basic Auth or trigger endpoints | Low exposure while URL is private; timing-safe compare mitigates | Before the URL is shared beyond trusted partners |
+| 3 | Rate limiter is **per-instance** (in-memory) | Real limiter shipped (#66); a shared store only matters at multi-instance scale | Move to Redis-class store when traffic warrants |
 | 4 | postcss/sharp advisories bundled in Next 15 | Build-time / removed-endpoint exposure only; npm fix is a breaking major | Next major upgrade window |
-| 5 | **Single-tenant trust model** — Basic Auth, one shared credential, no per-row authorization, no RLS | The app is a single-operator demo today | **Before ANY customer** — see below |
+| 5 | **App pool connects as table owner** — DB-level RLS backs the API path; the app path relies on `currentOrgId` scoping in code | Sandbox can't verify a `DATABASE_URL` role switch (raw Postgres blocked); blind switch risks downtime | With a staging environment, before first customer |
 
 ## Before first customer: the multi-tenant architecture
 

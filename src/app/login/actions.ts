@@ -1,11 +1,20 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getPool } from "@/db/client";
 import { authConfigured, supabaseAdmin, supabaseServer } from "@/lib/auth/supabase";
+import { clientIp, rateLimited } from "@/lib/security/rate-limit";
 
 function fail(message: string): never {
   redirect(`/login?error=${encodeURIComponent(message)}`);
+}
+
+/** Throttle credential guessing (#66): per-IP, plus per-account when given. */
+async function throttleAuthAttempt(kind: string, email?: string): Promise<void> {
+  const ip = clientIp(await headers());
+  if (rateLimited(`${kind}:ip:${ip}`, 10, 5 * 60_000)) fail("Too many attempts — wait a few minutes.");
+  if (email && rateLimited(`${kind}:email:${email}`, 10, 15 * 60_000)) fail("Too many attempts for this account — wait a few minutes.");
 }
 
 /** Sign in with email + password; session lands in cookies. */
@@ -14,6 +23,7 @@ export async function signInAction(formData: FormData): Promise<void> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   if (!email || !password) fail("Email and password are required.");
+  await throttleAuthAttempt("signin", email);
 
   const supabase = await supabaseServer();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -32,6 +42,7 @@ export async function createOwnerAction(formData: FormData): Promise<void> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   if (!email || password.length < 12) fail("Owner account needs an email and a password of 12+ characters.");
+  await throttleAuthAttempt("owner");
 
   const pool = getPool();
   const { rows: existing } = await pool.query<{ n: string }>(`select count(*)::text as n from org_members`);
@@ -60,6 +71,7 @@ export async function changePasswordAction(formData: FormData): Promise<void> {
   if (!authConfigured()) fail("Identity is not configured on this deployment.");
   const password = String(formData.get("password") ?? "");
   if (password.length < 12) fail("New password needs 12+ characters.");
+  await throttleAuthAttempt("passwd");
   const supabase = await supabaseServer();
   const { data } = await supabase.auth.getUser();
   if (!data.user) fail("Sign in first.");

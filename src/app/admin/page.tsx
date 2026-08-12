@@ -6,7 +6,7 @@ import { authConfigured } from "@/lib/auth/supabase";
 import {
   inviteMemberAction, setMemberRoleAction, removeMemberAction,
   createInviteAction, redeemInviteAction, revokePartnershipAction,
-  offerGrantAction, acceptGrantAction, declineGrantAction, revokeGrantAction,
+  offerGrantAction, acceptGrantAction, declineGrantAction, revokeGrantAction, syncGrantAction,
 } from "./actions";
 import { auditEntries, listGrantViews, listPartnerships } from "@/lib/partnerships/partnerships";
 
@@ -294,9 +294,19 @@ export default async function AdminPage({
                         : g.status === "offered" ? "text-amber-700 dark:text-amber-400"
                         : "text-neutral-400"
                       }>{g.status}</span>
+                      {g.stale && (
+                        <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300" title="The source list changed since the copy last synced">
+                          source changed
+                        </span>
+                      )}
                     </td>
                     <td className="text-xs text-neutral-500">{g.createdAt}</td>
                     <td className="text-right">
+                      {g.status === "accepted" && (
+                        <form action={syncGrantAction.bind(null, g.id)} className="inline-block">
+                          <button className="mr-2 text-[11px] font-medium text-blue-700 hover:underline dark:text-blue-400" title="Re-copy the source list into the shared copy (adds, removals, attribute changes — still field-scoped)">sync</button>
+                        </form>
+                      )}
                       {g.direction === "incoming" && g.status === "offered" && (
                         <div className="flex justify-end gap-2">
                           <form action={acceptGrantAction.bind(null, g.id)}>
@@ -345,7 +355,8 @@ export default async function AdminPage({
         )}
         <p className="mt-3 border-t border-neutral-100 pt-2 text-[11px] text-neutral-400 dark:border-neutral-800">
           Field scoping limits which member attributes travel with the list. Their copy materializes only on accept;
-          revoking flips it off on their side immediately.
+          &quot;source changed&quot; flags a copy that has drifted from the list behind it, and sync re-copies it
+          (still field-scoped). Revoking flips the copy off on their side immediately.
         </p>
       </Card>
 

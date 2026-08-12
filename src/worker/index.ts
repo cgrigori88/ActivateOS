@@ -1,6 +1,7 @@
 import http from "node:http";
 import { getPool } from "../db/client";
 import { secretEquals } from "../lib/security/compare";
+import { rateLimited } from "../lib/security/rate-limit";
 import { importAccountsCsv } from "../lib/ingest/ingest-accounts";
 import { runPendingResearchLocked } from "../lib/intel/research-runner";
 import { runScreeningSweepAllOrgs, runScreeningSweepLocked } from "../lib/intel/screen-runner";
@@ -150,7 +151,16 @@ const server = http.createServer(async (req, res) => {
   if (method === "GET" && url.pathname === "/health") {
     return send(res, 200, { status: "ok" });
   }
-  if (!authorized(req, url)) return send(res, 401, { error: "unauthorized" });
+  if (!authorized(req, url)) {
+    // Failed auths are secret guesses — throttle per source IP (#66); the
+    // worker sits alone on Railway, so one process = one real counter.
+    const fwd = req.headers["x-forwarded-for"];
+    const ip = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? "unknown";
+    if (rateLimited(`trigger:${ip}`, 10, 10 * 60_000)) {
+      return send(res, 429, { error: "too many attempts" });
+    }
+    return send(res, 401, { error: "unauthorized" });
+  }
 
   try {
     if (method === "GET" && url.pathname === "/status") {

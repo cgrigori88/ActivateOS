@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getPool } from "@/db/client";
 import { runPendingResearchLocked } from "@/lib/intel/research-runner";
 import { secretEquals } from "@/lib/security/compare";
+import { clientIp, rateLimited } from "@/lib/security/rate-limit";
 
 /**
  * Deep-research trigger endpoint (§12). One HTTP surface for BOTH a scheduler
@@ -31,9 +32,18 @@ function authorized(req: Request): boolean {
   return secretEquals(bearer, secret) || secretEquals(key, secret);
 }
 
+/** Failed auths are secret guesses — throttle them (#66); callers with the
+    real secret are never limited. Returns the refusal response. */
+function refuse(req: Request): NextResponse {
+  if (rateLimited(`research:${clientIp(req.headers)}`, 10, 10 * 60_000)) {
+    return NextResponse.json({ error: "too many attempts" }, { status: 429 });
+  }
+  return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+}
+
 /** GET: queue status (pending/running counts + recent finished jobs). */
 export async function GET(req: Request): Promise<NextResponse> {
-  if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!authorized(req)) return refuse(req);
   const pool = getPool();
   const { rows: counts } = await pool.query<{ status: string; n: string }>(
     `select status, count(*) as n from research_jobs group by status`,
@@ -52,7 +62,7 @@ export async function GET(req: Request): Promise<NextResponse> {
 
 /** POST: drain the queue once (under the global lock). */
 export async function POST(req: Request): Promise<NextResponse> {
-  if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!authorized(req)) return refuse(req);
   const url = new URL(req.url);
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 10) || 10, 1), 100);
   const orgId = url.searchParams.get("orgId") ?? undefined;

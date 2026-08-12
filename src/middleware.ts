@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { clientIp, rateLimited } from "@/lib/security/rate-limit";
 
 /**
  * Access gate, in transition (task #64 slice 1). Two credentials are accepted,
@@ -49,6 +50,15 @@ export async function middleware(req: NextRequest) {
 
   // 1. Basic Auth — the demo path, exactly as before.
   if (await basicAuthValid(req)) return NextResponse.next();
+
+  // A PRESENTED-but-wrong Basic credential is a guess — throttle guessing.
+  // (No header at all is just an unauthenticated browser; that's not counted,
+  // so the 401 prompt and normal sign-ins are never rate-limited.)
+  if (basicConfigured && req.headers.get("authorization")?.startsWith("Basic ")) {
+    if (rateLimited(`basic:${clientIp(req.headers)}`, 20, 10 * 60_000)) {
+      return new NextResponse("Too many attempts — try again later.", { status: 429 });
+    }
+  }
 
   // 2. Supabase session — canonical @supabase/ssr pattern (also refreshes
   //    expiring tokens; the refreshed cookies ride out on the response).

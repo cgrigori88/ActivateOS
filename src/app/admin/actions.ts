@@ -14,6 +14,7 @@ import {
   redeemPartnershipInvite,
   revokeListGrant,
   revokePartnership,
+  syncListGrant,
 } from "@/lib/partnerships/partnerships";
 
 function notice(msg: string): never {
@@ -184,6 +185,14 @@ export async function declineGrantAction(grantId: string): Promise<void> {
   const failed = await attempt(() => declineListGrant(pool, orgId, grantId), "Couldn't decline the share.");
   if (failed) notice(failed);
   revalidatePath("/admin");
+}
+
+export async function syncGrantAction(grantId: string): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const failed = await attempt(() => syncListGrant(pool, orgId, grantId), "Couldn't sync the share.");
+  if (failed) notice(failed);
+  revalidatePath("/admin");
+  notice("Share synced — the copy now matches the source list.");
 }
 
 export async function revokeGrantAction(grantId: string): Promise<void> {

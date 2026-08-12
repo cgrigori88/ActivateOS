@@ -249,6 +249,37 @@ async function loadIncomingGrant(db: Db, orgId: string, grantId: string, lock: b
 }
 
 /**
+ * (Re)materialize a copy's members from the source: wipe and re-copy, member
+ * attributes cut down to the granted fields (null = all). Used by accept and
+ * by every later sync — one code path, no drift.
+ */
+async function materializeMembers(
+  db: Db,
+  sourcePopId: string,
+  targetPopId: string,
+  selectedFields: string[] | null,
+): Promise<number> {
+  await db.query(`delete from population_members where population_id = $1`, [targetPopId]);
+  if (selectedFields === null) {
+    const res = await db.query(
+      `insert into population_members (population_id, company_id, attributes)
+       select $2, company_id, attributes from population_members where population_id = $1`,
+      [sourcePopId, targetPopId],
+    );
+    return res.rowCount ?? 0;
+  }
+  const res = await db.query(
+    `insert into population_members (population_id, company_id, attributes)
+     select $2, m.company_id,
+            coalesce((select jsonb_object_agg(e.key, e.value)
+                      from jsonb_each(m.attributes) e where e.key = any($3)), '{}'::jsonb)
+     from population_members m where m.population_id = $1`,
+    [sourcePopId, targetPopId, selectedFields],
+  );
+  return res.rowCount ?? 0;
+}
+
+/**
  * Receiver accepts: NOW (and only now) a copy materializes in the receiving
  * org — an approved population bound to their lens on the sharer, members'
  * attributes filtered to the granted fields. The copy is theirs; revocation
@@ -274,31 +305,61 @@ export async function acceptListGrant(pool: Pool, orgId: string, grantId: string
        values ($1, $2, $3, $4, 'approved', 'partner share') returning id`,
       [orgId, myLens, `${src[0].name} (shared)`, src[0].category],
     );
-    // Copy members; attributes cut down to the granted fields (null = all).
-    if (g.selected_fields === null) {
-      await db.query(
-        `insert into population_members (population_id, company_id, attributes)
-         select $2, company_id, attributes from population_members where population_id = $1`,
-        [g.population_id, copy[0].id],
-      );
-    } else {
-      await db.query(
-        `insert into population_members (population_id, company_id, attributes)
-         select $2, m.company_id,
-                coalesce((select jsonb_object_agg(e.key, e.value)
-                          from jsonb_each(m.attributes) e where e.key = any($3)), '{}'::jsonb)
-         from population_members m where m.population_id = $1`,
-        [g.population_id, copy[0].id, g.selected_fields],
-      );
-    }
+    await materializeMembers(db, g.population_id, copy[0].id, g.selected_fields);
     await db.query(
-      `update list_grants set status = 'accepted', decided_at = now(), materialized_population_id = $2
+      `update list_grants set status = 'accepted', decided_at = now(), synced_at = now(),
+              materialized_population_id = $2
        where id = $1`,
       [grantId, copy[0].id],
     );
     const detail = { list: src[0].name, grant_id: grantId };
     await audit(db, orgId, "grant.accepted", detail, g.partnership_id);
     await audit(db, g.from_org_id, "grant.accepted", detail, g.partnership_id);
+    await db.query("commit");
+  } catch (err) {
+    await db.query("rollback");
+    throw err;
+  } finally {
+    db.release();
+  }
+}
+
+/**
+ * Re-sync an accepted grant: the copy catches up to the source (adds, removes,
+ * attribute changes — still scoped to the granted fields). Either side may
+ * trigger it; the grant itself is the standing consent, so a sync changes
+ * nothing about WHAT is shared, only brings it current.
+ */
+export async function syncListGrant(pool: Pool, orgId: string, grantId: string): Promise<void> {
+  const db = await pool.connect();
+  try {
+    await db.query("begin");
+    const { rows } = await db.query<{
+      id: string; partnership_id: string; population_id: string;
+      selected_fields: string[] | null; materialized_population_id: string | null;
+      from_org_id: string; initiator_org_id: string; counterpart_org_id: string | null; list_name: string;
+    }>(
+      `select g.id, g.partnership_id, g.population_id, g.selected_fields,
+              g.materialized_population_id, g.from_org_id,
+              p.initiator_org_id, p.counterpart_org_id, ap.name as list_name
+       from list_grants g
+       join partnerships p on p.id = g.partnership_id
+       join account_populations ap on ap.id = g.population_id
+       where g.id = $1 and g.status = 'accepted' and p.status = 'active'
+         and (p.initiator_org_id = $2 or p.counterpart_org_id = $2)
+       for update of g`,
+      [grantId, orgId],
+    );
+    const g = rows[0];
+    if (!g) throw new Error("No live accepted share with that id on an active partnership.");
+    if (!g.materialized_population_id) throw new Error("Their copy no longer exists — offer the list again.");
+
+    const n = await materializeMembers(db, g.population_id, g.materialized_population_id, g.selected_fields);
+    await db.query(`update list_grants set synced_at = now() where id = $1`, [grantId]);
+    const detail = { list: g.list_name, members: n, grant_id: grantId };
+    await audit(db, g.from_org_id, "grant.synced", detail, g.partnership_id);
+    const other = otherOrg(g, g.from_org_id);
+    if (other) await audit(db, other, "grant.synced", detail, g.partnership_id);
     await db.query("commit");
   } catch (err) {
     await db.query("rollback");
@@ -411,19 +472,28 @@ export type GrantView = {
   fields: string[] | null;
   status: "offered" | "accepted" | "declined" | "revoked";
   createdAt: string;
+  /** Accepted only: the source list changed since the copy last synced. */
+  stale: boolean;
 };
 
 export async function listGrantViews(db: Db, orgId: string): Promise<GrantView[]> {
   const { rows } = await db.query<{
     id: string; from_org_id: string; list_name: string; other_name: string | null;
-    selected_fields: string[] | null; status: GrantView["status"]; created_at: Date;
+    selected_fields: string[] | null; status: GrantView["status"]; created_at: Date; stale: boolean;
   }>(
     `select g.id, g.from_org_id, ap.name as list_name,
             case when g.from_org_id = $1
                  then (select o.name from organizations o
                        where o.id = case when p.initiator_org_id = $1 then p.counterpart_org_id else p.initiator_org_id end)
                  else (select o.name from organizations o where o.id = g.from_org_id) end as other_name,
-            g.selected_fields, g.status, g.created_at
+            g.selected_fields, g.status, g.created_at,
+            (g.status = 'accepted' and g.materialized_population_id is not null and (
+               exists (select 1 from population_members s
+                       where s.population_id = g.population_id
+                         and s.created_at > coalesce(g.synced_at, g.decided_at))
+               or (select count(*) from population_members s where s.population_id = g.population_id)
+                  <> (select count(*) from population_members c where c.population_id = g.materialized_population_id)
+            )) as stale
      from list_grants g
      join partnerships p on p.id = g.partnership_id
      join account_populations ap on ap.id = g.population_id
@@ -439,6 +509,7 @@ export async function listGrantViews(db: Db, orgId: string): Promise<GrantView[]
     fields: r.selected_fields,
     status: r.status,
     createdAt: new Date(r.created_at).toISOString().slice(0, 10),
+    stale: r.stale,
   }));
 }
 
