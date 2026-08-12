@@ -16,7 +16,7 @@
     "score": "tsx scripts/score.ts",
     "db:seed-sql": "tsx scripts/generate-seed-sql.ts",
     "db:remote": "tsx scripts/db-remote.ts",
-    "research": "tsx scripts/research.ts",
+    "research": "tsx scripts/research-runner.ts",
     "review": "tsx scripts/review.ts",
     "design-motion": "tsx scripts/design-motion.ts",
     "motion": "tsx scripts/motion.ts",
@@ -30,11 +30,12 @@
     "setup-comms": "tsx scripts/setup-comms-dns.ts",
     "intel": "tsx scripts/intel.ts",
     "screen": "tsx scripts/screen-sweep.ts",
-    "research": "tsx scripts/research-runner.ts",
     "worker": "tsx src/worker/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.3",
     "@tailwindcss/postcss": "^4.3.3",
     "csv-parse": "^5.5.6",
     "next": "^15.3.0",

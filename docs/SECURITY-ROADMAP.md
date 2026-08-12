@@ -21,6 +21,18 @@ release gate, not a wishlist.
   (`EDITABLE_FIELDS`, fixed timeframe numbers). HTML sinks limited to a static
   boot script and fully sandboxed `srcdoc` previews.
 - `.env*` never committed (verified across full git history).
+- **Data API closed (was a live exposure).** RLS enabled on all public tables
+  (migration 0028) — before it, every table was readable/writable via the
+  project's REST endpoint with the public anon key, verified live. The app is
+  unaffected (owner connection). Every future `create table` MUST enable RLS.
+- **Identity foundation (multi-tenant slice 1).** Supabase Auth sessions
+  accepted by the middleware alongside Basic Auth (checked first, so demo
+  deployments are unchanged); `/login` with a first-run owner-creation form
+  that self-destructs once any membership exists; `org_members` (owner /
+  operator / viewer) + `is_org_member()` — the predicate all future tenant
+  policies key on. Requires `NEXT_PUBLIC_SUPABASE_URL`,
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` in host env;
+  absent → previous behavior exactly.
 
 ## Accepted risk — open items, tracked
 
