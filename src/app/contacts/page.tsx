@@ -1,32 +1,45 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
-import { Card, PageHeader } from "@/components/ui";
+import { Bento, Card, PageHeader } from "@/components/ui";
+import { QuerySelect } from "@/components/query-select";
+import { captureContactsFromPopulations } from "@/lib/contacts/capture";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Contacts (Phase 9A): the buying committee per account. Two sources merge —
- * people discovered by the PDL people provider (senior technical committee)
- * and reachable contacts we hold an address for, annotated with engagement.
- * This is the map of the real decision unit a campaign has to move.
+ * Contacts (#52) — one taxonomy for the whole co-sell committee. It merges three
+ * sources into typed, filterable people:
+ *   • end users we can reach (contacts table, engagement-annotated)
+ *   • end users discovered by intelligence (PDL people committee, no address yet)
+ *   • partner reps who own each mapped account (captured from the account lists —
+ *     reseller / distributor / MSP owners, with territory & vertical)
+ * Deep filters (type · partner · seniority · engagement · search) and a group-by
+ * lens (company / partner / type) keep it usable at scale, and it doubles as the
+ * cleanest training signal we hold: who the real decision + selling unit is.
  */
 
-interface Person {
-  name: string;
-  title: string | null;
-  level: string;
-  email: string | null;
-  engagementStatus: string | null;
-  engagementScore: number | null;
-}
-interface AccountCommittee {
-  companyId: string;
-  legalName: string;
-  domain: string | null;
-  people: Person[];
-  reachable: number;
-  engaged: number;
-}
+const TYPE_LABELS: Record<string, string> = {
+  end_user: "End user",
+  reseller: "Reseller",
+  distributor: "Distributor",
+  msp: "MSP",
+  solution_provider: "Solution provider",
+  agent: "Agent",
+  alliance: "Alliance",
+  vendor: "Vendor",
+  other: "Other",
+};
+const TYPE_TONE: Record<string, string> = {
+  end_user: "bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-950 dark:text-blue-300",
+  reseller: "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950 dark:text-emerald-300",
+  distributor: "bg-violet-50 text-violet-700 ring-violet-600/20 dark:bg-violet-950 dark:text-violet-300",
+  msp: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950 dark:text-amber-300",
+  solution_provider: "bg-teal-50 text-teal-700 ring-teal-600/20 dark:bg-teal-950 dark:text-teal-300",
+  agent: "bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300",
+  alliance: "bg-pink-50 text-pink-700 ring-pink-600/20 dark:bg-pink-950 dark:text-pink-300",
+  vendor: "bg-orange-50 text-orange-700 ring-orange-600/20 dark:bg-orange-950 dark:text-orange-300",
+  other: "bg-neutral-100 text-neutral-500 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-400",
+};
 
 const LEVELS: { key: string; label: string; test: RegExp }[] = [
   { key: "cxo", label: "C-suite", test: /\b(chief|cxo|ceo|cto|cio|ciso|cfo|coo|president|founder)\b/i },
@@ -40,13 +53,8 @@ function levelOf(title: string | null): string {
   return "other";
 }
 const LEVEL_RANK: Record<string, number> = { cxo: 0, vp: 1, director: 2, manager: 3, other: 4 };
-const LEVEL_TONE: Record<string, string> = {
-  cxo: "bg-violet-50 text-violet-800 ring-violet-600/20 dark:bg-violet-950 dark:text-violet-300",
-  vp: "bg-sky-50 text-sky-800 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300",
-  director: "bg-emerald-50 text-emerald-800 ring-emerald-600/20 dark:bg-emerald-950 dark:text-emerald-300",
-  manager: "bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-950 dark:text-amber-300",
-  other: "bg-neutral-100 text-neutral-500 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-400",
-};
+const LEVEL_LABEL: Record<string, string> = { cxo: "C-suite", vp: "VP", director: "Director", manager: "Manager", other: "—" };
+
 const ENGAGEMENT_TONE: Record<string, string> = {
   engaged: "text-green-700 dark:text-green-400",
   opted_out: "text-neutral-400 line-through",
@@ -59,10 +67,71 @@ function norm(s: string): string {
   return s.toLowerCase().replace(/[^a-z ]/g, "").trim();
 }
 
-export default async function ContactsPage() {
+interface Row {
+  id: string;
+  name: string;
+  title: string | null;
+  email: string | null;
+  phone: string | null;
+  contactType: string;
+  level: string;
+  companyId: string | null;
+  legalName: string;
+  domain: string | null;
+  partnerName: string | null;
+  territory: string | null;
+  vertical: string | null;
+  engagementStatus: string | null;
+  engagementScore: number | null;
+}
+
+export default async function ContactsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string; partner?: string; level?: string; eng?: string; group?: string; q?: string }>;
+}) {
+  const sp = await searchParams;
   const pool = getPool();
 
-  // Discovered committee — latest PDL people observation per company.
+  // Keep the partner-rep side of the taxonomy in sync with current mappings.
+  const { rows: orgRows } = await pool.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
+  const orgId = orgRows[0]?.id;
+  if (orgId) {
+    try {
+      await captureContactsFromPopulations(pool, orgId);
+    } catch {
+      /* non-fatal: taxonomy still renders from whatever is stored */
+    }
+  }
+
+  // Typed contacts (reachable end users + captured partner reps).
+  const { rows: typed } = await pool.query<{
+    id: string;
+    name: string | null;
+    title: string | null;
+    email: string | null;
+    phone: string | null;
+    contact_type: string;
+    company_id: string | null;
+    legal_name: string | null;
+    primary_domain: string | null;
+    partner_name: string | null;
+    location: string | null;
+    attributes: Record<string, unknown> | null;
+    engagement_status: string;
+    engagement_score: string | null;
+  }>(
+    `select c.id, c.name, c.title, c.email, c.phone, c.contact_type,
+            c.company_id, co.legal_name, co.primary_domain,
+            p.name as partner_name, c.location, c.attributes, c.engagement_status,
+            (select es.engagement_score from engagement_scores es
+              where es.contact_id = c.id order by es.computed_at desc limit 1) as engagement_score
+     from contacts c
+     left join companies co on co.id = c.company_id
+     left join partners p on p.id = c.partner_id`,
+  );
+
+  // Discovered committee — latest PDL people observation per company (end users).
   const { rows: discovered } = await pool.query<{
     company_id: string;
     legal_name: string;
@@ -83,130 +152,222 @@ export default async function ContactsPage() {
      cross join lateral jsonb_array_elements(l.raw_payload->'people') as p`,
   );
 
-  // Reachable contacts with engagement.
-  const { rows: reachable } = await pool.query<{
-    company_id: string;
-    legal_name: string;
-    primary_domain: string | null;
-    email: string;
-    name: string | null;
-    title: string | null;
-    engagement_status: string;
-    engagement_score: string | null;
-  }>(
-    `select co.id as company_id, co.legal_name, co.primary_domain,
-            c.email, c.name, c.title, c.engagement_status,
-            (select es.engagement_score from engagement_scores es
-              where es.contact_id = c.id order by es.computed_at desc limit 1) as engagement_score
-     from contacts c
-     join companies co on co.id = c.company_id`,
-  );
-
-  // Merge into per-account committees.
-  const byCompany = new Map<string, AccountCommittee>();
-  const ensure = (id: string, name: string, domain: string | null): AccountCommittee => {
-    let a = byCompany.get(id);
-    if (!a) {
-      a = { companyId: id, legalName: name, domain, people: [], reachable: 0, engaged: 0 };
-      byCompany.set(id, a);
-    }
-    return a;
-  };
-
+  const rows: Row[] = [];
+  // typed
+  for (const t of typed) {
+    const attrs = t.attributes ?? {};
+    rows.push({
+      id: t.id,
+      name: t.name ?? t.email ?? "—",
+      title: t.title,
+      email: t.email,
+      phone: t.phone,
+      contactType: t.contact_type,
+      level: t.contact_type === "end_user" ? levelOf(t.title) : "other",
+      companyId: t.company_id,
+      legalName: t.legal_name ?? "Unattributed",
+      domain: t.primary_domain,
+      partnerName: t.partner_name,
+      territory: t.location ?? (attrs.territory as string | undefined) ?? null,
+      vertical: (attrs.vertical as string | undefined) ?? null,
+      engagementStatus: t.contact_type === "end_user" ? t.engagement_status : null,
+      engagementScore: t.engagement_score == null ? null : Number(t.engagement_score),
+    });
+  }
+  // discovered — only if not already an end-user contact of the same name at the company.
+  const seen = new Set(rows.filter((r) => r.contactType === "end_user" && r.companyId).map((r) => `${r.companyId}:${norm(r.name)}`));
   for (const d of discovered) {
     if (!d.full_name) continue;
-    const a = ensure(d.company_id, d.legal_name, d.primary_domain);
-    a.people.push({
+    const key = `${d.company_id}:${norm(d.full_name)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({
+      id: `pdl:${d.company_id}:${norm(d.full_name)}`,
       name: d.full_name,
       title: d.job_title,
-      level: levelOf(d.job_title),
       email: null,
+      phone: null,
+      contactType: "end_user",
+      level: levelOf(d.job_title),
+      companyId: d.company_id,
+      legalName: d.legal_name,
+      domain: d.primary_domain,
+      partnerName: null,
+      territory: null,
+      vertical: null,
       engagementStatus: null,
       engagementScore: null,
     });
   }
-  for (const r of reachable) {
-    const a = ensure(r.company_id, r.legal_name, r.primary_domain);
-    const rn = r.name ? norm(r.name) : null;
-    const match = rn ? a.people.find((p) => norm(p.name) === rn) : undefined;
-    if (match) {
-      match.email = r.email;
-      match.engagementStatus = r.engagement_status;
-      match.engagementScore = r.engagement_score == null ? null : Number(r.engagement_score);
-    } else {
-      a.people.push({
-        name: r.name ?? r.email,
-        title: r.title,
-        level: levelOf(r.title),
-        email: r.email,
-        engagementStatus: r.engagement_status,
-        engagementScore: r.engagement_score == null ? null : Number(r.engagement_score),
-      });
+
+  // Filter option universes (from the full set).
+  const typeOptions = [...new Set(rows.map((r) => r.contactType))].sort((a, b) => (a === "end_user" ? -1 : b === "end_user" ? 1 : a.localeCompare(b)));
+  const partnerOptions = [...new Set(rows.map((r) => r.partnerName).filter(Boolean) as string[])].sort();
+
+  // Apply filters.
+  const q = (sp.q ?? "").trim().toLowerCase();
+  const filtered = rows.filter((r) => {
+    if (sp.type && sp.type !== "all" && r.contactType !== sp.type) return false;
+    if (sp.partner && sp.partner !== "all") {
+      if (sp.partner === "__direct") { if (r.partnerName) return false; }
+      else if (r.partnerName !== sp.partner) return false;
     }
+    if (sp.level && sp.level !== "all" && r.level !== sp.level) return false;
+    if (sp.eng && sp.eng !== "all") {
+      if (sp.eng === "reachable" && !r.email) return false;
+      if (sp.eng === "engaged" && r.engagementStatus !== "engaged") return false;
+      if (sp.eng === "no_address" && r.email) return false;
+    }
+    if (q) {
+      const hay = `${r.name} ${r.title ?? ""} ${r.email ?? ""} ${r.legalName} ${r.partnerName ?? ""} ${r.territory ?? ""} ${r.vertical ?? ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Bentos (from the full set).
+  const endUsers = rows.filter((r) => r.contactType === "end_user").length;
+  const reps = rows.length - endUsers;
+  const reachable = rows.filter((r) => r.email).length;
+  const companies = new Set(rows.map((r) => r.companyId ?? "—")).size;
+
+  // Group.
+  const groupKey = ["company", "partner", "type"].includes(sp.group ?? "") ? sp.group! : "company";
+  const groups = new Map<string, { name: string; companyId: string | null; sub?: string; items: Row[] }>();
+  for (const r of filtered) {
+    let key: string, name: string, companyId: string | null = null, sub: string | undefined;
+    if (groupKey === "partner") {
+      key = r.partnerName ? `p:${r.partnerName}` : "_direct";
+      name = r.partnerName ?? "Direct (end users)";
+    } else if (groupKey === "type") {
+      key = `t:${r.contactType}`;
+      name = TYPE_LABELS[r.contactType] ?? r.contactType;
+    } else {
+      key = r.companyId ?? "_none";
+      name = r.legalName;
+      companyId = r.companyId;
+      sub = r.domain ?? undefined;
+    }
+    const g = groups.get(key) ?? { name, companyId, sub, items: [] };
+    g.items.push(r);
+    groups.set(key, g);
+  }
+  const grouped = [...groups.values()].sort((a, b) => b.items.length - a.items.length || a.name.localeCompare(b.name));
+  for (const g of grouped) {
+    g.items.sort(
+      (x, y) =>
+        (x.contactType === "end_user" ? 0 : 1) - (y.contactType === "end_user" ? 0 : 1) ||
+        LEVEL_RANK[x.level] - LEVEL_RANK[y.level] ||
+        x.name.localeCompare(y.name),
+    );
   }
 
-  const accounts = [...byCompany.values()];
-  for (const a of accounts) {
-    a.people.sort((x, y) => LEVEL_RANK[x.level] - LEVEL_RANK[y.level] || x.name.localeCompare(y.name));
-    a.reachable = a.people.filter((p) => p.email).length;
-    a.engaged = a.people.filter((p) => p.engagementStatus === "engaged").length;
-  }
-  accounts.sort((a, b) => b.people.length - a.people.length || a.legalName.localeCompare(b.legalName));
-
-  const totalPeople = accounts.reduce((n, a) => n + a.people.length, 0);
-  const totalReachable = accounts.reduce((n, a) => n + a.reachable, 0);
+  // Preserve current filters when the search form navigates.
+  const hidden: Record<string, string | undefined> = { type: sp.type, partner: sp.partner, level: sp.level, eng: sp.eng, group: sp.group };
 
   return (
     <main>
       <PageHeader
         title="Contacts"
-        subtitle="The buying committee per account — discovered by intelligence, made reachable by outreach, annotated with engagement."
+        subtitle="The full co-sell committee, typed and filterable — end users we're moving and the partner reps who own each account, captured straight from the mapped lists."
       />
 
-      <div className="mb-6 flex flex-wrap gap-6 text-sm text-neutral-500">
-        <span><span className="tnum text-lg font-semibold text-neutral-800 dark:text-neutral-200">{accounts.length}</span> accounts</span>
-        <span><span className="tnum text-lg font-semibold text-neutral-800 dark:text-neutral-200">{totalPeople}</span> people mapped</span>
-        <span><span className="tnum text-lg font-semibold text-neutral-800 dark:text-neutral-200">{totalReachable}</span> reachable</span>
+      {/* Bentos */}
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <Bento label="contacts" value={rows.length} />
+        <Bento label="end users" value={endUsers} />
+        <Bento label="partner reps" value={reps} />
+        <Bento label="reachable" value={reachable} subs={[`${Math.round((reachable / Math.max(1, rows.length)) * 100)}% w/ address`]} />
+        <Bento label="companies" value={companies} />
+        <Bento label="partners" value={partnerOptions.length} />
       </div>
 
-      {accounts.length === 0 ? (
+      {/* Filters */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <QuerySelect param="group" value={groupKey} label="Group by" options={[{ value: "company", label: "Company" }, { value: "partner", label: "Partner" }, { value: "type", label: "Type" }]} />
+        <QuerySelect param="type" value={sp.type ?? "all"} label="Type" options={[{ value: "all", label: "Any type" }, ...typeOptions.map((t) => ({ value: t, label: TYPE_LABELS[t] ?? t }))]} />
+        {partnerOptions.length > 0 && (
+          <QuerySelect param="partner" value={sp.partner ?? "all"} label="Partner" options={[{ value: "all", label: "Any partner" }, { value: "__direct", label: "Direct (no partner)" }, ...partnerOptions.map((p) => ({ value: p, label: p }))]} />
+        )}
+        <QuerySelect param="level" value={sp.level ?? "all"} label="Seniority" options={[{ value: "all", label: "Any level" }, ...LEVELS.map((l) => ({ value: l.key, label: l.label })), { value: "other", label: "Other" }]} />
+        <QuerySelect param="eng" value={sp.eng ?? "all"} label="Reach" options={[{ value: "all", label: "Any" }, { value: "reachable", label: "Reachable" }, { value: "engaged", label: "Engaged" }, { value: "no_address", label: "No address" }]} />
+        <form className="ml-auto flex items-center gap-2">
+          {Object.entries(hidden).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
+          <input
+            name="q"
+            defaultValue={sp.q ?? ""}
+            placeholder="Search name, title, company…"
+            className="w-56 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+          />
+          {q && <Link href={{ query: { ...hidden } }} className="text-xs text-neutral-500 hover:underline">clear</Link>}
+        </form>
+      </div>
+
+      {filtered.length === 0 ? (
         <Card>
           <p className="text-sm text-neutral-500">
-            No committee data yet. The buying committee is discovered when an account crosses the research gate
-            (PDL people provider) — escalate accounts on the{" "}
-            <Link href="/accounts" className="text-blue-700 hover:underline dark:text-blue-400">Accounts</Link> page.
+            {rows.length === 0 ? (
+              <>
+                No contacts yet. End users are discovered when accounts cross the research gate; partner reps are captured
+                from approved account lists in the{" "}
+                <Link href="/mapping" className="text-blue-700 hover:underline dark:text-blue-400">Mapping room</Link>.
+              </>
+            ) : (
+              "Nothing matches these filters."
+            )}
           </p>
         </Card>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {accounts.map((a) => (
-            <Card key={a.companyId}>
-              <div className="mb-3 flex items-center gap-2">
-                <Link href={`/accounts/${a.companyId}`} className="font-semibold hover:underline">{a.legalName}</Link>
-                {a.domain && <span className="text-[11px] text-neutral-400">{a.domain}</span>}
-                <span className="ml-auto text-xs text-neutral-400">{a.reachable}/{a.people.length} reachable</span>
-              </div>
-              <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                {a.people.map((p, i) => (
-                  <li key={i} className="flex items-center gap-2 py-1.5">
-                    <span className={`inline-flex w-16 shrink-0 justify-center rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${LEVEL_TONE[p.level]}`}>
-                      {LEVELS.find((l) => l.key === p.level)?.label ?? "—"}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{p.name}</div>
-                      {p.title && <div className="truncate text-[11px] text-neutral-500">{p.title}</div>}
-                    </div>
-                    {p.email ? (
-                      <span className={`text-[11px] ${ENGAGEMENT_TONE[p.engagementStatus ?? "unknown"]}`} title={p.email}>
-                        {p.engagementScore != null && p.engagementScore > 0 ? `${p.engagementScore.toFixed(0)} · ` : ""}
-                        {p.engagementStatus ?? "reachable"}
+        <div className="space-y-3">
+          {grouped.map((g) => (
+            <Card key={g.companyId ?? g.name} className="p-0">
+              <details open={grouped.length <= 4}>
+                <summary className="flex cursor-pointer items-center gap-2 px-4 py-3">
+                  {groupKey !== "company" && (
+                    <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">{groupKey}</span>
+                  )}
+                  <span className="font-semibold">{g.name}</span>
+                  {g.sub && <span className="text-[11px] text-neutral-400">{g.sub}</span>}
+                  {groupKey === "company" && g.companyId && (
+                    <Link href={`/accounts/${g.companyId}`} className="text-xs text-blue-700 hover:underline dark:text-blue-400">account →</Link>
+                  )}
+                  <span className="ml-auto tnum text-xs text-neutral-400">{g.items.length}</span>
+                </summary>
+                <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                  {g.items.map((r) => (
+                    <li key={r.id} className="flex items-center gap-2 px-4 py-2">
+                      <span className={`inline-flex shrink-0 justify-center rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset ${TYPE_TONE[r.contactType] ?? TYPE_TONE.other}`}>
+                        {TYPE_LABELS[r.contactType] ?? r.contactType}
                       </span>
-                    ) : (
-                      <span className="text-[11px] text-neutral-300 dark:text-neutral-600">no address</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                      {r.contactType === "end_user" && r.level !== "other" && (
+                        <span className="hidden shrink-0 text-[10px] font-medium text-neutral-400 sm:inline">{LEVEL_LABEL[r.level]}</span>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 text-sm">
+                          <span className="font-medium">{r.name}</span>
+                          {groupKey !== "company" && r.companyId && (
+                            <Link href={`/accounts/${r.companyId}`} className="text-[11px] text-blue-700 hover:underline dark:text-blue-400">{r.legalName}</Link>
+                          )}
+                        </div>
+                        <div className="truncate text-[11px] text-neutral-500">
+                          {r.title}
+                          {r.partnerName && groupKey !== "partner" && <span> · via {r.partnerName}</span>}
+                          {(r.territory || r.vertical) && <span className="text-neutral-400"> · {[r.territory, r.vertical].filter(Boolean).join(" / ")}</span>}
+                        </div>
+                      </div>
+                      {r.phone && <span className="hidden text-[11px] text-neutral-400 md:inline">{r.phone}</span>}
+                      {r.email ? (
+                        <span className={`shrink-0 text-[11px] ${ENGAGEMENT_TONE[r.engagementStatus ?? "unknown"]}`} title={r.email}>
+                          {r.engagementScore != null && r.engagementScore > 0 ? `${r.engagementScore.toFixed(0)} · ` : ""}
+                          {r.engagementStatus ?? "reachable"}
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-[11px] text-neutral-300 dark:text-neutral-600">no address</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </details>
             </Card>
           ))}
         </div>
