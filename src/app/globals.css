@@ -438,6 +438,89 @@ select:not([multiple]) {
 }
 
 /* ---------------------------------------------------------------------------
+   Glass takes colour from what sits behind it.
+
+   Flat white panels are the thing that made every screen read as bland. Each
+   surface now carries a light gradient rather than a solid fill: a general
+   top-lit sheen on every glass layer, and — for bento tiles — a wash of the
+   same categorical hue the figure is using, so the tile and its number belong
+   to each other. The wash is diagonal and dies out around two-thirds down, so
+   the bottom of the card stays clean under any text.
+
+   `background-image` is used rather than `background`, so it layers over the
+   material's colour instead of replacing it.
+   --------------------------------------------------------------------------- */
+.glass {
+  background-image: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.5) 0%,
+    rgba(255, 255, 255, 0.12) 42%,
+    rgba(255, 255, 255, 0) 78%
+  );
+}
+html.dark .glass {
+  background-image: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.07) 0%,
+    rgba(255, 255, 255, 0.02) 44%,
+    rgba(255, 255, 255, 0) 78%
+  );
+}
+
+/* Bento tiles: the hue of the figure, washed across the surface. */
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 1) { --tile-hue: var(--color-cat-1); }
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 2) { --tile-hue: var(--color-cat-2); }
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 3) { --tile-hue: var(--color-cat-3); }
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 4) { --tile-hue: var(--color-cat-4); }
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 5) { --tile-hue: var(--color-cat-5); }
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 6) { --tile-hue: var(--color-cat-6); }
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 7) { --tile-hue: var(--color-cat-7); }
+
+.pos-bento.glass[data-tone],
+.pos-bento.glass:not([data-empty="true"]) {
+  background-image:
+    linear-gradient(
+      152deg,
+      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 16%, transparent) 0%,
+      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 5%, transparent) 46%,
+      transparent 72%
+    ),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 70%);
+  border-color: color-mix(in srgb, var(--tile-hue, var(--color-accent)) 22%, var(--glass-edge));
+}
+html.dark .pos-bento.glass[data-tone],
+html.dark .pos-bento.glass:not([data-empty="true"]) {
+  background-image:
+    linear-gradient(
+      152deg,
+      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 30%, transparent) 0%,
+      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 10%, transparent) 46%,
+      transparent 74%
+    ),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 70%);
+  border-color: color-mix(in srgb, var(--tile-hue, var(--color-accent)) 34%, var(--glass-edge));
+}
+/* A filter chip sets its own hue, so it inherits from its tone rather than its
+   position — and the selected one keeps the solid accent fill. */
+.pos-bento[data-tone="sky"] { --tile-hue: var(--color-accent); }
+.pos-bento[data-tone="green"] { --tile-hue: var(--color-emerald); }
+.pos-bento[data-tone="amber"] { --tile-hue: var(--color-amber); }
+.pos-bento[data-tone="red"] { --tile-hue: var(--color-rose); }
+.pos-bento[data-tone="neutral"] { --tile-hue: var(--color-neutral-400); }
+
+/* Panels get the faintest lift off the ground so a stack of them has depth. */
+.pos-card.glass {
+  background-image:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 4%, transparent) 0%, transparent 38%),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 72%);
+}
+html.dark .pos-card.glass {
+  background-image:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-accent-tint) 8%, transparent) 0%, transparent 40%),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 72%);
+}
+
+/* ---------------------------------------------------------------------------
    Data tables: roomier rows, hairline separators, and a header that reads as
    structure rather than as more body text.
    --------------------------------------------------------------------------- */
