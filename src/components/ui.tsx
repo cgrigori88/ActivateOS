@@ -104,7 +104,7 @@ export function Bento({
   }`;
   const attrs = { "data-empty": empty ? "true" : undefined };
   return href ? (
-    <Link href={href} {...attrs} className={`block ${cls} transition-transform duration-[140ms] hover:-translate-y-px`}>
+    <Link href={href} {...attrs} className={`pos-lift block ${cls}`}>
       {inner}
     </Link>
   ) : (
@@ -285,7 +285,7 @@ export function CountChip({
   };
   const body = (
     <div
-      className={`relative min-w-[5.5rem] overflow-hidden rounded-lg border px-3 py-2 transition-colors ${
+      className={`relative min-w-[5.5rem] overflow-hidden rounded-lg border px-3 py-2 ${href ? "pos-lift" : "transition-colors"} ${
         active
           ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900"
           : "border-neutral-200 bg-white hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700"

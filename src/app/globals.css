@@ -184,6 +184,35 @@ summary:focus-visible {
   border-radius: var(--radius-inner);
 }
 
+/* ---------------------------------------------------------------------------
+   Micro-interactions. One physical grammar everywhere: interactive surfaces
+   LIFT on hover (2px + a popped shadow) and PRESS on activation (back down,
+   99% scale, faster). Applied only to things that can be clicked — a static
+   tile that lifts would promise a click it can't honor.
+   --------------------------------------------------------------------------- */
+.pos-lift {
+  transition:
+    transform var(--dur-react) var(--ease-move),
+    box-shadow var(--dur-react) var(--ease-move),
+    border-color var(--dur-react) linear,
+    background-color var(--dur-react) linear;
+}
+.pos-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-pop);
+}
+.pos-lift:active {
+  transform: translateY(0) scale(0.99);
+  box-shadow: none;
+  transition-duration: 60ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pos-lift:hover,
+  .pos-lift:active {
+    transform: none;
+  }
+}
+
 /* ---- Materials ----------------------------------------------------------- */
 .glass {
   background: var(--glass-bg);
@@ -244,7 +273,45 @@ summary:focus-visible {
   font-weight: 600;
   transition:
     background-color var(--dur-react) linear,
-    border-color var(--dur-react) linear;
+    border-color var(--dur-react) linear,
+    transform var(--dur-react) var(--ease-move),
+    box-shadow var(--dur-react) var(--ease-move);
+}
+/* The same lift/press grammar as .pos-lift, on every normalized button. */
+:where(button, a).rounded-md.bg-neutral-900.text-white:hover,
+:where(button, a).rounded-md.bg-green-700.text-white:hover,
+:where(button, a).rounded-md.bg-blue-700.text-white:hover,
+:where(button, a).rounded-md.bg-violet-700.text-white:hover,
+:where(button, a).rounded-md.ring-1:hover,
+:where(button, a).rounded-md.bg-neutral-100:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -8px rgba(11, 18, 32, 0.35);
+}
+:where(button, a).rounded-md.bg-neutral-900.text-white:active,
+:where(button, a).rounded-md.bg-green-700.text-white:active,
+:where(button, a).rounded-md.bg-blue-700.text-white:active,
+:where(button, a).rounded-md.bg-violet-700.text-white:active,
+:where(button, a).rounded-md.ring-1:active,
+:where(button, a).rounded-md.bg-neutral-100:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: none;
+  transition-duration: 60ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(button, a).rounded-md.bg-neutral-900.text-white:hover,
+  :where(button, a).rounded-md.bg-green-700.text-white:hover,
+  :where(button, a).rounded-md.bg-blue-700.text-white:hover,
+  :where(button, a).rounded-md.bg-violet-700.text-white:hover,
+  :where(button, a).rounded-md.ring-1:hover,
+  :where(button, a).rounded-md.bg-neutral-100:hover,
+  :where(button, a).rounded-md.bg-neutral-900.text-white:active,
+  :where(button, a).rounded-md.bg-green-700.text-white:active,
+  :where(button, a).rounded-md.bg-blue-700.text-white:active,
+  :where(button, a).rounded-md.bg-violet-700.text-white:active,
+  :where(button, a).rounded-md.ring-1:active,
+  :where(button, a).rounded-md.bg-neutral-100:active {
+    transform: none;
+  }
 }
 /* Primary action: the accent, not a near-black pill. */
 :where(button, a).rounded-md.bg-neutral-900.text-white {
