@@ -7,7 +7,7 @@ import {
   weightedPipelineValue,
   type Stage,
 } from "@/lib/opportunities/lifecycle";
-import { Card, PageHeader, StatusBadge } from "@/components/ui";
+import { Bento, Card, MiniBar, PageHeader, StatusBadge } from "@/components/ui";
 import {
   advanceOpportunityAction,
   registerDealAction,
@@ -83,20 +83,30 @@ export default async function PipelinePage({
         subtitle="Opportunities advanced from motions. Weighted by declared stage probabilities until outcomes calibrate them."
       />
 
-      <div className="mb-6 flex gap-6 text-sm">
-        <div>
-          <div className="tnum text-2xl font-semibold">{open.length}</div>
-          <div className="text-neutral-500">open opportunities</div>
-        </div>
-        <div>
-          <div className="tnum text-2xl font-semibold">${Math.round(total / 1000)}k</div>
-          <div className="text-neutral-500">total pipeline</div>
-        </div>
-        <div>
-          <div className="tnum text-2xl font-semibold">${Math.round(weighted / 1000)}k</div>
-          <div className="text-neutral-500">weighted</div>
-        </div>
-      </div>
+      {(() => {
+        const wonCount = opps.filter((o) => o.stage === "closed_won").length;
+        const wonUsd = opps.filter((o) => o.stage === "closed_won").reduce((s, o) => s + Number(o.amount_usd ?? 0), 0);
+        const stageCounts = new Map<string, number>();
+        for (const o of open) stageCounts.set(o.stage, (stageCounts.get(o.stage) ?? 0) + 1);
+        const stageRows = STAGES.filter((s) => stageCounts.has(s)).map((s) => ({ label: s.replace(/_/g, " "), value: stageCounts.get(s) ?? 0 }));
+        return (
+          <>
+            <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <Bento label="open opportunities" value={open.length} />
+              <Bento label="total pipeline" value={`$${Math.round(total / 1000)}k`} />
+              <Bento label="weighted" value={`$${Math.round(weighted / 1000)}k`} subs={["by stage probability"]} />
+              <Bento label="won" value={wonCount} subs={[`$${Math.round(wonUsd / 1000)}k`]} />
+              <Bento label="reg'd deals" value={regRows.length} />
+            </div>
+            {stageRows.length > 0 && (
+              <Card className="mb-5">
+                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Open opportunities by stage</h2>
+                <MiniBar rows={stageRows} />
+              </Card>
+            )}
+          </>
+        );
+      })()}
 
       <div className="mb-4 flex items-center gap-2">
         {(["board", "review"] as const).map((v) => (

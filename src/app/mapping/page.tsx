@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
-import { BandBadge, Card, PageHeader } from "@/components/ui";
+import { BandBadge, Bento, Card, PageHeader } from "@/components/ui";
 import {
   CATEGORIES,
   CATEGORY_LABEL,
@@ -380,16 +380,6 @@ function catTone(c: string): string {
   return CAT_TONE[c] ?? "bg-neutral-100 text-neutral-600 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-300";
 }
 
-function Bento({ label, value, subs }: { label: string; value: string; subs?: string[] }) {
-  const sub = (subs ?? []).filter(Boolean);
-  return (
-    <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
-      <div className="tnum text-2xl font-semibold">{value}</div>
-      <div className="text-xs text-neutral-500">{label}</div>
-      {sub.length > 0 && <div className="mt-1 text-[11px] text-neutral-400">{sub.join(" · ")}</div>}
-    </div>
-  );
-}
 
 async function ReviewSection({ openId }: { openId?: string }) {
   const pool = getPool();

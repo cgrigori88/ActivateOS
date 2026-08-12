@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
-import { Card, PageHeader, StatusBadge } from "@/components/ui";
+import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
+import { QuerySelect } from "@/components/query-select";
 import {
   generateSequenceAction,
   createBlankCampaignAction,
@@ -39,9 +40,10 @@ interface MotionOption {
 export default async function CampaignsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ notice?: string }>;
+  searchParams: Promise<{ notice?: string; status?: string; source?: string }>;
 }) {
-  const notice = (await searchParams).notice;
+  const sp = await searchParams;
+  const notice = sp.notice;
   const pool = getPool();
 
   const { rows: campaigns } = await pool.query<CampaignRow>(
@@ -61,7 +63,18 @@ export default async function CampaignsPage({
   );
 
   const suggestions = campaigns.filter((c) => c.source === "ai_suggested" && c.status === "draft");
-  const rest = campaigns.filter((c) => !(c.source === "ai_suggested" && c.status === "draft"));
+  let rest = campaigns.filter((c) => !(c.source === "ai_suggested" && c.status === "draft"));
+
+  // Bentos (computed before filtering the list)
+  const liveN = rest.filter((c) => c.status === "launched" || c.status === "completed").length;
+  const touchesSent = rest.reduce((s, c) => s + Number(c.sent), 0);
+  const engs = rest.map((c) => (c.engagement == null ? null : Number(c.engagement))).filter((v): v is number => v != null);
+  const avgEng = engs.length ? Math.round(engs.reduce((a, b) => a + b, 0) / engs.length) : null;
+
+  // Filters
+  if (sp.status && sp.status !== "all") rest = rest.filter((c) => c.status === sp.status);
+  if (sp.source && sp.source !== "all") rest = rest.filter((c) => c.source === sp.source);
+  const statusOptions = [...new Set(campaigns.map((c) => c.status))];
 
   const { rows: motions } = await pool.query<MotionOption>(
     `select m.id, c.legal_name, m.primary_persona
@@ -87,6 +100,15 @@ export default async function CampaignsPage({
           {notice}
         </div>
       )}
+
+      {/* Bentos */}
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <Bento label="campaigns" value={rest.length} />
+        <Bento label="live" value={liveN} subs={["launched / completed"]} />
+        <Bento label="touches sent" value={touchesSent} />
+        <Bento label="avg engagement" value={avgEng ?? "—"} />
+        <Bento label="AI suggestions" value={suggestions.length} subs={["awaiting review"]} />
+      </div>
 
       {/* Compose — two paths: AI-generated from a motion, or hand-authored from an account */}
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
@@ -184,6 +206,12 @@ export default async function CampaignsPage({
       )}
 
       {/* Sequences */}
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Campaigns</h2>
+        <QuerySelect param="status" value={sp.status ?? "all"} label="Status" options={[{ value: "all", label: "Any status" }, ...statusOptions.map((s) => ({ value: s, label: s }))]} />
+        <QuerySelect param="source" value={sp.source ?? "all"} label="Source" options={[{ value: "all", label: "Any source" }, { value: "user", label: "Human-made" }, { value: "ai_suggested", label: "AI-suggested" }]} />
+        <span className="ml-auto text-xs text-neutral-500">{rest.length} campaign(s)</span>
+      </div>
       {rest.length === 0 ? (
         <p className="text-sm text-neutral-500">No launched or hand-built campaigns yet — compose one above{suggestions.length > 0 ? " or review a suggestion" : ""}.</p>
       ) : (

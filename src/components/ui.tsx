@@ -25,6 +25,55 @@ export function BackLink({ href, label }: { href: string; label: string }) {
   );
 }
 
+/** Summary stat tile used across screens. Optionally linkable. */
+export function Bento({
+  label,
+  value,
+  subs,
+  href,
+}: {
+  label: string;
+  value: string | number;
+  subs?: (string | false | null | undefined)[];
+  href?: string;
+}) {
+  const sub = (subs ?? []).filter(Boolean) as string[];
+  const inner = (
+    <>
+      <div className="tnum text-2xl font-semibold">{value}</div>
+      <div className="text-xs text-neutral-500">{label}</div>
+      {sub.length > 0 && <div className="mt-1 text-[11px] text-neutral-400">{sub.join(" · ")}</div>}
+    </>
+  );
+  const cls = "rounded-lg border border-neutral-200 p-3 dark:border-neutral-800";
+  return href ? (
+    <Link href={href} className={`block ${cls} transition-colors hover:border-neutral-400 dark:hover:border-neutral-600`}>{inner}</Link>
+  ) : (
+    <div className={cls}>{inner}</div>
+  );
+}
+
+/** Horizontal labeled bar chart — pure CSS, theme-safe, no dependencies. */
+export function MiniBar({ rows, unit }: { rows: { label: string; value: number; href?: string }[]; unit?: string }) {
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  return (
+    <div className="space-y-1.5">
+      {rows.map((r) => {
+        const label = r.href ? <Link href={r.href} className="hover:underline">{r.label}</Link> : r.label;
+        return (
+          <div key={r.label} className="flex items-center gap-2">
+            <span className="w-32 shrink-0 truncate text-xs text-neutral-500">{label}</span>
+            <div className="h-4 flex-1 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
+              <div className="h-full rounded bg-blue-600" style={{ width: `${(r.value / max) * 100}%` }} />
+            </div>
+            <span className="tnum w-12 text-right text-xs text-neutral-500">{r.value.toLocaleString()}{unit ?? ""}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <header className="mb-6">
