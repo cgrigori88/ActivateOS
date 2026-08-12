@@ -10,11 +10,24 @@ import {
 import { Bento, Card, MiniBar, PageHeader, StatusBadge } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import {
+  ELEMENTS,
+  STATUS_LABEL,
+  STATUS_TONE,
+  meddpiccFor,
+  meddpiccScore,
+  meddpiccGaps,
+  type Status,
+} from "@/lib/opportunities/meddpicc";
+import {
   advanceOpportunityAction,
   registerDealAction,
   setRegistrationStatusAction,
   setStakeholderAction,
+  setMeddpiccAction,
+  assessMeddpiccAction,
 } from "./actions";
+
+const MEDDPICC_STATUSES: Status[] = ["unknown", "gap", "weak", "strong"];
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +92,12 @@ export default async function PipelinePage({
   const regByOpp = new Map<string, DealReg>();
   for (const r of regRows) if (r.opportunity_id && !regByOpp.has(r.opportunity_id)) regByOpp.set(r.opportunity_id, r);
 
+  const meddpicc = await meddpiccFor(pool, opps.map((o) => o.id));
+  const scoreOf = (id: string) => {
+    const m = meddpicc.get(id);
+    return m ? meddpiccScore(m) : 0;
+  };
+
   const open = opps.filter((o) => !o.stage.startsWith("closed"));
   const weighted = weightedPipelineValue(
     opps.map((o) => ({ stage: o.stage as Stage, amountUsd: o.amount_usd ? Number(o.amount_usd) : null })),
@@ -98,15 +117,33 @@ export default async function PipelinePage({
         const stageCounts = new Map<string, number>();
         for (const o of open) stageCounts.set(o.stage, (stageCounts.get(o.stage) ?? 0) + 1);
         const stageRows = STAGES.filter((s) => stageCounts.has(s)).map((s) => ({ label: s.replace(/_/g, " "), value: stageCounts.get(s) ?? 0 }));
+        const avgQual = open.length ? Math.round(open.reduce((s, o) => s + scoreOf(o.id), 0) / open.length) : null;
+        // Learned signal: qualification strength of past wins vs losses.
+        const avg = (list: typeof opps) => (list.length ? Math.round(list.reduce((s, o) => s + scoreOf(o.id), 0) / list.length) : null);
+        const wonQual = avg(opps.filter((o) => o.stage === "closed_won"));
+        const lostQual = avg(opps.filter((o) => o.stage === "closed_lost"));
         return (
           <>
-            <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               <Bento label="open opportunities" value={open.length} />
               <Bento label="total pipeline" value={`$${Math.round(total / 1000)}k`} />
               <Bento label="weighted" value={`$${Math.round(weighted / 1000)}k`} subs={["by stage probability"]} />
+              <Bento label="avg qualification" value={avgQual == null ? "—" : `${avgQual}`} subs={["MEDDPICC health"]} />
               <Bento label="won" value={wonCount} subs={[`$${Math.round(wonUsd / 1000)}k`]} />
               <Bento label="reg'd deals" value={regRows.length} />
             </div>
+            {(wonQual != null || lostQual != null) && (
+              <Card className="mb-5">
+                <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Learned signal · qualification vs outcome</h2>
+                <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                  Closed-won deals qualified at <span className="font-semibold text-green-700 dark:text-green-400">{wonQual ?? "—"}</span> MEDDPICC health on average;
+                  closed-lost at <span className="font-semibold text-red-700 dark:text-red-400">{lostQual ?? "—"}</span>.
+                  {wonQual != null && lostQual != null && wonQual > lostQual && (
+                    <> The <span className="font-medium">+{wonQual - lostQual}</span> gap is the pattern the model banks at each close — stronger qualification, higher conversion.</>
+                  )}
+                </p>
+              </Card>
+            )}
             {stageRows.length > 0 && (
               <Card className="mb-5">
                 <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Open opportunities by stage</h2>
@@ -151,6 +188,7 @@ export default async function PipelinePage({
                 <th>Stage</th>
                 <th className="text-right">Amount</th>
                 <th className="text-right">Weighted</th>
+                <th className="text-right">MEDDPICC</th>
                 <th>Close</th>
                 <th>Deal registration</th>
               </tr>
@@ -171,6 +209,13 @@ export default async function PipelinePage({
                     <td className="tnum text-right">{amt != null ? `$${Math.round(amt / 1000)}k` : "—"}</td>
                     <td className="tnum text-right text-neutral-500">
                       {amt != null && !closed ? `$${Math.round((amt * STAGE_PROBABILITY[o.stage as Stage]) / 1000)}k` : "—"}
+                    </td>
+                    <td className="tnum text-right">
+                      {(() => {
+                        const s = scoreOf(o.id);
+                        const tone = s >= 70 ? "text-green-700 dark:text-green-400" : s >= 40 ? "text-amber-700 dark:text-amber-400" : "text-red-700 dark:text-red-400";
+                        return <span className={tone}>{s}</span>;
+                      })()}
                     </td>
                     <td className="text-xs text-neutral-500">{o.expected_close_date ? new Date(o.expected_close_date).toISOString().slice(0, 10) : "—"}</td>
                     <td>
@@ -300,6 +345,54 @@ export default async function PipelinePage({
                   ))}
                 </div>
               )}
+
+              {/* MEDDPICC qualification */}
+              {(() => {
+                const m = meddpicc.get(o.id)!;
+                const score = meddpiccScore(m);
+                const gaps = meddpiccGaps(m);
+                const scoreTone = score >= 70 ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" : score >= 40 ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
+                return (
+                  <details className="mt-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
+                    <summary className="flex cursor-pointer items-center gap-2 text-xs font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100">
+                      <span className="uppercase tracking-wide">MEDDPICC</span>
+                      <span className={`tnum rounded px-1.5 py-0.5 text-[10px] font-semibold ${scoreTone}`}>{score}</span>
+                      <span className="text-[11px] font-normal text-neutral-400">
+                        {gaps.length === 0 ? "fully qualified" : `${gaps.length} to firm up`}
+                      </span>
+                    </summary>
+                    <div className="mt-2">
+                      <form action={assessMeddpiccAction.bind(null, o.id)} className="mb-2 flex items-center gap-2">
+                        <button className="rounded-md px-2.5 py-1 text-[11px] font-medium text-blue-700 ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
+                          AI assess from evidence
+                        </button>
+                        <span className="text-[10px] text-neutral-400">drafts every element you haven&rsquo;t set from stakeholders &amp; verified signals — your call to keep</span>
+                      </form>
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        {ELEMENTS.map((e) => {
+                          const st = m[e.key];
+                          return (
+                            <form key={e.key} action={setMeddpiccAction.bind(null, o.id, e.key)} className="flex items-center gap-1.5 rounded-md border border-neutral-200 px-2 py-1.5 dark:border-neutral-800" title={e.hint}>
+                              <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-neutral-100 text-[10px] font-bold text-neutral-500 dark:bg-neutral-800">{e.letter}</span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1">
+                                  <span className="truncate text-[11px] font-medium">{e.label}</span>
+                                  {st.source === "ai_assist" && <span className="rounded bg-blue-100 px-1 text-[8px] font-bold uppercase text-blue-700 dark:bg-blue-900 dark:text-blue-300" title="AI-drafted, unconfirmed">AI</span>}
+                                </div>
+                                <input name="notes" defaultValue={st.notes ?? ""} placeholder="notes" className="mt-0.5 w-full rounded border border-transparent bg-transparent text-[11px] text-neutral-500 hover:border-neutral-200 focus:border-neutral-300 focus:outline-none dark:hover:border-neutral-700" />
+                              </div>
+                              <select name="status" defaultValue={st.status} className={`rounded px-1 py-0.5 text-[10px] font-medium ${STATUS_TONE[st.status]}`}>
+                                {MEDDPICC_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                              </select>
+                              <button className="text-[10px] font-medium text-blue-700 hover:underline dark:text-blue-400">save</button>
+                            </form>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </details>
+                );
+              })()}
 
               {!o.stage.startsWith("closed") && (
                 <div className="mt-2 flex flex-wrap gap-2">

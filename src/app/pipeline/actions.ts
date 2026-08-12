@@ -7,6 +7,28 @@ import {
   createOpportunityFromMotion,
   type Stage,
 } from "@/lib/opportunities/lifecycle";
+import { assessMeddpicc, upsertElement, type ElementKey, type Status } from "@/lib/opportunities/meddpicc";
+
+/** Set one MEDDPICC element (status + notes) on an opportunity. */
+export async function setMeddpiccAction(opportunityId: string, element: ElementKey, formData: FormData): Promise<void> {
+  const status = String(formData.get("status") ?? "unknown") as Status;
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+  const pool = getPool();
+  await upsertElement(pool, { opportunityId, element, status, notes, source: "human", updatedBy: "web" });
+  revalidatePath("/pipeline");
+}
+
+/** Draft a full MEDDPICC assessment from the account's evidence & stakeholders. */
+export async function assessMeddpiccAction(opportunityId: string): Promise<void> {
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    await assessMeddpicc(db, opportunityId);
+  } finally {
+    db.release();
+  }
+  revalidatePath("/pipeline");
+}
 
 export async function advanceOpportunityAction(
   opportunityId: string,

@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { meddpiccFor, meddpiccScore, ELEMENTS } from "./meddpicc";
 
 /**
  * Opportunity lifecycle (BLUEPRINT Phase 6) — same discipline as motions:
@@ -109,6 +110,19 @@ export async function advanceOpportunity(
      values ($1, $2, $3, $4)`,
     [opportunityId, opp.stage, to, note ?? null],
   );
+
+  // On close, snapshot the MEDDPICC qualification into the outcome event: the
+  // labeled example (element strengths + score) banked against won/lost. This
+  // is the training signal — which qualification shapes actually convert.
+  let meddpicc: Record<string, string> | undefined;
+  let meddpiccScoreAtClose: number | undefined;
+  if (closing) {
+    const m = (await meddpiccFor(db, [opportunityId])).get(opportunityId);
+    if (m) {
+      meddpicc = Object.fromEntries(ELEMENTS.map((e) => [e.key, m[e.key].status]));
+      meddpiccScoreAtClose = meddpiccScore(m);
+    }
+  }
   await db.query(
     `insert into outcome_events (org_id, motion_id, company_id, event_type, payload)
      values ($1, $2, $3, $4, $5)`,
@@ -117,7 +131,7 @@ export async function advanceOpportunity(
       opp.motion_id,
       opp.company_id,
       closing ? (to === "closed_won" ? "CLOSED_WON" : "CLOSED_LOST") : "OPPORTUNITY_ADVANCED",
-      JSON.stringify({ opportunityId, from: opp.stage, to, note: note ?? null }),
+      JSON.stringify({ opportunityId, from: opp.stage, to, note: note ?? null, meddpicc, meddpiccScore: meddpiccScoreAtClose }),
     ],
   );
 }
