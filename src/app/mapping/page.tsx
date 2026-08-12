@@ -12,6 +12,7 @@ import {
   type Category,
   type Population,
 } from "@/lib/mapping/populations";
+import { partnerHub } from "@/lib/mapping/partner-hub";
 import { createPopulationAction, setPopulationStatusAction, targetFromCellAction } from "./actions";
 import { ViewSelect } from "./view-select";
 
@@ -353,6 +354,39 @@ function catTone(c: string): string {
   return CAT_TONE[c] ?? "bg-neutral-100 text-neutral-600 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-300";
 }
 
+function HubList({
+  title,
+  items,
+  allHref,
+  empty,
+}: {
+  title: string;
+  items: { href: string; label: string; meta: string }[];
+  allHref: string;
+  empty: string;
+}) {
+  return (
+    <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{title}</span>
+        <Link href={allHref} className="text-[11px] text-blue-700 hover:underline dark:text-blue-400">all →</Link>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-xs text-neutral-400">{empty}</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {items.map((it, i) => (
+            <li key={i} className="text-sm">
+              <Link href={it.href} className="font-medium hover:underline">{it.label}</Link>
+              <span className="ml-1 text-[11px] capitalize text-neutral-400">{it.meta}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Subtle propensity heatmap — blue with alpha, legible on light and dark. */
 function cellShade(avg: number | null): string | undefined {
   if (avg == null) return undefined;
@@ -379,7 +413,11 @@ async function MatrixSection({ partnerId, hideEmpty }: { partnerId?: string; hid
       );
     }
     const selected = partnerId && partners.some((p) => p.id === partnerId) ? partnerId : partners[0].id;
-    const { rows: allRows, cols: allCols, cells, rowTotals, colTotals, kpi } = await matrix(db, { orgId, partnerId: selected });
+    const selectedName = partners.find((p) => p.id === selected)?.name ?? "Partner";
+    const [{ rows: allRows, cols: allCols, cells, rowTotals, colTotals, kpi }, hub] = await Promise.all([
+      matrix(db, { orgId, partnerId: selected }),
+      partnerHub(db, { orgId, partnerId: selected }),
+    ]);
 
     // Hide-empty drops rows/cols with no overlap at all.
     const rows = hideEmpty ? allRows.filter((r) => (rowTotals.get(r.id) ?? 0) > 0) : allRows;
@@ -426,6 +464,45 @@ async function MatrixSection({ partnerId, hideEmpty }: { partnerId?: string; hid
             </Link>
           </div>
         </div>
+
+        {/* Partner hub — everything built for this connected partner */}
+        <Card className="mb-4">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-semibold">{selectedName}</h2>
+            <span className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 ring-1 ring-inset ring-neutral-300/50 dark:ring-neutral-700">connected partner</span>
+            <div className="ml-auto flex flex-wrap gap-4 text-xs text-neutral-500">
+              <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">{hub.populations}</span> populations</span>
+              <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">{kpi.accounts}</span> overlapping</span>
+              <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">{hub.activeMotions}/{hub.totalMotions}</span> motions</span>
+              <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">{hub.campaigns.length}</span> campaigns</span>
+              <span><span className="tnum font-semibold text-neutral-800 dark:text-neutral-200">${Math.round(hub.pipelineUsd / 1000)}k</span> pipeline</span>
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <HubList
+              title="Motions"
+              allHref="/motions"
+              empty="No partner-attributed motions yet."
+              items={hub.motions.map((m) => ({ href: `/briefs/${m.id}`, label: m.company, meta: m.status }))}
+            />
+            <HubList
+              title="Campaigns"
+              allHref="/campaigns"
+              empty="No campaigns for this partner yet."
+              items={hub.campaigns.map((c) => ({ href: `/campaigns/${c.id}`, label: c.name, meta: `${c.status} · ${c.touches} touch${c.touches === 1 ? "" : "es"}` }))}
+            />
+            <HubList
+              title="Open opportunities"
+              allHref="/pipeline"
+              empty="No open opportunities for this partner yet."
+              items={hub.opportunities.map((o) => ({ href: `/accounts/${o.company_id}`, label: o.name, meta: `${o.stage.replace(/_/g, " ")}${o.amount != null ? ` · $${Math.round(o.amount / 1000)}k` : ""}` }))}
+            />
+          </div>
+          <p className="mt-3 text-[11px] text-neutral-400">
+            Scoped to {selectedName}: their populations + fields stay theirs; motions, campaigns, and pipeline appear here
+            when attributed to this partner. Your own populations (the vendor side) map against every partner.
+          </p>
+        </Card>
 
         {rows.length === 0 || cols.length === 0 ? (
           <Card>
