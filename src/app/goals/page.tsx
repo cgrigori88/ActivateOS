@@ -3,7 +3,8 @@ import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { listGoals, METRICS, METRIC_LABEL, formatMetric, type Goal } from "@/lib/goals/goals";
-import { createGoalAction, setGoalStatusAction } from "./actions";
+import { listTargets, type TargetRow } from "@/lib/goals/targets";
+import { createGoalAction, setGoalStatusAction, upsertTargetAction, deleteTargetAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,9 @@ export default async function GoalsPage({
   const { rows: orgRows } = await pool.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
   const orgId = orgRows[0]?.id;
   const all = orgId ? await listGoals(pool, orgId) : [];
+  const targets = orgId ? await listTargets(pool, orgId) : [];
+  const { rows: partnerRows } = await pool.query<{ id: string; name: string }>(`select id, name from partners order by name`);
+  const currentYear = new Date().getFullYear();
 
   const dueDays = ["7", "30", "90"].includes(sp.due ?? "") ? Number(sp.due) : null;
   const goals = all.filter((g) => {
@@ -150,6 +154,107 @@ export default async function GoalsPage({
           })}
         </div>
       )}
+
+      {/* ── Revenue & pipeline targets — per period, overall and per partner ── */}
+      <section className="mt-10">
+        <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Revenue &amp; pipeline targets</h2>
+          <span className="text-[11px] text-neutral-400">targets are typed; actuals compute from opportunities — base (direct) vs joint (co-sell)</span>
+        </div>
+
+        {/* Set a target */}
+        <Card className="mb-4">
+          <form action={upsertTargetAction} className="flex flex-wrap items-end gap-3">
+            <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Year</span>
+              <input name="periodYear" type="number" defaultValue={currentYear} min="2000" max="2100" className="w-24 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+            </label>
+            <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Metric</span>
+              <select name="metric" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                <option value="pipeline">Open pipeline ($)</option>
+                <option value="revenue">Won revenue ($)</option>
+              </select>
+            </label>
+            <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Scope</span>
+              <select name="partnerId" className="w-48 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                <option value="">Overall</option>
+                {partnerRows.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+            <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Target (raw $, e.g. 500000)</span>
+              <input name="targetUsd" type="number" required min="1" placeholder="500000" className="w-36 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+            </label>
+            <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">Set target</button>
+          </form>
+        </Card>
+
+        {targets.length === 0 ? (
+          <Card><p className="text-sm text-neutral-500">No targets or tracked pipeline yet — set a target above; the bars fill from real opportunities.</p></Card>
+        ) : (
+          (() => {
+            const groups = new Map<string, TargetRow[]>();
+            for (const t of targets) {
+              const k = `${t.periodYear}·${t.metric}`;
+              (groups.get(k) ?? groups.set(k, []).get(k)!).push(t);
+            }
+            return (
+              <div className="space-y-4">
+                {[...groups.entries()].map(([k, rows]) => {
+                  const [yr, metric] = k.split("·");
+                  return (
+                    <Card key={k}>
+                      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        {yr} · {metric === "pipeline" ? "open pipeline" : "won revenue"}
+                      </h3>
+                      <div className="space-y-2.5">
+                        {rows.map((t) => {
+                          const target = t.targetUsd;
+                          const pct = target && target > 0 ? Math.min(100, Math.round((t.actualUsd / target) * 100)) : null;
+                          const basePct = t.actualUsd > 0 && pct != null ? (t.baseUsd / t.actualUsd) * pct : 0;
+                          const jointPct = t.actualUsd > 0 && pct != null ? (t.jointUsd / t.actualUsd) * pct : 0;
+                          const over = target != null && t.actualUsd > target;
+                          return (
+                            <div key={`${t.partnerId ?? "_all"}`} className="flex items-center gap-3">
+                              <span className={`w-44 shrink-0 truncate text-xs ${t.partnerId == null ? "font-semibold text-neutral-800 dark:text-neutral-200" : "pl-3 text-neutral-600 dark:text-neutral-300"}`}>
+                                {t.partnerName ?? "Overall"}
+                              </span>
+                              <div className="relative h-4 flex-1 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
+                                {t.partnerId == null ? (
+                                  <div className="flex h-full">
+                                    <div className="bg-neutral-400 dark:bg-neutral-600" style={{ width: `${pct != null ? basePct : t.actualUsd > 0 ? 60 : 0}%` }} title={`base $${Math.round(t.baseUsd / 1000)}k`} />
+                                    <div className="bg-teal-500" style={{ width: `${pct != null ? jointPct : t.actualUsd > 0 ? 40 : 0}%` }} title={`joint $${Math.round(t.jointUsd / 1000)}k`} />
+                                  </div>
+                                ) : (
+                                  <div className="h-full bg-teal-500" style={{ width: `${pct ?? (t.actualUsd > 0 ? 100 : 0)}%` }} />
+                                )}
+                              </div>
+                              <span className="tnum w-56 shrink-0 text-right text-xs">
+                                <span className={over ? "font-semibold text-green-700 dark:text-green-400" : "font-medium"}>${Math.round(t.actualUsd / 1000)}k</span>
+                                {target != null ? (
+                                  <span className="text-neutral-400"> / ${Math.round(target / 1000)}k · {t.attainmentPct}%</span>
+                                ) : (
+                                  <span className="text-neutral-400"> · no target</span>
+                                )}
+                                {t.partnerId == null && t.jointUsd > 0 && (
+                                  <span className="text-teal-600 dark:text-teal-400"> +${Math.round(t.jointUsd / 1000)}k joint</span>
+                                )}
+                              </span>
+                              {t.id && (
+                                <form action={deleteTargetAction.bind(null, t.id)}>
+                                  <button className="text-neutral-300 hover:text-red-600 dark:text-neutral-600" title="Remove target" aria-label="Remove target">×</button>
+                                </form>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            );
+          })()
+        )}
+      </section>
     </main>
   );
 }

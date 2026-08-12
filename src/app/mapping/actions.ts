@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getPool } from "@/db/client";
 import { CATEGORIES, targetFromCell, type Category } from "@/lib/mapping/populations";
 import { createTargetFromCompanies } from "@/lib/mapping/insights";
+import { createMultiVendorCampaign } from "@/lib/campaigns/multi-vendor";
 import { designMotion } from "@/lib/agents/motion-designer";
 
 const MOTION_TARGET_SLUG = "infrastructure-automation";
@@ -79,6 +80,41 @@ export async function createTargetListAction(formData: FormData): Promise<void> 
   }
   revalidatePath("/mapping");
   redirect(`/mapping?view=recommend&notice=${encodeURIComponent(`Created target list "${name}" with ${added} account(s).`)}`);
+}
+
+/**
+ * Create the whole multi-vendor package from a suggested partner combo:
+ * named list → campaign → partners attached with roles. Lands as a draft
+ * campaign; touches and launch stay human-gated.
+ */
+export async function createMultiVendorCampaignAction(formData: FormData): Promise<void> {
+  const name = String(formData.get("name") ?? "").trim() || "Multi-vendor play";
+  const companyIds = String(formData.get("companyIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  // partners field: "id:role,id:role"
+  const partners = String(formData.get("partners") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      const [id, role] = s.split(":");
+      return { id, role: (role || "co_sell") as import("@/lib/campaigns/multi-vendor").PartnerRole };
+    });
+  if (companyIds.length === 0 || partners.length < 2) throw new Error("a multi-vendor play needs accounts and 2+ partners");
+
+  const pool = getPool();
+  const db = await pool.connect();
+  let campaignId: string;
+  try {
+    const orgId = await soleOrgId(db);
+    if (!orgId) throw new Error("no organization");
+    const res = await createMultiVendorCampaign(db, { orgId, name, companyIds, partners });
+    campaignId = res.campaignId;
+  } finally {
+    db.release();
+  }
+  revalidatePath("/mapping");
+  revalidatePath("/campaigns");
+  redirect(`/campaigns/${campaignId}?notice=${encodeURIComponent(`Multi-vendor play "${name}" created — list linked, ${partners.length} partners attached. Draft touches next.`)}`);
 }
 
 /** Generate motions for a selected set of accounts (bounded, AI, graceful). */

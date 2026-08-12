@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getPool } from "@/db/client";
 import { createGoal, setGoalStatus, setGoalManualValue, type Metric } from "@/lib/goals/goals";
+import { upsertTarget, deleteTarget, type TargetMetric } from "@/lib/goals/targets";
 
 async function soleOrgId(): Promise<string | null> {
   const { rows } = await getPool().query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
@@ -33,5 +34,25 @@ export async function setGoalStatusAction(goalId: string, status: string): Promi
 export async function setGoalManualValueAction(goalId: string, formData: FormData): Promise<void> {
   const value = Number(formData.get("value") ?? 0);
   if (Number.isFinite(value)) await setGoalManualValue(getPool(), goalId, value);
+  revalidatePath("/goals");
+}
+
+/** Set (or update) a per-period pipeline/revenue target — overall or per partner. */
+export async function upsertTargetAction(formData: FormData): Promise<void> {
+  const periodYear = Number(formData.get("periodYear") ?? 0);
+  const metric = String(formData.get("metric") ?? "pipeline") as TargetMetric;
+  const partnerId = String(formData.get("partnerId") ?? "").trim() || null;
+  const targetUsd = Number(formData.get("targetUsd") ?? 0);
+  if (!Number.isInteger(periodYear) || periodYear < 2000 || !Number.isFinite(targetUsd) || targetUsd <= 0) {
+    throw new Error("a valid year and a positive target are required");
+  }
+  const orgId = await soleOrgId();
+  if (!orgId) throw new Error("no organization");
+  await upsertTarget(getPool(), { orgId, partnerId, periodYear, metric, targetUsd });
+  revalidatePath("/goals");
+}
+
+export async function deleteTargetAction(targetId: string): Promise<void> {
+  await deleteTarget(getPool(), targetId);
   revalidatePath("/goals");
 }

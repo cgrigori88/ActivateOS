@@ -117,6 +117,14 @@ export default async function CampaignDetailPage({
   if (caRows.length === 0) notFound();
   const ca = caRows[0];
 
+  // Multi-vendor: the partners running this play, each in a role.
+  const { rows: playPartners } = await pool.query<{ name: string; partner_type: string | null; role: string }>(
+    `select p.name, p.partner_type, cp.role
+     from campaign_partners cp join partners p on p.id = cp.partner_id
+     where cp.campaign_id = $1 order by (cp.role = 'lead') desc, p.name`,
+    [id],
+  );
+
   // Reach: the accounts that roll into this campaign, its linked lists, and
   // lists it could attach (top-fit ones surfaced as suggestions).
   const accounts = await campaignAccounts(pool, id);
@@ -180,6 +188,18 @@ export default async function CampaignDetailPage({
         <StatusBadge status={ca.status === "launched" ? "active" : ca.status} />
         {ca.audience && <span>· {ca.audience}</span>}
         {ca.primary_domain && <span>· {ca.primary_domain}</span>}
+        {playPartners.length > 0 && (
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700 dark:bg-violet-900 dark:text-violet-300">
+              {playPartners.length >= 2 ? "multi-vendor play" : "partner play"}
+            </span>
+            {playPartners.map((p) => (
+              <span key={p.name} className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300" title={p.partner_type ?? "partner"}>
+                {p.name} <span className="text-neutral-400">· {p.role.replace(/_/g, "-")}</span>
+              </span>
+            ))}
+          </span>
+        )}
       </div>
 
       {/* Engagement strip — what the account does back, feeding the intelligence layer */}

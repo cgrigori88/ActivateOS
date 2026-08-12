@@ -15,7 +15,8 @@ import {
 import { partnerCoverage } from "@/lib/mapping/populations";
 import { partnerHub } from "@/lib/mapping/partner-hub";
 import { crossPartnerOpportunities, suggestedTargetLists } from "@/lib/mapping/insights";
-import { createTargetListAction, generateMotionsForSelectionAction } from "./actions";
+import { suggestMultiVendorPlays, coverageWinRates } from "@/lib/campaigns/multi-vendor";
+import { createTargetListAction, generateMotionsForSelectionAction, createMultiVendorCampaignAction } from "./actions";
 import { SelectableAccounts } from "./selectable-accounts";
 import { OverlapWorkbench, type OverlapRow } from "./overlap-workbench";
 import { alignedFieldKeys, populationFields } from "@/lib/mapping/populations";
@@ -468,6 +469,10 @@ async function RecommendSection() {
     const buckets = suggestedTargetLists(accounts);
     const top = accounts.slice(0, 200);
     const multi = accounts.filter((a) => a.partnerCount >= 2).length;
+    const plays = (await suggestMultiVendorPlays(db, orgId)).slice(0, 4);
+    const winRates = await coverageWinRates(db, orgId);
+    const mp = winRates.find((w) => w.bucket === "multi_partner");
+    const spn = winRates.find((w) => w.bucket === "single_partner");
 
     return (
       <>
@@ -496,6 +501,55 @@ async function RecommendSection() {
             </Card>
           ))}
         </div>
+
+        {/* Multi-vendor plays — one account, several partners, one joint campaign */}
+        {plays.length > 0 && (
+          <div className="mb-6">
+            <div className="mb-2 flex items-baseline justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Multi-vendor plays · suggested</h2>
+              <span className="text-[11px] text-neutral-400">One click builds the package: named list → campaign → partners in roles. You still approve every touch.</span>
+            </div>
+            {(mp || spn) && mp && mp.closed > 0 && (
+              <p className="mb-3 rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2 text-xs text-violet-800 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
+                Learned so far: multi-partner-covered accounts close-win at <span className="font-semibold">{mp.rate}%</span> ({mp.won}/{mp.closed})
+                {spn && spn.closed > 0 && <> vs <span className="font-semibold">{spn.rate}%</span> ({spn.won}/{spn.closed}) with a single partner</>}
+                . Every close sharpens this signal.
+              </p>
+            )}
+            <div className="grid gap-4 md:grid-cols-2">
+              {plays.map((p) => {
+                const defaultName = `Joint play — ${p.partners.map((x) => x.name.split(" ")[0]).join(" × ")}`;
+                return (
+                  <Card key={p.key}>
+                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                      {p.partners.map((x) => (
+                        <span key={x.id} className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300" title={x.type ?? "partner"}>
+                          {x.name} <span className="text-neutral-400">· {x.role.replace(/_/g, "-")}</span>
+                        </span>
+                      ))}
+                      <span className="tnum ml-auto text-xs text-neutral-500">{p.accounts.length} account{p.accounts.length === 1 ? "" : "s"}{p.avgScore != null ? ` · avg ${p.avgScore}` : ""}</span>
+                    </div>
+                    {p.play && (
+                      <p className="mb-1 text-xs text-neutral-600 dark:text-neutral-300">
+                        <span className="font-medium">{p.play.name}</span>
+                        {p.play.offer && <span className="text-neutral-400"> — CTA: {p.play.offer}</span>}
+                      </p>
+                    )}
+                    <p className="mb-2 text-[11px] text-neutral-400">
+                      {p.accounts.slice(0, 4).map((a) => a.name).join(", ")}{p.accounts.length > 4 ? ` +${p.accounts.length - 4} more` : ""}
+                    </p>
+                    <form action={createMultiVendorCampaignAction} className="flex flex-wrap items-end gap-2">
+                      <input type="hidden" name="companyIds" value={p.accounts.map((a) => a.companyId).join(",")} />
+                      <input type="hidden" name="partners" value={p.partners.map((x) => `${x.id}:${x.role}`).join(",")} />
+                      <input name="name" defaultValue={defaultName} className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+                      <button className="rounded-md bg-violet-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-800">Create joint campaign</button>
+                    </form>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Ranked opportunities — filter, select one or many, then act */}
         <div className="mb-2 flex items-baseline justify-between">
