@@ -14,6 +14,8 @@ import {
 } from "@/lib/mapping/populations";
 import { partnerCoverage } from "@/lib/mapping/populations";
 import { partnerHub } from "@/lib/mapping/partner-hub";
+import { crossPartnerOpportunities, suggestedTargetLists } from "@/lib/mapping/insights";
+import { createTargetListAction, draftMotionAction } from "./actions";
 import { createPopulationAction, setPopulationStatusAction, targetFromCellAction } from "./actions";
 import { ViewSelect } from "./view-select";
 
@@ -26,9 +28,10 @@ export const dynamic = "force-dynamic";
  * shared targets.
  */
 
-type View = "matrix" | "overlap" | "coverage" | "targets";
+type View = "matrix" | "recommend" | "overlap" | "coverage" | "targets";
 const VIEWS: { key: View; label: string }[] = [
   { key: "matrix", label: "Account mapping" },
+  { key: "recommend", label: "AI recommendations" },
   { key: "overlap", label: "Overlap + motion" },
   { key: "coverage", label: "Coverage & conflict" },
   { key: "targets", label: "Ranked targets" },
@@ -65,7 +68,26 @@ export default async function MappingPage({
   searchParams: Promise<{ view?: string; partner?: string; row?: string; col?: string; cols?: string; hide?: string; notice?: string; mr?: string; mc?: string }>;
 }) {
   const sp = await searchParams;
-  const view: View = (["matrix", "overlap", "coverage", "targets"].includes(sp.view ?? "") ? sp.view : "matrix") as View;
+  const view: View = (["matrix", "recommend", "overlap", "coverage", "targets"].includes(sp.view ?? "") ? sp.view : "matrix") as View;
+
+  // ── AI cross-partner recommendations (Phase 10 / #49) ────────────────────
+  if (view === "recommend") {
+    return (
+      <main>
+        <PageHeader
+          title="AI recommendations"
+          subtitle="The system reviews every account across all connected partners and ranks the strongest co-sell — then turns it into target lists and motions."
+        />
+        <ViewTabs view={view} />
+        {sp.notice && (
+          <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+            {sp.notice}
+          </div>
+        )}
+        <RecommendSection />
+      </main>
+    );
+  }
 
   // ── Account-mapping matrix (Phase 10) ────────────────────────────────────
   if (view === "matrix") {
@@ -358,6 +380,122 @@ function HubList({
       )}
     </div>
   );
+}
+
+async function RecommendSection() {
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    const orgId = await soleOrgId(db);
+    if (!orgId) return <Card><p className="text-sm text-neutral-500">No organization yet.</p></Card>;
+
+    const accounts = await crossPartnerOpportunities(db, orgId);
+    if (accounts.length === 0) {
+      return (
+        <Card>
+          <p className="text-sm text-neutral-500">
+            No cross-partner accounts to learn from yet — approve populations on your side and at least one partner in{" "}
+            <Link href="/mapping?view=matrix" className="text-blue-700 hover:underline dark:text-blue-400">Account mapping</Link>.
+          </p>
+        </Card>
+      );
+    }
+    const buckets = suggestedTargetLists(accounts);
+    const top = accounts.slice(0, 20);
+    const multi = accounts.filter((a) => a.partnerCount >= 2).length;
+
+    return (
+      <>
+        <div className="mb-4 flex flex-wrap gap-6 text-sm text-neutral-500">
+          <span><span className="tnum text-lg font-semibold text-neutral-800 dark:text-neutral-200">{accounts.length}</span> co-sell accounts</span>
+          <span><span className="tnum text-lg font-semibold text-neutral-800 dark:text-neutral-200">{multi}</span> covered by 2+ partners</span>
+          <span><span className="tnum text-lg font-semibold text-neutral-800 dark:text-neutral-200">{accounts.filter((a) => a.band === "high" || a.band === "very_high").length}</span> high-propensity</span>
+        </div>
+
+        {/* Suggested target lists — one click creates an approved target population */}
+        <div className="mb-6 grid gap-4 md:grid-cols-3">
+          {buckets.map((b) => (
+            <Card key={b.key}>
+              <div className="mb-1 flex items-baseline justify-between">
+                <h3 className="text-sm font-semibold">{b.name}</h3>
+                <span className="tnum text-xs text-neutral-500">{b.companyIds.length}</span>
+              </div>
+              <p className="mb-3 text-xs text-neutral-500">{b.rationale}</p>
+              <form action={createTargetListAction}>
+                <input type="hidden" name="name" value={b.name} />
+                <input type="hidden" name="companyIds" value={b.companyIds.join(",")} />
+                <button className="rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800">
+                  Create target list
+                </button>
+              </form>
+            </Card>
+          ))}
+        </div>
+
+        {/* Ranked cross-partner opportunities */}
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Ranked co-sell opportunities</h2>
+        <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th className="text-right">Rank</th>
+                <th>Account</th>
+                <th className="text-right">Propensity</th>
+                <th>Partners</th>
+                <th>Motion</th>
+                <th>Segments</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {top.map((a) => (
+                <tr key={a.companyId}>
+                  <td className="tnum text-right font-semibold text-neutral-500">{a.rank.toFixed(0)}</td>
+                  <td>
+                    <Link href={`/accounts/${a.companyId}`} className="font-medium hover:underline">{a.name}</Link>
+                    {a.industry && <div className="text-[11px] text-neutral-400">{a.industry}</div>}
+                  </td>
+                  <td className="text-right">
+                    {a.score == null ? <span className="text-neutral-400">—</span> : (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="tnum font-semibold">{a.score.toFixed(0)}</span>
+                        {a.band && <BandBadge band={a.band} />}
+                      </span>
+                    )}
+                  </td>
+                  <td>
+                    <span className="text-xs text-neutral-600 dark:text-neutral-300">{a.partners.join(", ")}</span>
+                    {a.partnerCount >= 2 && <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300">×{a.partnerCount}</span>}
+                  </td>
+                  <td>
+                    <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${motion(a.isCustomer).tone}`}>{a.motion}</span>
+                  </td>
+                  <td className="text-xs text-neutral-500">{a.segments.join(", ") || "—"}</td>
+                  <td className="text-right">
+                    {a.hasMotion ? (
+                      <span className="text-[11px] text-neutral-400">has motion</span>
+                    ) : (
+                      <form action={draftMotionAction.bind(null, a.companyId)}>
+                        <button className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-blue-950">
+                          Draft motion
+                        </button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="border-t border-neutral-100 px-3 py-2 text-[11px] text-neutral-500 dark:border-neutral-800">
+            Rank = propensity + a boost for each additional partner covering the account (multi-partner co-sell is
+            stronger). &ldquo;Draft motion&rdquo; generates a grounded, human-approved motion for that account.
+          </p>
+        </div>
+      </>
+    );
+  } finally {
+    db.release();
+  }
 }
 
 /** Subtle propensity heatmap — blue with alpha, legible on light and dark. */
