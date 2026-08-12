@@ -189,6 +189,9 @@ export function Shell({ children }: { children: ReactNode }) {
   const [drawer, setDrawer] = useState(false);
   const [dark, setDark] = useState(false);
 
+  // Auth surfaces stand alone: no rail, no chrome — you aren't "inside" yet.
+  const bare = pathname.startsWith("/login");
+
   /* Light is the default: the app opens light regardless of the OS setting, and
      only a stored choice turns it dark. */
   useEffect(() => {
@@ -343,6 +346,8 @@ export function Shell({ children }: { children: ReactNode }) {
       </div>
     </>
   );
+
+  if (bare) return <div className="min-h-screen px-4">{children}</div>;
 
   return (
     <div className="min-h-screen">
