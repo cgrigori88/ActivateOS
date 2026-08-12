@@ -28,6 +28,8 @@ interface CampaignRow {
   sent: string;
   engagement: string | null;
   source: string;
+  partner_name: string | null;
+  solution: string | null;
   created_at: Date;
 }
 
@@ -40,7 +42,7 @@ interface MotionOption {
 export default async function CampaignsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ notice?: string; status?: string; source?: string }>;
+  searchParams: Promise<{ notice?: string; status?: string; source?: string; partner?: string; solution?: string }>;
 }) {
   const sp = await searchParams;
   const notice = sp.notice;
@@ -48,7 +50,7 @@ export default async function CampaignsPage({
 
   const { rows: campaigns } = await pool.query<CampaignRow>(
     `select ca.id, ca.name, ca.status, ca.objective, ca.created_at, ca.source,
-            c.id as company_id, c.legal_name,
+            c.id as company_id, c.legal_name, pa.name as partner_name, n.slug as solution,
             (select count(*) from campaign_touches t where t.campaign_id = ca.id) as touches,
             (select count(*) from campaign_touches t where t.campaign_id = ca.id and t.status = 'approved') as approved,
             (select count(*) from campaign_touches t where t.campaign_id = ca.id and t.status = 'sent') as sent,
@@ -58,6 +60,8 @@ export default async function CampaignsPage({
      from campaigns ca
      left join revenue_motions m on m.id = ca.motion_id
      join companies c on c.id = coalesce(ca.company_id, m.company_id)
+     left join partners pa on pa.id = m.partner_id
+     left join taxonomy_nodes n on n.id = m.taxonomy_node_id
      where ca.dismissed_at is null
      order by ca.created_at desc`,
   );
@@ -74,7 +78,11 @@ export default async function CampaignsPage({
   // Filters
   if (sp.status && sp.status !== "all") rest = rest.filter((c) => c.status === sp.status);
   if (sp.source && sp.source !== "all") rest = rest.filter((c) => c.source === sp.source);
+  if (sp.partner && sp.partner !== "all") rest = rest.filter((c) => (c.partner_name ?? "Direct") === sp.partner);
+  if (sp.solution && sp.solution !== "all") rest = rest.filter((c) => c.solution === sp.solution);
   const statusOptions = [...new Set(campaigns.map((c) => c.status))];
+  const partnerOptions = [...new Set(campaigns.map((c) => c.partner_name).filter(Boolean) as string[])];
+  const solutionOptions = [...new Set(campaigns.map((c) => c.solution).filter(Boolean) as string[])];
 
   const { rows: motions } = await pool.query<MotionOption>(
     `select m.id, c.legal_name, m.primary_persona
@@ -209,6 +217,10 @@ export default async function CampaignsPage({
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Campaigns</h2>
         <QuerySelect param="status" value={sp.status ?? "all"} label="Status" options={[{ value: "all", label: "Any status" }, ...statusOptions.map((s) => ({ value: s, label: s }))]} />
+        <QuerySelect param="partner" value={sp.partner ?? "all"} label="Partner" options={[{ value: "all", label: "Any partner" }, { value: "Direct", label: "Direct" }, ...partnerOptions.map((p) => ({ value: p, label: p }))]} />
+        {solutionOptions.length > 0 && (
+          <QuerySelect param="solution" value={sp.solution ?? "all"} label="Solution" options={[{ value: "all", label: "Any solution" }, ...solutionOptions.map((s) => ({ value: s, label: s }))]} />
+        )}
         <QuerySelect param="source" value={sp.source ?? "all"} label="Source" options={[{ value: "all", label: "Any source" }, { value: "user", label: "Human-made" }, { value: "ai_suggested", label: "AI-suggested" }]} />
         <span className="ml-auto text-xs text-neutral-500">{rest.length} campaign(s)</span>
       </div>

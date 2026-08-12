@@ -43,9 +43,10 @@ interface Item {
 export default async function ReviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ reason?: string; source?: string }>;
+  searchParams: Promise<{ reason?: string; source?: string; partner?: string; group?: string }>;
 }) {
   const sp = await searchParams;
+  const byPartner = sp.group === "partner";
   const pool = getPool();
 
   const { rows: all } = await pool.query<Item>(
@@ -64,22 +65,52 @@ export default async function ReviewPage({
      from signal_sources order by trust_score desc`,
   );
 
+  // Which partners map each affected account (an account can be on several).
+  const companyIds = [...new Set(all.map((i) => i.company_id).filter(Boolean) as string[])];
+  const companyPartners = new Map<string, string[]>();
+  if (companyIds.length) {
+    const { rows: pm } = await pool.query<{ company_id: string; partner_name: string }>(
+      `select distinct pm.company_id, p.name as partner_name
+       from population_members pm
+       join account_populations ap on ap.id = pm.population_id and ap.partner_id is not null and ap.status = 'approved'
+       join partners p on p.id = ap.partner_id
+       where pm.company_id = any($1)`,
+      [companyIds],
+    );
+    for (const r of pm) companyPartners.set(r.company_id, [...(companyPartners.get(r.company_id) ?? []), r.partner_name]);
+  }
+  const partnerOptions = [...new Set([...companyPartners.values()].flat())].sort();
+
   const sourceOptions = [...new Set(all.map((i) => i.source_type))];
+  const partnersOf = (id: string | null) => (id ? companyPartners.get(id) ?? [] : []);
   const items = all.filter(
-    (i) => (!sp.reason || sp.reason === "all" || i.reason === sp.reason) && (!sp.source || sp.source === "all" || i.source_type === sp.source),
+    (i) =>
+      (!sp.reason || sp.reason === "all" || i.reason === sp.reason) &&
+      (!sp.source || sp.source === "all" || i.source_type === sp.source) &&
+      (!sp.partner || sp.partner === "all" || partnersOf(i.company_id).includes(sp.partner)),
   );
 
   // Bentos (from the full pending set, not the filtered view)
   const byReason = (r: string) => all.filter((i) => i.reason === r).length;
   const accounts = new Set(all.map((i) => i.company_id ?? "—")).size;
 
-  // Group filtered items by account
+  // Group filtered items — by account (default), or by partner (a multi-partner
+  // account appears under each of its partners: a lens, not ownership).
   const groups = new Map<string, { name: string; companyId: string | null; items: Item[] }>();
   for (const i of items) {
-    const key = i.company_id ?? "_none";
-    const g = groups.get(key) ?? { name: i.legal_name ?? "Unattributed", companyId: i.company_id, items: [] };
-    g.items.push(i);
-    groups.set(key, g);
+    if (byPartner) {
+      const keys = partnersOf(i.company_id).length ? partnersOf(i.company_id) : ["Unassigned"];
+      for (const pn of keys) {
+        const g = groups.get(`p:${pn}`) ?? { name: pn, companyId: null, items: [] };
+        g.items.push(i);
+        groups.set(`p:${pn}`, g);
+      }
+    } else {
+      const key = i.company_id ?? "_none";
+      const g = groups.get(key) ?? { name: i.legal_name ?? "Unattributed", companyId: i.company_id, items: [] };
+      g.items.push(i);
+      groups.set(key, g);
+    }
   }
   const grouped = [...groups.values()].sort((a, b) => b.items.length - a.items.length);
 
@@ -101,7 +132,11 @@ export default async function ReviewPage({
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
+        <QuerySelect param="group" value={byPartner ? "partner" : "account"} label="Group by" options={[{ value: "account", label: "Account" }, { value: "partner", label: "Partner" }]} />
         <QuerySelect param="reason" value={sp.reason ?? "all"} label="Reason" options={[{ value: "all", label: "Any reason" }, ...Object.entries(REASON_LABELS).map(([v, l]) => ({ value: v, label: l }))]} />
+        {partnerOptions.length > 0 && (
+          <QuerySelect param="partner" value={sp.partner ?? "all"} label="Partner" options={[{ value: "all", label: "Any partner" }, ...partnerOptions.map((p) => ({ value: p, label: p }))]} />
+        )}
         <QuerySelect param="source" value={sp.source ?? "all"} label="Source" options={[{ value: "all", label: "Any source" }, ...sourceOptions.map((s) => ({ value: s, label: s }))]} />
         {sources.length > 0 && (
           <details className="relative ml-auto">
@@ -132,6 +167,7 @@ export default async function ReviewPage({
             <Card key={g.companyId ?? g.name} className="p-0">
               <details open={grouped.length <= 3}>
                 <summary className="flex cursor-pointer items-center gap-2 px-4 py-3">
+                  {byPartner && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">partner</span>}
                   <span className="font-semibold">{g.name}</span>
                   {g.companyId && <Link href={`/accounts/${g.companyId}`} className="text-xs text-blue-700 hover:underline dark:text-blue-400">account →</Link>}
                   <span className="tnum text-xs text-neutral-400">{g.items.length} to review</span>
@@ -145,6 +181,7 @@ export default async function ReviewPage({
                   {g.items.map((item) => (
                     <div key={item.id} className="px-4 py-3">
                       <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+                        {byPartner && item.company_id && <Link href={`/accounts/${item.company_id}`} className="font-medium text-neutral-600 hover:underline dark:text-neutral-300">{item.legal_name}</Link>}
                         <span className={`rounded px-1.5 py-0.5 font-medium ${REASON_TONE[item.reason]}`}>{REASON_LABELS[item.reason] ?? item.reason}</span>
                         <span>{item.source_type}</span>
                         {item.computed_confidence != null && <span>· conf {Math.round(Number(item.computed_confidence) * 100)}%</span>}
