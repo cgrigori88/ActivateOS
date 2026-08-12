@@ -2,12 +2,14 @@ import Link from "next/link";
 import { getPool } from "@/db/client";
 import { Bento, Card, MiniBar, PageHeader, StatusBadge } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
+import { goalOptions } from "@/lib/goals/goals";
 import {
   abandonMotionAction,
   activateMotionAction,
   approveMotionAction,
   completeMotionAction,
   rejectMotionAction,
+  setMotionGoalAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +32,8 @@ interface MotionRow {
   effort: number | null;
   propensity: string | null;
   partner_name: string | null;
+  goal_id: string | null;
+  goal_name: string | null;
 }
 
 const GROUPS: Record<string, { label: string; key: (m: MotionRow) => string }> = {
@@ -37,13 +41,14 @@ const GROUPS: Record<string, { label: string; key: (m: MotionRow) => string }> =
   solution: { label: "Solution / play", key: (m) => m.slug },
   vertical: { label: "Vertical", key: (m) => m.industry ?? "—" },
   partner: { label: "Partner", key: (m) => m.partner_name ?? "Direct" },
+  goal: { label: "Goal", key: (m) => m.goal_name ?? "No goal" },
   company: { label: "Company", key: (m) => m.legal_name },
 };
 
 export default async function MotionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; partner?: string; group?: string }>;
+  searchParams: Promise<{ status?: string; partner?: string; goal?: string; group?: string }>;
 }) {
   const sp = await searchParams;
   const groupKey = GROUPS[sp.group ?? "status"] ? (sp.group ?? "status") : "status";
@@ -53,18 +58,25 @@ export default async function MotionsPage({
   const { rows: all } = await pool.query<MotionRow>(
     `select m.id, m.status, m.thesis, m.trigger_summary, m.cta, m.confidence,
             m.company_id, c.legal_name, n.slug, c.industry, m.outcome,
-            m.estimated_value_usd, m.effort, p.score as propensity, pa.name as partner_name
+            m.estimated_value_usd, m.effort, p.score as propensity, pa.name as partner_name,
+            m.goal_id, g.name as goal_name
      from revenue_motions m
      join companies c on c.id = m.company_id
      join taxonomy_nodes n on n.id = m.taxonomy_node_id
      left join propensity_scores p on p.id = m.propensity_score_id
      left join partners pa on pa.id = m.partner_id
+     left join goals g on g.id = m.goal_id
      order by m.created_at desc limit 500`,
   );
+  const { rows: orgRows } = await pool.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
+  const goals = orgRows[0] ? await goalOptions(pool, orgRows[0].id) : [];
 
   const partnerOptions = [...new Set(all.map((m) => m.partner_name).filter(Boolean) as string[])];
   const motions = all.filter(
-    (m) => (!sp.status || sp.status === "all" || m.status === sp.status) && (!sp.partner || sp.partner === "all" || m.partner_name === sp.partner),
+    (m) =>
+      (!sp.status || sp.status === "all" || m.status === sp.status) &&
+      (!sp.partner || sp.partner === "all" || m.partner_name === sp.partner) &&
+      (!sp.goal || sp.goal === "all" || (sp.goal === "__none" ? !m.goal_id : m.goal_id === sp.goal)),
   );
 
   // Bentos
@@ -103,6 +115,9 @@ export default async function MotionsPage({
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <QuerySelect param="status" value={sp.status ?? "all"} label="Status" options={[{ value: "all", label: "Any status" }, ...STATUS_ORDER.map((s) => ({ value: s, label: s }))]} />
         <QuerySelect param="partner" value={sp.partner ?? "all"} label="Partner" options={[{ value: "all", label: "Any partner" }, { value: "Direct", label: "Direct" }, ...partnerOptions.map((p) => ({ value: p, label: p }))]} />
+        {goals.length > 0 && (
+          <QuerySelect param="goal" value={sp.goal ?? "all"} label="Goal" options={[{ value: "all", label: "Any goal" }, { value: "__none", label: "No goal" }, ...goals.map((g) => ({ value: g.id, label: g.name }))]} />
+        )}
         <QuerySelect param="group" value={groupKey} label="Group by" options={Object.entries(GROUPS).map(([k, g]) => ({ value: k, label: g.label }))} />
         <span className="ml-auto text-xs text-neutral-500">{motions.length} motion(s)</span>
       </div>
@@ -146,6 +161,17 @@ export default async function MotionsPage({
                         )}
                         {m.partner_name && <>{m.estimated_value_usd != null && " · "}via {m.partner_name}</>}
                       </p>
+                    )}
+                    {goals.length > 0 && (
+                      <form action={setMotionGoalAction.bind(null, m.id)} className="mb-1 flex items-center gap-1.5 text-xs">
+                        <span className="text-neutral-400">Goal:</span>
+                        <select name="goalId" defaultValue={m.goal_id ?? ""} className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-xs dark:border-neutral-700">
+                          <option value="">— none —</option>
+                          {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                        <button className="font-medium text-blue-700 hover:underline dark:text-blue-400">set</button>
+                        {m.goal_name && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">{m.goal_name}</span>}
+                      </form>
                     )}
                     <details className="mb-1">
                       <summary className="cursor-pointer text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">Thesis &amp; trigger</summary>

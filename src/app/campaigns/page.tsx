@@ -2,11 +2,13 @@ import Link from "next/link";
 import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
+import { goalOptions } from "@/lib/goals/goals";
 import {
   generateSequenceAction,
   createBlankCampaignAction,
   suggestCampaignsAction,
   dismissCampaignAction,
+  setCampaignGoalAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +34,8 @@ interface CampaignRow {
   solution: string | null;
   lists: string;
   reach: string;
+  goal_id: string | null;
+  goal_name: string | null;
   created_at: Date;
 }
 
@@ -44,7 +48,7 @@ interface MotionOption {
 export default async function CampaignsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ notice?: string; status?: string; source?: string; partner?: string; solution?: string }>;
+  searchParams: Promise<{ notice?: string; status?: string; source?: string; partner?: string; solution?: string; goal?: string }>;
 }) {
   const sp = await searchParams;
   const notice = sp.notice;
@@ -53,6 +57,7 @@ export default async function CampaignsPage({
   const { rows: campaigns } = await pool.query<CampaignRow>(
     `select ca.id, ca.name, ca.status, ca.objective, ca.created_at, ca.source,
             c.id as company_id, c.legal_name, pa.name as partner_name, n.slug as solution,
+            ca.goal_id, g.name as goal_name,
             (select count(*) from campaign_touches t where t.campaign_id = ca.id) as touches,
             (select count(*) from campaign_touches t where t.campaign_id = ca.id and t.status = 'approved') as approved,
             (select count(*) from campaign_touches t where t.campaign_id = ca.id and t.status = 'sent') as sent,
@@ -72,9 +77,12 @@ export default async function CampaignsPage({
      join companies c on c.id = coalesce(ca.company_id, m.company_id)
      left join partners pa on pa.id = m.partner_id
      left join taxonomy_nodes n on n.id = m.taxonomy_node_id
+     left join goals g on g.id = ca.goal_id
      where ca.dismissed_at is null
      order by ca.created_at desc`,
   );
+  const { rows: orgRows } = await pool.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
+  const goals = orgRows[0] ? await goalOptions(pool, orgRows[0].id) : [];
 
   const suggestions = campaigns.filter((c) => c.source === "ai_suggested" && c.status === "draft");
   let rest = campaigns.filter((c) => !(c.source === "ai_suggested" && c.status === "draft"));
@@ -92,6 +100,7 @@ export default async function CampaignsPage({
   if (sp.source && sp.source !== "all") rest = rest.filter((c) => c.source === sp.source);
   if (sp.partner && sp.partner !== "all") rest = rest.filter((c) => (c.partner_name ?? "Direct") === sp.partner);
   if (sp.solution && sp.solution !== "all") rest = rest.filter((c) => c.solution === sp.solution);
+  if (sp.goal && sp.goal !== "all") rest = rest.filter((c) => (sp.goal === "__none" ? !c.goal_id : c.goal_id === sp.goal));
   const statusOptions = [...new Set(campaigns.map((c) => c.status))];
   const partnerOptions = [...new Set(campaigns.map((c) => c.partner_name).filter(Boolean) as string[])];
   const solutionOptions = [...new Set(campaigns.map((c) => c.solution).filter(Boolean) as string[])];
@@ -234,6 +243,9 @@ export default async function CampaignsPage({
         {solutionOptions.length > 0 && (
           <QuerySelect param="solution" value={sp.solution ?? "all"} label="Solution" options={[{ value: "all", label: "Any solution" }, ...solutionOptions.map((s) => ({ value: s, label: s }))]} />
         )}
+        {goals.length > 0 && (
+          <QuerySelect param="goal" value={sp.goal ?? "all"} label="Goal" options={[{ value: "all", label: "Any goal" }, { value: "__none", label: "No goal" }, ...goals.map((g) => ({ value: g.id, label: g.name }))]} />
+        )}
         <QuerySelect param="source" value={sp.source ?? "all"} label="Source" options={[{ value: "all", label: "Any source" }, { value: "user", label: "Human-made" }, { value: "ai_suggested", label: "AI-suggested" }]} />
         <span className="ml-auto text-xs text-neutral-500">{rest.length} campaign(s)</span>
       </div>
@@ -247,6 +259,7 @@ export default async function CampaignsPage({
                 <th>Campaign</th>
                 <th>Account</th>
                 <th>Reach</th>
+                {goals.length > 0 && <th>Goal</th>}
                 <th>Status</th>
                 <th className="text-right">Touches</th>
                 <th className="text-right">Approved</th>
@@ -278,6 +291,17 @@ export default async function CampaignsPage({
                       <Link href={`/campaigns/${ca.id}`} className="text-xs text-neutral-400 hover:underline">seed only · + list</Link>
                     )}
                   </td>
+                  {goals.length > 0 && (
+                    <td>
+                      <form action={setCampaignGoalAction.bind(null, ca.id)} className="flex items-center gap-1">
+                        <select name="goalId" defaultValue={ca.goal_id ?? ""} className="max-w-[9rem] rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-[11px] dark:border-neutral-700">
+                          <option value="">—</option>
+                          {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                        <button className="text-[11px] font-medium text-blue-700 hover:underline dark:text-blue-400">set</button>
+                      </form>
+                    </td>
+                  )}
                   <td><StatusBadge status={ca.status === "launched" ? "active" : ca.status} /></td>
                   <td className="tnum text-right">{ca.touches}</td>
                   <td className="tnum text-right text-neutral-500">{ca.approved}</td>

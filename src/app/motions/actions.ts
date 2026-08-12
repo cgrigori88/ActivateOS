@@ -5,6 +5,14 @@ import { getPool } from "@/db/client";
 import { approveMotion, rejectMotion } from "@/lib/motions/approve";
 import { transitionMotion, type MotionOutcome } from "@/lib/motions/lifecycle";
 
+/** Link (or unlink) a motion to a S.M.A.R.T. goal so its value rolls up. */
+export async function setMotionGoalAction(motionId: string, formData: FormData): Promise<void> {
+  const goalId = String(formData.get("goalId") ?? "").trim() || null;
+  await getPool().query(`update revenue_motions set goal_id = $2 where id = $1`, [motionId, goalId]);
+  revalidatePath("/motions");
+  revalidatePath("/goals");
+}
+
 export async function approveMotionAction(motionId: string): Promise<void> {
   const pool = getPool();
   const db = await pool.connect();

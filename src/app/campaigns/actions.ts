@@ -69,6 +69,14 @@ export async function suggestCampaignsAction(): Promise<void> {
   redirect(`/campaigns?notice=${encodeURIComponent(notice)}`);
 }
 
+/** Link (or unlink) a campaign to a S.M.A.R.T. goal so its touches roll up. */
+export async function setCampaignGoalAction(campaignId: string, formData: FormData): Promise<void> {
+  const goalId = String(formData.get("goalId") ?? "").trim() || null;
+  await getPool().query(`update campaigns set goal_id = $2 where id = $1`, [campaignId, goalId]);
+  revalidatePath("/campaigns");
+  revalidatePath("/goals");
+}
+
 /** Dismiss an AI-suggested campaign the seller doesn't want. */
 export async function dismissCampaignAction(campaignId: string): Promise<void> {
   const pool = getPool();
