@@ -338,6 +338,57 @@ export async function intersection(
   return { row, col, accounts: coerced };
 }
 
+export interface PopulationField {
+  key: string;
+  present: number; // members carrying this field
+  total: number;
+  sample: string | null;
+  aligned: boolean; // matches a field already in use on our side / approved lists
+}
+
+/** Base account fields that always align (they exist on every company). */
+export const BASE_ALIGNED = new Set(["company", "domain", "industry", "employees"]);
+
+/** Fields (attribute keys) already in use across the org's + approved lists. */
+export async function alignedFieldKeys(db: pg.PoolClient, orgId: string): Promise<Set<string>> {
+  const { rows } = await db.query<{ key: string }>(
+    `select distinct jsonb_object_keys(m.attributes) as key
+     from population_members m
+     join account_populations ap on ap.id = m.population_id
+     where ap.org_id = $1 and ap.status = 'approved'`,
+    [orgId],
+  );
+  return new Set(rows.map((r) => r.key));
+}
+
+/** Inspect one population's fields for the review dialog — presence + a sample. */
+export async function populationFields(
+  db: pg.PoolClient,
+  args: { populationId: string; aligned: Set<string> },
+): Promise<{ fields: PopulationField[]; total: number; sample: { name: string; attributes: Record<string, unknown> }[] }> {
+  const { rows } = await db.query<{ attributes: Record<string, unknown>; legal_name: string }>(
+    `select m.attributes, c.legal_name
+     from population_members m join companies c on c.id = m.company_id
+     where m.population_id = $1 order by c.legal_name`,
+    [args.populationId],
+  );
+  const total = rows.length;
+  const stats = new Map<string, { present: number; sample: string | null }>();
+  for (const r of rows) {
+    for (const [k, v] of Object.entries(r.attributes ?? {})) {
+      const s = stats.get(k) ?? { present: 0, sample: null };
+      s.present += 1;
+      if (s.sample == null && v != null && v !== "") s.sample = typeof v === "object" ? JSON.stringify(v) : String(v);
+      stats.set(k, s);
+    }
+  }
+  const fields: PopulationField[] = [...stats.entries()]
+    .map(([key, s]) => ({ key, present: s.present, total, sample: s.sample, aligned: args.aligned.has(key) || BASE_ALIGNED.has(key) }))
+    .sort((a, b) => Number(b.aligned) - Number(a.aligned) || a.key.localeCompare(b.key));
+  const sample = rows.slice(0, 5).map((r) => ({ name: r.legal_name, attributes: r.attributes ?? {} }));
+  return { fields, total, sample };
+}
+
 /** Union of attribute keys across both populations' members — the column menu. */
 export async function availableFields(
   db: pg.PoolClient,

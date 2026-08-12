@@ -16,8 +16,9 @@ import { partnerCoverage } from "@/lib/mapping/populations";
 import { partnerHub } from "@/lib/mapping/partner-hub";
 import { crossPartnerOpportunities, suggestedTargetLists } from "@/lib/mapping/insights";
 import { createTargetListAction, draftMotionAction } from "./actions";
-import { createPopulationAction, setPopulationStatusAction, targetFromCellAction } from "./actions";
-import { ViewSelect } from "./view-select";
+import { alignedFieldKeys, populationFields } from "@/lib/mapping/populations";
+import { createPopulationAction, setPopulationStatusAction, targetFromCellAction, acceptPopulationAction } from "./actions";
+import { ViewSelect, PartnerSelect } from "./view-select";
 
 export const dynamic = "force-dynamic";
 
@@ -28,19 +29,25 @@ export const dynamic = "force-dynamic";
  * shared targets.
  */
 
-type View = "matrix" | "recommend" | "overlap" | "coverage" | "targets";
-const VIEWS: { key: View; label: string }[] = [
-  { key: "matrix", label: "Account mapping" },
-  { key: "recommend", label: "AI recommendations" },
-  { key: "overlap", label: "Overlap + motion" },
-  { key: "coverage", label: "Coverage & conflict" },
-  { key: "targets", label: "Ranked targets" },
-];
+type View = "matrix" | "recommend" | "review" | "overlap" | "coverage" | "targets";
+const VIEW_KEYS: View[] = ["matrix", "recommend", "review", "overlap", "coverage", "targets"];
+const VIEW_LABEL: Record<View, string> = {
+  matrix: "Account mapping",
+  recommend: "AI recommendations",
+  review: "Pending review",
+  overlap: "Overlap + motion",
+  coverage: "Coverage & conflict",
+  targets: "Ranked targets",
+};
 
-function ViewTabs({ view }: { view: View }) {
+function ViewTabs({ view, pendingCount = 0 }: { view: View; pendingCount?: number }) {
+  const views = VIEW_KEYS.map((k) => ({
+    key: k,
+    label: k === "review" && pendingCount > 0 ? `${VIEW_LABEL[k]} (${pendingCount})` : VIEW_LABEL[k],
+  }));
   return (
     <div className="mb-4">
-      <ViewSelect current={view} views={VIEWS} />
+      <ViewSelect current={view} views={views} />
     </div>
   );
 }
@@ -65,10 +72,33 @@ function motion(anyInstalled: boolean): { label: string; tone: string } {
 export default async function MappingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; partner?: string; row?: string; col?: string; cols?: string; hide?: string; notice?: string; mr?: string; mc?: string }>;
+  searchParams: Promise<{ view?: string; partner?: string; row?: string; col?: string; cols?: string; hide?: string; notice?: string; mr?: string; mc?: string; pop?: string }>;
 }) {
   const sp = await searchParams;
-  const view: View = (["matrix", "recommend", "overlap", "coverage", "targets"].includes(sp.view ?? "") ? sp.view : "matrix") as View;
+  const view: View = (["matrix", "recommend", "review", "overlap", "coverage", "targets"].includes(sp.view ?? "") ? sp.view : "matrix") as View;
+
+  const pendingCount = Number(
+    (await getPool().query<{ n: string }>(`select count(*)::text n from account_populations where status = 'pending'`)).rows[0]?.n ?? 0,
+  );
+
+  // ── Pending review — vet a pushed partner list before it maps ────────────
+  if (view === "review") {
+    return (
+      <main>
+        <PageHeader
+          title="Pending review"
+          subtitle="Lists pushed by a partner land here. Open one, inspect its fields against yours, choose what maps, then accept — all inside the app."
+        />
+        <ViewTabs view={view} pendingCount={pendingCount} />
+        {sp.notice && (
+          <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+            {sp.notice}
+          </div>
+        )}
+        <ReviewSection openId={sp.pop} />
+      </main>
+    );
+  }
 
   // ── AI cross-partner recommendations (Phase 10 / #49) ────────────────────
   if (view === "recommend") {
@@ -78,7 +108,7 @@ export default async function MappingPage({
           title="AI recommendations"
           subtitle="The system reviews every account across all connected partners and ranks the strongest co-sell — then turns it into target lists and motions."
         />
-        <ViewTabs view={view} />
+        <ViewTabs view={view} pendingCount={pendingCount} />
         {sp.notice && (
           <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
             {sp.notice}
@@ -97,7 +127,7 @@ export default async function MappingPage({
           title="Account mapping"
           subtitle="Cross your populations with a partner's — every cell is the accounts you share, rolled up with propensity. Click a cell to drill in."
         />
-        <ViewTabs view={view} />
+        <ViewTabs view={view} pendingCount={pendingCount} />
         {sp.notice && (
           <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
             {sp.notice}
@@ -151,8 +181,8 @@ export default async function MappingPage({
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <ViewSelect current={view} views={VIEWS} />
-        <span className="ml-auto text-xs text-neutral-500">{overlaps.length} overlapping account(s)</span>
+        <ViewTabs view={view} pendingCount={pendingCount} />
+        <span className="ml-auto text-xs text-neutral-500">{overlaps.length} co-sell overlap(s)</span>
       </div>
 
       {overlaps.length === 0 ? (
@@ -382,6 +412,148 @@ function HubList({
   );
 }
 
+async function ReviewSection({ openId }: { openId?: string }) {
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    const orgId = await soleOrgId(db);
+    if (!orgId) return <Card><p className="text-sm text-neutral-500">No organization yet.</p></Card>;
+
+    const { rows: pending } = await db.query<{ id: string; name: string; category: Category; partner_name: string | null; members: number; created_at: Date }>(
+      `select ap.id, ap.name, ap.category, p.name as partner_name,
+              (select count(*) from population_members m where m.population_id = ap.id)::int as members, ap.created_at
+       from account_populations ap left join partners p on p.id = ap.partner_id
+       where ap.org_id = $1 and ap.status = 'pending'
+       order by ap.created_at desc`,
+      [orgId],
+    );
+
+    if (pending.length === 0) {
+      return (
+        <Card>
+          <p className="text-sm text-neutral-500">
+            No lists awaiting review. When a partner pushes an account list, it lands here for you to inspect and accept
+            before it maps. (Propose one yourself in the <Link href="/mapping?view=matrix" className="text-blue-700 hover:underline dark:text-blue-400">Account mapping</Link> populations manager.)
+          </p>
+        </Card>
+      );
+    }
+
+    const open = openId ? pending.find((p) => p.id === openId) : undefined;
+    // Fetch dialog data here (while the connection is live) — never inside an
+    // async child, which React would render after this function releases db.
+    const dialog = open
+      ? { pop: open, ...(await populationFields(db, { populationId: open.id, aligned: await alignedFieldKeys(db, orgId) })) }
+      : null;
+
+    return (
+      <div className="space-y-4">
+        {/* Queue */}
+        <div className="rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
+          <table className="data-table">
+            <thead>
+              <tr><th>List</th><th>From</th><th>Category</th><th className="text-right">Accounts</th><th></th></tr>
+            </thead>
+            <tbody>
+              {pending.map((p) => (
+                <tr key={p.id} className={open?.id === p.id ? "bg-blue-50/50 dark:bg-blue-950/30" : ""}>
+                  <td className="font-medium">{p.name}</td>
+                  <td className="text-neutral-500">{p.partner_name ?? "Your side"}</td>
+                  <td className="text-neutral-500">{CATEGORY_LABEL[p.category]}</td>
+                  <td className="tnum text-right">{p.members}</td>
+                  <td className="text-right">
+                    <Link href={`/mapping?view=review&pop=${p.id}`} className="rounded-md bg-blue-700 px-3 py-1 text-xs font-medium text-white hover:bg-blue-800">
+                      Review fields
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Field-alignment review dialog */}
+        {dialog && <ReviewDialog {...dialog} />}
+      </div>
+    );
+  } finally {
+    db.release();
+  }
+}
+
+function ReviewDialog({
+  pop,
+  fields,
+  total,
+  sample,
+}: {
+  pop: { id: string; name: string; category: Category; partner_name: string | null; members: number };
+  fields: import("@/lib/mapping/populations").PopulationField[];
+  total: number;
+  sample: { name: string; attributes: Record<string, unknown> }[];
+}) {
+  const alignedCount = fields.filter((f) => f.aligned).length;
+
+  return (
+    <Card className="border-blue-200 dark:border-blue-900">
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-semibold">Review: {pop.name}</h2>
+        <span className="text-xs text-neutral-500">from {pop.partner_name ?? "your side"} · {CATEGORY_LABEL[pop.category]} · {total} accounts</span>
+        <Link href="/mapping?view=review" className="ml-auto text-xs text-neutral-500 hover:underline">close</Link>
+      </div>
+      <p className="mb-3 text-xs text-neutral-500">
+        {fields.length} field(s) detected · <span className="font-medium text-green-700 dark:text-green-400">{alignedCount} align to yours</span>. Choose which to carry into the mapped matrix, then accept.
+      </p>
+
+      <form action={acceptPopulationAction.bind(null, pop.id)}>
+        <div className="mb-3 overflow-x-auto rounded-lg border border-neutral-200 scroll-thin dark:border-neutral-800">
+          <table className="data-table">
+            <thead>
+              <tr><th className="w-8"></th><th>Field</th><th>Aligns?</th><th className="text-right">Present</th><th>Sample</th></tr>
+            </thead>
+            <tbody>
+              {fields.length === 0 ? (
+                <tr><td colSpan={5} className="text-sm text-neutral-400">No extra fields on this list — accounts will map on company identity alone.</td></tr>
+              ) : fields.map((f) => (
+                <tr key={f.key}>
+                  <td><input type="checkbox" name="fields" value={f.key} defaultChecked className="h-4 w-4" /></td>
+                  <td className="font-medium capitalize">{f.key.replace(/_/g, " ")}</td>
+                  <td>
+                    {f.aligned
+                      ? <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-950 dark:text-green-300">aligned</span>
+                      : <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">new field</span>}
+                  </td>
+                  <td className="tnum text-right text-neutral-500">{Math.round((f.present / Math.max(total, 1)) * 100)}%</td>
+                  <td className="text-neutral-500">{f.sample ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {sample.length > 0 && (
+          <details className="mb-3">
+            <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">Preview accounts ({sample.length})</summary>
+            <ul className="mt-2 space-y-1 text-xs text-neutral-500">
+              {sample.map((s, i) => (
+                <li key={i}><span className="font-medium text-neutral-700 dark:text-neutral-300">{s.name}</span> — {Object.entries(s.attributes).map(([k, v]) => `${k}: ${v == null ? "—" : String(v)}`).join(" · ") || "no fields"}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button className="rounded-md bg-green-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-800">Accept &amp; map</button>
+          <span className="text-[11px] text-neutral-400">Reviewed in-app — nothing leaves the system.</span>
+        </div>
+      </form>
+      <form action={setPopulationStatusAction.bind(null, pop.id, "rejected")} className="mt-2">
+        <button className="text-xs font-medium text-red-700 hover:underline dark:text-red-400">Reject list</button>
+      </form>
+    </Card>
+  );
+}
+
 async function RecommendSection() {
   const pool = getPool();
   const db = await pool.connect();
@@ -573,26 +745,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
             </div>
           ))}
           <div className="ml-auto flex flex-col items-end gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-neutral-500">Partner</span>
-              <div className="flex flex-wrap gap-1">
-                <Link
-                  href={q({ partner: "all", mr: undefined, mc: undefined })}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium ${isAll ? "bg-blue-700 text-white" : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"}`}
-                >
-                  All partners
-                </Link>
-                {partners.map((p) => (
-                  <Link
-                    key={p.id}
-                    href={q({ partner: p.id, mr: undefined, mc: undefined })}
-                    className={`rounded-md px-2.5 py-1 text-xs font-medium ${p.id === selected && !isAll ? "bg-blue-700 text-white" : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"}`}
-                  >
-                    {p.name}
-                  </Link>
-                ))}
-              </div>
-            </div>
+            <PartnerSelect current={isAll ? "all" : selected} hideEmpty={hideEmpty} partners={partners.map((p) => ({ id: p.id, name: p.name }))} />
             <div className="flex items-center gap-3">
               {/* Organize matrix — choose which populations are rows / columns */}
               <details className="relative">
@@ -740,10 +893,16 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
   try {
     const { row, col, accounts } = await intersection(db, { rowPopId: rowId, colPopId: colId });
     const fields = await availableFields(db, { rowPopId: rowId, colPopId: colId });
+    // Honor the fields chosen at review time (selected_fields); if none set on
+    // either population, default to every detected field (Crossbeam-style).
+    const { rows: chosen } = await db.query<{ selected_fields: string[] | null }>(
+      `select selected_fields from account_populations where id = any($1)`,
+      [[rowId, colId]],
+    );
+    const chosenUnion = [...new Set(chosen.flatMap((c) => c.selected_fields ?? []))].filter((k) => fields.includes(k));
+    const defaultFields = chosenUnion.length ? chosenUnion : fields;
     const selected = (cols ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-    // Default shows everything — base account facts + every field ingested from
-    // either party's CSV — so the full mapped record is visible (Crossbeam-style).
-    const active = selected.length ? selected : [...BASE_COLS, ...fields];
+    const active = selected.length ? selected : [...BASE_COLS, ...defaultFields];
     const backHref = `/mapping?view=matrix${partnerId ? `&partner=${partnerId}` : ""}`;
     const cellBase = `/mapping?view=matrix${partnerId ? `&partner=${partnerId}` : ""}&row=${rowId}&col=${colId}`;
 

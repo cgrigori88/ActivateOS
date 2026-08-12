@@ -48,6 +48,21 @@ export async function setPopulationStatusAction(populationId: string, status: st
   revalidatePath("/mapping");
 }
 
+/**
+ * Accept a pushed list for mapping, recording which fields carry into the
+ * matrix (the reviewer's decision). Empty selection = keep all detected fields.
+ */
+export async function acceptPopulationAction(populationId: string, formData: FormData): Promise<void> {
+  const fields = formData.getAll("fields").map((f) => String(f)).filter(Boolean);
+  const pool = getPool();
+  await pool.query(
+    `update account_populations set status = 'approved', selected_fields = $2 where id = $1`,
+    [populationId, fields.length ? fields : null],
+  );
+  revalidatePath("/mapping");
+  redirect(`/mapping?view=review&notice=${encodeURIComponent(`Accepted list with ${fields.length || "all"} field(s) mapped.`)}`);
+}
+
 /** Create a target list from an AI-recommended cross-partner bucket. */
 export async function createTargetListAction(formData: FormData): Promise<void> {
   const name = String(formData.get("name") ?? "").trim() || "Target list";
