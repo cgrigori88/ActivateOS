@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getPool } from "@/db/client";
+import { requireWrite } from "@/lib/auth/org";
 
 /**
  * CSV upload → the worker's /import endpoint (Railway, no serverless timeout),
@@ -8,6 +10,7 @@ import { revalidatePath } from "next/cache";
  * secret stays server-side; the browser never sees it.
  */
 export async function uploadAccountsAction(formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return;
 

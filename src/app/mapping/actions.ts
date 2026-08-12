@@ -7,7 +7,7 @@ import { CATEGORIES, targetFromCell, type Category } from "@/lib/mapping/populat
 import { createTargetFromCompanies } from "@/lib/mapping/insights";
 import { createMultiVendorCampaign } from "@/lib/campaigns/multi-vendor";
 import { designMotion } from "@/lib/agents/motion-designer";
-import { currentOrgId } from "@/lib/auth/org";
+import { currentOrgId, requireWrite } from "@/lib/auth/org";
 
 const MOTION_TARGET_SLUG = "infrastructure-automation";
 
@@ -22,6 +22,7 @@ async function soleOrgId(db: import("pg").PoolClient): Promise<string | null> {
  * before it maps. `side` = 'org' (host) or a partner id.
  */
 export async function createPopulationAction(formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const name = String(formData.get("name") ?? "").trim();
   const categoryRaw = String(formData.get("category") ?? "custom");
   const category: Category = (CATEGORIES as readonly string[]).includes(categoryRaw) ? (categoryRaw as Category) : "custom";
@@ -45,6 +46,7 @@ export async function createPopulationAction(formData: FormData): Promise<void> 
 }
 
 export async function setPopulationStatusAction(populationId: string, status: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   if (!["approved", "rejected", "pending"].includes(status)) throw new Error("invalid status");
   const pool = getPool();
   await pool.query(`update account_populations set status = $2 where id = $1`, [populationId, status]);
@@ -56,6 +58,7 @@ export async function setPopulationStatusAction(populationId: string, status: st
  * matrix (the reviewer's decision). Empty selection = keep all detected fields.
  */
 export async function acceptPopulationAction(populationId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const fields = formData.getAll("fields").map((f) => String(f)).filter(Boolean);
   const pool = getPool();
   await pool.query(
@@ -68,6 +71,7 @@ export async function acceptPopulationAction(populationId: string, formData: For
 
 /** Create a target list from an AI-recommended cross-partner bucket. */
 export async function createTargetListAction(formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const name = String(formData.get("name") ?? "").trim() || "Target list";
   const companyIds = String(formData.get("companyIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   const pool = getPool();
@@ -90,6 +94,7 @@ export async function createTargetListAction(formData: FormData): Promise<void> 
  * campaign; touches and launch stay human-gated.
  */
 export async function createMultiVendorCampaignAction(formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const name = String(formData.get("name") ?? "").trim() || "Multi-vendor play";
   const companyIds = String(formData.get("companyIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   // partners field: "id:role,id:role"
@@ -121,6 +126,7 @@ export async function createMultiVendorCampaignAction(formData: FormData): Promi
 
 /** Generate motions for a selected set of accounts (bounded, AI, graceful). */
 export async function generateMotionsForSelectionAction(formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const ids = String(formData.get("companyIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 10);
   const pool = getPool();
   const db = await pool.connect();
@@ -148,6 +154,7 @@ export async function generateMotionsForSelectionAction(formData: FormData): Pro
 
 /** AI-draft a motion for a cross-partner account (grounded, lands as draft). */
 export async function draftMotionAction(companyId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
   const db = await pool.connect();
   let motionId: string | null = null;
@@ -171,6 +178,7 @@ export async function draftMotionAction(companyId: string): Promise<void> {
  * approved org-side 'target' population from the cell's shared accounts.
  */
 export async function targetFromCellAction(rowPopId: string, colPopId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const name = String(formData.get("name") ?? "").trim() || "Target list";
   const partnerId = String(formData.get("partner") ?? "").trim();
   const pool = getPool();

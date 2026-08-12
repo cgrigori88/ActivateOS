@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getPool } from "@/db/client";
+import { requireWrite } from "@/lib/auth/org";
 import { launchCampaign, sendTouchNow } from "@/lib/comms/sequence";
 import { deleteTouch, upsertTouch, type TouchFields } from "@/lib/comms/authoring";
 import { appendAiTouches } from "@/lib/agents/campaign-email";
@@ -10,6 +11,7 @@ import { linkPopulation, unlinkPopulation } from "@/lib/campaigns/lists";
 
 /** Attach a target list (population) so its accounts roll into the campaign. */
 export async function linkListAction(campaignId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const populationId = String(formData.get("populationId") ?? "").trim();
   if (!populationId) return;
   const pool = getPool();
@@ -20,6 +22,7 @@ export async function linkListAction(campaignId: string, formData: FormData): Pr
 
 /** Remove a target list from the campaign (accounts stop rolling in). */
 export async function unlinkListAction(campaignId: string, populationId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
   await unlinkPopulation(pool, campaignId, populationId);
   revalidatePath(`/campaigns/${campaignId}`);
@@ -48,6 +51,7 @@ function touchFieldsFrom(formData: FormData): TouchFields {
 
 /** Let AI draft touches into this campaign (needs a linked motion for grounding). */
 export async function aiDraftTouchesAction(campaignId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const touchCount = Number(formData.get("touchCount") ?? 3) || 3;
   const senderName = String(formData.get("senderName") ?? "").trim() || undefined;
   const pool = getPool();
@@ -81,6 +85,7 @@ async function touchCampaign(touchId: string): Promise<string> {
 }
 
 export async function approveTouchAction(touchId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
   await pool.query(
     `update campaign_touches
@@ -92,6 +97,7 @@ export async function approveTouchAction(touchId: string): Promise<void> {
 }
 
 export async function rejectTouchAction(touchId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const reason = String(formData.get("reason") ?? "").trim() || null;
   const pool = getPool();
   await pool.query(
@@ -103,6 +109,7 @@ export async function rejectTouchAction(touchId: string, formData: FormData): Pr
 
 /** Add a hand-authored touch to a campaign. */
 export async function addTouchAction(campaignId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const fields = touchFieldsFrom(formData);
   if (!fields.subject || (!fields.body && !fields.customHtml)) {
     throw new Error("a subject and either a body or custom HTML are required");
@@ -119,6 +126,7 @@ export async function addTouchAction(campaignId: string, formData: FormData): Pr
 
 /** Edit an existing (unsent) touch — re-renders its HTML. */
 export async function editTouchAction(touchId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const campaignId = await touchCampaign(touchId);
   const fields = touchFieldsFrom(formData);
   if (!fields.subject || (!fields.body && !fields.customHtml)) {
@@ -135,6 +143,7 @@ export async function editTouchAction(touchId: string, formData: FormData): Prom
 }
 
 export async function deleteTouchAction(touchId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const campaignId = await touchCampaign(touchId);
   const pool = getPool();
   const db = await pool.connect();
@@ -161,6 +170,7 @@ function scheduleArgsFrom(formData: FormData) {
 }
 
 export async function scheduleSequenceAction(campaignId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const args = scheduleArgsFrom(formData);
   if (!args.recipientEmail) throw new Error("a recipient is required to schedule");
 
@@ -181,6 +191,7 @@ export async function scheduleSequenceAction(campaignId: string, formData: FormD
 
 /** Arm the sequence using only the touches already approved. */
 export async function launchCampaignAction(campaignId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const args = scheduleArgsFrom(formData);
   if (!args.recipientEmail) throw new Error("a recipient is required to launch");
   const pool = getPool();
@@ -195,6 +206,7 @@ export async function launchCampaignAction(campaignId: string, formData: FormDat
 
 /** Send a single touch now (pre-launch to a chosen recipient, or a due scheduled touch). */
 export async function sendTouchAction(touchId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const override = String(formData.get("to") ?? "").trim().toLowerCase() || null;
   const pool = getPool();
   const db = await pool.connect();

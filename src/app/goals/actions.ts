@@ -4,13 +4,14 @@ import { revalidatePath } from "next/cache";
 import { getPool } from "@/db/client";
 import { createGoal, setGoalStatus, setGoalManualValue, type Metric } from "@/lib/goals/goals";
 import { upsertTarget, deleteTarget, type TargetMetric } from "@/lib/goals/targets";
-import { currentOrgId } from "@/lib/auth/org";
+import { currentOrgId, requireWrite } from "@/lib/auth/org";
 
 async function soleOrgId(): Promise<string | null> {
   return currentOrgId(getPool());
 }
 
 export async function createGoalAction(formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const name = String(formData.get("name") ?? "").trim();
   const metric = String(formData.get("metric") ?? "pipeline_usd") as Metric;
   const target = Number(formData.get("target") ?? 0);
@@ -27,11 +28,13 @@ export async function createGoalAction(formData: FormData): Promise<void> {
 }
 
 export async function setGoalStatusAction(goalId: string, status: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   await setGoalStatus(getPool(), goalId, status);
   revalidatePath("/goals");
 }
 
 export async function setGoalManualValueAction(goalId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const value = Number(formData.get("value") ?? 0);
   if (Number.isFinite(value)) await setGoalManualValue(getPool(), goalId, value);
   revalidatePath("/goals");
@@ -39,6 +42,7 @@ export async function setGoalManualValueAction(goalId: string, formData: FormDat
 
 /** Set (or update) a per-period pipeline/revenue target — overall or per partner. */
 export async function upsertTargetAction(formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const periodYear = Number(formData.get("periodYear") ?? 0);
   const metric = String(formData.get("metric") ?? "pipeline") as TargetMetric;
   const partnerId = String(formData.get("partnerId") ?? "").trim() || null;
@@ -53,6 +57,7 @@ export async function upsertTargetAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteTargetAction(targetId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   await deleteTarget(getPool(), targetId);
   revalidatePath("/goals");
 }

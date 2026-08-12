@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { Shell } from "@/components/shell";
+import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
+import { signOutAction } from "@/app/login/actions";
 
 const sans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -27,7 +29,18 @@ export const metadata: Metadata = {
    THEME_KEY in components/shell.tsx. */
 const THEME_BOOT = `try{if(localStorage.getItem("pursuitos:theme")==="dark")document.documentElement.classList.add("dark")}catch(e){}`;
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Who is signed in (identity mode only) — the rail's user chip + sign-out.
+  let user: string | null = null;
+  if (authConfigured()) {
+    try {
+      const supabase = await supabaseServer();
+      const { data } = await supabase.auth.getUser();
+      user = data.user?.email ?? null;
+    } catch {
+      /* no request cookies (build) — chip falls back to Operator */
+    }
+  }
   return (
     // suppressHydrationWarning: the boot script may add `class="dark"` before
     // React hydrates, so the html attributes legitimately differ from the SSR.
@@ -36,7 +49,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
       <body className="min-h-screen font-sans">
-        <Shell>{children}</Shell>
+        <Shell user={user} signOut={signOutAction}>{children}</Shell>
       </body>
     </html>
   );

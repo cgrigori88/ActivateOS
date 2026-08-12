@@ -183,7 +183,16 @@ function Wordmark() {
 const RAIL_KEY = "pursuitos:rail-collapsed";
 const THEME_KEY = "pursuitos:theme";
 
-export function Shell({ children }: { children: ReactNode }) {
+export function Shell({
+  children,
+  user,
+  signOut,
+}: {
+  children: ReactNode;
+  /** Signed-in identity email; null in Basic-Auth / local-dev mode. */
+  user?: string | null;
+  signOut?: () => Promise<void>;
+}) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
@@ -333,12 +342,18 @@ export function Shell({ children }: { children: ReactNode }) {
           themeButton
         ) : (
           <div className="flex items-center gap-2.5">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent text-[11px] font-bold text-white">
-              DP
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent text-[11px] font-bold uppercase text-white">
+              {user ? user.slice(0, 2) : "OP"}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12.5px] font-semibold text-rail-ink">Design Partner Demo</span>
-              <span className="block truncate text-[11px] text-rail-ink-soft">Partner revenue graph</span>
+              <span className="block truncate text-[12.5px] font-semibold text-rail-ink">{user ?? "Operator"}</span>
+              {user && signOut ? (
+                <form action={signOut}>
+                  <button className="block truncate text-[11px] text-rail-ink-soft hover:text-rail-ink hover:underline">Sign out</button>
+                </form>
+              ) : (
+                <span className="block truncate text-[11px] text-rail-ink-soft">demo access</span>
+              )}
             </span>
             {themeButton}
           </div>

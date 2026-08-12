@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getPool } from "@/db/client";
+import { requireWrite } from "@/lib/auth/org";
 import {
   advanceOpportunity,
   createOpportunityFromMotion,
@@ -11,6 +12,7 @@ import { assessMeddpicc, upsertElement, type ElementKey, type Status } from "@/l
 
 /** Set one MEDDPICC element (status + notes) on an opportunity. */
 export async function setMeddpiccAction(opportunityId: string, element: ElementKey, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const status = String(formData.get("status") ?? "unknown") as Status;
   const notes = String(formData.get("notes") ?? "").trim() || null;
   const pool = getPool();
@@ -20,6 +22,7 @@ export async function setMeddpiccAction(opportunityId: string, element: ElementK
 
 /** Draft a full MEDDPICC assessment from the account's evidence & stakeholders. */
 export async function assessMeddpiccAction(opportunityId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
   const db = await pool.connect();
   try {
@@ -34,6 +37,7 @@ export async function advanceOpportunityAction(
   opportunityId: string,
   to: Stage,
 ): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
   const db = await pool.connect();
   try {
@@ -45,6 +49,7 @@ export async function advanceOpportunityAction(
 }
 
 export async function promoteMotionAction(motionId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
   const db = await pool.connect();
   try {
@@ -58,6 +63,7 @@ export async function promoteMotionAction(motionId: string): Promise<void> {
 
 /** Register a co-sell deal on an opportunity (Phase 9E). */
 export async function registerDealAction(opportunityId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const vendor = String(formData.get("vendor") ?? "").trim() || null;
   const product = String(formData.get("product") ?? "").trim() || null;
   const protectDays = Number(formData.get("protectDays") ?? 90) || 90;
@@ -93,6 +99,7 @@ export async function registerDealAction(opportunityId: string, formData: FormDa
 
 /** Advance a registration's status (submitted → approved/rejected/expired). */
 export async function setRegistrationStatusAction(registrationId: string, status: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const allowed = ["submitted", "approved", "rejected", "expired"];
   if (!allowed.includes(status)) throw new Error("invalid status");
   const pool = getPool();
@@ -111,6 +118,7 @@ export async function setStakeholderAction(
   contactId: string,
   formData: FormData,
 ): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const role = String(formData.get("role") ?? "influencer");
   const sentiment = String(formData.get("sentiment") ?? "unknown");
   const pool = getPool();

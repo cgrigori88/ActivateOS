@@ -39,3 +39,37 @@ export async function currentOrgId(db: Db): Promise<string | null> {
   );
   return rows[0]?.id ?? null;
 }
+
+/**
+ * The caller's role in their org: 'owner' | 'operator' | 'viewer'. Basic-Auth
+ * / local-dev mode (no identity) acts as 'owner' — the single operator owns
+ * the demo. A signed-in user without membership has no role (null).
+ */
+export async function currentRole(db: Db): Promise<"owner" | "operator" | "viewer" | null> {
+  if (!authConfigured()) return "owner";
+  let userId: string | null = null;
+  try {
+    const supabase = await supabaseServer();
+    const { data } = await supabase.auth.getUser();
+    userId = data.user?.id ?? null;
+  } catch {
+    return "owner"; // outside a request scope (worker/scripts) — system context
+  }
+  if (!userId) return "owner"; // Basic-Auth session, not an identity session
+  const { rows } = await db.query<{ role: "owner" | "operator" | "viewer" }>(
+    `select role from org_members where user_id = $1 order by created_at asc limit 1`,
+    [userId],
+  );
+  return rows[0]?.role ?? null;
+}
+
+/**
+ * Gate for mutating server actions: owners and operators pass; viewers and
+ * membership-less users are refused. Mirrors the database's write policies so
+ * the app refuses politely before RLS would refuse silently.
+ */
+export async function requireWrite(db: Db): Promise<void> {
+  const role = await currentRole(db);
+  if (role === "owner" || role === "operator") return;
+  throw new Error("Read-only access — ask an owner to make you an operator.");
+}

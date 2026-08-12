@@ -5,13 +5,14 @@ import { revalidatePath } from "next/cache";
 import { getPool } from "@/db/client";
 import { generateCampaignSequence } from "@/lib/agents/campaign-email";
 import { createBlankCampaign } from "@/lib/comms/authoring";
-import { currentOrgId } from "@/lib/auth/org";
+import { currentOrgId, requireWrite } from "@/lib/auth/org";
 
 /**
  * Generate a multi-touch email sequence from an APPROVED motion, then jump to
  * the new campaign. Every touch lands as a draft for per-touch human approval.
  */
 export async function generateSequenceAction(formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const motionId = String(formData.get("motionId") ?? "").trim();
   const touchCount = Number(formData.get("touchCount") ?? 3);
   const senderName = String(formData.get("senderName") ?? "").trim() || "The PursuitOS Team";
@@ -46,6 +47,7 @@ export async function generateSequenceAction(formData: FormData): Promise<void> 
  * the human still reviews and decides on.
  */
 export async function suggestCampaignsAction(): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const base = process.env.WORKER_URL;
   const secret = process.env.RESEARCH_TRIGGER_SECRET;
   let notice: string;
@@ -72,6 +74,7 @@ export async function suggestCampaignsAction(): Promise<void> {
 
 /** Link (or unlink) a campaign to a S.M.A.R.T. goal so its touches roll up. */
 export async function setCampaignGoalAction(campaignId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const goalId = String(formData.get("goalId") ?? "").trim() || null;
   await getPool().query(`update campaigns set goal_id = $2 where id = $1`, [campaignId, goalId]);
   revalidatePath("/campaigns");
@@ -80,6 +83,7 @@ export async function setCampaignGoalAction(campaignId: string, formData: FormDa
 
 /** Dismiss an AI-suggested campaign the seller doesn't want. */
 export async function dismissCampaignAction(campaignId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
   await pool.query(`update campaigns set dismissed_at = now() where id = $1`, [campaignId]);
   revalidatePath("/campaigns");
@@ -91,6 +95,7 @@ export async function dismissCampaignAction(campaignId: string): Promise<void> {
  * doesn't wait on the AI pipeline.
  */
 export async function createBlankCampaignAction(formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const companyId = String(formData.get("companyId") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim() || "New campaign";
   const senderName = String(formData.get("senderName") ?? "").trim() || null;

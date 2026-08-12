@@ -41,9 +41,18 @@ release gate, not a wishlist.
   App-side, ALL org resolution goes through `currentOrgId()` — the signed-in
   user's membership, falling back to sole-org only in Basic-Auth/demo mode —
   so no screen or action hardcodes "the first organization" anymore.
-  Remaining for later slices: role-gated writes (owner/operator/viewer),
-  join-through policies for child tables, per-request scoped DB connections,
-  the partnership handshake, and the cross-tenant audit log.
+- **Role-gated writes + child-table tenancy (multi-tenant slice 3).**
+  Migration 0030: members read, owners/operators write, viewers are read-only;
+  org_members management is owner-only; child tables (touches, population
+  members, stakeholders, MEDDPICC, messages chain, partner children) carry
+  join-through policies keyed on their parent's org; the shared catalog
+  (company graph, taxonomy, plays, providers) is read-only-global. Verified
+  live: viewer write 403, operator write 201, operator self-promotion filtered
+  to a no-op. App mirrors it: requireWrite() guards all 46 mutating server
+  actions; the rail chip shows the signed-in user with sign-out.
+  Remaining for later slices: per-request scoped DB connections, member
+  invites (owner-only UI), the partnership handshake, and the cross-tenant
+  audit log.
 
 ## Accepted risk — open items, tracked
 

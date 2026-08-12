@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { getPool } from "@/db/client";
+import { requireWrite } from "@/lib/auth/org";
 import { approveMotion, rejectMotion } from "@/lib/motions/approve";
 import { transitionMotion, type MotionOutcome } from "@/lib/motions/lifecycle";
 
 /** Link (or unlink) a motion to a S.M.A.R.T. goal so its value rolls up. */
 export async function setMotionGoalAction(motionId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const goalId = String(formData.get("goalId") ?? "").trim() || null;
   await getPool().query(`update revenue_motions set goal_id = $2 where id = $1`, [motionId, goalId]);
   revalidatePath("/motions");
@@ -14,6 +16,7 @@ export async function setMotionGoalAction(motionId: string, formData: FormData):
 }
 
 export async function approveMotionAction(motionId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
   const db = await pool.connect();
   try {
@@ -25,6 +28,7 @@ export async function approveMotionAction(motionId: string): Promise<void> {
 }
 
 export async function rejectMotionAction(motionId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
   const db = await pool.connect();
   try {
@@ -36,6 +40,7 @@ export async function rejectMotionAction(motionId: string): Promise<void> {
 }
 
 export async function activateMotionAction(motionId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
   const db = await pool.connect();
   try {
@@ -50,6 +55,7 @@ export async function completeMotionAction(
   motionId: string,
   outcome: MotionOutcome,
 ): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
   const db = await pool.connect();
   try {
@@ -61,6 +67,7 @@ export async function completeMotionAction(
 }
 
 export async function abandonMotionAction(motionId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
   const db = await pool.connect();
   try {
