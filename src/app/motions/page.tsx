@@ -95,7 +95,12 @@ export default async function MotionsPage({
   }
   const orderKeys = (keys: string[]) =>
     groupKey === "status" ? STATUS_ORDER.filter((s) => keys.includes(s)) : keys.sort((a, b) => (groups.get(b)!.length - groups.get(a)!.length));
-  const chartRows = [...groups.entries()].map(([label, ms]) => ({ label, value: ms.length })).sort((a, b) => b.value - a.value).slice(0, 10);
+  // Status grouping shows the full lifecycle, empty statuses included, so the
+  // shape of the funnel is always visible; other groupings show their top 10.
+  const chartRows =
+    groupKey === "status"
+      ? STATUS_ORDER.map((s) => ({ label: s, value: groups.get(s)?.length ?? 0 }))
+      : [...groups.entries()].map(([label, ms]) => ({ label, value: ms.length })).sort((a, b) => b.value - a.value).slice(0, 10);
 
   return (
     <main>
