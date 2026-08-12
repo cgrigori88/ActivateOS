@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 /**
@@ -160,86 +161,195 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/**
+ * The PursuitOS mark: a circle carrying two voids on one axis. Fixed bearing,
+ * one colour, no stroked variant. Inherits currentColor.
+ */
+const MARK = (
+  <svg viewBox="0 0 48 48" className="h-[22px] w-[22px]" fill="currentColor" fillRule="nonzero" aria-hidden focusable="false">
+    <path d="M4 24 A20 20 0 1 1 44 24 A20 20 0 1 1 4 24 Z M29 26 A10 10 0 1 0 9 26 A10 10 0 1 0 29 26 Z M39 17 A4 4 0 1 0 31 17 A4 4 0 1 0 39 17 Z" />
+  </svg>
+);
+
 function Wordmark() {
   return (
     <Link href="/" className="flex items-center gap-2">
-      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-700 text-[11px] font-bold text-white">
-        P
-      </span>
-      <span className="text-sm font-semibold tracking-tight">
-        Pursuit<span className="text-blue-700 dark:text-blue-400">OS</span>
-      </span>
+      <span className="text-accent dark:text-blue-400">{MARK}</span>
+      <span className="text-[15px] font-bold tracking-[-0.03em]">PursuitOS</span>
     </Link>
   );
 }
 
+const RAIL_KEY = "pursuitos:rail-collapsed";
+
 export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
+  const [drawer, setDrawer] = useState(false);
 
-  const link = (item: NavItem, compact = false) => {
+  // Restore the width the operator left the rail at.
+  useEffect(() => {
+    try {
+      setCollapsed(window.localStorage.getItem(RAIL_KEY) === "1");
+    } catch {
+      /* storage unavailable — the default width is fine */
+    }
+  }, []);
+
+  const toggleRail = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(RAIL_KEY, next ? "1" : "0");
+      } catch {
+        /* non-fatal */
+      }
+      return next;
+    });
+  }, []);
+
+  // "[" toggles the rail from anywhere that is not a text field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable) return;
+      if (e.key === "[") {
+        e.preventDefault();
+        toggleRail();
+      }
+      if (e.key === "Escape") setDrawer(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [toggleRail]);
+
+  useEffect(() => {
+    setDrawer(false);
+  }, [pathname]);
+
+  const link = (item: NavItem) => {
     const active = isActive(pathname, item.href);
     return (
       <Link
         key={item.href}
         href={item.href}
-        className={
-          compact
-            ? `flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm ${
-                active
-                  ? "bg-neutral-900 font-medium text-white dark:bg-white dark:text-neutral-900"
-                  : "text-neutral-600 dark:text-neutral-300"
-              }`
-            : `group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors ${
-                active
-                  ? "bg-blue-50 font-semibold text-blue-800 dark:bg-blue-950/60 dark:text-blue-300"
-                  : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-100"
-              }`
-        }
+        aria-current={active ? "page" : undefined}
+        title={collapsed ? item.label : undefined}
+        className={`group relative flex min-h-[34px] items-center gap-3 rounded-full px-3 py-[6px] text-[13px] transition-colors duration-[140ms] ${
+          active
+            ? "bg-white/[0.14] font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]"
+            : "font-medium text-rail-ink-soft hover:bg-white/[0.07] hover:text-rail-ink"
+        }`}
       >
-        <span className={compact ? "hidden" : active ? "text-blue-700 dark:text-blue-400" : "text-neutral-400 group-hover:text-neutral-600 dark:group-hover:text-neutral-300"}>
+        <span className={active ? "shrink-0 text-accent-tint" : "shrink-0 text-rail-ink-soft/70 transition-colors duration-[140ms] group-hover:text-rail-ink"}>
           {item.icon}
         </span>
-        {item.label}
+        <span className={collapsed ? "sr-only" : "truncate"}>{item.label}</span>
+        {active && !collapsed && (
+          <span className="absolute right-3 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-accent-tint" />
+        )}
       </Link>
     );
   };
 
+  /* The rail is dark in both themes — it is a material, not a mode, and the
+     contrast against a light room is most of what carries the layout. */
+  const railBody = (
+    <>
+      <div className={`flex min-h-[52px] items-center px-4 py-3 ${collapsed ? "justify-center" : ""}`}>
+        <Link href="/" aria-label="PursuitOS home" className="flex items-center gap-2 text-rail-ink">
+          <span className="text-accent-tint">{MARK}</span>
+          {!collapsed && <span className="text-[15px] font-bold tracking-[-0.03em]">PursuitOS</span>}
+        </Link>
+      </div>
+      <nav className="scroll-thin flex-1 space-y-3.5 overflow-y-auto overflow-x-hidden px-3 pb-3">
+        {NAV.map((group, i) => (
+          <div key={i}>
+            {group.label && !collapsed && (
+              <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-rail-ink-soft/60">
+                {group.label}
+              </p>
+            )}
+            {group.label && collapsed && <div className="mx-3 mb-2 h-px bg-white/[0.07]" />}
+            <div className="space-y-0.5">{group.items.map((item) => link(item))}</div>
+          </div>
+        ))}
+      </nav>
+      <div className={`border-t border-white/[0.07] px-4 py-3 ${collapsed ? "text-center" : ""}`}>
+        {collapsed ? (
+          <span className="text-[10px] font-bold text-rail-ink-soft" title="Design Partner Demo">DP</span>
+        ) : (
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent text-[11px] font-bold text-white">
+              DP
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-[12.5px] font-semibold text-rail-ink">Design Partner Demo</span>
+              <span className="block truncate text-[11px] text-rail-ink-soft">Partner revenue graph</span>
+            </span>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div className="min-h-screen">
-      {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-52 flex-col border-r border-neutral-200 bg-white md:flex dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="px-4 py-4">
-          <Wordmark />
-        </div>
-        <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-4 scroll-thin">
-          {NAV.map((group, i) => (
-            <div key={i}>
-              {group.label && (
-                <p className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400">
-                  {group.label}
-                </p>
-              )}
-              <div className="space-y-0.5">{group.items.map((item) => link(item))}</div>
-            </div>
-          ))}
-        </nav>
-        <div className="border-t border-neutral-100 px-4 py-3 text-[11px] text-neutral-400 dark:border-neutral-800">
-          Design Partner Demo
-        </div>
+      {/* Chrome floats over content rather than butting against it. */}
+      <aside
+        className={`glass-rail fixed bottom-3 left-3 top-3 z-20 hidden flex-col overflow-hidden rounded-panel text-rail-ink transition-[width] duration-[220ms] md:flex ${
+          collapsed ? "w-[68px]" : "w-[236px]"
+        }`}
+      >
+        {railBody}
       </aside>
 
-      {/* Mobile top bar */}
-      <div className="sticky top-0 z-20 border-b border-neutral-200 bg-white/95 backdrop-blur md:hidden dark:border-neutral-800 dark:bg-neutral-900/95">
-        <div className="flex items-center gap-3 px-4 py-2.5">
+      {/* Mobile gets a drawer: 68px of icons fails the 44px touch target. */}
+      {drawer && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <button
+            aria-label="Close navigation"
+            className="absolute inset-0 bg-neutral-950/45 backdrop-blur-sm"
+            onClick={() => setDrawer(false)}
+          />
+          <aside className="glass-rail absolute bottom-3 left-3 top-3 flex w-[264px] flex-col overflow-hidden rounded-panel text-rail-ink">
+            {railBody}
+          </aside>
+        </div>
+      )}
+
+      <div className={collapsed ? "md:pl-[92px]" : "md:pl-[260px]"}>
+        <div className="glass sticky top-3 z-30 mx-3 mt-3 flex min-h-[52px] items-center gap-2 rounded-card px-3 md:hidden">
+          <button
+            type="button"
+            onClick={() => setDrawer(true)}
+            aria-label="Open navigation"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-600 transition-colors duration-[140ms] hover:bg-neutral-900/[0.06] dark:text-neutral-300 dark:hover:bg-white/10"
+          >
+            <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}><path d="M2 4h12M2 8h12M2 12h12" /></svg>
+          </button>
           <Wordmark />
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-3 pb-2 scroll-thin">
-          {NAV.flatMap((g) => g.items).map((item) => link(item, true))}
-        </nav>
-      </div>
 
-      <div className="md:pl-52">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">{children}</div>
+        {/* Desktop's only global control floats: a full-width bar around one
+            button reads as hollow. */}
+        <button
+          type="button"
+          onClick={toggleRail}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
+          title={collapsed ? "Expand sidebar  [" : "Collapse sidebar  ["}
+          className="glass fixed top-4 z-30 hidden h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition-[left,color] duration-[220ms] hover:text-neutral-900 md:inline-flex dark:text-neutral-400 dark:hover:text-neutral-100"
+          style={{ left: collapsed ? 104 : 272 }}
+        >
+          <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+            <rect x="2" y="3" width="12" height="10" rx="2" />
+            <path d="M6.5 3v10" />
+          </svg>
+        </button>
+
+        <div className="mx-auto max-w-[1400px] px-4 pb-10 pt-4 sm:px-6 md:pt-16 lg:px-7">{children}</div>
       </div>
     </div>
   );

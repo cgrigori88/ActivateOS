@@ -31,12 +31,15 @@ export function QuerySelect({
   };
 
   return (
-    <label className="inline-flex items-center gap-1.5 text-sm">
-      <span className="text-xs font-medium text-neutral-500">{label}</span>
+    <label className="inline-flex items-center gap-2 text-sm">
+      <span className="text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">{label}</span>
+      {/* Native select, styled to match the rest of the control set. A native
+          control keeps the platform's own picker on mobile, which beats any
+          custom menu we would write. */}
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+        className="min-h-[34px] rounded-full border border-neutral-300/70 bg-white/70 px-3 pr-7 text-[13px] font-medium backdrop-blur transition-colors duration-[140ms] hover:border-neutral-400 focus:border-accent focus:outline-none dark:border-white/15 dark:bg-white/[0.06] dark:hover:border-white/30"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>

@@ -1,35 +1,411 @@
+/* Interface typeface. Loaded here rather than via next/font because layout.tsx
+   sits outside this lane's remit. */
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 
-/* PursuitOS design tokens (docs/DESIGN.md §3) */
+/* ---------------------------------------------------------------------------
+   PursuitOS design kit.
+
+   Both themes are first-class: the app is used in dark, and 611 `dark:`
+   utilities across the feature pages already encode it, so the `dark:` variant
+   is left on prefers-color-scheme and every one of them keeps working.
+
+   The `neutral` and `blue` ramps are overridden at the theme level — that is
+   what carries the palette into every screen without touching page markup.
+   Each neutral has to serve twice: neutral-900 is body text in light and a card
+   surface in dark, so the ramp is picked to work in both directions.
+   --------------------------------------------------------------------------- */
 @theme {
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+  --color-neutral-950: #060b16;
+
+  --color-blue-50: #eff5ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-800: #1e40af;
+  --color-blue-900: #1e3a8a;
+  --color-blue-950: #172554;
+
+  --color-accent: #2563eb;
+  --color-accent-strong: #1d4ed8;
+  --color-accent-tint: #60a5fa;
+  --color-accent-wash: #eff5ff;
+
+  /* Semantic — describes the data, never interface state. */
   --color-band-very-high: #15803d;
-  --color-band-high: #0369a1;
+  --color-band-high: #2563eb;
   --color-band-medium: #b45309;
-  --color-band-low: #6b7280;
+  --color-band-low: #64748b;
   --color-positive: #15803d;
   --color-negative: #b91c1c;
-  --color-accent: #1d4ed8;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Expanded palette: surfaces, categories, charts. */
+  --color-indigo: #6366f1;
+  --color-violet: #8b5cf6;
+  --color-teal: #0891b2;
+  --color-emerald: #059669;
+  --color-amber: #d97706;
+  --color-rose: #e11d48;
+
+  --color-cat-1: #2563eb;
+  --color-cat-2: #8b5cf6;
+  --color-cat-3: #0891b2;
+  --color-cat-4: #d97706;
+  --color-cat-5: #059669;
+  --color-cat-6: #e11d48;
+  --color-cat-7: #6366f1;
+
+  /* Rail — dark in both themes; it is a material, not a mode. */
+  --color-rail-ink: #e8edf7;
+  --color-rail-ink-soft: #93a1bd;
+
+  /* Concentric: a child is never rounder than its parent. */
+  --radius-inner: 8px;
+  --radius-control: 10px;
+  --radius-input: 12px;
+  --radius-card: 18px;
+  --radius-panel: 22px;
+
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-html { color-scheme: light dark; }
-body { @apply bg-neutral-50 text-neutral-900 antialiased; }
+/* ---- Materials, per theme ------------------------------------------------ */
+:root {
+  --ground: #f8fafc;
+
+  --glass-blur: saturate(180%) blur(20px);
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-edge: rgba(255, 255, 255, 0.75);
+  --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --glass-fallback: #ffffff;
+
+  --rail-bg: linear-gradient(180deg, rgba(21, 32, 56, 0.94) 0%, rgba(11, 18, 34, 0.96) 100%);
+  --rail-edge: rgba(255, 255, 255, 0.09);
+  --rail-fallback: #0d1526;
+
+  --shadow-float: 0 18px 44px -22px rgba(11, 18, 32, 0.22), 0 2px 8px -4px rgba(11, 18, 32, 0.1);
+  --shadow-rail: 0 24px 60px -28px rgba(5, 8, 18, 0.55);
+  --shadow-pop: 0 2px 4px rgba(11, 18, 32, 0.06), 0 12px 32px -12px rgba(11, 18, 32, 0.28);
+
+  --hairline: rgba(11, 18, 32, 0.1);
+  --hairline-strong: rgba(11, 18, 32, 0.16);
+
+  --dur-react: 140ms;
+  --dur-move: 220ms;
+  --ease-move: cubic-bezier(0.2, 0, 0, 1);
+}
+
 @media (prefers-color-scheme: dark) {
-  body { @apply bg-neutral-950 text-neutral-100; }
-}
-.tnum { font-variant-numeric: tabular-nums; }
+  :root {
+    --ground: #060b16;
 
-/* Dense data tables */
-.data-table { @apply w-full text-sm; }
+    --glass-bg: rgba(30, 41, 59, 0.62);
+    --glass-edge: rgba(255, 255, 255, 0.08);
+    --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    --glass-fallback: #0f172a;
+
+    --rail-bg: linear-gradient(180deg, rgba(23, 34, 58, 0.9) 0%, rgba(12, 19, 34, 0.94) 100%);
+    --rail-edge: rgba(255, 255, 255, 0.07);
+    --rail-fallback: #0b1220;
+
+    --shadow-float: 0 18px 44px -22px rgba(0, 0, 0, 0.7), 0 2px 8px -4px rgba(0, 0, 0, 0.5);
+    --shadow-rail: 0 24px 60px -28px rgba(0, 0, 0, 0.8);
+    --shadow-pop: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 32px -12px rgba(0, 0, 0, 0.75);
+
+    --hairline: rgba(255, 255, 255, 0.09);
+    --hairline-strong: rgba(255, 255, 255, 0.16);
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+/* The ground is a room, not a sheet of paper: three low-alpha pools of light
+   over the canvas, fixed so they read as depth. Never competes with content. */
+body {
+  @apply text-neutral-900 antialiased;
+  background:
+    radial-gradient(1100px 620px at 12% -12%, rgba(99, 102, 241, 0.1), transparent 62%),
+    radial-gradient(900px 520px at 88% -6%, rgba(8, 145, 178, 0.085), transparent 58%),
+    radial-gradient(700px 700px at 78% 108%, rgba(139, 92, 246, 0.07), transparent 60%),
+    var(--ground);
+  background-attachment: fixed;
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    @apply text-neutral-100;
+    background:
+      radial-gradient(1100px 620px at 12% -12%, rgba(99, 102, 241, 0.16), transparent 62%),
+      radial-gradient(900px 520px at 88% -6%, rgba(8, 145, 178, 0.12), transparent 58%),
+      radial-gradient(700px 700px at 78% 108%, rgba(139, 92, 246, 0.12), transparent 60%),
+      var(--ground);
+    background-attachment: fixed;
+  }
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Focus is never removed. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+/* ---- Materials ----------------------------------------------------------- */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-specular), var(--shadow-float);
+}
+.glass-rail {
+  background: var(--rail-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--rail-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), var(--shadow-rail);
+}
+/* Without backdrop-filter the layers go opaque, never transparent — otherwise
+   text lands on top of scrolling content. */
+@supports not (backdrop-filter: blur(4px)) {
+  .glass { background: var(--glass-fallback); }
+  .glass-rail { background: var(--rail-fallback); }
+}
+
+/* ---------------------------------------------------------------------------
+   Panel headings. The product writes these inline as
+   `text-sm font-semibold uppercase tracking-wide text-neutral-500`. Grey
+   uppercase micro-type reads as chrome, so a screen built entirely from it has
+   no hierarchy — everything is a label and nothing is a title. Retuned here so
+   no feature page has to change.
+   --------------------------------------------------------------------------- */
+:where(h2, h3).uppercase.text-neutral-500 {
+  text-transform: none;
+  letter-spacing: -0.015em;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-neutral-900);
+}
+@media (prefers-color-scheme: dark) {
+  :where(h2, h3).uppercase.text-neutral-500 {
+    color: var(--color-neutral-100);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Controls, normalised off the class combinations the pages already use.
+   Specificity does the work: three classes beat a single utility.
+   --------------------------------------------------------------------------- */
+:where(button, a).rounded-md.bg-neutral-900.text-white,
+:where(button, a).rounded-md.bg-green-700.text-white {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-inline: 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  transition: background-color var(--dur-react) linear;
+}
+/* Primary action: the accent, not a near-black pill. */
+:where(button, a).rounded-md.bg-neutral-900.text-white {
+  background-color: var(--color-accent);
+}
+:where(button, a).rounded-md.bg-neutral-900.text-white:hover {
+  background-color: var(--color-accent-strong);
+}
+/* Accept/confirm stays green because it is semantic, but on our token. */
+:where(button, a).rounded-md.bg-green-700.text-white {
+  background-color: var(--color-emerald);
+}
+:where(button, a).rounded-md.bg-green-700.text-white:hover {
+  background-color: #047857;
+}
+
+:where(input, select, textarea).rounded-md.border-neutral-300,
+:where(input, select, textarea).rounded-md.border-neutral-200 {
+  min-height: 36px;
+  border-radius: var(--radius-input);
+  border-color: var(--hairline-strong);
+  padding-inline: 12px;
+  background-color: var(--glass-bg);
+  color: inherit;
+  transition:
+    border-color var(--dur-react) linear,
+    box-shadow var(--dur-react) linear;
+}
+:where(input, select, textarea).rounded-md.border-neutral-300:hover,
+:where(input, select, textarea).rounded-md.border-neutral-200:hover {
+  border-color: var(--color-neutral-400);
+}
+:where(input, select, textarea).rounded-md.border-neutral-300:focus,
+:where(input, select, textarea).rounded-md.border-neutral-200:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+/* Under 16px iOS zooms the page on focus, and 36px fails the touch target. */
+@media (max-width: 640px) {
+  :where(input, select, textarea).rounded-md.border-neutral-300,
+  :where(input, select, textarea).rounded-md.border-neutral-200,
+  :where(button, a).rounded-md.bg-neutral-900.text-white,
+  :where(button, a).rounded-md.bg-green-700.text-white {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}
+
+/* A card inside a card goes quieter and tighter — concentric with its parent,
+   so nesting stops reading as two competing surfaces. */
+.pos-card .pos-card,
+.pos-card :where(div, li).rounded-lg.border,
+.pos-card :where(div, li).rounded-xl.border {
+  border-radius: var(--radius-input);
+  box-shadow: none;
+  border-color: var(--hairline);
+}
+
+/* Optical alignment: a badge beside text sits on the text's cap height. */
+.flex.items-start > :where([data-status], [data-band]) {
+  margin-top: 2px;
+}
+
+/* Measure. Long copy inside a card was running the full card width. Grid and
+   flex children are exempt, so tables and columns are untouched. */
+.pos-card > p,
+.pos-card > div > p {
+  max-width: 78ch;
+}
+
+/* ---------------------------------------------------------------------------
+   Bento figures take the categorical order by position. A summary row is a set
+   of different measures, so rendering it as identical dark numbers throws that
+   away. An explicit tone still wins, and a zero stays grey — a count of nothing
+   should never wear a hue.
+   --------------------------------------------------------------------------- */
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: var(--color-cat-1); }
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: var(--color-cat-2); }
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 3) .pos-bento-fig { color: var(--color-cat-3); }
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 4) .pos-bento-fig { color: var(--color-cat-4); }
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: var(--color-cat-5); }
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: var(--color-cat-6); }
+.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: var(--color-cat-7); }
+@media (prefers-color-scheme: dark) {
+  /* The solids are tuned for a light ground; on dark they lift so they read. */
+  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: #60a5fa; }
+  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: #a78bfa; }
+  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 3) .pos-bento-fig { color: #22d3ee; }
+  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 4) .pos-bento-fig { color: #fbbf24; }
+  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: #34d399; }
+  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: #fb7185; }
+  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: #818cf8; }
+}
+
+/* ---------------------------------------------------------------------------
+   Data tables: roomier rows, hairline separators, and a header that reads as
+   structure rather than as more body text.
+   --------------------------------------------------------------------------- */
+.data-table {
+  @apply w-full text-[13.5px];
+  border-collapse: separate;
+  border-spacing: 0;
+}
 .data-table thead th {
-  @apply sticky top-0 z-[1] whitespace-nowrap border-b border-neutral-200 bg-white px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400;
+  @apply sticky top-0 z-[1] whitespace-nowrap px-3 py-3 text-left text-[10.5px] font-bold uppercase tracking-[0.08em];
+  color: var(--color-blue-800);
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.07) 0%, rgba(37, 99, 235, 0.035) 100%);
+  border-bottom: 1px solid rgba(37, 99, 235, 0.14);
+  backdrop-filter: blur(6px);
 }
+.data-table thead th:first-child { border-top-left-radius: var(--radius-card); }
+.data-table thead th:last-child { border-top-right-radius: var(--radius-card); }
 .data-table tbody td {
-  @apply whitespace-nowrap border-b border-neutral-100 px-3 py-2.5 align-middle dark:border-neutral-800/60;
+  @apply whitespace-nowrap px-3 py-3 align-middle;
+  border-bottom: 1px solid var(--hairline);
 }
-.data-table tbody tr { @apply transition-colors hover:bg-blue-50/40 dark:hover:bg-blue-950/20; }
+.data-table tbody tr {
+  transition: background-color var(--dur-react) linear;
+}
+.data-table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+}
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+@media (prefers-color-scheme: dark) {
+  .data-table thead th {
+    color: #93c5fd;
+    background: linear-gradient(180deg, rgba(96, 165, 250, 0.14) 0%, rgba(96, 165, 250, 0.06) 100%);
+    border-bottom-color: rgba(96, 165, 250, 0.2);
+  }
+  .data-table tbody tr:hover {
+    background: color-mix(in srgb, var(--color-accent-tint) 12%, transparent);
+  }
+}
+
+/* A ranked table is read by band before it is read by name, so the row carries
+   its band as an inset edge — keyed off the badge, so no table markup changes. */
+.data-table tbody tr:has([data-band="very_high"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-emerald); }
+.data-table tbody tr:has([data-band="high"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-accent); }
+.data-table tbody tr:has([data-band="medium"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-amber); }
+.data-table tbody tr:has([data-band="low"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-neutral-300); }
+.data-table tbody tr:has([data-status="failed"]) td:first-child,
+.data-table tbody tr:has([data-status="rejected"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-rose); }
+.data-table tbody tr:has([data-status="quarantined"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-amber); }
+.data-table tbody tr:has([data-status="succeeded"]) td:first-child,
+.data-table tbody tr:has([data-status="verified"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-emerald); }
+.data-table tbody tr:has([data-status="running"]) td:first-child { box-shadow: inset 3px 0 0 var(--color-accent); }
+/* A row whose outcome is "nothing happened" should not wear a colour. */
+.data-table tbody tr:has([data-status="skipped"]) td:first-child,
+.data-table tbody tr:has([data-status="disabled"]) td:first-child { box-shadow: none; }
+
+/* Scroll affordance: a dense table silently clips its most important columns on
+   a phone. These attach to whichever element actually scrolls, so no feature
+   page has to change its markup. */
+:where(div, section):has(> table.data-table) {
+  overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--glass-fallback) 30%, transparent) left center,
+    linear-gradient(to left, var(--glass-fallback) 30%, transparent) right center,
+    radial-gradient(farthest-side at 0 50%, var(--hairline-strong), transparent) left center,
+    radial-gradient(farthest-side at 100% 50%, var(--hairline-strong), transparent) right center;
+  background-repeat: no-repeat;
+  background-size: 44px 100%, 44px 100%, 15px 100%, 15px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
 
 /* Thin scrollbars for dense panes */
 .scroll-thin { scrollbar-width: thin; }
 .scroll-thin::-webkit-scrollbar { height: 6px; width: 6px; }
 .scroll-thin::-webkit-scrollbar-thumb { @apply rounded bg-neutral-300 dark:bg-neutral-700; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

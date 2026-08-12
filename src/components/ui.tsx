@@ -3,10 +3,44 @@ import type { ReactNode } from "react";
 
 /** Shared primitives implementing the design tokens (docs/DESIGN.md §3). */
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+/**
+ * Tones give a grid of cards a shape you can read before you read it. Colour
+ * here is categorical, never a call to action — the accent stays reserved for
+ * things you click. Each tone is a wash that fades toward the bottom edge, so a
+ * surface reads as lit from above like the glass layers do.
+ */
+const CARD_TONES: Record<string, string> = {
+  default: "",
+  indigo: "from-indigo/10 dark:from-indigo/20",
+  violet: "from-violet/10 dark:from-violet/20",
+  teal: "from-teal/10 dark:from-teal/20",
+  emerald: "from-emerald/10 dark:from-emerald/20",
+  amber: "from-amber/10 dark:from-amber/20",
+  rose: "from-rose/10 dark:from-rose/20",
+  neutral: "",
+};
+
+export type Tone = "indigo" | "violet" | "teal" | "emerald" | "amber" | "rose" | "blue" | "neutral";
+
+export function Card({
+  children,
+  className = "",
+  tone,
+  muted = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  /** Categorical tint for bento grids. */
+  tone?: Tone;
+  /** Dim a panel that has nothing in it yet. */
+  muted?: boolean;
+}) {
+  const tint = tone ? CARD_TONES[tone] ?? "" : "";
   return (
     <section
-      className={`rounded-xl border border-neutral-200 bg-white p-5 dark:border-neutral-800 dark:bg-neutral-900 ${className}`}
+      className={`pos-card glass rounded-card p-5 ${
+        muted ? "opacity-70 shadow-none" : ""
+      } ${tint ? `bg-gradient-to-b ${tint} to-transparent` : ""} ${className}`}
     >
       {children}
     </section>
@@ -19,8 +53,17 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
  */
 export function BackLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link href={href} className="mb-3 inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
-      <span aria-hidden>←</span> {label}
+    <Link
+      href={href}
+      className="mb-3 inline-flex min-h-[32px] items-center gap-2 rounded-full py-1 pl-1 pr-3.5 text-sm font-medium text-neutral-500 transition-colors duration-[140ms] hover:bg-neutral-900/[0.06] hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-neutral-100"
+    >
+      <span
+        aria-hidden
+        className="grid h-6 w-6 place-items-center rounded-full bg-neutral-900/[0.06] text-[12px] dark:bg-white/10"
+      >
+        ←
+      </span>
+      {label}
     </Link>
   );
 }
@@ -38,35 +81,60 @@ export function Bento({
   href?: string;
 }) {
   const sub = (subs ?? []).filter(Boolean) as string[];
+  const empty = Number(value) === 0;
   const inner = (
     <>
-      <div className="tnum text-2xl font-semibold">{value}</div>
-      <div className="text-xs text-neutral-500">{label}</div>
-      {sub.length > 0 && <div className="mt-1 text-[11px] text-neutral-400">{sub.join(" · ")}</div>}
+      <div
+        className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${
+          empty ? "text-neutral-300 dark:text-neutral-700" : ""
+        }`}
+      >
+        {value}
+      </div>
+      <div className="mt-1.5 text-[11.5px] font-semibold text-neutral-500">{label}</div>
+      {sub.length > 0 && (
+        <div className="mt-1 text-[11px] text-neutral-400 dark:text-neutral-500">{sub.join(" · ")}</div>
+      )}
     </>
   );
-  const cls = "rounded-lg border border-neutral-200 p-3 dark:border-neutral-800";
+  /* flex-1 with a basis so a row is even whether the page laid it out with grid
+     or with flex-wrap — some screens use each. */
+  const cls = `pos-bento flex-1 basis-[132px] rounded-card p-4 ${
+    empty ? "border border-dashed border-neutral-200 dark:border-neutral-800" : "glass"
+  }`;
+  const attrs = { "data-empty": empty ? "true" : undefined };
   return href ? (
-    <Link href={href} className={`block ${cls} transition-colors hover:border-neutral-400 dark:hover:border-neutral-600`}>{inner}</Link>
+    <Link href={href} {...attrs} className={`block ${cls} transition-transform duration-[140ms] hover:-translate-y-px`}>
+      {inner}
+    </Link>
   ) : (
-    <div className={cls}>{inner}</div>
+    <div {...attrs} className={cls}>
+      {inner}
+    </div>
   );
 }
 
 /** Horizontal labeled bar chart — pure CSS, theme-safe, no dependencies. */
+/* A labelled bar chart is categorical — each row is a different thing, not a
+   sample of one thing — so the bars take the categorical order. */
+const CAT_BG = ["bg-cat-1", "bg-cat-2", "bg-cat-3", "bg-cat-4", "bg-cat-5", "bg-cat-6", "bg-cat-7"];
+
 export function MiniBar({ rows, unit }: { rows: { label: string; value: number; href?: string }[]; unit?: string }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
     <div className="space-y-1.5">
-      {rows.map((r) => {
+      {rows.map((r, i) => {
         const label = r.href ? <Link href={r.href} className="hover:underline">{r.label}</Link> : r.label;
         return (
           <div key={r.label} className="flex items-center gap-2">
-            <span className="w-32 shrink-0 truncate text-xs text-neutral-500">{label}</span>
-            <div className="h-4 flex-1 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
-              <div className="h-full rounded bg-blue-600" style={{ width: `${(r.value / max) * 100}%` }} />
+            <span className="w-32 shrink-0 truncate text-[12px] text-neutral-500">{label}</span>
+            <div className="h-4 flex-1 overflow-hidden rounded-full bg-neutral-900/[0.06] dark:bg-white/10">
+              <div
+                className={`h-full rounded-full ${CAT_BG[i % CAT_BG.length]} transition-[width] duration-[220ms]`}
+                style={{ width: `${(r.value / max) * 100}%` }}
+              />
             </div>
-            <span className="tnum w-12 text-right text-xs text-neutral-500">{r.value.toLocaleString()}{unit ?? ""}</span>
+            <span className="tnum w-14 text-right text-[12px] font-semibold text-neutral-600 dark:text-neutral-300">{r.value.toLocaleString()}{unit ?? ""}</span>
           </div>
         );
       })}
@@ -76,18 +144,22 @@ export function MiniBar({ rows, unit }: { rows: { label: string; value: number; 
 
 export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <header className="mb-6">
-      <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-      {subtitle && <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{subtitle}</p>}
+    <header className="mb-7">
+      <h1 className="text-[30px] font-extrabold leading-[1.1] tracking-[-0.03em]">{title}</h1>
+      {subtitle && (
+        <p className="mt-2 max-w-[78ch] text-[15px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+          {subtitle}
+        </p>
+      )}
     </header>
   );
 }
 
 const BAND_STYLES: Record<string, string> = {
-  very_high: "bg-green-50 text-green-800 ring-green-600/20 dark:bg-green-950 dark:text-green-300",
-  high: "bg-sky-50 text-sky-800 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300",
-  medium: "bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-950 dark:text-amber-300",
-  low: "bg-neutral-100 text-neutral-600 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-400",
+  very_high: "bg-emerald/12 text-emerald dark:text-emerald-300",
+  high: "bg-accent/12 text-accent dark:text-blue-300",
+  medium: "bg-amber/14 text-amber dark:text-amber-300",
+  low: "bg-neutral-500/12 text-neutral-500 dark:text-neutral-400",
 };
 
 export const BAND_LABELS: Record<string, string> = {
@@ -100,7 +172,9 @@ export const BAND_LABELS: Record<string, string> = {
 export function BandBadge({ band }: { band: string }) {
   return (
     <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${BAND_STYLES[band] ?? BAND_STYLES.low}`}
+      /* The table tints its row off this attribute — see globals.css. */
+      data-band={band}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ${BAND_STYLES[band] ?? BAND_STYLES.low}`}
     >
       {BAND_LABELS[band] ?? band}
     </span>
@@ -108,27 +182,45 @@ export function BandBadge({ band }: { band: string }) {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  draft: "bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-950 dark:text-amber-300",
-  approved: "bg-green-50 text-green-800 ring-green-600/20 dark:bg-green-950 dark:text-green-300",
-  active: "bg-sky-50 text-sky-800 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300",
-  completed: "bg-neutral-100 text-neutral-600 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-400",
-  abandoned: "bg-neutral-100 text-neutral-500 ring-neutral-500/20 line-through dark:bg-neutral-800",
+  draft: "bg-amber/14 text-amber dark:text-amber-300",
+  approved: "bg-emerald/12 text-emerald dark:text-emerald-300",
+  active: "bg-accent/12 text-accent dark:text-blue-300",
+  completed: "bg-neutral-500/12 text-neutral-500 dark:text-neutral-400",
+  abandoned: "bg-neutral-500/10 text-neutral-500 line-through dark:text-neutral-500",
   // Evidence quality-gate outcomes + provider-run states (intelligence surface).
-  verified: "bg-green-50 text-green-800 ring-green-600/20 dark:bg-green-950 dark:text-green-300",
-  succeeded: "bg-green-50 text-green-800 ring-green-600/20 dark:bg-green-950 dark:text-green-300",
-  quarantined: "bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-950 dark:text-amber-300",
-  skipped: "bg-neutral-100 text-neutral-500 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-400",
-  running: "bg-sky-50 text-sky-800 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300",
-  rejected: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-950 dark:text-red-300",
-  failed: "bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-950 dark:text-red-300",
-  disabled: "bg-neutral-100 text-neutral-500 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-500",
+  verified: "bg-emerald/12 text-emerald dark:text-emerald-300",
+  succeeded: "bg-emerald/12 text-emerald dark:text-emerald-300",
+  quarantined: "bg-amber/14 text-amber dark:text-amber-300",
+  skipped: "bg-neutral-500/10 text-neutral-400 dark:text-neutral-600",
+  running: "bg-accent/12 text-accent dark:text-blue-300",
+  rejected: "bg-rose/12 text-rose dark:text-rose-300",
+  failed: "bg-rose/12 text-rose dark:text-rose-300",
+  disabled: "bg-neutral-500/10 text-neutral-400 dark:text-neutral-600",
+};
+
+/* A dot carries the state at a glance; the word confirms it — never colour
+   alone, which also keeps it readable in greyscale. */
+const STATUS_DOTS: Record<string, string> = {
+  draft: "bg-amber",
+  approved: "bg-emerald",
+  active: "bg-accent",
+  verified: "bg-emerald",
+  succeeded: "bg-emerald",
+  quarantined: "bg-amber",
+  running: "bg-accent",
+  rejected: "bg-rose",
+  failed: "bg-rose",
 };
 
 export function StatusBadge({ status }: { status: string }) {
   return (
     <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium uppercase tracking-wide ring-1 ring-inset ${STATUS_STYLES[status] ?? STATUS_STYLES.completed}`}
+      data-status={status}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11.5px] font-bold capitalize ${STATUS_STYLES[status] ?? STATUS_STYLES.completed}`}
     >
+      {STATUS_DOTS[status] && (
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOTS[status]}`} />
+      )}
       {status}
     </span>
   );
@@ -151,14 +243,16 @@ export function StatChip({
 }) {
   const body = (
     <div
-      className={`rounded-lg border px-4 py-3 ${
+      className={`pos-bento rounded-card p-4 ${
         tone === "attention" && Number(value) > 0
-          ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950"
-          : "border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900"
+          ? "border border-amber/30 bg-amber/10"
+          : Number(value) === 0
+            ? "border border-dashed border-neutral-200 dark:border-neutral-800"
+            : "glass"
       }`}
     >
-      <div className="tnum text-2xl font-semibold">{value}</div>
-      <div className="text-xs text-neutral-500 dark:text-neutral-400">{label}</div>
+      <div className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${Number(value) === 0 ? "text-neutral-300 dark:text-neutral-700" : ""}`}>{value}</div>
+      <div className="mt-1.5 text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">{label}</div>
     </div>
   );
   return href ? <Link href={href}>{body}</Link> : body;
@@ -255,7 +349,7 @@ export function SearchBox({
         name={name}
         defaultValue={defaultValue}
         placeholder={placeholder}
-        className="w-56 rounded-md border border-neutral-200 bg-white py-1.5 pl-8 pr-3 text-sm placeholder:text-neutral-400 focus:border-blue-500 focus:outline-none dark:border-neutral-800 dark:bg-neutral-900"
+        className="w-60 rounded-full border border-neutral-300/70 bg-white/70 py-2 pl-9 pr-4 text-sm backdrop-blur transition-colors duration-[140ms] placeholder:text-neutral-400 hover:border-neutral-400 focus:border-accent focus:outline-none dark:border-white/15 dark:bg-white/[0.06]"
       />
     </form>
   );
@@ -264,9 +358,13 @@ export function SearchBox({
 /** Active-filter pill with an ✕ that removes just this filter. */
 export function FilterPill({ label, clearHref }: { label: string; clearHref: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/12 py-1 pl-3 pr-1.5 text-xs font-semibold text-accent dark:text-blue-300">
       {label}
-      <Link href={clearHref} className="text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200">
+      <Link
+        href={clearHref}
+        aria-label={`Clear ${label}`}
+        className="flex h-5 w-5 items-center justify-center rounded-full text-accent/70 transition-colors duration-[140ms] hover:bg-accent hover:text-white dark:text-blue-300/70"
+      >
         ✕
       </Link>
     </span>
@@ -301,11 +399,11 @@ export function SortHeader({
 /** Tiny 7-bar dimension sparkline for table rows. */
 export function DimensionBars({ values }: { values: number[] }) {
   return (
-    <span className="inline-flex h-4 items-end gap-[2px]" title="dimensions">
+    <span className="inline-flex h-5 items-end gap-[3px]" title="dimension contributions">
       {values.map((v, i) => (
         <span
           key={i}
-          className="w-[3px] rounded-sm bg-blue-600/70 dark:bg-blue-400/70"
+          className={`w-[4px] rounded-[1.5px] ${CAT_BG[i % CAT_BG.length]}`}
           style={{ height: `${Math.max(12, v)}%` }}
         />
       ))}
@@ -321,8 +419,9 @@ export function EvidenceLine({
   meta: string;
 }) {
   return (
-    <li className="text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
-      {claim} <span className="text-xs text-neutral-400 dark:text-neutral-500">({meta})</span>
+    <li className="border-l-2 border-neutral-200 py-1 pl-3 dark:border-neutral-700">
+      <span className="block text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{claim}</span>
+      <span className="mt-0.5 block font-mono text-[11px] text-neutral-400 dark:text-neutral-500">{meta}</span>
     </li>
   );
 }
