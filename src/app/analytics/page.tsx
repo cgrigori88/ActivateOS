@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
 import { Card, PageHeader } from "@/components/ui";
+import { QuerySelect } from "@/components/query-select";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,14 @@ function pct(n: number, d: number): string {
   return d > 0 ? `${Math.round((n / d) * 100)}%` : "—";
 }
 
-export default async function AnalyticsPage() {
+export default async function AnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ window?: string }>;
+}) {
+  const sp = await searchParams;
+  const windowDays = ["30", "90"].includes(sp.window ?? "") ? Number(sp.window) : null;
+  const evWhere = windowDays ? `where occurred_at >= now() - interval '${windowDays} days'` : "";
   const pool = getPool();
 
   const [{ rows: eventAgg }, { rows: outcomeAgg }, { rows: trend }, { rows: cadence }, { rows: segments }, { rows: surges }] =
@@ -36,13 +44,13 @@ export default async function AnalyticsPage() {
            count(*) filter (where event_type = 'OPENED') as opened,
            count(*) filter (where event_type = 'CLICKED') as clicked,
            count(*) filter (where event_type = 'REPLIED') as replied
-         from email_events`,
+         from email_events ${evWhere}`,
       ),
       pool.query<{ positive: string; meetings: string }>(
         `select
            count(*) filter (where event_type = 'POSITIVE_RESPONSE') as positive,
            count(*) filter (where event_type = 'MEETING_BOOKED') as meetings
-         from outcome_events`,
+         from outcome_events ${evWhere}`,
       ),
       pool.query<{ wk: Date; sent: string; opened: string; replied: string }>(
         `select date_trunc('week', occurred_at) as wk,
@@ -74,6 +82,7 @@ export default async function AnalyticsPage() {
          join messages m on m.id = e.message_id
          join communication_threads t on t.id = m.thread_id
          left join latest l on l.company_id = t.company_id
+         ${windowDays ? `where e.occurred_at >= now() - interval '${windowDays} days'` : ""}
          group by 1`,
       ),
       pool.query<{ company_id: string; legal_name: string; payload: { clicks?: number; replies?: number; positive?: number } | null; occurred_at: Date }>(
@@ -115,6 +124,11 @@ export default async function AnalyticsPage() {
         title="Outreach analytics"
         subtitle="The outreach layer's own performance — funnel, trend, cadence, and conversion by propensity band."
       />
+
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <QuerySelect param="window" value={sp.window ?? "all"} label="Timeframe" options={[{ value: "all", label: "All time" }, { value: "30", label: "Last 30 days" }, { value: "90", label: "Last 90 days" }]} />
+        <span className="text-xs text-neutral-400">funnel &amp; segment conversion; the 8-week trend is fixed</span>
+      </div>
 
       {!hasData && (
         <Card className="mb-6">

@@ -2,7 +2,7 @@ import { getPool } from "@/db/client";
 import { calibrateStages, editIntensity } from "@/lib/insights/calibration";
 import { computeFunnel } from "@/lib/insights/funnel";
 import type { Stage } from "@/lib/opportunities/lifecycle";
-import { Card, PageHeader } from "@/components/ui";
+import { Bento, Card, PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +49,10 @@ export default async function InsightsPage() {
     edits.map((e) => ({ editDistance: Number(e.edit_distance), draftLength: Number(e.draft_length) })),
   );
   const totalCost = agents.reduce((s, a) => s + Number(a.cost ?? 0), 0);
+  const closedN = closed.length;
+  const wonN = closed.filter((o) => o.won).length;
+  const winRate = closedN > 0 ? Math.round((wonN / closedN) * 100) : null;
+  const agentRuns = agents.reduce((s, a) => s + Number(a.runs ?? 0), 0);
 
   return (
     <main>
@@ -56,6 +60,14 @@ export default async function InsightsPage() {
         title="Insights"
         subtitle="What the outcome log says. Declared assumptions stay visibly declared until observed data earns the right to replace them."
       />
+
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <Bento label="closed deals" value={closedN} />
+        <Bento label="win rate" value={winRate == null ? "—" : `${winRate}%`} subs={[`${wonN} won`]} />
+        <Bento label="edit intensity" value={intensity ?? "—"} subs={["0 sent as-is · 1 rewritten"]} />
+        <Bento label="AI runs" value={agentRuns} />
+        <Bento label="AI spend" value={`$${totalCost.toFixed(2)}`} />
+      </div>
 
       <Card className="mb-6">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">

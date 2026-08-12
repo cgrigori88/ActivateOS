@@ -11,6 +11,7 @@ import {
   SortHeader,
   Toolbar,
 } from "@/components/ui";
+import { QuerySelect } from "@/components/query-select";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,8 @@ interface Params {
   band?: string;
   q?: string;
   sort?: string;
+  industry?: string;
+  routed?: string;
 }
 
 function buildQS(params: Params, overrides: Partial<Params>): string {
@@ -51,7 +54,7 @@ export default async function AccountsPage({
   searchParams: Promise<Params>;
 }) {
   const params = await searchParams;
-  const { band, q } = params;
+  const { band, q, industry, routed } = params;
   const sort = params.sort ?? "-score";
   const pool = getPool();
 
@@ -91,8 +94,13 @@ export default async function AccountsPage({
   const counts: Record<string, number> = { all: all.length };
   for (const b of BANDS) counts[b] = all.filter((r) => r.band === b).length;
 
+  const industryOptions = [...new Set(all.map((r) => r.industry).filter(Boolean) as string[])].sort();
+
   let rows = all;
   if (band) rows = rows.filter((r) => r.band === band);
+  if (industry) rows = rows.filter((r) => r.industry === industry);
+  if (routed === "routed") rows = rows.filter((r) => r.partner_name);
+  if (routed === "unrouted") rows = rows.filter((r) => !r.partner_name);
   if (q) {
     const needle = q.toLowerCase();
     rows = rows.filter(
@@ -159,9 +167,13 @@ export default async function AccountsPage({
         <SearchBox
           placeholder="Search accounts, industries, partners…"
           defaultValue={q}
-          hidden={{ band, sort: params.sort }}
+          hidden={{ band, sort: params.sort, industry, routed }}
         />
-        {(band || q) && (
+        {industryOptions.length > 0 && (
+          <QuerySelect param="industry" value={industry ?? "all"} label="Industry" options={[{ value: "all", label: "Any industry" }, ...industryOptions.map((i) => ({ value: i, label: i }))]} />
+        )}
+        <QuerySelect param="routed" value={routed ?? "all"} label="Routing" options={[{ value: "all", label: "Any" }, { value: "routed", label: "Routed" }, { value: "unrouted", label: "Unrouted" }]} />
+        {(band || q || industry || routed) && (
           <>
             {band && (
               <FilterPill
