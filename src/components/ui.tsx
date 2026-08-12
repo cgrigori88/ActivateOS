@@ -241,21 +241,36 @@ export function StatChip({
   href?: string;
   tone?: "default" | "attention";
 }) {
-  const body = (
-    <div
-      className={`pos-bento rounded-card p-4 ${
-        tone === "attention" && Number(value) > 0
-          ? "border border-amber/30 bg-amber/10"
-          : Number(value) === 0
-            ? "border border-dashed border-neutral-200 dark:border-neutral-800"
-            : "glass"
-      }`}
-    >
-      <div className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${Number(value) === 0 ? "text-neutral-300 dark:text-neutral-700" : ""}`}>{value}</div>
+  const empty = Number(value) === 0;
+  const cls = `pos-bento rounded-card p-4 ${
+    tone === "attention" && !empty
+      ? "border border-amber/30 bg-amber/10"
+      : empty
+        ? "border border-dashed border-neutral-200 dark:border-neutral-800"
+        : "glass"
+  }`;
+  const inner = (
+    <>
+      <div
+        className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${
+          empty ? "text-neutral-300 dark:text-neutral-700" : ""
+        }`}
+      >
+        {value}
+      </div>
       <div className="mt-1.5 text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">{label}</div>
+    </>
+  );
+  const attrs = { "data-empty": empty ? "true" : undefined };
+  return href ? (
+    <Link href={href} {...attrs} className={`pos-lift block ${cls}`}>
+      {inner}
+    </Link>
+  ) : (
+    <div {...attrs} className={cls}>
+      {inner}
     </div>
   );
-  return href ? <Link href={href}>{body}</Link> : body;
 }
 
 /**
@@ -276,35 +291,56 @@ export function CountChip({
   active?: boolean;
   tone?: "green" | "sky" | "amber" | "neutral" | "red";
 }) {
-  const toneBar: Record<string, string> = {
-    green: "bg-green-600",
-    sky: "bg-sky-600",
-    amber: "bg-amber-500",
-    red: "bg-red-600",
-    neutral: "bg-neutral-400",
+  const empty = Number(value) === 0;
+  /* `data-tone` opts this tile out of the positional colouring in globals.css:
+     a count chip that is also a filter states its own meaning, and the selected
+     one has to stay legible on the accent fill. */
+  const cls = `pos-bento min-w-[6.5rem] rounded-card px-4 py-3 ${
+    active
+      ? "border border-accent bg-accent text-white shadow-[var(--shadow-float)]"
+      : empty
+        ? "border border-dashed border-neutral-200 dark:border-neutral-800"
+        : "glass"
+  }`;
+  const figure: Record<string, string> = {
+    green: "text-emerald",
+    sky: "text-accent",
+    amber: "text-amber",
+    red: "text-rose",
+    neutral: "",
   };
-  const body = (
-    <div
-      className={`relative min-w-[5.5rem] overflow-hidden rounded-lg border px-3 py-2 ${href ? "pos-lift" : "transition-colors"} ${
-        active
-          ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900"
-          : "border-neutral-200 bg-white hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700"
-      }`}
-    >
-      {tone && !active && (
-        <span className={`absolute inset-x-0 top-0 h-0.5 ${toneBar[tone]}`} />
-      )}
-      <div className="tnum text-lg font-semibold leading-tight">{value}</div>
+  const inner = (
+    <>
       <div
-        className={`text-[10px] font-medium uppercase tracking-wider ${
-          active ? "text-neutral-300 dark:text-neutral-600" : "text-neutral-500"
+        className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${
+          active
+            ? "text-white"
+            : empty
+              ? "text-neutral-300 dark:text-neutral-700"
+              : (tone && figure[tone]) || ""
+        }`}
+      >
+        {value}
+      </div>
+      <div
+        className={`mt-1.5 text-[11.5px] font-semibold ${
+          active ? "text-white/75" : "text-neutral-500 dark:text-neutral-400"
         }`}
       >
         {label}
       </div>
+    </>
+  );
+  const attrs = { "data-tone": tone, "data-empty": empty ? "true" : undefined };
+  return href ? (
+    <Link href={href} {...attrs} className={`pos-lift block ${cls}`}>
+      {inner}
+    </Link>
+  ) : (
+    <div {...attrs} className={cls}>
+      {inner}
     </div>
   );
-  return href ? <Link href={href}>{body}</Link> : body;
 }
 
 /** Toolbar row above a data table: filters left, actions right. */

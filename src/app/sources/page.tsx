@@ -42,26 +42,26 @@ export default async function SourcesPage() {
                 <span className="text-xs uppercase tracking-wide text-neutral-400">{s.kind}</span>
               </div>
               <div className="mb-3 flex items-baseline gap-4">
-                <div>
-                  <div className="tnum text-2xl font-semibold">{Number(s.trust_score).toFixed(2)}</div>
-                  <div className="text-xs text-neutral-500">earned trust</div>
+                <div className="pos-bento">
+                  <div className="pos-bento-fig tnum text-2xl font-bold tracking-[-0.02em]">{Number(s.trust_score).toFixed(2)}</div>
+                  <div className="text-[11.5px] font-semibold text-neutral-500">earned trust</div>
                 </div>
-                <div>
-                  <div className="tnum text-2xl font-semibold">
+                <div className="pos-bento">
+                  <div className="pos-bento-fig tnum text-2xl font-bold tracking-[-0.02em]">
                     {Math.round(Number(s.audit_sample_rate) * 100)}%
                   </div>
-                  <div className="text-xs text-neutral-500">audit sampling</div>
+                  <div className="text-[11.5px] font-semibold text-neutral-500">audit sampling</div>
                 </div>
-                <div>
-                  <div className="tnum text-2xl font-semibold">{verifiedPct}%</div>
-                  <div className="text-xs text-neutral-500">verified rate</div>
+                <div className="pos-bento">
+                  <div className="pos-bento-fig tnum text-2xl font-bold tracking-[-0.02em]">{verifiedPct}%</div>
+                  <div className="text-[11.5px] font-semibold text-neutral-500">verified rate</div>
                 </div>
                 {s.predictive_value != null && (
-                  <div>
-                    <div className="tnum text-2xl font-semibold">
+                  <div className="pos-bento">
+                    <div className="pos-bento-fig tnum text-2xl font-bold tracking-[-0.02em]">
                       {Number(s.predictive_value).toFixed(2)}
                     </div>
-                    <div className="text-xs text-neutral-500">predictive value</div>
+                    <div className="text-[11.5px] font-semibold text-neutral-500">predictive value</div>
                   </div>
                 )}
               </div>
