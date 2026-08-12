@@ -210,6 +210,61 @@ export default async function PipelinePage({
                 <MiniBar rows={stageRows} />
               </Card>
             )}
+
+            {/* Pipeline & revenue roll-up — base (direct) vs joint (partner co-sell),
+                with a per-partner breakdown. The base/joint split is the co-sell
+                lift; per-partner shows who's driving it. */}
+            {(() => {
+              const baseOpen = open.filter((o) => !o.partner_name).reduce((s, o) => s + Number(o.amount_usd ?? 0), 0);
+              const jointOpen = open.filter((o) => o.partner_name).reduce((s, o) => s + Number(o.amount_usd ?? 0), 0);
+              const totalOpen = baseOpen + jointOpen;
+              const roll = new Map<string, { open: number; won: number }>();
+              for (const o of opps) {
+                if (!o.partner_name) continue;
+                const e = roll.get(o.partner_name) ?? { open: 0, won: 0 };
+                if (o.stage === "closed_won") e.won += Number(o.amount_usd ?? 0);
+                else if (!o.stage.startsWith("closed")) e.open += Number(o.amount_usd ?? 0);
+                roll.set(o.partner_name, e);
+              }
+              const partners = [...roll.entries()].sort((a, b) => b[1].open + b[1].won - (a[1].open + a[1].won));
+              const maxP = Math.max(1, ...partners.map(([, v]) => v.open + v.won));
+              if (totalOpen === 0 && partners.length === 0) return null;
+              return (
+                <Card className="mb-5">
+                  <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Pipeline &amp; revenue roll-up</h2>
+                    <span className="text-[11px] text-neutral-400">open pipeline · base (direct) vs joint (co-sell)</span>
+                  </div>
+                  {/* Base vs joint split bar */}
+                  <div className="mb-1 flex h-5 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
+                    <div className="flex items-center justify-center bg-neutral-400 text-[10px] font-medium text-white dark:bg-neutral-600" style={{ width: `${totalOpen ? (baseOpen / totalOpen) * 100 : 0}%` }} title={`Base $${Math.round(baseOpen / 1000)}k`} />
+                    <div className="flex items-center justify-center bg-teal-500 text-[10px] font-medium text-white" style={{ width: `${totalOpen ? (jointOpen / totalOpen) * 100 : 0}%` }} title={`Joint $${Math.round(jointOpen / 1000)}k`} />
+                  </div>
+                  <div className="mb-4 flex gap-4 text-[11px] text-neutral-500">
+                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-neutral-400 dark:bg-neutral-600" /> base ${Math.round(baseOpen / 1000)}k</span>
+                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-teal-500" /> joint / co-sell ${Math.round(jointOpen / 1000)}k</span>
+                    <span className="ml-auto">co-sell lift {totalOpen ? Math.round((jointOpen / totalOpen) * 100) : 0}%</span>
+                  </div>
+                  {/* Per-partner: open (teal) + won (green) */}
+                  {partners.length > 0 ? (
+                    <div className="space-y-2">
+                      {partners.map(([name, v]) => (
+                        <div key={name} className="flex items-center gap-3">
+                          <span className="w-40 shrink-0 truncate text-xs text-neutral-600 dark:text-neutral-300" title={name}>{name}</span>
+                          <div className="flex h-4 flex-1 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
+                            <div className="bg-teal-500" style={{ width: `${((v.open) / maxP) * 100}%` }} title={`open $${Math.round(v.open / 1000)}k`} />
+                            <div className="bg-green-600" style={{ width: `${((v.won) / maxP) * 100}%` }} title={`won $${Math.round(v.won / 1000)}k`} />
+                          </div>
+                          <span className="tnum w-24 shrink-0 text-right text-xs text-neutral-500">${Math.round(v.open / 1000)}k{v.won ? ` · ${Math.round(v.won / 1000)}k won` : ""}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-neutral-400">No partner-attributed pipeline yet — opportunities inherit their partner from the motion.</p>
+                  )}
+                </Card>
+              );
+            })()}
           </>
         );
       })()}

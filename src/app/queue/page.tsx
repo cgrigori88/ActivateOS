@@ -38,7 +38,7 @@ function startOfToday(): number {
 export default async function QueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ window?: string; source?: string; group?: string }>;
+  searchParams: Promise<{ window?: string; source?: string; group?: string; partner?: string; q?: string }>;
 }) {
   const sp = await searchParams;
   const groupKey = ["due", "account", "partner"].includes(sp.group ?? "") ? sp.group! : "due";
@@ -113,14 +113,22 @@ export default async function QueuePage({
   const weekN = items.filter((i) => i.dueAt && i.dueAt.getTime() < today0 + 7 * DAY).length;
   const convoN = items.filter((i) => i.kind === "conversation").length;
 
-  // Filters
+  // Filters — window / source / partner / account search, so the worklist holds
+  // at thousands of accounts.
+  const partnerOptions = [...new Set(items.map((i) => i.partnerName).filter(Boolean) as string[])].sort();
+  const query = (sp.q ?? "").trim().toLowerCase();
   const windowDays = ["7", "30"].includes(sp.window ?? "") ? Number(sp.window) : null;
-  const filtered = items.filter((i) => {
-    if (sp.source && sp.source !== "all" && i.kind !== sp.source) return false;
+  const inWindow = (i: Item) => {
     if (sp.window === "overdue") return i.dueAt != null && i.dueAt.getTime() < today0;
     if (sp.window === "today") return i.dueAt != null && i.dueAt.getTime() >= today0 && i.dueAt.getTime() < today0 + DAY;
     if (windowDays != null) return i.dueAt != null && i.dueAt.getTime() < today0 + windowDays * DAY;
     return true;
+  };
+  const filtered = items.filter((i) => {
+    if (sp.source && sp.source !== "all" && i.kind !== sp.source) return false;
+    if (sp.partner && sp.partner !== "all" && (i.partnerName ?? "Direct") !== sp.partner) return false;
+    if (query && !`${i.legalName} ${i.title} ${i.owner ?? ""}`.toLowerCase().includes(query)) return false;
+    return inWindow(i);
   });
 
   // Sort: overdue/dated first (earliest due), undated last.
@@ -166,8 +174,15 @@ export default async function QueuePage({
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <QuerySelect param="window" value={sp.window ?? "all"} label="Window" options={[{ value: "all", label: "All" }, { value: "overdue", label: "Overdue" }, { value: "today", label: "Today" }, { value: "7", label: "Next 7 days" }, { value: "30", label: "Next 30 days" }]} />
         <QuerySelect param="source" value={sp.source ?? "all"} label="Source" options={[{ value: "all", label: "All sources" }, { value: "cadence", label: "Motion cadence" }, { value: "conversation", label: "Conversations" }]} />
+        {partnerOptions.length > 0 && (
+          <QuerySelect param="partner" value={sp.partner ?? "all"} label="Partner" options={[{ value: "all", label: "Any partner" }, { value: "Direct", label: "Direct" }, ...partnerOptions.map((p) => ({ value: p, label: p }))]} />
+        )}
         <QuerySelect param="group" value={groupKey} label="Group by" options={[{ value: "due", label: "Due bucket" }, { value: "account", label: "Account" }, { value: "partner", label: "Partner" }]} />
-        <span className="ml-auto text-xs text-neutral-500">{filtered.length} action(s)</span>
+        <form className="ml-auto flex items-center gap-2">
+          {Object.entries({ window: sp.window, source: sp.source, partner: sp.partner, group: sp.group }).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
+          <input name="q" defaultValue={sp.q ?? ""} placeholder="Search account, task…" className="w-52 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+          <span className="text-xs text-neutral-500">{filtered.length}</span>
+        </form>
       </div>
 
       {filtered.length === 0 ? (
