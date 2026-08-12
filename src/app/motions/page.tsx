@@ -3,6 +3,7 @@ import { getPool } from "@/db/client";
 import { Bento, Card, MiniBar, PageHeader, StatusBadge } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
+import { currentOrgId } from "@/lib/auth/org";
 import {
   abandonMotionAction,
   activateMotionAction,
@@ -68,8 +69,8 @@ export default async function MotionsPage({
      left join goals g on g.id = m.goal_id
      order by m.created_at desc limit 500`,
   );
-  const { rows: orgRows } = await pool.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
-  const goals = orgRows[0] ? await goalOptions(pool, orgRows[0].id) : [];
+  const orgId = await currentOrgId(pool);
+  const goals = orgId ? await goalOptions(pool, orgId) : [];
 
   const partnerOptions = [...new Set(all.map((m) => m.partner_name).filter(Boolean) as string[])];
   const motions = all.filter(

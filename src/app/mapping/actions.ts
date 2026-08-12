@@ -7,12 +7,14 @@ import { CATEGORIES, targetFromCell, type Category } from "@/lib/mapping/populat
 import { createTargetFromCompanies } from "@/lib/mapping/insights";
 import { createMultiVendorCampaign } from "@/lib/campaigns/multi-vendor";
 import { designMotion } from "@/lib/agents/motion-designer";
+import { currentOrgId } from "@/lib/auth/org";
 
 const MOTION_TARGET_SLUG = "infrastructure-automation";
 
 async function soleOrgId(db: import("pg").PoolClient): Promise<string | null> {
-  const { rows } = await db.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
-  return rows[0]?.id ?? null;
+  // Tenant context: the signed-in user's org (falls back to the sole org in
+  // Basic-Auth/demo mode). Name kept to avoid churning every call site.
+  return currentOrgId(db);
 }
 
 /**

@@ -3,6 +3,7 @@ import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
+import { currentOrgId } from "@/lib/auth/org";
 import {
   generateSequenceAction,
   createBlankCampaignAction,
@@ -81,8 +82,8 @@ export default async function CampaignsPage({
      where ca.dismissed_at is null
      order by ca.created_at desc`,
   );
-  const { rows: orgRows } = await pool.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
-  const goals = orgRows[0] ? await goalOptions(pool, orgRows[0].id) : [];
+  const orgId = await currentOrgId(pool);
+  const goals = orgId ? await goalOptions(pool, orgId) : [];
 
   const suggestions = campaigns.filter((c) => c.source === "ai_suggested" && c.status === "draft");
   let rest = campaigns.filter((c) => !(c.source === "ai_suggested" && c.status === "draft"));

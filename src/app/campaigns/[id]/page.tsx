@@ -5,6 +5,7 @@ import { Card, PageHeader, StatusBadge } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { TZ_OPTIONS, formatInTz } from "@/lib/comms/tz";
 import { campaignAccounts, linkedLists, attachableLists, mergeAccountData, renderAngle } from "@/lib/campaigns/lists";
+import { currentOrgId } from "@/lib/auth/org";
 import {
   approveTouchAction,
   rejectTouchAction,
@@ -86,6 +87,7 @@ export default async function CampaignDetailPage({
   const sp = await searchParams;
   const notice = sp.notice;
   const pool = getPool();
+  const tenantOrgId = await currentOrgId(pool);
 
   const { rows: caRows } = await pool.query<{
     id: string;
@@ -104,7 +106,7 @@ export default async function CampaignDetailPage({
     send_tz: string | null;
   }>(
     `select ca.id, ca.name, ca.status, ca.objective, ca.audience,
-            coalesce(ca.org_id, (select id from organizations order by created_at asc limit 1)) as org_id,
+            coalesce(ca.org_id, $2::uuid) as org_id,
             c.id as company_id, c.legal_name, c.primary_domain, m.id as motion_id,
             bp.wordmark, ca.recipient_email, ca.launched_at, ca.send_tz
      from campaigns ca
@@ -112,7 +114,7 @@ export default async function CampaignDetailPage({
      join companies c on c.id = coalesce(ca.company_id, m.company_id)
      left join brand_profiles bp on bp.id = ca.brand_id
      where ca.id = $1`,
-    [id],
+    [id, tenantOrgId],
   );
   if (caRows.length === 0) notFound();
   const ca = caRows[0];

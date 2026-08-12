@@ -3,6 +3,7 @@ import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { captureContactsFromPopulations } from "@/lib/contacts/capture";
+import { currentOrgId } from "@/lib/auth/org";
 
 export const dynamic = "force-dynamic";
 
@@ -97,8 +98,7 @@ export default async function ContactsPage({
   const pool = getPool();
 
   // Keep the partner-rep side of the taxonomy in sync with current mappings.
-  const { rows: orgRows } = await pool.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
-  const orgId = orgRows[0]?.id;
+  const orgId = await currentOrgId(pool);
   if (orgId) {
     try {
       await captureContactsFromPopulations(pool, orgId);

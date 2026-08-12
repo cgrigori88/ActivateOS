@@ -22,6 +22,7 @@ import { OverlapWorkbench, type OverlapRow } from "./overlap-workbench";
 import { alignedFieldKeys, populationFields } from "@/lib/mapping/populations";
 import { createPopulationAction, setPopulationStatusAction, targetFromCellAction, acceptPopulationAction } from "./actions";
 import { ViewSelect, PartnerSelect } from "./view-select";
+import { currentOrgId } from "@/lib/auth/org";
 
 export const dynamic = "force-dynamic";
 
@@ -291,8 +292,8 @@ export default async function MappingPage({
 // ── Account-mapping matrix components (Phase 10) ─────────────────────────────
 
 async function soleOrgId(db: import("pg").PoolClient): Promise<string | null> {
-  const { rows } = await db.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
-  return rows[0]?.id ?? null;
+  // Tenant context: signed-in user's org, or the sole org in Basic-Auth mode.
+  return currentOrgId(db);
 }
 
 const CAT_TONE: Record<string, string> = {

@@ -4,6 +4,7 @@ import { Bento, Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { listGoals, METRICS, METRIC_LABEL, formatMetric, type Goal } from "@/lib/goals/goals";
 import { listTargets, type TargetRow } from "@/lib/goals/targets";
+import { currentOrgId } from "@/lib/auth/org";
 import { createGoalAction, setGoalStatusAction, upsertTargetAction, deleteTargetAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -31,8 +32,7 @@ export default async function GoalsPage({
 }) {
   const sp = await searchParams;
   const pool = getPool();
-  const { rows: orgRows } = await pool.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
-  const orgId = orgRows[0]?.id;
+  const orgId = await currentOrgId(pool);
   const all = orgId ? await listGoals(pool, orgId) : [];
   const targets = orgId ? await listTargets(pool, orgId) : [];
   const { rows: partnerRows } = await pool.query<{ id: string; name: string }>(`select id, name from partners order by name`);

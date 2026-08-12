@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getPool } from "@/db/client";
 import { generateCampaignSequence } from "@/lib/agents/campaign-email";
 import { createBlankCampaign } from "@/lib/comms/authoring";
+import { currentOrgId } from "@/lib/auth/org";
 
 /**
  * Generate a multi-touch email sequence from an APPROVED motion, then jump to
@@ -101,14 +102,15 @@ export async function createBlankCampaignAction(formData: FormData): Promise<voi
   try {
     // Companies aren't org-scoped by a column — resolve the org from any related
     // row, falling back to the sole organization.
+    const tenantOrgId = await currentOrgId(db);
     const { rows } = await db.query<{ org_id: string | null }>(
       `select coalesce(
          (select org_id from revenue_motions where company_id = $1 and org_id is not null limit 1),
          (select org_id from propensity_scores where company_id = $1 and org_id is not null limit 1),
          (select org_id from partner_accounts where company_id = $1 and org_id is not null limit 1),
-         (select id from organizations order by created_at asc limit 1)
+         $2::uuid
        ) as org_id`,
-      [companyId],
+      [companyId, tenantOrgId],
     );
     const res = await createBlankCampaign(db, { orgId: rows[0]?.org_id ?? null, companyId, name, senderName });
     campaignId = res.campaignId;

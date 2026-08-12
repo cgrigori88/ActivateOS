@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { getPool } from "@/db/client";
 import { createGoal, setGoalStatus, setGoalManualValue, type Metric } from "@/lib/goals/goals";
 import { upsertTarget, deleteTarget, type TargetMetric } from "@/lib/goals/targets";
+import { currentOrgId } from "@/lib/auth/org";
 
 async function soleOrgId(): Promise<string | null> {
-  const { rows } = await getPool().query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
-  return rows[0]?.id ?? null;
+  return currentOrgId(getPool());
 }
 
 export async function createGoalAction(formData: FormData): Promise<void> {

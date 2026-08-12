@@ -33,6 +33,17 @@ release gate, not a wishlist.
   policies key on. Requires `NEXT_PUBLIC_SUPABASE_URL`,
   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` in host env;
   absent → previous behavior exactly.
+- **Tenant isolation in the database (multi-tenant slice 2).** Every table
+  carrying `org_id` has a `tenant_isolation` RLS policy (migration 0029):
+  authenticated users read/write only rows of orgs they are members of;
+  NULL-org rows are invisible. Verified live: an org member sees their org's
+  rows through the API, a signed-in outsider sees nothing, anon sees nothing.
+  App-side, ALL org resolution goes through `currentOrgId()` — the signed-in
+  user's membership, falling back to sole-org only in Basic-Auth/demo mode —
+  so no screen or action hardcodes "the first organization" anymore.
+  Remaining for later slices: role-gated writes (owner/operator/viewer),
+  join-through policies for child tables, per-request scoped DB connections,
+  the partnership handshake, and the cross-tenant audit log.
 
 ## Accepted risk — open items, tracked
 
