@@ -81,6 +81,33 @@ export async function createTargetListAction(formData: FormData): Promise<void> 
   redirect(`/mapping?view=recommend&notice=${encodeURIComponent(`Created target list "${name}" with ${added} account(s).`)}`);
 }
 
+/** Generate motions for a selected set of accounts (bounded, AI, graceful). */
+export async function generateMotionsForSelectionAction(formData: FormData): Promise<void> {
+  const ids = String(formData.get("companyIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 10);
+  const pool = getPool();
+  const db = await pool.connect();
+  let ok = 0;
+  let fail = 0;
+  try {
+    const orgId = await soleOrgId(db);
+    if (orgId) {
+      for (const companyId of ids) {
+        try {
+          await designMotion(db, { orgId, companyId, targetSlug: MOTION_TARGET_SLUG });
+          ok++;
+        } catch {
+          fail++;
+        }
+      }
+    }
+  } finally {
+    db.release();
+  }
+  revalidatePath("/mapping");
+  const msg = ok > 0 ? `Drafted ${ok} motion(s)${fail ? `, ${fail} skipped (no score/evidence or AI off)` : ""}.` : `Couldn't draft motions (${fail} skipped — needs scores/evidence and AI configured).`;
+  redirect(`/mapping?view=recommend&notice=${encodeURIComponent(msg)}`);
+}
+
 /** AI-draft a motion for a cross-partner account (grounded, lands as draft). */
 export async function draftMotionAction(companyId: string): Promise<void> {
   const pool = getPool();

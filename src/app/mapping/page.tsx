@@ -15,7 +15,8 @@ import {
 import { partnerCoverage } from "@/lib/mapping/populations";
 import { partnerHub } from "@/lib/mapping/partner-hub";
 import { crossPartnerOpportunities, suggestedTargetLists } from "@/lib/mapping/insights";
-import { createTargetListAction, draftMotionAction } from "./actions";
+import { createTargetListAction, generateMotionsForSelectionAction } from "./actions";
+import { SelectableAccounts } from "./selectable-accounts";
 import { alignedFieldKeys, populationFields } from "@/lib/mapping/populations";
 import { createPopulationAction, setPopulationStatusAction, targetFromCellAction, acceptPopulationAction } from "./actions";
 import { ViewSelect, PartnerSelect } from "./view-select";
@@ -551,7 +552,7 @@ async function RecommendSection() {
       );
     }
     const buckets = suggestedTargetLists(accounts);
-    const top = accounts.slice(0, 20);
+    const top = accounts.slice(0, 200);
     const multi = accounts.filter((a) => a.partnerCount >= 2).length;
 
     return (
@@ -582,65 +583,30 @@ async function RecommendSection() {
           ))}
         </div>
 
-        {/* Ranked cross-partner opportunities */}
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Ranked co-sell opportunities</h2>
-        <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th className="text-right">Rank</th>
-                <th>Account</th>
-                <th className="text-right">Propensity</th>
-                <th>Partners</th>
-                <th>Motion</th>
-                <th>Segments</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {top.map((a) => (
-                <tr key={a.companyId}>
-                  <td className="tnum text-right font-semibold text-neutral-500">{a.rank.toFixed(0)}</td>
-                  <td>
-                    <Link href={`/accounts/${a.companyId}`} className="font-medium hover:underline">{a.name}</Link>
-                    {a.industry && <div className="text-[11px] text-neutral-400">{a.industry}</div>}
-                  </td>
-                  <td className="text-right">
-                    {a.score == null ? <span className="text-neutral-400">—</span> : (
-                      <span className="inline-flex items-center gap-2">
-                        <span className="tnum font-semibold">{a.score.toFixed(0)}</span>
-                        {a.band && <BandBadge band={a.band} />}
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    <span className="text-xs text-neutral-600 dark:text-neutral-300">{a.partners.join(", ")}</span>
-                    {a.partnerCount >= 2 && <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300">×{a.partnerCount}</span>}
-                  </td>
-                  <td>
-                    <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${motion(a.isCustomer).tone}`}>{a.motion}</span>
-                  </td>
-                  <td className="text-xs text-neutral-500">{a.segments.join(", ") || "—"}</td>
-                  <td className="text-right">
-                    {a.hasMotion ? (
-                      <span className="text-[11px] text-neutral-400">has motion</span>
-                    ) : (
-                      <form action={draftMotionAction.bind(null, a.companyId)}>
-                        <button className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-blue-950">
-                          Draft motion
-                        </button>
-                      </form>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="border-t border-neutral-100 px-3 py-2 text-[11px] text-neutral-500 dark:border-neutral-800">
-            Rank = propensity + a boost for each additional partner covering the account (multi-partner co-sell is
-            stronger). &ldquo;Draft motion&rdquo; generates a grounded, human-approved motion for that account.
-          </p>
+        {/* Ranked opportunities — filter, select one or many, then act */}
+        <div className="mb-2 flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Ranked co-sell opportunities</h2>
+          <span className="text-[11px] text-neutral-400">Filter, select accounts, then create a target list or draft motions.</span>
         </div>
+        <SelectableAccounts
+          accounts={top.map((a) => ({
+            companyId: a.companyId,
+            name: a.name,
+            industry: a.industry,
+            score: a.score,
+            band: a.band,
+            partners: a.partners,
+            partnerCount: a.partnerCount,
+            motion: a.motion,
+            hasMotion: a.hasMotion,
+          }))}
+          createTarget={createTargetListAction}
+          generateMotions={generateMotionsForSelectionAction}
+        />
+        <p className="mt-2 text-[11px] text-neutral-400">
+          Rank = propensity + a boost for each additional partner covering the account. &ldquo;Generate motions&rdquo; is
+          bounded to 10 at a time and grounds each in the account&apos;s evidence.
+        </p>
       </>
     );
   } finally {
