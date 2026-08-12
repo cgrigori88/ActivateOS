@@ -17,6 +17,7 @@ import { partnerHub } from "@/lib/mapping/partner-hub";
 import { crossPartnerOpportunities, suggestedTargetLists } from "@/lib/mapping/insights";
 import { createTargetListAction, generateMotionsForSelectionAction } from "./actions";
 import { SelectableAccounts } from "./selectable-accounts";
+import { OverlapWorkbench, type OverlapRow } from "./overlap-workbench";
 import { alignedFieldKeys, populationFields } from "@/lib/mapping/populations";
 import { createPopulationAction, setPopulationStatusAction, targetFromCellAction, acceptPopulationAction } from "./actions";
 import { ViewSelect, PartnerSelect } from "./view-select";
@@ -24,21 +25,20 @@ import { ViewSelect, PartnerSelect } from "./view-select";
 export const dynamic = "force-dynamic";
 
 /**
- * Mapping (Phase 8): where the SAME account shows up across a reseller, a
- * distributor and a vendor — the overlap that founds a co-sell campaign. Three
- * lenses: overlap + motion, coverage/conflict grid, and propensity-ranked
- * shared targets.
+ * Mapping (Phase 8→10): where the SAME account shows up across a reseller, a
+ * distributor and a vendor — the overlap that founds a co-sell campaign. The
+ * old overlap / coverage / targets triplet is consolidated into one Overlap &
+ * motions workbench (account × partner grid + real plays + conflict + named
+ * lists); their URLs still resolve there.
  */
 
-type View = "matrix" | "recommend" | "review" | "overlap" | "coverage" | "targets";
-const VIEW_KEYS: View[] = ["matrix", "recommend", "review", "overlap", "coverage", "targets"];
+type View = "matrix" | "recommend" | "review" | "overlap";
+const VIEW_KEYS: View[] = ["matrix", "recommend", "review", "overlap"];
 const VIEW_LABEL: Record<View, string> = {
   matrix: "Account mapping",
   recommend: "AI recommendations",
   review: "Pending review",
-  overlap: "Overlap + motion",
-  coverage: "Coverage & conflict",
-  targets: "Ranked targets",
+  overlap: "Overlap & motions",
 };
 
 function ViewTabs({ view, pendingCount = 0 }: { view: View; pendingCount?: number }) {
@@ -53,30 +53,15 @@ function ViewTabs({ view, pendingCount = 0 }: { view: View; pendingCount?: numbe
   );
 }
 
-interface Grouped {
-  companyId: string;
-  name: string;
-  domain: string | null;
-  partners: { id: string; name: string; type: string | null; installed: boolean }[];
-  anyInstalled: boolean;
-  score: number | null;
-  band: string | null;
-  targets: string[];
-}
-
-function motion(anyInstalled: boolean): { label: string; tone: string } {
-  return anyInstalled
-    ? { label: "cross-sell / upsell", tone: "bg-sky-50 text-sky-800 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300" }
-    : { label: "net-new", tone: "bg-green-50 text-green-800 ring-green-600/20 dark:bg-green-950 dark:text-green-300" };
-}
-
 export default async function MappingPage({
   searchParams,
 }: {
   searchParams: Promise<{ view?: string; partner?: string; row?: string; col?: string; cols?: string; hide?: string; notice?: string; mr?: string; mc?: string; pop?: string }>;
 }) {
   const sp = await searchParams;
-  const view: View = (["matrix", "recommend", "review", "overlap", "coverage", "targets"].includes(sp.view ?? "") ? sp.view : "matrix") as View;
+  // coverage/targets were folded into the overlap workbench — old URLs still land there.
+  const rawView = ["coverage", "targets"].includes(sp.view ?? "") ? "overlap" : sp.view;
+  const view: View = (["matrix", "recommend", "review", "overlap"].includes(rawView ?? "") ? rawView : "matrix") as View;
 
   const pendingCount = Number(
     (await getPool().query<{ n: string }>(`select count(*)::text n from account_populations where status = 'pending'`)).rows[0]?.n ?? 0,
@@ -144,222 +129,161 @@ export default async function MappingPage({
     );
   }
 
-  // Overlap / coverage / targets all read from the SAME populations data as the
-  // matrix — a co-sell overlap is an account in both an org and a partner list.
-  const partnerFilter = sp.partner;
+  // ── Overlap & motions workbench (consolidates overlap / coverage / targets) ──
+  // Same populations data as the matrix — a co-sell overlap is an account in
+  // both an org and a partner list — enriched with the real suggested play,
+  // propensity drivers, and explicit channel conflict.
   const pool = getPool();
   const db = await pool.connect();
-  let overlaps: Grouped[] = [];
-  let partnerList: { id: string; name: string }[] = [];
+  let rows: OverlapRow[] = [];
+  let partnerList: { id: string; name: string; type: string | null }[] = [];
   try {
     const orgId = await soleOrgId(db);
     if (orgId) {
       const coverage = await partnerCoverage(db, orgId);
-      overlaps = coverage.map((a) => ({
-        companyId: a.companyId,
-        name: a.name,
-        domain: a.domain,
-        partners: a.partners.map((p) => ({ ...p, installed: a.isCustomer })),
-        anyInstalled: a.isCustomer,
-        score: a.score,
-        band: a.band,
-        targets: a.segments.map((s) => CATEGORY_LABEL[s as keyof typeof CATEGORY_LABEL] ?? s),
-      }));
-      const pmap = new Map<string, string>();
-      for (const a of coverage) for (const p of a.partners) pmap.set(p.id, p.name);
-      partnerList = [...pmap.entries()].map(([id, name]) => ({ id, name }));
+      const companyIds = coverage.map((a) => a.companyId);
+
+      // Per (account, partner): which lists/categories, and whether that partner
+      // actively claims the account (their customer / open opportunity).
+      const marks = new Map<string, Record<string, { onList: boolean; categories: string[]; claims: boolean }>>();
+      if (companyIds.length) {
+        const { rows: pc } = await db.query<{ company_id: string; partner_id: string; category: string }>(
+          `select pm.company_id, ap.partner_id, ap.category
+           from population_members pm
+           join account_populations ap on ap.id = pm.population_id
+             and ap.partner_id is not null and ap.status = 'approved' and ap.org_id = $1
+           where pm.company_id = any($2)`,
+          [orgId, companyIds],
+        );
+        for (const r of pc) {
+          const byPartner = marks.get(r.company_id) ?? {};
+          const m = byPartner[r.partner_id] ?? { onList: true, categories: [], claims: false };
+          const label = CATEGORY_LABEL[r.category as keyof typeof CATEGORY_LABEL] ?? r.category;
+          if (!m.categories.includes(label)) m.categories.push(label);
+          if (r.category === "customer" || r.category === "open_opportunity") m.claims = true;
+          byPartner[r.partner_id] = m;
+          marks.set(r.company_id, byPartner);
+        }
+      }
+
+      // Latest score per account, with the solution node + drivers + delta.
+      const scoreInfo = new Map<string, { scoreId: string; nodeId: string; solution: string; delta: number | null }>();
+      if (companyIds.length) {
+        const { rows: sc } = await db.query<{ company_id: string; score_id: string; node_id: string; solution: string; changes: { delta?: number } | null }>(
+          `select distinct on (p.company_id) p.company_id, p.id as score_id, n.id as node_id, n.name as solution, p.changes
+           from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
+           where p.company_id = any($1) order by p.company_id, p.computed_at desc`,
+          [companyIds],
+        );
+        for (const s of sc) scoreInfo.set(s.company_id, { scoreId: s.score_id, nodeId: s.node_id, solution: s.solution, delta: s.changes?.delta ?? null });
+      }
+      const dimsByScore = new Map<string, { dim: string; value: number }[]>();
+      const scoreIds = [...scoreInfo.values()].map((s) => s.scoreId);
+      if (scoreIds.length) {
+        const { rows: dims } = await db.query<{ score_id: string; dimension: string; value: string }>(
+          `select score_id, dimension, value from propensity_dimensions where score_id = any($1) order by value desc`,
+          [scoreIds],
+        );
+        for (const d of dims) {
+          const list = dimsByScore.get(d.score_id) ?? [];
+          if (list.length < 3) list.push({ dim: d.dimension, value: Number(d.value) });
+          dimsByScore.set(d.score_id, list);
+        }
+      }
+
+      // Active play per solution node — the REAL play, with objective + CTA.
+      const playByNode = new Map<string, { name: string; objective: string | null; offer: string | null }>();
+      {
+        const { rows: plays } = await db.query<{ taxonomy_node_id: string | null; name: string; objective: string | null; offer: string | null }>(
+          `select taxonomy_node_id, name, definition->>'objective' as objective, definition->'cta'->>'offer' as offer
+           from play_templates where status = 'active'`,
+        );
+        for (const p of plays) if (p.taxonomy_node_id) playByNode.set(p.taxonomy_node_id, { name: p.name, objective: p.objective, offer: p.offer });
+      }
+
+      // Latest verified signal per account + which accounts already have motions.
+      const signalByCompany = new Map<string, string>();
+      const hasMotion = new Set<string>();
+      if (companyIds.length) {
+        const { rows: ev } = await db.query<{ company_id: string; claim: string }>(
+          `select distinct on (company_id) company_id, claim from evidence
+           where company_id = any($1) and status = 'verified'
+           order by company_id, computed_confidence desc nulls last, observed_at desc`,
+          [companyIds],
+        );
+        for (const e of ev) signalByCompany.set(e.company_id, e.claim);
+        const { rows: ms } = await db.query<{ company_id: string }>(
+          `select distinct company_id from revenue_motions where company_id = any($1) and status in ('draft','approved','active')`,
+          [companyIds],
+        );
+        for (const m of ms) hasMotion.add(m.company_id);
+      }
+
+      rows = coverage.map((a) => {
+        const byPartner = marks.get(a.companyId) ?? {};
+        const claimants = Object.values(byPartner).filter((m) => m.claims).length;
+        const si = scoreInfo.get(a.companyId);
+        const play = si ? playByNode.get(si.nodeId) ?? null : null;
+        return {
+          companyId: a.companyId,
+          name: a.name,
+          domain: a.domain,
+          score: a.score,
+          band: a.band,
+          motion: a.isCustomer ? "cross-sell / upsell" : "net-new",
+          conflict: claimants >= 2,
+          marks: byPartner,
+          play: play && si ? { ...play, solution: si.solution } : null,
+          why: {
+            drivers: si ? dimsByScore.get(si.scoreId) ?? [] : [],
+            signal: signalByCompany.get(a.companyId) ?? null,
+            delta: si?.delta ?? null,
+          },
+          hasMotion: hasMotion.has(a.companyId),
+        };
+      });
+
+      const pmap = new Map<string, { id: string; name: string; type: string | null }>();
+      for (const a of coverage) for (const p of a.partners) pmap.set(p.id, p);
+      partnerList = [...pmap.values()].sort((a, b) => a.name.localeCompare(b.name));
     }
   } finally {
     db.release();
   }
-  if (partnerFilter) overlaps = overlaps.filter((o) => o.partners.some((p) => p.id === partnerFilter));
 
   return (
     <main>
       <PageHeader
-        title="Mapping"
-        subtitle="Accounts covered by more than one partner — the overlap where co-sell, whitespace, and channel-conflict decisions get made."
+        title="Overlap & motions"
+        subtitle="Every co-sell account crossed with every partner — with the play to run, why the propensity says so, and channel conflicts made explicit. Select accounts, name the list, draft the motions."
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <ViewTabs view={view} pendingCount={pendingCount} />
-        <span className="ml-auto text-xs text-neutral-500">{overlaps.length} co-sell overlap(s)</span>
+        <span className="ml-auto text-xs text-neutral-500">{rows.length} co-sell overlap(s)</span>
       </div>
+      {sp.notice && (
+        <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+          {sp.notice}
+        </div>
+      )}
 
-      {overlaps.length === 0 ? (
+      {rows.length === 0 ? (
         <Card>
           <p className="text-sm text-neutral-500">
             No co-sell overlaps yet. An overlap is an account that sits in one of your lists AND a partner&apos;s —
             build lists on both sides in the <Link href="/mapping?view=matrix" className="text-blue-700 hover:underline dark:text-blue-400">Account mapping</Link> view.
           </p>
         </Card>
-      ) : view === "overlap" ? (
-        <OverlapView overlaps={overlaps} />
-      ) : view === "coverage" ? (
-        <CoverageView overlaps={overlaps} partners={partnerList} />
       ) : (
-        <TargetsView overlaps={overlaps} />
+        <OverlapWorkbench
+          rows={rows}
+          partners={partnerList}
+          createTarget={createTargetListAction}
+          generateMotions={generateMotionsForSelectionAction}
+        />
       )}
     </main>
-  );
-}
-
-function PartnerChips({ partners }: { partners: Grouped["partners"] }) {
-  return (
-    <span className="inline-flex flex-wrap gap-1">
-      {partners.map((p) => (
-        <span
-          key={p.id}
-          title={`${p.type ?? "partner"}${p.installed ? " · installed base" : ""}`}
-          className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ring-1 ring-inset ${
-            p.installed
-              ? "bg-sky-50 text-sky-800 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300"
-              : "bg-neutral-50 text-neutral-600 ring-neutral-300/50 dark:bg-neutral-900 dark:text-neutral-400 dark:ring-neutral-700"
-          }`}
-        >
-          {p.name}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-function OverlapView({ overlaps }: { overlaps: Grouped[] }) {
-  const sorted = [...overlaps].sort((a, b) => b.partners.length - a.partners.length || (b.score ?? -1) - (a.score ?? -1));
-  return (
-    <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Account</th>
-            <th>Partners</th>
-            <th>Motion</th>
-            <th>Play</th>
-            <th className="text-right">Propensity</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((o) => {
-            const m = motion(o.anyInstalled);
-            return (
-              <tr key={o.companyId}>
-                <td>
-                  <Link href={`/accounts/${o.companyId}`} className="font-medium hover:underline">{o.name}</Link>
-                  {o.domain && <div className="text-[11px] text-neutral-400">{o.domain}</div>}
-                </td>
-                <td><PartnerChips partners={o.partners} /></td>
-                <td>
-                  <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${m.tone}`}>{m.label}</span>
-                </td>
-                <td className="text-neutral-500 text-xs">{o.targets.join(", ") || "—"}</td>
-                <td className="text-right">
-                  {o.score == null ? <span className="text-neutral-400">—</span> : (
-                    <span className="inline-flex items-center gap-2">
-                      <span className="tnum font-semibold">{o.score.toFixed(0)}</span>
-                      {o.band && <BandBadge band={o.band} />}
-                    </span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function CoverageView({ overlaps, partners }: { overlaps: Grouped[]; partners: { id: string; name: string }[] }) {
-  return (
-    <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Account</th>
-            {partners.map((p) => (
-              <th key={p.id} className="text-center">{p.name}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {overlaps.map((o) => {
-            const cover = new Map(o.partners.map((p) => [p.id, p.installed]));
-            return (
-              <tr key={o.companyId}>
-                <td>
-                  <Link href={`/accounts/${o.companyId}`} className="font-medium hover:underline">{o.name}</Link>
-                </td>
-                {partners.map((p) => {
-                  const has = cover.has(p.id);
-                  const installed = cover.get(p.id);
-                  return (
-                    <td key={p.id} className="text-center">
-                      {has ? (
-                        <span
-                          title={installed ? "on list · installed base" : "on list"}
-                          className={installed ? "text-sky-600 dark:text-sky-400" : "text-green-600 dark:text-green-400"}
-                        >
-                          {installed ? "◆" : "●"}
-                        </span>
-                      ) : (
-                        <span className="text-neutral-300 dark:text-neutral-700">·</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <p className="border-t border-neutral-100 px-3 py-2 text-[11px] text-neutral-500 dark:border-neutral-800">
-        ● on the partner&apos;s list · ◆ installed base (expand/cross-sell) · more partners on a row = more channel overlap
-      </p>
-    </div>
-  );
-}
-
-function TargetsView({ overlaps }: { overlaps: Grouped[] }) {
-  const ranked = [...overlaps].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-  return (
-    <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th className="text-right">Propensity</th>
-            <th>Account</th>
-            <th>Partners</th>
-            <th>Motion</th>
-            <th>Play</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ranked.map((o) => {
-            const m = motion(o.anyInstalled);
-            return (
-              <tr key={o.companyId}>
-                <td className="text-right">
-                  {o.score == null ? <span className="text-neutral-400">—</span> : (
-                    <span className="inline-flex items-center gap-2">
-                      <span className="tnum font-semibold">{o.score.toFixed(0)}</span>
-                      {o.band && <BandBadge band={o.band} />}
-                    </span>
-                  )}
-                </td>
-                <td>
-                  <Link href={`/accounts/${o.companyId}`} className="font-medium hover:underline">{o.name}</Link>
-                </td>
-                <td><PartnerChips partners={o.partners} /></td>
-                <td>
-                  <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${m.tone}`}>{m.label}</span>
-                </td>
-                <td className="text-neutral-500 text-xs">{o.targets.join(", ") || "—"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
   );
 }
 
