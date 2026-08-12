@@ -3,7 +3,7 @@ import { getPool } from "@/db/client";
 import { commsConfig } from "@/lib/comms/provider";
 import { resendConfigured } from "@/lib/comms/resend";
 import { threadAddress } from "@/lib/comms/alias";
-import { Card, EvidenceLine, PageHeader, StatusBadge } from "@/components/ui";
+import { BackLink, Card, EvidenceLine, PageHeader, StatusBadge } from "@/components/ui";
 import { promoteMotionAction } from "@/app/pipeline/actions";
 import { generateDraftAction, sendDraftAction } from "./actions";
 
@@ -101,11 +101,12 @@ export default async function BriefPage({
 
   return (
     <main>
-      <p className="mb-4 text-sm">
-        <Link href={`/accounts/${m.company_id}`} className="text-neutral-500 hover:underline">
-          ← {m.legal_name}
+      <div className="mb-1 flex flex-wrap items-center gap-3">
+        <BackLink href="/motions" label="Motions" />
+        <Link href={`/accounts/${m.company_id}`} className="text-sm text-neutral-500 hover:underline">
+          {m.legal_name} account →
         </Link>
-      </p>
+      </div>
       <PageHeader
         title={`Activation brief — ${m.legal_name}`}
         subtitle={`${m.slug} · ${m.industry ?? ""}${m.employee_count ? ` · ~${m.employee_count} employees` : ""}`}

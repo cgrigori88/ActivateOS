@@ -13,6 +13,18 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   );
 }
 
+/**
+ * Constant back-nav: a ← link that names the screen it returns to, placed at
+ * the top of any drilled-into screen. `label` is the destination's name.
+ */
+export function BackLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link href={href} className="mb-3 inline-flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
+      <span aria-hidden>←</span> {label}
+    </Link>
+  );
+}
+
 export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <header className="mb-6">
