@@ -47,7 +47,7 @@ interface DealReg {
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; timeframe?: string; stage?: string; partner?: string; quote?: string }>;
+  searchParams: Promise<{ view?: string; timeframe?: string; stage?: string; partner?: string; quote?: string; qual?: string }>;
 }) {
   const sp = await searchParams;
   const view = sp.view === "review" ? "review" : "board";
@@ -106,11 +106,13 @@ export default async function PipelinePage({
   // Atomic filters (apply to both board and review; bentos/chart stay on the
   // full timeframe set so the totals don't move as you slice).
   const partnerOptions = [...new Set(allOpps.map((o) => o.partner_name).filter(Boolean) as string[])];
+  const qualOf = (id: string) => (scoreOf(id) >= 70 ? "strong" : scoreOf(id) < 40 ? "risk" : "ok");
   const visible = opps.filter(
     (o) =>
       (!sp.stage || sp.stage === "all" || o.stage === sp.stage) &&
       (!sp.partner || sp.partner === "all" || (o.partner_name ?? "Direct") === sp.partner) &&
-      (!sp.quote || sp.quote === "all" || (sp.quote === "yes" ? quoteOf(o.id).delivered : !quoteOf(o.id).delivered)),
+      (!sp.quote || sp.quote === "all" || (sp.quote === "yes" ? quoteOf(o.id).delivered : !quoteOf(o.id).delivered)) &&
+      (!sp.qual || sp.qual === "all" || qualOf(o.id) === sp.qual),
   );
 
   const open = opps.filter((o) => !o.stage.startsWith("closed"));
@@ -141,7 +143,7 @@ export default async function PipelinePage({
         const lostQual = avg(opps.filter((o) => o.stage === "closed_lost"));
         return (
           <>
-            <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               <Bento label="open opportunities" value={open.length} />
               <Bento label="total pipeline" value={`$${Math.round(total / 1000)}k`} />
               <Bento label="weighted" value={`$${Math.round(weighted / 1000)}k`} subs={["by stage probability"]} />
@@ -149,6 +151,47 @@ export default async function PipelinePage({
               <Bento label="won" value={wonCount} subs={[`$${Math.round(wonUsd / 1000)}k`]} />
               <Bento label="reg'd deals" value={regRows.length} />
             </div>
+
+            {/* Roll-up chips — each is a count AND an atomic filter (click to slice). */}
+            {(() => {
+              const chipHref = (o: Record<string, string | undefined>) => {
+                const p = new URLSearchParams();
+                p.set("view", view);
+                for (const [k, v] of Object.entries({ timeframe: sp.timeframe, stage: sp.stage, partner: sp.partner, quote: sp.quote, qual: sp.qual, ...o })) if (v) p.set(k, v);
+                return `/pipeline?${p.toString()}`;
+              };
+              const chip = (label: string, count: number, active: boolean, href: string, tone = "neutral") => {
+                const tones: Record<string, string> = {
+                  neutral: "text-neutral-600 dark:text-neutral-300",
+                  green: "text-green-700 dark:text-green-400",
+                  amber: "text-amber-700 dark:text-amber-400",
+                  red: "text-red-700 dark:text-red-400",
+                  blue: "text-blue-700 dark:text-blue-400",
+                };
+                return (
+                  <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${active ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900" : "border-neutral-200 hover:border-neutral-400 dark:border-neutral-800 dark:hover:border-neutral-600"}`}>
+                    <span className={`tnum font-semibold ${active ? "" : tones[tone]}`}>{count}</span>
+                    <span className={active ? "" : "text-neutral-500"}>{label}</span>
+                  </Link>
+                );
+              };
+              const cStage = (s: string) => opps.filter((o) => o.stage === s).length;
+              const quoteSent = opps.filter((o) => quoteOf(o.id).delivered).length;
+              const strong = opps.filter((o) => qualOf(o.id) === "strong").length;
+              const risk = opps.filter((o) => qualOf(o.id) === "risk").length;
+              const noFilters = !sp.stage && !sp.quote && !sp.qual;
+              return (
+                <div className="mb-5 flex flex-wrap gap-2">
+                  {chip("all", opps.length, noFilters, chipHref({ stage: undefined, quote: undefined, qual: undefined }))}
+                  {[...STAGES, "closed_won", "closed_lost"].map((s) =>
+                    chip(s.replace(/_/g, " "), cStage(s), sp.stage === s, chipHref({ stage: sp.stage === s ? undefined : s }), s === "closed_won" ? "green" : s === "closed_lost" ? "red" : "blue"),
+                  )}
+                  {chip("quote sent", quoteSent, sp.quote === "yes", chipHref({ quote: sp.quote === "yes" ? undefined : "yes" }), "green")}
+                  {chip("well-qualified", strong, sp.qual === "strong", chipHref({ qual: sp.qual === "strong" ? undefined : "strong" }), "green")}
+                  {chip("at risk", risk, sp.qual === "risk", chipHref({ qual: sp.qual === "risk" ? undefined : "risk" }), "amber")}
+                </div>
+              );
+            })()}
             {(wonQual != null || lostQual != null) && (
               <Card className="mb-5">
                 <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Learned signal · qualification vs outcome</h2>
@@ -175,7 +218,7 @@ export default async function PipelinePage({
         {(["board", "review"] as const).map((v) => {
           const qs = new URLSearchParams();
           qs.set("view", v);
-          for (const k of ["timeframe", "stage", "partner", "quote"] as const) if (sp[k]) qs.set(k, sp[k]!);
+          for (const k of ["timeframe", "stage", "partner", "quote", "qual"] as const) if (sp[k]) qs.set(k, sp[k]!);
           return (
             <Link
               key={v}
