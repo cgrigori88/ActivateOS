@@ -1,5 +1,5 @@
 import { getPool } from "@/db/client";
-import { Card, PageHeader, StatusBadge } from "@/components/ui";
+import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { loadProviderHealth, TIER_LABELS, type ProviderHealthRow } from "@/lib/intel/provider-health";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +34,11 @@ export default async function ProviderHealthPage() {
       />
 
       <div className="mb-6 flex flex-wrap gap-3">
-        <Stat value={rows.length} label="registered" />
-        <Stat value={enabled} label="enabled" />
-        <Stat value={disabled} label="disabled" />
-        <Stat value={everRun} label="have run" />
-        <Stat value={totalEvidence} label="evidence produced" />
+        <Bento value={rows.length} label="registered" />
+        <Bento value={enabled} label="enabled" />
+        <Bento value={disabled} label="disabled" />
+        <Bento value={everRun} label="have run" />
+        <Bento value={totalEvidence} label="evidence produced" />
       </div>
 
       {groups.map((g) => (
@@ -153,11 +153,3 @@ function RunSparkline({ runs }: { runs: string[] }) {
   );
 }
 
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="rounded-lg border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
-      <div className="tnum text-2xl font-semibold">{value}</div>
-      <div className="text-xs text-neutral-500 dark:text-neutral-400">{label}</div>
-    </div>
-  );
-}

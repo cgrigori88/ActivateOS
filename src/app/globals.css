@@ -170,11 +170,18 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Focus is never removed. */
-:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+/* Focus is never removed. Summary is handled separately below: Chrome marks a
+   mouse-clicked <summary> as :focus-visible, so the heavy outline would flash
+   on every expand — it gets a soft tint instead. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
   border-radius: var(--radius-control);
+}
+summary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+  border-radius: var(--radius-inner);
 }
 
 /* ---- Materials ----------------------------------------------------------- */
@@ -222,7 +229,11 @@ body {
    Specificity does the work: three classes beat a single utility.
    --------------------------------------------------------------------------- */
 :where(button, a).rounded-md.bg-neutral-900.text-white,
-:where(button, a).rounded-md.bg-green-700.text-white {
+:where(button, a).rounded-md.bg-green-700.text-white,
+:where(button, a).rounded-md.bg-blue-700.text-white,
+:where(button, a).rounded-md.bg-violet-700.text-white,
+:where(button, a).rounded-md.ring-1,
+:where(button, a).rounded-md.bg-neutral-100 {
   min-height: 36px;
   display: inline-flex;
   align-items: center;
@@ -231,7 +242,9 @@ body {
   padding-inline: 16px;
   border-radius: 999px;
   font-weight: 600;
-  transition: background-color var(--dur-react) linear;
+  transition:
+    background-color var(--dur-react) linear,
+    border-color var(--dur-react) linear;
 }
 /* Primary action: the accent, not a near-black pill. */
 :where(button, a).rounded-md.bg-neutral-900.text-white {
@@ -246,6 +259,13 @@ body {
 }
 :where(button, a).rounded-md.bg-green-700.text-white:hover {
   background-color: #047857;
+}
+/* Blue CTAs join the accent family. */
+:where(button, a).rounded-md.bg-blue-700.text-white {
+  background-color: var(--color-accent);
+}
+:where(button, a).rounded-md.bg-blue-700.text-white:hover {
+  background-color: var(--color-accent-strong);
 }
 
 :where(input, select, textarea).rounded-md.border-neutral-300,
@@ -270,12 +290,35 @@ body {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
+/* Native selects keep the platform picker but wear a consistent chevron with
+   real clearance — long values ellipsize instead of running under the arrow.
+   !important because the control rules above set padding-inline and would
+   otherwise reclaim the right side. */
+select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2364748b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 13px 13px;
+  padding-right: 28px !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.dark select:not([multiple]) {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2394a3b8' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+}
+
 /* Under 16px iOS zooms the page on focus, and 36px fails the touch target. */
 @media (max-width: 640px) {
   :where(input, select, textarea).rounded-md.border-neutral-300,
   :where(input, select, textarea).rounded-md.border-neutral-200,
   :where(button, a).rounded-md.bg-neutral-900.text-white,
-  :where(button, a).rounded-md.bg-green-700.text-white {
+  :where(button, a).rounded-md.bg-green-700.text-white,
+  :where(button, a).rounded-md.bg-blue-700.text-white,
+  :where(button, a).rounded-md.ring-1,
+  :where(button, a).rounded-md.bg-neutral-100 {
     min-height: 44px;
     font-size: 16px;
   }
