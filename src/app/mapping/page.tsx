@@ -537,7 +537,9 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
     const { row, col, accounts } = await intersection(db, { rowPopId: rowId, colPopId: colId });
     const fields = await availableFields(db, { rowPopId: rowId, colPopId: colId });
     const selected = (cols ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-    const active = selected.length ? selected : BASE_COLS;
+    // Default shows everything — base account facts + every field ingested from
+    // either party's CSV — so the full mapped record is visible (Crossbeam-style).
+    const active = selected.length ? selected : [...BASE_COLS, ...fields];
     const backHref = `/mapping?view=matrix${partnerId ? `&partner=${partnerId}` : ""}`;
     const cellBase = `/mapping?view=matrix${partnerId ? `&partner=${partnerId}` : ""}&row=${rowId}&col=${colId}`;
 
@@ -608,19 +610,20 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
                   </td>
                   {active.map((k) => {
                     if (k === "industry") return <td key={k} className="text-neutral-600 dark:text-neutral-300">{a.industry ?? "—"}</td>;
-                    if (k === "employees") return <td key={k} className="tnum text-neutral-600 dark:text-neutral-300">{a.employee_count?.toLocaleString() ?? "—"}</td>;
+                    if (k === "employees") return <td key={k} className="tnum text-neutral-600 dark:text-neutral-300">{a.employee_count == null ? "—" : Number(a.employee_count).toLocaleString()}</td>;
                     if (k === "propensity") return (
                       <td key={k}>
                         {a.score == null ? <span className="text-neutral-400">—</span> : (
                           <span className="inline-flex items-center gap-2">
-                            <span className="tnum font-semibold">{a.score.toFixed(0)}</span>
+                            <span className="tnum font-semibold">{Number(a.score).toFixed(0)}</span>
                             {a.band && <BandBadge band={a.band} />}
                           </span>
                         )}
                       </td>
                     );
                     const v = a.attributes?.[k];
-                    return <td key={k} className="text-neutral-600 dark:text-neutral-300">{v == null || v === "" ? "—" : String(v)}</td>;
+                    const text = v == null || v === "" ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v);
+                    return <td key={k} className="text-neutral-600 dark:text-neutral-300">{text}</td>;
                   })}
                 </tr>
               ))}

@@ -231,7 +231,13 @@ export async function intersection(
      order by ps.score desc nulls last, c.legal_name`,
     [args.rowPopId, args.colPopId],
   );
-  return { row, col, accounts };
+  // pg returns numeric/int as strings — coerce so the UI can format them.
+  const coerced = accounts.map((a) => ({
+    ...a,
+    score: a.score == null ? null : Number(a.score),
+    employee_count: a.employee_count == null ? null : Number(a.employee_count),
+  }));
+  return { row, col, accounts: coerced };
 }
 
 /** Union of attribute keys across both populations' members — the column menu. */
