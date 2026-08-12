@@ -126,7 +126,7 @@ export default async function MappingPage({
       <main>
         <PageHeader
           title="Account mapping"
-          subtitle="Cross your populations with a partner's — every cell is the accounts you share, rolled up with propensity. Click a cell to drill in."
+          subtitle="Cross your lists with a partner's — every cell is the accounts you share, rolled up with propensity. Click a cell to drill in."
         />
         <ViewTabs view={view} pendingCount={pendingCount} />
         {sp.notice && (
@@ -189,8 +189,8 @@ export default async function MappingPage({
       {overlaps.length === 0 ? (
         <Card>
           <p className="text-sm text-neutral-500">
-            No co-sell overlaps yet. An overlap is an account that sits in one of your populations AND a partner&apos;s —
-            build populations on both sides in the <Link href="/mapping?view=matrix" className="text-blue-700 hover:underline dark:text-blue-400">Account mapping</Link> view.
+            No co-sell overlaps yet. An overlap is an account that sits in one of your lists AND a partner&apos;s —
+            build lists on both sides in the <Link href="/mapping?view=matrix" className="text-blue-700 hover:underline dark:text-blue-400">Account mapping</Link> view.
           </p>
         </Card>
       ) : view === "overlap" ? (
@@ -402,7 +402,7 @@ async function ReviewSection({ openId }: { openId?: string }) {
         <Card>
           <p className="text-sm text-neutral-500">
             No lists awaiting review. When a partner pushes an account list, it lands here for you to inspect and accept
-            before it maps. (Propose one yourself in the <Link href="/mapping?view=matrix" className="text-blue-700 hover:underline dark:text-blue-400">Account mapping</Link> populations manager.)
+            before it maps. (Propose one yourself in the <Link href="/mapping?view=matrix" className="text-blue-700 hover:underline dark:text-blue-400">Account mapping</Link> lists manager.)
           </p>
         </Card>
       );
@@ -535,7 +535,7 @@ async function RecommendSection() {
       return (
         <Card>
           <p className="text-sm text-neutral-500">
-            No cross-partner accounts to learn from yet — approve populations on your side and at least one partner in{" "}
+            No cross-partner accounts to learn from yet — approve lists on your side and at least one partner in{" "}
             <Link href="/mapping?view=matrix" className="text-blue-700 hover:underline dark:text-blue-400">Account mapping</Link>.
           </p>
         </Card>
@@ -623,7 +623,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
       return (
         <Card>
           <p className="text-sm text-neutral-500">
-            No partner populations yet. Create populations for your side and a partner below, then the overlap matrix
+            No partner lists yet. Create lists for your side and a partner below, then the overlap matrix
             appears here — like Crossbeam&apos;s account mapping, scored by propensity.
           </p>
         </Card>
@@ -673,7 +673,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
               <details className="relative">
                 <summary className="cursor-pointer text-[11px] font-medium text-blue-700 hover:underline dark:text-blue-400">Organize matrix</summary>
                 <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-                  <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">Rows — your populations</p>
+                  <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">Rows — your lists</p>
                   <div className="mb-3 space-y-0.5">
                     {allRows.map((r) => {
                       const on = mrSet ? mrSet.has(r.id) : true;
@@ -685,7 +685,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                       );
                     })}
                   </div>
-                  <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">Columns — partner populations</p>
+                  <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">Columns — partner lists</p>
                   <div className="space-y-0.5">
                     {allCols.map((c) => {
                       const on = mcSet ? mcSet.has(c.id) : true;
@@ -700,7 +700,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                 </div>
               </details>
               <Link href={q({ hide: hideEmpty ? undefined : "1" })} className="text-[11px] text-neutral-500 hover:underline">
-                {hideEmpty ? "Show empty populations" : "Hide empty populations"}
+                {hideEmpty ? "Show empty lists" : "Hide empty lists"}
               </Link>
             </div>
           </div>
@@ -715,7 +715,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
             </span>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <Bento label="populations" value={hub.populations.toLocaleString()} />
+            <Bento label="lists" value={hub.populations.toLocaleString()} />
             <Bento label="overlapping accounts" value={kpi.accounts.toLocaleString()} subs={[`${kpi.hot} hot`, kpi.avg != null ? `avg ${kpi.avg}` : ""]} />
             <Bento label="propensity (hot)" value={kpi.hot.toLocaleString()} subs={[kpi.avg != null ? `avg ${kpi.avg}` : "no scores"]} />
             <Bento label="motions" value={hub.motionsTotal.toLocaleString()} subs={[`${hub.motionsActive} active`]} />
@@ -724,8 +724,8 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
           </div>
           <p className="mt-3 text-[11px] text-neutral-400">
             {isAll
-              ? "Rolled up across every connected partner. Each partner's populations + fields stay scoped to them; totals here aggregate all partner-attributed motions, campaigns, and pipeline."
-              : `Scoped to ${selectedName}: their populations + fields stay theirs; motions, campaigns, and pipeline count here when attributed to this partner. Your own populations (the vendor side) map against every partner.`}
+              ? "Rolled up across every connected partner. Each partner's lists + fields stay scoped to them; totals here aggregate all partner-attributed motions, campaigns, and pipeline."
+              : `Scoped to ${selectedName}: their lists + fields stay theirs; motions, campaigns, and pipeline count here when attributed to this partner. Your own lists (the vendor side) map against every partner.`}
           </p>
         </Card>
 
@@ -733,7 +733,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
           <Card>
             <p className="text-sm text-neutral-500">
               {allRows.length === 0 || allCols.length === 0
-                ? "Approve at least one population on each side to populate the matrix. Manage populations below."
+                ? "Approve at least one list on each side to populate the matrix. Manage lists below."
                 : "Nothing to show with the current organize / hide-empty settings."}
             </p>
           </Card>
@@ -742,7 +742,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
             <table className="data-table">
               <thead>
                 <tr>
-                  <th className="sticky left-0 z-10 bg-white dark:bg-neutral-900">Your populations ↓ / Partner →</th>
+                  <th className="sticky left-0 z-10 bg-white dark:bg-neutral-900">Your lists ↓ / Partner →</th>
                   <th className="text-center text-neutral-500">Total</th>
                   {cols.map((c) => (
                     <th key={c.id} className="text-center align-bottom">
@@ -846,7 +846,7 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
               Build target list
             </summary>
             <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-              <p className="mb-2 text-[11px] text-neutral-500">Creates an approved target population from these {accounts.length} accounts — ready to score, sequence, and campaign.</p>
+              <p className="mb-2 text-[11px] text-neutral-500">Creates an approved target list from these {accounts.length} accounts — ready to score, sequence, and campaign.</p>
               <form action={targetFromCellAction.bind(null, rowId, colId)} className="flex items-end gap-2">
                 <input type="hidden" name="partner" value={partnerId ?? ""} />
                 <input name="name" defaultValue={`${row?.name ?? ""} × ${col?.name ?? ""}`} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
@@ -939,7 +939,7 @@ async function PopulationManager() {
 
     return (
       <Card className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Populations</h2>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Account lists</h2>
 
         {allPending.length > 0 && (
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
@@ -982,7 +982,7 @@ async function PopulationManager() {
             </select>
           </label>
           <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">
-            Propose population
+            Propose list
           </button>
         </form>
         <p className="mt-2 text-[11px] text-neutral-400">
