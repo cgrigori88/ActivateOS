@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/db/client";
 import { runPendingResearchLocked } from "@/lib/intel/research-runner";
+import { secretEquals } from "@/lib/security/compare";
 
 /**
  * Deep-research trigger endpoint (§12). One HTTP surface for BOTH a scheduler
@@ -27,9 +28,7 @@ function authorized(req: Request): boolean {
   if (!secret) return false; // closed until configured
   const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   const key = new URL(req.url).searchParams.get("key") ?? "";
-  // Constant-ish comparison is unnecessary here (high-entropy secret), but avoid
-  // matching an empty configured value.
-  return bearer === secret || key === secret;
+  return secretEquals(bearer, secret) || secretEquals(key, secret);
 }
 
 /** GET: queue status (pending/running counts + recent finished jobs). */

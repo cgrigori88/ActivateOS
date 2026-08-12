@@ -1,6 +1,37 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ["pg"],
+
+  // The app renders no <Image>; disabling the optimizer removes the
+  // /_next/image endpoint (and with it the sharp/libvips attack surface,
+  // which npm audit flags and which only a breaking Next major would patch).
+  images: { unoptimized: true },
+
+  // Don't advertise the framework.
+  poweredByHeader: false,
+
+  // Baseline security headers. Deliberately NO Content-Security-Policy yet:
+  // a strict CSP needs nonce plumbing for the theme-boot inline script and
+  // Next's own inline chunks — worth doing, but not as a header that could
+  // silently break rendering. Everything below is non-breaking.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          // The app is never legitimately framed (touch previews use srcdoc,
+          // which this header does not affect).
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // 180 days, no includeSubDomains — other subdomains of the apex are
+          // not ours to commit to HTTPS.
+          { key: "Strict-Transport-Security", value: "max-age=15552000" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

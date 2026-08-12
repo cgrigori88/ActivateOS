@@ -44,7 +44,11 @@ export async function GET(req: Request): Promise<NextResponse> {
   }
 
   const esc = (v: unknown) => {
-    const s = v == null ? "" : String(v);
+    let s = v == null ? "" : String(v);
+    // Formula-injection guard: account/partner names come from ingested data,
+    // and a leading = + - @ (or tab/CR) makes Excel/Sheets EXECUTE the cell.
+    // A leading apostrophe forces text and is invisible in spreadsheet UIs.
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const header = [

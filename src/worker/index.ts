@@ -1,5 +1,6 @@
 import http from "node:http";
 import { getPool } from "../db/client";
+import { secretEquals } from "../lib/security/compare";
 import { importAccountsCsv } from "../lib/ingest/ingest-accounts";
 import { runPendingResearchLocked } from "../lib/intel/research-runner";
 import { runScreeningSweepAllOrgs, runScreeningSweepLocked } from "../lib/intel/screen-runner";
@@ -131,7 +132,8 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 function authorized(req: http.IncomingMessage, url: URL): boolean {
   if (!SECRET) return false; // triggers closed until a secret is configured
   const bearer = (req.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-  return bearer === SECRET || url.searchParams.get("key") === SECRET;
+  const key = url.searchParams.get("key") ?? "";
+  return secretEquals(bearer, SECRET) || secretEquals(key, SECRET);
 }
 
 function send(res: http.ServerResponse, status: number, body: unknown): void {
