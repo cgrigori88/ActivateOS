@@ -3,12 +3,20 @@
 @import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 
+/* Light is the default. Dark is a choice the operator makes and we remember,
+   not something inherited from the OS — so the `dark:` variant keys off a class
+   on <html> instead of prefers-color-scheme. All 611 `dark:` utilities already
+   written across the feature pages keep working unchanged; they simply wait for
+   the class. The toggle lives in the shell. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ---------------------------------------------------------------------------
    PursuitOS design kit.
 
-   Both themes are first-class: the app is used in dark, and 611 `dark:`
-   utilities across the feature pages already encode it, so the `dark:` variant
-   is left on prefers-color-scheme and every one of them keeps working.
+   Both themes are first-class. Light is what the app opens in; dark is a
+   remembered choice. 611 `dark:` utilities across the feature pages already
+   encode the dark treatment and all of them keep working — they key off the
+   class rather than the OS.
 
    The `neutral` and `blue` ramps are overridden at the theme level — that is
    what carries the palette into every screen without touching page markup.
@@ -110,30 +118,31 @@
   --ease-move: cubic-bezier(0.2, 0, 0, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ground: #060b16;
+html.dark {
+  --ground: #060b16;
 
-    --glass-bg: rgba(30, 41, 59, 0.62);
-    --glass-edge: rgba(255, 255, 255, 0.08);
-    --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    --glass-fallback: #0f172a;
+  --glass-bg: rgba(30, 41, 59, 0.62);
+  --glass-edge: rgba(255, 255, 255, 0.08);
+  --glass-specular: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --glass-fallback: #0f172a;
 
-    --rail-bg: linear-gradient(180deg, rgba(23, 34, 58, 0.9) 0%, rgba(12, 19, 34, 0.94) 100%);
-    --rail-edge: rgba(255, 255, 255, 0.07);
-    --rail-fallback: #0b1220;
+  --rail-bg: linear-gradient(180deg, rgba(23, 34, 58, 0.9) 0%, rgba(12, 19, 34, 0.94) 100%);
+  --rail-edge: rgba(255, 255, 255, 0.07);
+  --rail-fallback: #0b1220;
 
-    --shadow-float: 0 18px 44px -22px rgba(0, 0, 0, 0.7), 0 2px 8px -4px rgba(0, 0, 0, 0.5);
-    --shadow-rail: 0 24px 60px -28px rgba(0, 0, 0, 0.8);
-    --shadow-pop: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 32px -12px rgba(0, 0, 0, 0.75);
+  --shadow-float: 0 18px 44px -22px rgba(0, 0, 0, 0.7), 0 2px 8px -4px rgba(0, 0, 0, 0.5);
+  --shadow-rail: 0 24px 60px -28px rgba(0, 0, 0, 0.8);
+  --shadow-pop: 0 2px 4px rgba(0, 0, 0, 0.5), 0 12px 32px -12px rgba(0, 0, 0, 0.75);
 
-    --hairline: rgba(255, 255, 255, 0.09);
-    --hairline-strong: rgba(255, 255, 255, 0.16);
-  }
+  --hairline: rgba(255, 255, 255, 0.09);
+  --hairline-strong: rgba(255, 255, 255, 0.16);
 }
 
 html {
-  color-scheme: light dark;
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
 }
 
 /* The ground is a room, not a sheet of paper: three low-alpha pools of light
@@ -147,16 +156,14 @@ body {
     var(--ground);
   background-attachment: fixed;
 }
-@media (prefers-color-scheme: dark) {
-  body {
-    @apply text-neutral-100;
+.dark body {
+  @apply text-neutral-100;
     background:
-      radial-gradient(1100px 620px at 12% -12%, rgba(99, 102, 241, 0.16), transparent 62%),
-      radial-gradient(900px 520px at 88% -6%, rgba(8, 145, 178, 0.12), transparent 58%),
-      radial-gradient(700px 700px at 78% 108%, rgba(139, 92, 246, 0.12), transparent 60%),
-      var(--ground);
-    background-attachment: fixed;
-  }
+    radial-gradient(1100px 620px at 12% -12%, rgba(99, 102, 241, 0.16), transparent 62%),
+    radial-gradient(900px 520px at 88% -6%, rgba(8, 145, 178, 0.12), transparent 58%),
+    radial-gradient(700px 700px at 78% 108%, rgba(139, 92, 246, 0.12), transparent 60%),
+    var(--ground);
+  background-attachment: fixed;
 }
 
 .tnum {
@@ -206,10 +213,8 @@ body {
   font-weight: 700;
   color: var(--color-neutral-900);
 }
-@media (prefers-color-scheme: dark) {
-  :where(h2, h3).uppercase.text-neutral-500 {
-    color: var(--color-neutral-100);
-  }
+.dark :where(h2, h3).uppercase.text-neutral-500 {
+  color: var(--color-neutral-100);
 }
 
 /* ---------------------------------------------------------------------------
@@ -311,7 +316,7 @@ body {
 .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: var(--color-cat-5); }
 .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: var(--color-cat-6); }
 .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: var(--color-cat-7); }
-@media (prefers-color-scheme: dark) {
+.dark {
   /* The solids are tuned for a light ground; on dark they lift so they read. */
   .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: #60a5fa; }
   .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: #a78bfa; }
@@ -353,13 +358,13 @@ body {
 .data-table tbody tr:last-child td {
   border-bottom: 0;
 }
-@media (prefers-color-scheme: dark) {
-  .data-table thead th {
+.dark {
+  & .data-table thead th {
     color: #93c5fd;
     background: linear-gradient(180deg, rgba(96, 165, 250, 0.14) 0%, rgba(96, 165, 250, 0.06) 100%);
     border-bottom-color: rgba(96, 165, 250, 0.2);
   }
-  .data-table tbody tr:hover {
+  & .data-table tbody tr:hover {
     background: color-mix(in srgb, var(--color-accent-tint) 12%, transparent);
   }
 }

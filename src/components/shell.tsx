@@ -181,11 +181,38 @@ function Wordmark() {
 }
 
 const RAIL_KEY = "pursuitos:rail-collapsed";
+const THEME_KEY = "pursuitos:theme";
 
 export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
+  const [dark, setDark] = useState(false);
+
+  /* Light is the default: the app opens light regardless of the OS setting, and
+     only a stored choice turns it dark. */
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(THEME_KEY) === "dark";
+      setDark(stored);
+      document.documentElement.classList.toggle("dark", stored);
+    } catch {
+      /* storage unavailable — light is the right default anyway */
+    }
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setDark((prev) => {
+      const next = !prev;
+      document.documentElement.classList.toggle("dark", next);
+      try {
+        window.localStorage.setItem(THEME_KEY, next ? "dark" : "light");
+      } catch {
+        /* non-fatal */
+      }
+      return next;
+    });
+  }, []);
 
   // Restore the width the operator left the rail at.
   useEffect(() => {
@@ -253,6 +280,28 @@ export function Shell({ children }: { children: ReactNode }) {
     );
   };
 
+  const themeButton = (
+    <button
+      type="button"
+      onClick={toggleTheme}
+      aria-pressed={dark}
+      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+      title={dark ? "Light theme" : "Dark theme"}
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-rail-ink-soft transition-colors duration-[140ms] hover:bg-white/10 hover:text-rail-ink"
+    >
+      {dark ? (
+        <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+          <circle cx="8" cy="8" r="3.2" />
+          <path d="M8 1v1.6M8 13.4V15M15 8h-1.6M2.6 8H1M12.9 3.1l-1.1 1.1M4.2 11.8l-1.1 1.1M12.9 12.9l-1.1-1.1M4.2 4.2L3.1 3.1" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+          <path d="M13.5 9.6A5.8 5.8 0 1 1 6.4 2.5a4.6 4.6 0 0 0 7.1 7.1z" />
+        </svg>
+      )}
+    </button>
+  );
+
   /* The rail is dark in both themes — it is a material, not a mode, and the
      contrast against a light room is most of what carries the layout. */
   const railBody = (
@@ -278,16 +327,17 @@ export function Shell({ children }: { children: ReactNode }) {
       </nav>
       <div className={`border-t border-white/[0.07] px-4 py-3 ${collapsed ? "text-center" : ""}`}>
         {collapsed ? (
-          <span className="text-[10px] font-bold text-rail-ink-soft" title="Design Partner Demo">DP</span>
+          themeButton
         ) : (
           <div className="flex items-center gap-2.5">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent text-[11px] font-bold text-white">
               DP
             </span>
-            <span className="min-w-0">
+            <span className="min-w-0 flex-1">
               <span className="block truncate text-[12.5px] font-semibold text-rail-ink">Design Partner Demo</span>
               <span className="block truncate text-[11px] text-rail-ink-soft">Partner revenue graph</span>
             </span>
+            {themeButton}
           </div>
         )}
       </div>
