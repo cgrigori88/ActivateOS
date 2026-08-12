@@ -13,6 +13,7 @@ import {
   type Population,
 } from "@/lib/mapping/populations";
 import { createPopulationAction, setPopulationStatusAction, targetFromCellAction } from "./actions";
+import { ViewSelect } from "./view-select";
 
 export const dynamic = "force-dynamic";
 
@@ -33,20 +34,8 @@ const VIEWS: { key: View; label: string }[] = [
 
 function ViewTabs({ view }: { view: View }) {
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-2">
-      {VIEWS.map((v) => (
-        <Link
-          key={v.key}
-          href={`/mapping?view=${v.key}`}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-            view === v.key
-              ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-              : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
-          }`}
-        >
-          {v.label}
-        </Link>
-      ))}
+    <div className="mb-4">
+      <ViewSelect current={view} views={VIEWS} />
     </div>
   );
 }
@@ -165,20 +154,8 @@ export default async function MappingPage({
         subtitle="Accounts covered by more than one partner — the overlap where co-sell, whitespace, and channel-conflict decisions get made."
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {VIEWS.map((v) => (
-          <Link
-            key={v.key}
-            href={`/mapping?view=${v.key}${partnerFilter ? `&partner=${partnerFilter}` : ""}`}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-              view === v.key
-                ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
-            }`}
-          >
-            {v.label}
-          </Link>
-        ))}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <ViewSelect current={view} views={VIEWS} />
         <span className="ml-auto text-xs text-neutral-500">{overlaps.length} overlapping account(s)</span>
       </div>
 
