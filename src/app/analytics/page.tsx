@@ -276,11 +276,11 @@ export default async function AnalyticsPage({
                   <div key={t.no} className="flex h-full flex-1 flex-col items-center justify-end">
                     <div className="flex w-full max-w-[7rem] flex-1 items-end justify-center gap-1">
                       <div className="flex w-1/2 flex-col items-center justify-end self-stretch">
-                        <span className="tnum mb-0.5 text-[10px] text-neutral-500">{t.sent}</span>
+                        {t.sent > 0 && <span className="tnum mb-0.5 text-[10px] text-neutral-500">{t.sent}</span>}
                         <div className="w-full rounded-t bg-blue-600" style={{ height: `${(t.sent / touchMax) * 100}%`, minHeight: t.sent > 0 ? 3 : 0 }} title={`Touch ${t.no}: ${t.sent} sent`} />
                       </div>
                       <div className="flex w-1/2 flex-col items-center justify-end self-stretch">
-                        <span className="tnum mb-0.5 text-[10px] text-neutral-500">{t.responded}</span>
+                        {t.responded > 0 && <span className="tnum mb-0.5 text-[10px] text-neutral-500">{t.responded}</span>}
                         <div className="w-full rounded-t bg-green-600" style={{ height: `${(t.responded / touchMax) * 100}%`, minHeight: t.responded > 0 ? 3 : 0 }} title={`Touch ${t.no}: ${t.responded} responded`} />
                       </div>
                     </div>
