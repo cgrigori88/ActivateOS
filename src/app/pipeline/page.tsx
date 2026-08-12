@@ -8,6 +8,7 @@ import {
   type Stage,
 } from "@/lib/opportunities/lifecycle";
 import { Bento, Card, MiniBar, PageHeader, StatusBadge } from "@/components/ui";
+import { QuerySelect } from "@/components/query-select";
 import {
   advanceOpportunityAction,
   registerDealAction,
@@ -32,11 +33,13 @@ interface DealReg {
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; timeframe?: string }>;
 }) {
-  const view = (await searchParams).view === "review" ? "review" : "board";
+  const sp = await searchParams;
+  const view = sp.view === "review" ? "review" : "board";
+  const timeframe = ["7", "30", "90"].includes(sp.timeframe ?? "") ? Number(sp.timeframe) : null;
   const pool = getPool();
-  const { rows: opps } = await pool.query(
+  const { rows: allOpps } = await pool.query(
     `select o.id, o.name, o.stage, o.amount_usd, o.next_step, o.expected_close_date,
             o.company_id, c.legal_name, n.slug, o.motion_id,
             pa.name as partner_name
@@ -47,6 +50,12 @@ export default async function PipelinePage({
      left join partners pa on pa.id = m.partner_id
      order by o.updated_at desc`,
   );
+
+  // Timeframe filter: opportunities whose expected close falls within N days.
+  const horizon = timeframe ? Date.now() + timeframe * 86_400_000 : null;
+  const opps = horizon
+    ? allOpps.filter((o) => o.expected_close_date && new Date(o.expected_close_date).getTime() <= horizon)
+    : allOpps;
 
   const { rows: stakeholderRows } = await pool.query(
     `select s.opportunity_id, s.contact_id, s.role, s.sentiment, ct.name, ct.email
@@ -108,11 +117,11 @@ export default async function PipelinePage({
         );
       })()}
 
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         {(["board", "review"] as const).map((v) => (
           <Link
             key={v}
-            href={`/pipeline?view=${v}`}
+            href={`/pipeline?view=${v}${timeframe ? `&timeframe=${timeframe}` : ""}`}
             className={`rounded-md px-3 py-1.5 text-sm font-medium ${
               view === v
                 ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
@@ -122,6 +131,7 @@ export default async function PipelinePage({
             {v === "board" ? "Board" : "Review + deal reg"}
           </Link>
         ))}
+        <QuerySelect param="timeframe" value={sp.timeframe ?? "all"} label="Closing within" options={[{ value: "all", label: "Any time" }, { value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }]} />
       </div>
 
       {opps.length === 0 && (

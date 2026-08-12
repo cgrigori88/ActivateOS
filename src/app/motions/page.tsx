@@ -147,8 +147,11 @@ export default async function MotionsPage({
                         {m.partner_name && <>{m.estimated_value_usd != null && " · "}via {m.partner_name}</>}
                       </p>
                     )}
-                    <p className="mb-2 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{m.thesis}</p>
-                    <p className="text-sm text-neutral-500"><span className="font-medium">Trigger:</span> {m.trigger_summary}<br /><span className="font-medium">CTA:</span> {m.cta}</p>
+                    <details className="mb-1">
+                      <summary className="cursor-pointer text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">Thesis &amp; trigger</summary>
+                      <p className="mb-2 mt-2 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{m.thesis}</p>
+                      <p className="text-sm text-neutral-500"><span className="font-medium">Trigger:</span> {m.trigger_summary}<br /><span className="font-medium">CTA:</span> {m.cta}</p>
+                    </details>
                     {m.status === "draft" && (
                       <div className="mt-3 flex gap-2">
                         <form action={approveMotionAction.bind(null, m.id)}><button className="rounded-md bg-green-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-800">Approve</button></form>
