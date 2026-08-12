@@ -1,6 +1,6 @@
-/* Interface typeface. Loaded here rather than via next/font because layout.tsx
-   sits outside this lane's remit. */
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap");
+/* Interface typefaces load via next/font in layout.tsx (self-hosted, no render-
+   blocking @import); they arrive as the --font-jakarta / --font-jbmono
+   variables consumed by the @theme tokens below. */
 @import "tailwindcss";
 
 /* Light is the default. Dark is a choice the operator makes and we remember,
@@ -88,8 +88,8 @@
   --radius-card: 18px;
   --radius-panel: 22px;
 
-  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jbmono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* ---- Materials, per theme ------------------------------------------------ */
