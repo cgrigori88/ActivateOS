@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { headers } from "next/headers";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { Shell } from "@/components/shell";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
@@ -32,6 +33,15 @@ export const metadata: Metadata = {
 const THEME_BOOT = `try{if(localStorage.getItem("pursuitos:theme")==="dark")document.documentElement.classList.add("dark")}catch(e){}`;
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
+  // CSP nonce (#65): minted per-request by the middleware; without it the
+  // browser would refuse the theme-boot script and dark mode would flash.
+  let nonce: string | undefined;
+  try {
+    nonce = (await headers()).get("x-nonce") ?? undefined;
+  } catch {
+    /* static build pass — no request, no CSP either */
+  }
+
   // Who is signed in (identity mode only) — the rail's user chip + sign-out.
   let user: string | null = null;
   let isOwner = true; // Basic-Auth / local-dev mode: the operator owns the demo
@@ -50,7 +60,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     // React hydrates, so the html attributes legitimately differ from the SSR.
     <html lang="en" suppressHydrationWarning className={`${sans.variable} ${mono.variable}`}>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
       <body className="min-h-screen font-sans">
         <Shell user={user} signOut={signOutAction} isOwner={isOwner}>{children}</Shell>

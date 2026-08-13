@@ -14,7 +14,40 @@ import { clientIp, rateLimited } from "@/lib/security/rate-limit";
  *
  * Nothing configured (local dev) → open, as always. Basic Auth retires once
  * identity + roles are fully rolled out.
+ *
+ * This is also where the Content-Security-Policy is born (#65): a fresh nonce
+ * per request rides in on the request headers — Next reads it from there and
+ * stamps it onto every inline script it emits, and the root layout stamps it
+ * onto the theme-boot script. `strict-dynamic` lets the nonce'd bootstrap
+ * loader pull in Next's chunks without enumerating them. Production only:
+ * dev mode needs eval for react-refresh, and a dev-shaped CSP would just rot.
  */
+
+function makeNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  let raw = "";
+  for (const b of bytes) raw += String.fromCharCode(b);
+  return btoa(raw);
+}
+
+function cspFor(nonce: string): string {
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    // Tailwind/Next inject <style> at runtime; styles can't exfiltrate, so
+    // 'unsafe-inline' here is the accepted trade the industry makes.
+    "style-src 'self' 'unsafe-inline'",
+    // https: keeps branded-email previews (sandboxed srcdoc iframes inherit
+    // this CSP) able to show remote logos/images.
+    "img-src 'self' https: data: blob:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
 
 async function digest(value: string): Promise<string> {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
@@ -46,10 +79,27 @@ export async function middleware(req: NextRequest) {
   const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const identityConfigured = Boolean(supabaseUrl && supabaseAnon);
 
-  if (!basicConfigured && !identityConfigured) return NextResponse.next(); // local dev
+  // CSP plumbing: the nonce travels on the REQUEST (that's where Next picks it
+  // up for its own inline scripts) and the policy lands on the RESPONSE.
+  const nonce = makeNonce();
+  const csp = process.env.NODE_ENV === "production" ? cspFor(nonce) : null;
+  const pass = () => {
+    // Rebuild from req.headers so cookie refreshes (below) are carried too.
+    const fwd = new Headers(req.headers);
+    fwd.delete("x-nonce"); // never trust a client-supplied nonce
+    if (csp) {
+      fwd.set("content-security-policy", csp); // where Next reads the nonce
+      fwd.set("x-nonce", nonce); // where the root layout reads it
+    }
+    const res = NextResponse.next({ request: { headers: fwd } });
+    if (csp) res.headers.set("content-security-policy", csp);
+    return res;
+  };
+
+  if (!basicConfigured && !identityConfigured) return pass(); // local dev
 
   // 1. Basic Auth — the demo path, exactly as before.
-  if (await basicAuthValid(req)) return NextResponse.next();
+  if (await basicAuthValid(req)) return pass();
 
   // A PRESENTED-but-wrong Basic credential is a guess — throttle guessing.
   // (No header at all is just an unauthenticated browser; that's not counted,
@@ -63,13 +113,13 @@ export async function middleware(req: NextRequest) {
   // 2. Supabase session — canonical @supabase/ssr pattern (also refreshes
   //    expiring tokens; the refreshed cookies ride out on the response).
   if (identityConfigured) {
-    let res = NextResponse.next({ request: req });
+    let res = pass();
     const supabase = createServerClient(supabaseUrl!, supabaseAnon!, {
       cookies: {
         getAll: () => req.cookies.getAll(),
         setAll: (all) => {
           for (const { name, value } of all) req.cookies.set(name, value);
-          res = NextResponse.next({ request: req });
+          res = pass(); // rebuilt so the forwarded request carries the refreshed cookies
           for (const { name, value, options } of all) res.cookies.set(name, value, options);
         },
       },

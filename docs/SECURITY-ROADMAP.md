@@ -85,6 +85,19 @@ release gate, not a wishlist.
   are per serverless instance, so the real ceiling is limit × warm instances —
   still collapses credential stuffing; a Redis-class shared store is the
   upgrade if the app outgrows it.
+- **Strict CSP with nonces (#65).** Per-request nonce minted in the
+  middleware; Next reads it from the forwarded request header and stamps
+  every inline script it emits, the root layout stamps the theme-boot
+  script. Policy: `script-src 'self' 'nonce-…' 'strict-dynamic'`, styles
+  keep `'unsafe-inline'` (the standard trade — styles can't exfiltrate),
+  `img-src https:` so branded-email previews (sandboxed srcdoc iframes
+  inherit the page CSP) keep remote logos, `object-src 'none'`,
+  `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`.
+  Production-only (dev needs eval for react-refresh). Verified in a real
+  Chromium run against a production build: 7/7 — page renders + hydrates
+  with zero violations, dark-mode boot executes under the policy, and an
+  injected inline event handler (the markup-injection XSS class) is
+  refused and reported.
   Remaining for a later slice: per-request scoped DB connections (the app's
   own pool still connects as table owner, so DB-level RLS backs the API path
   only; app-path scoping is enforced in code via `currentOrgId`). Deferred
@@ -97,7 +110,7 @@ release gate, not a wishlist.
 | # | Item | Why deferred | Trigger to fix |
 |---|------|--------------|----------------|
 | 1 | **Credential rotation** (Supabase password + access token, Anthropic, Tavily, PDL, trigger secret, Basic Auth) — keys were shared in a chat session | Owner action pending | **Immediately**, and before the demo video circulates |
-| 2 | **No Content-Security-Policy** | Needs nonce plumbing for the theme-boot inline script and Next's inline chunks; a wrong CSP silently blanks pages | First hardening sprint |
+| 2 | ~~No Content-Security-Policy~~ **Done** (#65) — nonce-based, verified in-browser | — | Watch the browser console after the next deploy; report-uri collection is a later nicety |
 | 3 | Rate limiter is **per-instance** (in-memory) | Real limiter shipped (#66); a shared store only matters at multi-instance scale | Move to Redis-class store when traffic warrants |
 | 4 | postcss/sharp advisories bundled in Next 15 | Build-time / removed-endpoint exposure only; npm fix is a breaking major | Next major upgrade window |
 | 5 | **App pool connects as table owner** — DB-level RLS backs the API path; the app path relies on `currentOrgId` scoping in code | Sandbox can't verify a `DATABASE_URL` role switch (raw Postgres blocked); blind switch risks downtime | With a staging environment, before first customer |
