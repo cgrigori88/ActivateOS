@@ -174,9 +174,9 @@ export default async function CampaignDetailPage({
 
   return (
     <main>
-      <div className="mb-1 text-xs text-neutral-400">
-        <Link href="/campaigns" className="hover:underline">Campaigns</Link> ›{" "}
-        <Link href={`/accounts/${ca.company_id}`} className="hover:underline">{ca.legal_name}</Link>
+      <div className="pos-crumb">
+        <Link href="/campaigns">Campaigns</Link> ›{" "}
+        <Link href={`/accounts/${ca.company_id}`}>{ca.legal_name}</Link>
       </div>
       <PageHeader title={ca.name} subtitle={ca.objective ?? undefined} />
 
@@ -208,7 +208,7 @@ export default async function CampaignDetailPage({
       <Card className="mb-6">
         <div className="flex flex-wrap items-center gap-6">
           <div>
-            <div className="tnum text-3xl font-semibold">{e ? Number(e.engagement_score).toFixed(0) : "—"}</div>
+            <div className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">{e ? Number(e.engagement_score).toFixed(0) : "—"}</div>
             <div className="text-xs text-neutral-500">engagement score</div>
           </div>
           {[
@@ -219,7 +219,7 @@ export default async function CampaignDetailPage({
             ["Positive", e?.positive_replies ?? 0],
           ].map(([label, val]) => (
             <div key={label as string}>
-              <div className="tnum text-xl font-semibold">{val as number}</div>
+              <div className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">{val as number}</div>
               <div className="text-xs text-neutral-500">{label as string}</div>
             </div>
           ))}

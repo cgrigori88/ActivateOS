@@ -43,22 +43,22 @@ export default async function SourcesPage() {
               </div>
               <div className="mb-3 flex items-baseline gap-4">
                 <div>
-                  <div className="tnum text-2xl font-semibold">{Number(s.trust_score).toFixed(2)}</div>
+                  <div className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">{Number(s.trust_score).toFixed(2)}</div>
                   <div className="text-xs text-neutral-500">earned trust</div>
                 </div>
                 <div>
-                  <div className="tnum text-2xl font-semibold">
+                  <div className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">
                     {Math.round(Number(s.audit_sample_rate) * 100)}%
                   </div>
                   <div className="text-xs text-neutral-500">audit sampling</div>
                 </div>
                 <div>
-                  <div className="tnum text-2xl font-semibold">{verifiedPct}%</div>
+                  <div className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">{verifiedPct}%</div>
                   <div className="text-xs text-neutral-500">verified rate</div>
                 </div>
                 {s.predictive_value != null && (
                   <div>
-                    <div className="tnum text-2xl font-semibold">
+                    <div className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">
                       {Number(s.predictive_value).toFixed(2)}
                     </div>
                     <div className="text-xs text-neutral-500">predictive value</div>
