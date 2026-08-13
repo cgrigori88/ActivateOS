@@ -51,6 +51,20 @@ function ViewTabs({ view, pendingCount = 0 }: { view: View; pendingCount?: numbe
   return (
     <div className="mb-4">
       <ViewSelect current={view} views={views} />
+      {/* Work waiting on a decision announces itself in the room, not just in
+          the view picker (and the rail badge carries it across the app). */}
+      {pendingCount > 0 && view !== "review" && (
+        <Link
+          href="/mapping?view=review"
+          className="pos-lift mt-3 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50/70 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">{pendingCount}</span>
+          <span>
+            {pendingCount === 1 ? "A partner list is" : `${pendingCount} partner lists are`} waiting for your review before
+            {pendingCount === 1 ? " it maps" : " they map"} — open the review queue →
+          </span>
+        </Link>
+      )}
     </div>
   );
 }
@@ -428,12 +442,42 @@ function ReviewDialog({
 
         {sample.length > 0 && (
           <details className="mb-3">
-            <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">Preview accounts ({sample.length})</summary>
-            <ul className="mt-2 space-y-1 text-xs text-neutral-500">
-              {sample.map((s, i) => (
-                <li key={i}><span className="font-medium text-neutral-700 dark:text-neutral-300">{s.name}</span> — {Object.entries(s.attributes).map(([k, v]) => `${k}: ${v == null ? "—" : String(v)}`).join(" · ") || "no fields"}</li>
-              ))}
-            </ul>
+            <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
+              Preview accounts — showing {sample.length} of {total.toLocaleString()}
+            </summary>
+            {/* A real table, not prose: fields become columns (first six; the field
+                list above is the full inventory), rows scroll. Built to be read
+                the same at 12 accounts or 12,000 — the page is the sample. */}
+            <div className="mt-2 max-h-80 overflow-auto rounded-lg border border-neutral-200 scroll-thin dark:border-neutral-800">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    {fields.slice(0, 6).map((f) => (
+                      <th key={f.key} className="capitalize">{f.key.replace(/_/g, " ")}</th>
+                    ))}
+                    {fields.length > 6 && <th className="text-neutral-400">+{fields.length - 6} more</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sample.map((s, i) => (
+                    <tr key={i}>
+                      <td className="font-medium">{s.name}</td>
+                      {fields.slice(0, 6).map((f) => {
+                        const v = s.attributes[f.key];
+                        return <td key={f.key} className="max-w-[14rem] truncate text-neutral-500">{v == null || v === "" ? "—" : String(v)}</td>;
+                      })}
+                      {fields.length > 6 && <td className="text-neutral-400">…</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {total > sample.length && (
+              <p className="mt-1.5 text-[11px] text-neutral-400">
+                First {sample.length} of {total.toLocaleString()} accounts, alphabetically — the field table above summarizes the whole list.
+              </p>
+            )}
           </details>
         )}
 
@@ -477,19 +521,21 @@ async function RecommendSection() {
 
     return (
       <>
-        <div className="mb-4 flex flex-wrap gap-6 text-sm text-neutral-500">
-          <span><span className="tnum text-lg font-semibold text-neutral-800 dark:text-neutral-200">{accounts.length}</span> co-sell accounts</span>
-          <span><span className="tnum text-lg font-semibold text-neutral-800 dark:text-neutral-200">{multi}</span> covered by 2+ partners</span>
-          <span><span className="tnum text-lg font-semibold text-neutral-800 dark:text-neutral-200">{accounts.filter((a) => a.band === "high" || a.band === "very_high").length}</span> high-propensity</span>
+        <div className="mb-4 flex flex-wrap gap-3">
+          <Bento label="co-sell accounts" value={accounts.length} href="/mapping?view=overlap" />
+          <Bento label="covered by 2+ partners" value={multi} href="/mapping?view=overlap" />
+          <Bento label="high propensity" value={accounts.filter((a) => a.band === "high" || a.band === "very_high").length} href="/mapping?view=overlap" />
         </div>
 
         {/* Suggested target lists — one click creates an approved target population */}
         <div className="mb-6 grid gap-4 md:grid-cols-3">
           {buckets.map((b) => (
             <Card key={b.key}>
-              <div className="mb-1 flex items-baseline justify-between">
+              <div className="mb-1 flex items-baseline justify-between gap-2">
                 <h3 className="text-sm font-semibold">{b.name}</h3>
-                <span className="tnum text-xs text-neutral-500">{b.companyIds.length}</span>
+                <span className="tnum whitespace-nowrap rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                  {b.companyIds.length} account{b.companyIds.length === 1 ? "" : "s"}
+                </span>
               </div>
               <p className="mb-3 text-xs text-neutral-500">{b.rationale}</p>
               <form action={createTargetListAction}>
@@ -522,27 +568,36 @@ async function RecommendSection() {
                 const defaultName = `Joint play — ${p.partners.map((x) => x.name.split(" ")[0]).join(" × ")}`;
                 return (
                   <Card key={p.key}>
-                    <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    {/* Who plays, in which role */}
+                    <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
                       {p.partners.map((x) => (
-                        <span key={x.id} className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300" title={x.type ?? "partner"}>
-                          {x.name} <span className="text-neutral-400">· {x.role.replace(/_/g, "-")}</span>
+                        <span key={x.id} className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-800 ring-1 ring-inset ring-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900" title={x.type ?? "partner"}>
+                          {x.name} <span className="font-normal opacity-60">{x.role.replace(/_/g, " ")}</span>
                         </span>
                       ))}
-                      <span className="tnum ml-auto text-xs text-neutral-500">{p.accounts.length} account{p.accounts.length === 1 ? "" : "s"}{p.avgScore != null ? ` · avg ${p.avgScore}` : ""}</span>
                     </div>
+                    {/* The play being run */}
                     {p.play && (
-                      <p className="mb-1 text-xs text-neutral-600 dark:text-neutral-300">
-                        <span className="font-medium">{p.play.name}</span>
-                        {p.play.offer && <span className="text-neutral-400"> — CTA: {p.play.offer}</span>}
+                      <p className="mb-1 text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                        {p.play.name}
+                        {p.play.offer && <span className="block text-xs font-normal text-neutral-500">CTA: {p.play.offer}</span>}
                       </p>
                     )}
-                    <p className="mb-2 text-[11px] text-neutral-400">
-                      {p.accounts.slice(0, 4).map((a) => a.name).join(", ")}{p.accounts.length > 4 ? ` +${p.accounts.length - 4} more` : ""}
+                    {/* Reach */}
+                    <p className="mb-3 text-xs text-neutral-500">
+                      <span className="tnum font-semibold text-neutral-700 dark:text-neutral-300">{p.accounts.length}</span> account{p.accounts.length === 1 ? "" : "s"}
+                      {p.avgScore != null && <> · avg propensity <span className="tnum font-semibold text-neutral-700 dark:text-neutral-300">{p.avgScore}</span></>}
+                      <span className="mt-0.5 block text-[11px] text-neutral-400">
+                        {p.accounts.slice(0, 4).map((a) => a.name).join(", ")}{p.accounts.length > 4 ? ` +${p.accounts.length - 4} more` : ""}
+                      </span>
                     </p>
-                    <form action={createMultiVendorCampaignAction} className="flex flex-wrap items-end gap-2">
+                    <form action={createMultiVendorCampaignAction} className="flex flex-wrap items-end gap-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
                       <input type="hidden" name="companyIds" value={p.accounts.map((a) => a.companyId).join(",")} />
                       <input type="hidden" name="partners" value={p.partners.map((x) => `${x.id}:${x.role}`).join(",")} />
-                      <input name="name" defaultValue={defaultName} className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+                      <label className="text-sm">
+                        <span className="mb-1 block text-xs text-neutral-500">Campaign name</span>
+                        <input name="name" defaultValue={defaultName} className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+                      </label>
                       <button className="rounded-md bg-violet-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-800">Create joint campaign</button>
                     </form>
                   </Card>

@@ -77,3 +77,23 @@ export async function abandonMotionAction(motionId: string): Promise<void> {
   }
   revalidatePath("/motions");
 }
+
+/**
+ * Edit a motion's narrative fields + operator notes. Notes are the human->AI
+ * channel: they ride into the campaign generator's grounding, so what the
+ * operator writes here steers every future draft for this motion.
+ */
+export async function editMotionAction(motionId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
+  const thesis = String(formData.get("thesis") ?? "").trim() || null;
+  const trigger = String(formData.get("trigger") ?? "").trim() || null;
+  const cta = String(formData.get("cta") ?? "").trim() || null;
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+  await getPool().query(
+    `update revenue_motions set thesis = coalesce($2, thesis), trigger_summary = coalesce($3, trigger_summary),
+       cta = coalesce($4, cta), operator_notes = $5
+     where id = $1`,
+    [motionId, thesis, trigger, cta, notes],
+  );
+  revalidatePath("/motions");
+}

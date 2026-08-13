@@ -361,31 +361,42 @@ export async function alignedFieldKeys(db: pg.PoolClient, orgId: string): Promis
   return new Set(rows.map((r) => r.key));
 }
 
-/** Inspect one population's fields for the review dialog — presence + a sample. */
+/**
+ * Inspect one population's fields for the review dialog — presence + a sample.
+ * Stats are computed IN the database (a list can be thousands of accounts; the
+ * old version pulled every row into Node to count keys). The preview sample is
+ * a bounded page — the table itself, not the whole book.
+ */
 export async function populationFields(
   db: pg.PoolClient,
-  args: { populationId: string; aligned: Set<string> },
+  args: { populationId: string; aligned: Set<string>; sampleSize?: number },
 ): Promise<{ fields: PopulationField[]; total: number; sample: { name: string; attributes: Record<string, unknown> }[] }> {
-  const { rows } = await db.query<{ attributes: Record<string, unknown>; legal_name: string }>(
-    `select m.attributes, c.legal_name
-     from population_members m join companies c on c.id = m.company_id
-     where m.population_id = $1 order by c.legal_name`,
+  const { rows: totals } = await db.query<{ n: string }>(
+    `select count(*)::text as n from population_members where population_id = $1`,
     [args.populationId],
   );
-  const total = rows.length;
-  const stats = new Map<string, { present: number; sample: string | null }>();
-  for (const r of rows) {
-    for (const [k, v] of Object.entries(r.attributes ?? {})) {
-      const s = stats.get(k) ?? { present: 0, sample: null };
-      s.present += 1;
-      if (s.sample == null && v != null && v !== "") s.sample = typeof v === "object" ? JSON.stringify(v) : String(v);
-      stats.set(k, s);
-    }
-  }
-  const fields: PopulationField[] = [...stats.entries()]
-    .map(([key, s]) => ({ key, present: s.present, total, sample: s.sample, aligned: args.aligned.has(key) || BASE_ALIGNED.has(key) }))
+  const total = Number(totals[0]?.n ?? 0);
+
+  const { rows: stats } = await db.query<{ key: string; present: string; sample: string | null }>(
+    `select e.key, count(*)::text as present,
+            min(left(e.value #>> '{}', 120)) as sample
+     from population_members m
+     cross join lateral jsonb_each(m.attributes) e
+     where m.population_id = $1 and e.value is not null and btrim(e.value::text, '"') <> ''
+     group by e.key order by e.key`,
+    [args.populationId],
+  );
+  const fields: PopulationField[] = stats
+    .map((s) => ({ key: s.key, present: Number(s.present), total, sample: s.sample, aligned: args.aligned.has(s.key) || BASE_ALIGNED.has(s.key) }))
     .sort((a, b) => Number(b.aligned) - Number(a.aligned) || a.key.localeCompare(b.key));
-  const sample = rows.slice(0, 5).map((r) => ({ name: r.legal_name, attributes: r.attributes ?? {} }));
+
+  const { rows: sampleRows } = await db.query<{ attributes: Record<string, unknown>; legal_name: string }>(
+    `select m.attributes, c.legal_name
+     from population_members m join companies c on c.id = m.company_id
+     where m.population_id = $1 order by c.legal_name limit $2`,
+    [args.populationId, args.sampleSize ?? 25],
+  );
+  const sample = sampleRows.map((r) => ({ name: r.legal_name, attributes: r.attributes ?? {} }));
   return { fields, total, sample };
 }
 

@@ -90,6 +90,7 @@ interface MotionRow {
   secondary_persona: string | null;
   cta: string | null;
   status: string;
+  operator_notes: string | null;
   legal_name: string;
   industry: string | null;
   employee_count: number | null;
@@ -103,7 +104,7 @@ async function draftSequenceForMotion(
 ): Promise<{ sequence: CampaignSequence; motion: MotionRow; brand: Awaited<ReturnType<typeof resolveBrand>>; brandId: string | null }> {
   const { rows: motions } = await db.query<MotionRow>(
     `select m.id, m.org_id, m.company_id, m.thesis, m.trigger_summary,
-            m.primary_persona, m.secondary_persona, m.cta, m.status,
+            m.primary_persona, m.secondary_persona, m.cta, m.status, m.operator_notes,
             c.legal_name, c.industry, c.employee_count, c.primary_domain
      from revenue_motions m join companies c on c.id = m.company_id
      where m.id = $1`,
@@ -145,7 +146,7 @@ Hard rules:
 Thesis: ${m.thesis}
 Trigger: ${m.trigger_summary}
 Personas: ${m.primary_persona}${m.secondary_persona ? ` / ${m.secondary_persona}` : ""}
-CTA: ${m.cta}
+CTA: ${m.cta}${m.operator_notes ? `\n\n## Operator notes — human guidance, treat as authoritative steering\n${m.operator_notes}` : ""}
 
 ## Verified evidence
 ${evidence.map((e) => `- ${e.claim}`).join("\n") || "(none)"}

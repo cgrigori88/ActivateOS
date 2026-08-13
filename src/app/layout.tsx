@@ -55,6 +55,20 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       /* no request cookies (build) — chip falls back to Operator */
     }
   }
+  // Attention badges for the rail: work waiting on a human decision. Kept to
+  // one cheap count per room; failures never block the shell.
+  const badges: Record<string, number> = {};
+  try {
+    const { rows } = await getPool().query<{ pending_lists: string; pending_review: string }>(
+      `select (select count(*) from account_populations where status = 'pending') as pending_lists,
+              (select count(*) from review_queue where status = 'pending') as pending_review`,
+    );
+    if (Number(rows[0].pending_lists) > 0) badges["/mapping"] = Number(rows[0].pending_lists);
+    if (Number(rows[0].pending_review) > 0) badges["/review"] = Number(rows[0].pending_review);
+  } catch {
+    /* build pass or db unavailable — no badges, shell still renders */
+  }
+
   return (
     // suppressHydrationWarning: the boot script may add `class="dark"` before
     // React hydrates, so the html attributes legitimately differ from the SSR.
@@ -63,7 +77,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
       <body className="min-h-screen font-sans">
-        <Shell user={user} signOut={signOutAction} isOwner={isOwner}>{children}</Shell>
+        <Shell user={user} signOut={signOutAction} isOwner={isOwner} badges={badges}>{children}</Shell>
       </body>
     </html>
   );

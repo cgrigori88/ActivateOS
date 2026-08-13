@@ -9,15 +9,36 @@ import { deleteTouch, upsertTouch, type TouchFields } from "@/lib/comms/authorin
 import { appendAiTouches } from "@/lib/agents/campaign-email";
 import { linkPopulation, unlinkPopulation } from "@/lib/campaigns/lists";
 
-/** Attach a target list (population) so its accounts roll into the campaign. */
+/** Attach target lists (one or many) so their accounts roll into the campaign. */
 export async function linkListAction(campaignId: string, formData: FormData): Promise<void> {
   await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  const populationId = String(formData.get("populationId") ?? "").trim();
-  if (!populationId) return;
+  const ids = formData.getAll("populationId").map((v) => String(v).trim()).filter(Boolean);
+  if (ids.length === 0) return;
   const pool = getPool();
-  await linkPopulation(pool, campaignId, populationId, "web");
+  for (const populationId of ids) await linkPopulation(pool, campaignId, populationId, "web");
   revalidatePath(`/campaigns/${campaignId}`);
   revalidatePath("/campaigns");
+}
+
+/** Link a motion so AI drafting has approved grounding (thesis, trigger, CTA, evidence). */
+export async function linkMotionAction(campaignId: string, formData: FormData): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
+  const motionId = String(formData.get("motionId") ?? "").trim();
+  if (!motionId) return;
+  await getPool().query(`update campaigns set motion_id = $2 where id = $1`, [campaignId, motionId]);
+  revalidatePath(`/campaigns/${campaignId}`);
+}
+
+/**
+ * Delete a campaign outright — drafts most often, but any campaign may go.
+ * Touches and list links cascade; anything already SENT lives on in its
+ * communication thread (messages are the record, the campaign was the vehicle).
+ */
+export async function deleteCampaignAction(campaignId: string): Promise<void> {
+  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
+  await getPool().query(`delete from campaigns where id = $1`, [campaignId]);
+  revalidatePath("/campaigns");
+  redirect("/campaigns");
 }
 
 /** Remove a target list from the campaign (accounts stop rolling in). */

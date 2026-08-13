@@ -204,6 +204,7 @@ export function Shell({
   user,
   signOut,
   isOwner,
+  badges,
 }: {
   children: ReactNode;
   /** Signed-in identity email; null in Basic-Auth / local-dev mode. */
@@ -211,6 +212,8 @@ export function Shell({
   signOut?: () => Promise<void>;
   /** Owners see the Platform/Admin group. */
   isOwner?: boolean;
+  /** Attention counts by nav href — e.g. { "/mapping": 2 } renders an amber pill on that item. */
+  badges?: Record<string, number>;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -330,7 +333,18 @@ export function Shell({
           {item.icon}
         </span>
         <span className={collapsed ? "sr-only" : "truncate"}>{item.label}</span>
-        {active && !collapsed && (
+        {(badges?.[item.href] ?? 0) > 0 && !collapsed && (
+          <span
+            className="ml-auto rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
+            title={`${badges![item.href]} item(s) need review`}
+          >
+            {badges![item.href]}
+          </span>
+        )}
+        {(badges?.[item.href] ?? 0) > 0 && collapsed && (
+          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-500" title={`${badges![item.href]} item(s) need review`} />
+        )}
+        {active && !collapsed && !(badges?.[item.href] ?? 0) && (
           <span className="absolute right-3 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-accent-tint" />
         )}
       </Link>

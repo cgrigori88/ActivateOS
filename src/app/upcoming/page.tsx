@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
-import { Card, PageHeader } from "@/components/ui";
-import { sendScheduledAction } from "./actions";
+import { Bento, Card, PageHeader } from "@/components/ui";
+import { sendScheduledAction, unscheduleAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -49,10 +49,10 @@ export default async function UpcomingPage() {
         subtitle="Scheduled sends across every launched sequence — the cadence, made concrete."
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-4 text-sm text-neutral-500">
-        <span><span className="tnum text-lg font-semibold text-neutral-800 dark:text-neutral-200">{rows.length}</span> scheduled</span>
-        <span><span className="tnum text-lg font-semibold text-amber-700 dark:text-amber-400">{dueCount}</span> due now</span>
-        <span className={`ml-auto rounded px-2 py-0.5 text-[11px] font-medium ${autosend ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Bento label="scheduled" value={rows.length} />
+        <Bento label="due now" value={dueCount} subs={[dueCount > 0 ? "waiting on you (or the armed worker)" : "all future-dated"]} />
+        <span className={`ml-auto self-start rounded px-2 py-0.5 text-[11px] font-medium ${autosend ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
           worker auto-send: {autosend ? "armed" : "off (manual)"}
         </span>
       </div>
@@ -97,11 +97,28 @@ export default async function UpcomingPage() {
                     <td className="max-w-xs truncate text-neutral-600 dark:text-neutral-300">{r.subject}</td>
                     <td className="text-xs text-neutral-500">{r.recipient_email ?? "—"}</td>
                     <td className="text-right">
-                      <form action={sendScheduledAction.bind(null, r.id)}>
-                        <button className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-blue-950">
-                          Send now
-                        </button>
-                      </form>
+                      <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/campaigns/${r.campaign_id}`}
+                          className="text-xs font-medium text-neutral-500 hover:underline"
+                          title="Edit copy, timing, CC and recipient on the campaign page"
+                        >
+                          Edit
+                        </Link>
+                        <form action={unscheduleAction.bind(null, r.id)}>
+                          <button
+                            className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-900"
+                            title="Take it off the calendar — back to approved; re-schedule from the campaign any time"
+                          >
+                            Unschedule
+                          </button>
+                        </form>
+                        <form action={sendScheduledAction.bind(null, r.id)}>
+                          <button className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-blue-950">
+                            Send now
+                          </button>
+                        </form>
+                      </div>
                     </td>
                   </tr>
                 );

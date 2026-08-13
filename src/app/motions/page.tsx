@@ -5,7 +5,7 @@ import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
 import { currentOrgId } from "@/lib/auth/org";
 import {
-  abandonMotionAction,
+  abandonMotionAction, editMotionAction,
   activateMotionAction,
   approveMotionAction,
   completeMotionAction,
@@ -22,6 +22,7 @@ interface MotionRow {
   status: string;
   thesis: string;
   trigger_summary: string;
+  operator_notes: string | null;
   cta: string;
   confidence: string;
   company_id: string;
@@ -57,7 +58,7 @@ export default async function MotionsPage({
 
   const pool = getPool();
   const { rows: all } = await pool.query<MotionRow>(
-    `select m.id, m.status, m.thesis, m.trigger_summary, m.cta, m.confidence,
+    `select m.id, m.status, m.thesis, m.trigger_summary, m.cta, m.confidence, m.operator_notes,
             m.company_id, c.legal_name, n.slug, c.industry, m.outcome,
             m.estimated_value_usd, m.effort, p.score as propensity, pa.name as partner_name,
             m.goal_id, g.name as goal_name
@@ -183,6 +184,27 @@ export default async function MotionsPage({
                       <summary className="cursor-pointer text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">Thesis &amp; trigger</summary>
                       <p className="mb-2 mt-2 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{m.thesis}</p>
                       <p className="text-sm text-neutral-500"><span className="font-medium">Trigger:</span> {m.trigger_summary}<br /><span className="font-medium">CTA:</span> {m.cta}</p>
+                      {m.operator_notes && (
+                        <p className="mt-2 rounded-md bg-amber-50 px-2.5 py-1.5 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                          <span className="font-medium">Notes:</span> {m.operator_notes}
+                        </p>
+                      )}
+                    </details>
+                    <details className="mb-1">
+                      <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:underline">Edit &amp; notes</summary>
+                      <form action={editMotionAction.bind(null, m.id)} className="mt-2 space-y-2">
+                        <label className="block text-sm"><span className="mb-1 block text-xs text-neutral-500">Thesis</span>
+                          <textarea name="thesis" defaultValue={m.thesis ?? ""} rows={2} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" /></label>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <label className="block text-sm"><span className="mb-1 block text-xs text-neutral-500">Trigger</span>
+                            <input name="trigger" defaultValue={m.trigger_summary ?? ""} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" /></label>
+                          <label className="block text-sm"><span className="mb-1 block text-xs text-neutral-500">CTA</span>
+                            <input name="cta" defaultValue={m.cta ?? ""} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" /></label>
+                        </div>
+                        <label className="block text-sm"><span className="mb-1 block text-xs text-neutral-500">Operator notes — the AI reads these when drafting campaigns for this motion (context, do/don&apos;t, who really decides)</span>
+                          <textarea name="notes" defaultValue={m.operator_notes ?? ""} rows={2} placeholder="e.g. CFO owns this decision; avoid mentioning the migration until Q2." className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" /></label>
+                        <button className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700">Save</button>
+                      </form>
                     </details>
                     {m.status === "draft" && (
                       <div className="mt-3 flex gap-2">

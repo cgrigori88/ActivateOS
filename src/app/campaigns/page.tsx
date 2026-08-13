@@ -11,6 +11,7 @@ import {
   dismissCampaignAction,
   setCampaignGoalAction,
 } from "./actions";
+import { deleteCampaignAction } from "./[id]/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -266,6 +267,7 @@ export default async function CampaignsPage({
                 <th className="text-right">Approved</th>
                 <th className="text-right">Sent</th>
                 <th className="text-right">Engagement</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -309,6 +311,11 @@ export default async function CampaignsPage({
                   <td className="tnum text-right text-neutral-500">{ca.sent}</td>
                   <td className="tnum text-right">
                     {ca.engagement == null ? <span className="text-neutral-400">—</span> : Number(ca.engagement).toFixed(0)}
+                  </td>
+                  <td className="text-right">
+                    <form action={deleteCampaignAction.bind(null, ca.id)}>
+                      <button className="text-[11px] font-medium text-red-700 hover:underline dark:text-red-400" title="Delete the campaign; sent emails stay in their threads">delete</button>
+                    </form>
                   </td>
                 </tr>
               ))}

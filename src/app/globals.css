@@ -699,6 +699,9 @@ html.dark main :is(div, section, li, article).rounded-2xl.border:not(.pos-card):
   border-bottom: 1px solid rgba(37, 99, 235, 0.14);
   backdrop-filter: blur(6px);
 }
+/* Numeric columns right-align their cells; the header must follow. The base
+   rule above wins specificity over the utility, so restate it explicitly. */
+.data-table thead th.text-right { text-align: right; }
 .data-table thead th:first-child { border-top-left-radius: var(--radius-card); }
 .data-table thead th:last-child { border-top-right-radius: var(--radius-card); }
 .data-table tbody td {

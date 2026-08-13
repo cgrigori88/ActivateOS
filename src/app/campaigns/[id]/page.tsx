@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPool } from "@/db/client";
-import { Card, PageHeader, StatusBadge } from "@/components/ui";
+import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { TZ_OPTIONS, formatInTz } from "@/lib/comms/tz";
 import { campaignAccounts, linkedLists, attachableLists, mergeAccountData, renderAngle } from "@/lib/campaigns/lists";
@@ -17,6 +17,8 @@ import {
   aiDraftTouchesAction,
   linkListAction,
   unlinkListAction,
+  linkMotionAction,
+  deleteCampaignAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -145,6 +147,18 @@ export default async function CampaignDetailPage({
   const previewAccount = accounts.find((a) => a.companyId === previewId) ?? null;
   const previewVars = previewId ? await mergeAccountData(pool, previewId) : null;
 
+  // Motions on this account that could ground AI drafting (link-a-motion flow).
+  const { rows: linkableMotions } = ca.motion_id || !ca.company_id
+    ? { rows: [] as { id: string; label: string }[] }
+    : await pool.query<{ id: string; label: string }>(
+        `select m.id, coalesce(n.slug, 'motion') || ' — ' || coalesce(m.cta, m.thesis, 'no CTA') as label
+         from revenue_motions m
+         left join taxonomy_nodes n on n.id = m.taxonomy_node_id
+         where m.company_id = $1 and m.status in ('approved', 'active')
+         order by m.created_at desc`,
+        [ca.company_id],
+      );
+
   const { rows: touches } = await pool.query<Touch>(
     `select id, touch_no, name, subject, preheader, headline, status, html_body,
             body, custom_html, account_angle, highlights, cta_label, cta_url, send_offset_days, scheduled_at, rejected_reason, sent_at, cc_emails
@@ -210,29 +224,19 @@ export default async function CampaignDetailPage({
       </div>
 
       {/* Engagement strip — what the account does back, feeding the intelligence layer */}
-      <Card className="mb-6">
-        <div className="flex flex-wrap items-center gap-6">
-          <div>
-            <div className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">{e ? Number(e.engagement_score).toFixed(0) : "—"}</div>
-            <div className="text-xs text-neutral-500">engagement score</div>
-          </div>
-          {[
-            ["Sent", e?.touches_sent ?? 0],
-            ["Opens", e?.opens ?? 0],
-            ["Clicks", e?.clicks ?? 0],
-            ["Replies", e?.replies ?? 0],
-            ["Positive", e?.positive_replies ?? 0],
-          ].map(([label, val]) => (
-            <div key={label as string}>
-              <div className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">{val as number}</div>
-              <div className="text-xs text-neutral-500">{label as string}</div>
-            </div>
-          ))}
-          <p className="ml-auto max-w-xs text-[11px] text-neutral-400">
-            Engagement feeds propensity, compelling-event detection, and forecasting — not just campaign copy.
-          </p>
+      <div className="mb-6">
+        <div className="flex flex-wrap gap-3">
+          <Bento label="engagement score" value={e ? Number(e.engagement_score).toFixed(0) : "—"} />
+          <Bento label="sent" value={Number(e?.touches_sent ?? 0)} />
+          <Bento label="opens" value={Number(e?.opens ?? 0)} />
+          <Bento label="clicks" value={Number(e?.clicks ?? 0)} />
+          <Bento label="replies" value={Number(e?.replies ?? 0)} />
+          <Bento label="positive" value={Number(e?.positive_replies ?? 0)} />
         </div>
-      </Card>
+        <p className="mt-2 text-[11px] text-neutral-400">
+          Engagement feeds propensity, compelling-event detection, and forecasting — not just campaign copy.
+        </p>
+      </div>
 
       {/* Reach — the target lists that roll into this campaign, and the accounts they resolve to. */}
       <Card className="mb-6">
@@ -263,14 +267,14 @@ export default async function CampaignDetailPage({
           <div className="flex flex-wrap items-end gap-3">
             <form action={linkListAction.bind(null, ca.id)} className="flex items-end gap-2">
               <label className="text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Add a list</span>
-                <select name="populationId" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                <span className="mb-1 block text-xs text-neutral-500">Add lists — Ctrl/Cmd-click to pick several</span>
+                <select name="populationId" multiple size={Math.min(4, attachable.length)} className="w-72 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
                   {attachable.map((l) => (
                     <option key={l.populationId} value={l.populationId}>{l.name} — {l.reason}</option>
                   ))}
                 </select>
               </label>
-              <button className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">Attach</button>
+              <button className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">Attach selected</button>
             </form>
             {suggestions.length > 0 && (
               <div className="flex flex-wrap items-center gap-2">
@@ -546,6 +550,26 @@ export default async function CampaignDetailPage({
               </button>
               <span className="text-[11px] text-neutral-400">{ca.motion_id ? "grounded in this account's motion" : "needs a linked motion"}</span>
             </form>
+            {!ca.motion_id && (
+              linkableMotions.length > 0 ? (
+                <form action={linkMotionAction.bind(null, ca.id)} className="flex items-end gap-2">
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs text-neutral-500">Link a motion — AI drafts only from an approved play (thesis, trigger, CTA, evidence)</span>
+                    <select name="motionId" className="w-72 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                      {linkableMotions.map((m) => (
+                        <option key={m.id} value={m.id}>{m.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className="rounded-md px-3 py-1.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">Link motion</button>
+                </form>
+              ) : (
+                <p className="text-[11px] text-neutral-400">
+                  No approved motion exists for this account yet — approve one on the{" "}
+                  <Link href="/motions" className="text-blue-700 hover:underline dark:text-blue-400">Motions</Link> page (or via Mapping&apos;s workbench) and it becomes linkable here.
+                </p>
+              )
+            )}
           </div>
           <details>
             <summary className="cursor-pointer text-sm font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100">+ Write a touch by hand</summary>
@@ -555,6 +579,18 @@ export default async function CampaignDetailPage({
             </form>
           </details>
         </Card>
+
+        {/* Danger zone — a campaign can always be deleted; sent emails stay in their threads. */}
+        <div className="flex justify-end">
+          <form action={deleteCampaignAction.bind(null, ca.id)}>
+            <button
+              className="rounded-md px-3 py-1.5 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-300 hover:bg-red-50 dark:text-red-400 dark:ring-red-800 dark:hover:bg-red-950"
+              title="Removes the campaign, its touches and list links. Anything already sent remains in the account's communication threads."
+            >
+              Delete campaign
+            </button>
+          </form>
+        </div>
       </div>
     </main>
   );

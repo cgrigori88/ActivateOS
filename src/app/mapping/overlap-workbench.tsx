@@ -36,6 +36,23 @@ export interface OverlapRow {
   hasMotion: boolean;
 }
 
+/** Who is claiming this account, and on what basis — the conflict, in words. */
+function claimantSummary(
+  r: OverlapRow,
+  partners: { id: string; name: string }[],
+): { short: string; full: string } {
+  const claimants = partners
+    .filter((p) => r.marks[p.id]?.claims)
+    .map((p) => ({
+      first: p.name.split(" ")[0],
+      full: `${p.name} (${(r.marks[p.id].categories.join(", ") || "claims it")})`,
+    }));
+  return {
+    short: claimants.map((c) => c.first).join(" × "),
+    full: claimants.map((c) => c.full).join(" and "),
+  };
+}
+
 const BANDS = ["all", "very_high", "high", "medium", "low"];
 const input = "rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
 
@@ -207,7 +224,14 @@ function FragmentRow({
         <td>
           <span className="flex items-center gap-1.5">
             <Link href={`/accounts/${r.companyId}`} className="font-medium hover:underline">{r.name}</Link>
-            {r.conflict && <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300" title="2+ partners actively claim this account">⚠</span>}
+            {r.conflict && (
+              <span
+                className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300"
+                title={`Channel conflict — both actively claim this account: ${claimantSummary(r, partners).full}`}
+              >
+                ⚠ {claimantSummary(r, partners).short}
+              </span>
+            )}
           </span>
           {r.domain && <div className="text-[11px] text-neutral-400">{r.domain}</div>}
         </td>
@@ -321,7 +345,9 @@ function FragmentRow({
                 </ul>
                 {r.conflict && (
                   <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                    ⚠ Channel conflict: multiple partners actively claim this account. Decide who leads and lock it with a deal registration on the opportunity.
+                    ⚠ <span className="font-semibold">Channel conflict:</span> {claimantSummary(r, partners).full} both
+                    claim this account — the same deal could be worked twice, or partners could undercut each other in
+                    front of the customer. Decide who leads and lock it with a deal registration on the opportunity.
                   </p>
                 )}
               </div>

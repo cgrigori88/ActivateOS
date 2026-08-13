@@ -169,7 +169,7 @@ export default async function PipelinePage({
                   blue: "text-blue-700 dark:text-blue-400",
                 };
                 return (
-                  <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${active ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900" : "border-neutral-200 hover:border-neutral-400 dark:border-neutral-800 dark:hover:border-neutral-600"}`}>
+                  <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${active ? "border-accent bg-accent text-white" : "border-neutral-200 hover:border-neutral-400 dark:border-neutral-800 dark:hover:border-neutral-600"}`}>
                     <span className={`tnum font-semibold ${active ? "" : tones[tone]}`}>{count}</span>
                     <span className={active ? "" : "text-neutral-500"}>{label}</span>
                   </Link>
@@ -194,7 +194,7 @@ export default async function PipelinePage({
             })()}
             {(wonQual != null || lostQual != null) && (
               <Card className="mb-5">
-                <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Learned signal · qualification vs outcome</h2>
+                <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">AI learned signal · qualification vs outcome</h2>
                 <p className="text-sm text-neutral-600 dark:text-neutral-300">
                   Closed-won deals qualified at <span className="font-semibold text-green-700 dark:text-green-400">{wonQual ?? "—"}</span> MEDDPICC health on average;
                   closed-lost at <span className="font-semibold text-red-700 dark:text-red-400">{lostQual ?? "—"}</span>.
