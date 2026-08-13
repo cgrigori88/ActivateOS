@@ -215,7 +215,15 @@ summary:focus-visible {
 
 /* ---- Materials ----------------------------------------------------------- */
 .glass {
-  background: var(--glass-bg);
+  background-color: var(--glass-bg);
+  /* Glass takes light from above rather than sitting as a flat fill — this is
+     what stops a screen of panels reading as one white plane. */
+  background-image: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.5) 0%,
+    rgba(255, 255, 255, 0.12) 42%,
+    rgba(255, 255, 255, 0) 78%
+  );
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-edge);
@@ -426,6 +434,70 @@ select:not([multiple]) {
 .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: var(--color-cat-5); }
 .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: var(--color-cat-6); }
 .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: var(--color-cat-7); }
+/* Each tile carries a wash of the hue its own figure is using, so the tile and
+   its number belong to each other. Diagonal, dying out around 70% down so the
+   label sits on clean ground, with the border picking up a trace of the same
+   hue. `background-image` layers over the material rather than replacing it. */
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 1) { --tile-hue: var(--color-cat-1); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 2) { --tile-hue: var(--color-cat-2); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 3) { --tile-hue: var(--color-cat-3); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 4) { --tile-hue: var(--color-cat-4); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 5) { --tile-hue: var(--color-cat-5); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 6) { --tile-hue: var(--color-cat-6); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 7) { --tile-hue: var(--color-cat-7); }
+/* A filter chip states its own meaning, so it takes its hue from the tone. */
+.pos-bento[data-tone="sky"] { --tile-hue: var(--color-accent); }
+.pos-bento[data-tone="green"] { --tile-hue: var(--color-emerald); }
+.pos-bento[data-tone="amber"] { --tile-hue: var(--color-amber); }
+.pos-bento[data-tone="red"] { --tile-hue: var(--color-rose); }
+.pos-bento[data-tone="neutral"] { --tile-hue: var(--color-neutral-400); }
+
+.pos-bento.glass:not([data-active="true"]):not([data-empty="true"]) {
+  background-image:
+    linear-gradient(
+      152deg,
+      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 16%, transparent) 0%,
+      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 5%, transparent) 46%,
+      transparent 72%
+    ),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 70%);
+  border-color: color-mix(in srgb, var(--tile-hue, var(--color-accent)) 22%, var(--glass-edge));
+}
+/* Roughly double the alpha on dark: a wash that reads clearly on white vanishes
+   entirely on a near-black ground. */
+html.dark .pos-bento.glass:not([data-active="true"]):not([data-empty="true"]) {
+  background-image:
+    linear-gradient(
+      152deg,
+      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 30%, transparent) 0%,
+      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 10%, transparent) 46%,
+      transparent 74%
+    ),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 70%);
+  border-color: color-mix(in srgb, var(--tile-hue, var(--color-accent)) 34%, var(--glass-edge));
+}
+
+/* Panels get the faintest accent lift at the top edge, so a stack reads as
+   depth rather than as one sheet. */
+.pos-card.glass {
+  background-image:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 4%, transparent) 0%, transparent 38%),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 72%);
+}
+html.dark .pos-card.glass {
+  background-image:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-accent-tint) 8%, transparent) 0%, transparent 40%),
+    linear-gradient(168deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 72%);
+}
+html.dark .glass {
+  background-image: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.07) 0%,
+    rgba(255, 255, 255, 0.02) 44%,
+    rgba(255, 255, 255, 0) 78%
+  );
+}
+
 .dark {
   /* The solids are tuned for a light ground; on dark they lift so they read. */
   .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: #60a5fa; }
