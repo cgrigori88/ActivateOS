@@ -248,7 +248,7 @@ export default async function AnalyticsPage({
         <div className="mt-5 grid grid-cols-2 gap-3 border-t border-neutral-100 pt-4 sm:grid-cols-3 lg:grid-cols-5 dark:border-neutral-800">
           {figures.map((f) => (
             <div key={f.label} className="text-center">
-              <div className={`tnum text-2xl font-bold ${f.tone}`}>{f.value == null ? "—" : `${f.value}%`}</div>
+              <div className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${f.tone}`}>{f.value == null ? "—" : `${f.value}%`}</div>
               <div className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{f.label}</div>
             </div>
           ))}

@@ -419,22 +419,185 @@ select:not([multiple]) {
    away. An explicit tone still wins, and a zero stays grey — a count of nothing
    should never wear a hue.
    --------------------------------------------------------------------------- */
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: var(--color-cat-1); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: var(--color-cat-2); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 3) .pos-bento-fig { color: var(--color-cat-3); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 4) .pos-bento-fig { color: var(--color-cat-4); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: var(--color-cat-5); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: var(--color-cat-6); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: var(--color-cat-7); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: var(--color-cat-1); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: var(--color-cat-2); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 3) .pos-bento-fig { color: var(--color-cat-3); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 4) .pos-bento-fig { color: var(--color-cat-4); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: var(--color-cat-5); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: var(--color-cat-6); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: var(--color-cat-7); }
 .dark {
   /* The solids are tuned for a light ground; on dark they lift so they read. */
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: #60a5fa; }
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: #a78bfa; }
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 3) .pos-bento-fig { color: #22d3ee; }
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 4) .pos-bento-fig { color: #fbbf24; }
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: #34d399; }
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: #fb7185; }
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: #818cf8; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: #60a5fa; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: #a78bfa; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 3) .pos-bento-fig { color: #22d3ee; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 4) .pos-bento-fig { color: #fbbf24; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: #34d399; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: #fb7185; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: #818cf8; }
+}
+
+/* Back-navigation, unified. Four treatments had grown up across the app — a
+   capsule with an arrow tile, a 14px grey link, a 12px blue one and a "›"
+   breadcrumb — different sizes, colours and baselines for the same act. One
+   class sets the metrics; pages keep their markup and arrow glyph. */
+.pos-backlink {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-height: 32px; margin-bottom: 12px; padding: 4px 14px 4px 10px;
+  border-radius: 999px; font-size: 13.5px; font-weight: 600; line-height: 1;
+  color: var(--color-neutral-500); text-decoration: none;
+  transition: background-color var(--dur-react) linear, color var(--dur-react) linear;
+}
+.pos-backlink:hover { background: rgba(11,18,32,.05); color: var(--color-neutral-900); text-decoration: none; }
+html.dark .pos-backlink:hover { background: rgba(255,255,255,.08); color: var(--color-neutral-100); }
+.pos-crumb {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+  font-size: 13px; font-weight: 500; color: var(--color-neutral-400);
+}
+.pos-crumb a {
+  color: var(--color-neutral-500); text-decoration: none;
+  border-radius: 999px; padding: 2px 6px;
+  transition: background-color var(--dur-react) linear, color var(--dur-react) linear;
+}
+.pos-crumb a:hover { background: rgba(11,18,32,.05); color: var(--color-neutral-900); }
+html.dark .pos-crumb a:hover { background: rgba(255,255,255,.08); color: var(--color-neutral-100); }
+
+/* ===========================================================================
+   Blanket normalisation.
+
+   Earlier passes matched on class combinations — `.rounded-md.border-neutral-300`
+   and so on — which meant every surface written slightly differently slipped
+   through, and each new page arrived non-compliant. These rules key off the
+   element instead, so they cover what exists now and whatever gets written next.
+
+   Specificity is tuned to beat a single utility while still letting a component
+   opt out: anything already carrying `rounded-full` (the search field, chips,
+   capsule buttons) keeps its own treatment.
+   =========================================================================== */
+
+/* --- Text inputs, selects, textareas ------------------------------------- */
+main :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="range"]):not([type="file"]):not(.rounded-full) {
+  min-height: 36px;
+  border-radius: var(--radius-input);
+  border: 1px solid var(--hairline-strong);
+  background-color: var(--glass-bg);
+  color: inherit;
+  padding-inline: 12px;
+  font-size: 13.5px;
+  transition: border-color var(--dur-react) linear, box-shadow var(--dur-react) linear;
+}
+main :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not(.rounded-full):hover {
+  border-color: var(--color-neutral-400);
+}
+main :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not(.rounded-full):focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+main :is(input, textarea)::placeholder { color: var(--color-neutral-400); }
+/* Under 16px iOS zooms the page on focus; 36px fails the touch target. */
+@media (max-width: 640px) {
+  main :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not(.rounded-full) {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}
+/* File inputs: the native button is unstyleable, so the control gets the shell
+   and ::file-selector-button gets the capsule. */
+main input[type="file"] {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-input);
+  border: 1px dashed var(--hairline-strong);
+  background-color: var(--glass-bg);
+  padding: 6px 12px;
+  font-size: 13.5px;
+  color: var(--color-neutral-500);
+}
+main input[type="file"]::file-selector-button {
+  min-height: 26px;
+  margin-right: 12px;
+  padding-inline: 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--dur-react) linear;
+}
+main input[type="file"]::file-selector-button:hover { background: var(--color-accent-strong); }
+
+/* Checkboxes and radios get the accent rather than the browser default. */
+main :is(input[type="checkbox"], input[type="radio"]) {
+  accent-color: var(--color-accent);
+  width: 16px;
+  height: 16px;
+}
+
+/* --- Filled buttons ------------------------------------------------------ */
+main :is(button, a):is([class*="bg-neutral-9"], [class*="bg-green-7"], [class*="bg-green-6"], [class*="bg-blue-6"], [class*="bg-blue-7"], [class*="bg-black"])[class*="text-white"]:not(.rounded-full):not([class*="h-"]) {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-inline: 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  transition: background-color var(--dur-react) linear;
+}
+main :is(button, a)[class*="bg-neutral-9"][class*="text-white"]:not(.rounded-full),
+main :is(button, a)[class*="bg-black"][class*="text-white"]:not(.rounded-full),
+main :is(button, a)[class*="bg-blue-6"][class*="text-white"]:not(.rounded-full),
+main :is(button, a)[class*="bg-blue-7"][class*="text-white"]:not(.rounded-full) {
+  background-color: var(--color-accent);
+}
+main :is(button, a)[class*="bg-neutral-9"][class*="text-white"]:not(.rounded-full):hover,
+main :is(button, a)[class*="bg-black"][class*="text-white"]:not(.rounded-full):hover,
+main :is(button, a)[class*="bg-blue-6"][class*="text-white"]:not(.rounded-full):hover,
+main :is(button, a)[class*="bg-blue-7"][class*="text-white"]:not(.rounded-full):hover {
+  background-color: var(--color-accent-strong);
+}
+/* Confirm stays green — it is semantic — but on our token. */
+main :is(button, a)[class*="bg-green-7"][class*="text-white"]:not(.rounded-full),
+main :is(button, a)[class*="bg-green-6"][class*="text-white"]:not(.rounded-full) {
+  background-color: var(--color-emerald);
+}
+main :is(button, a)[class*="bg-green-7"][class*="text-white"]:not(.rounded-full):hover,
+main :is(button, a)[class*="bg-green-6"][class*="text-white"]:not(.rounded-full):hover {
+  background-color: #047857;
+}
+/* Outline/ghost buttons pick up the same height and radius. */
+main :is(button, a)[class*="ring-inset"]:not(.rounded-full),
+main :is(button, a)[class*="border-neutral-3"]:not(.rounded-full):not([class*="bg-white"]) {
+  min-height: 36px;
+  border-radius: 999px;
+  padding-inline: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --- Hand-rolled card surfaces ------------------------------------------- */
+/* Panels written inline instead of with <Card> still read as the same material. */
+main :is(div, section, li, article).rounded-lg.border:not(.pos-card):not(.pos-bento),
+main :is(div, section, li, article).rounded-xl.border:not(.pos-card):not(.pos-bento),
+main :is(div, section, li, article).rounded-2xl.border:not(.pos-card):not(.pos-bento) {
+  border-radius: var(--radius-card);
+  border-color: var(--hairline);
+  background-color: var(--glass-bg);
+  background-image: linear-gradient(168deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0) 74%);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+html.dark main :is(div, section, li, article).rounded-lg.border:not(.pos-card):not(.pos-bento),
+html.dark main :is(div, section, li, article).rounded-xl.border:not(.pos-card):not(.pos-bento),
+html.dark main :is(div, section, li, article).rounded-2xl.border:not(.pos-card):not(.pos-bento) {
+  background-image: linear-gradient(168deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0) 74%);
 }
 
 /* ---------------------------------------------------------------------------

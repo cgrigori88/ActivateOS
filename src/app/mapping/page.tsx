@@ -813,7 +813,7 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
     return (
       <div>
         <div className="mb-3 flex flex-wrap items-center gap-3">
-          <Link href={backHref} className="text-xs text-blue-700 hover:underline dark:text-blue-400">← Matrix</Link>
+          <Link href={backHref} className="pos-backlink !mb-0">← Matrix</Link>
           <h2 className="text-base font-semibold">
             {row?.name ?? "?"} <span className="text-neutral-400">vs</span> {col?.name ?? "?"}
           </h2>

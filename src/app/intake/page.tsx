@@ -126,11 +126,11 @@ export default async function IntakePage() {
                 </div>
                 <div className="flex items-baseline gap-6">
                   <div>
-                    <div className="tnum text-3xl font-semibold">{rowsTotal.toLocaleString()}</div>
+                    <div className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">{rowsTotal.toLocaleString()}</div>
                     <div className="text-xs text-neutral-500">rows · {Number(p.accounts).toLocaleString()} accounts</div>
                   </div>
                   <div>
-                    <div className="tnum text-3xl font-semibold">{rate}%</div>
+                    <div className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">{rate}%</div>
                     <div className="text-xs text-neutral-500">match rate</div>
                   </div>
                 </div>

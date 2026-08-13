@@ -53,16 +53,8 @@ export function Card({
  */
 export function BackLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link
-      href={href}
-      className="mb-3 inline-flex min-h-[32px] items-center gap-2 rounded-full py-1 pl-1 pr-3.5 text-sm font-medium text-neutral-500 transition-colors duration-[140ms] hover:bg-neutral-900/[0.06] hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-neutral-100"
-    >
-      <span
-        aria-hidden
-        className="grid h-6 w-6 place-items-center rounded-full bg-neutral-900/[0.06] text-[12px] dark:bg-white/10"
-      >
-        ←
-      </span>
+    <Link href={href} className="pos-backlink">
+      <span aria-hidden>←</span>
       {label}
     </Link>
   );
@@ -276,35 +268,63 @@ export function CountChip({
   active?: boolean;
   tone?: "green" | "sky" | "amber" | "neutral" | "red";
 }) {
-  const toneBar: Record<string, string> = {
-    green: "bg-green-600",
-    sky: "bg-sky-600",
-    amber: "bg-amber-500",
-    red: "bg-red-600",
-    neutral: "bg-neutral-400",
+  const empty = Number(value) === 0;
+  /* The figure carries the hue. `data-tone` opts the tile out of the positional
+     colouring in globals.css, and `data-active` out of both that and the tint —
+     the selected chip sits on a solid accent fill, and a blue figure on a blue
+     ground is invisible. */
+  const figure: Record<string, string> = {
+    green: "text-emerald",
+    sky: "text-accent",
+    amber: "text-amber",
+    /* Left as default ink the inert band became the loudest number in the row,
+       which reads backwards. */
+    neutral: "text-neutral-500",
+    red: "text-rose",
   };
-  const body = (
-    <div
-      className={`relative min-w-[5.5rem] overflow-hidden rounded-lg border px-3 py-2 ${href ? "pos-lift" : "transition-colors"} ${
-        active
-          ? "border-neutral-900 bg-neutral-900 text-white dark:border-white dark:bg-white dark:text-neutral-900"
-          : "border-neutral-200 bg-white hover:border-neutral-300 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-700"
-      }`}
-    >
-      {tone && !active && (
-        <span className={`absolute inset-x-0 top-0 h-0.5 ${toneBar[tone]}`} />
-      )}
-      <div className="tnum text-lg font-semibold leading-tight">{value}</div>
+  const cls = `pos-bento min-w-[6.5rem] rounded-card px-4 py-3 ${
+    active
+      ? "border border-accent bg-accent text-white shadow-[var(--shadow-float)]"
+      : empty
+        ? "border border-dashed border-neutral-200 dark:border-neutral-800"
+        : "glass"
+  }`;
+  const inner = (
+    <>
       <div
-        className={`text-[10px] font-medium uppercase tracking-wider ${
-          active ? "text-neutral-300 dark:text-neutral-600" : "text-neutral-500"
+        className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${
+          active
+            ? "text-white"
+            : empty
+              ? "text-neutral-300 dark:text-neutral-700"
+              : (tone && figure[tone]) || ""
+        }`}
+      >
+        {value}
+      </div>
+      <div
+        className={`mt-1.5 text-[11.5px] font-semibold ${
+          active ? "text-white/75" : "text-neutral-500 dark:text-neutral-400"
         }`}
       >
         {label}
       </div>
+    </>
+  );
+  const attrs = {
+    "data-tone": tone,
+    "data-empty": empty ? "true" : undefined,
+    "data-active": active ? "true" : undefined,
+  };
+  return href ? (
+    <Link href={href} {...attrs} className={`pos-lift block ${cls}`}>
+      {inner}
+    </Link>
+  ) : (
+    <div {...attrs} className={cls}>
+      {inner}
     </div>
   );
-  return href ? <Link href={href}>{body}</Link> : body;
 }
 
 /** Toolbar row above a data table: filters left, actions right. */
