@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 /**
@@ -216,6 +216,30 @@ export function Shell({
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [dark, setDark] = useState(false);
+  const navRef = useRef<HTMLElement | null>(null);
+
+  /* The rail only sometimes overflows — 17 destinations fit on a tall window
+     and not on a short one. A permanent scrollbar for an occasional overflow is
+     chrome that earns nothing, so the bar is hidden and a fade marks the edge
+     only when there is actually more to reach. */
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const sync = () => {
+      const more = el.scrollHeight - el.clientHeight - el.scrollTop > 4;
+      el.classList.toggle("is-overflowing", more);
+    };
+    sync();
+    el.addEventListener("scroll", sync, { passive: true });
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    window.addEventListener("resize", sync);
+    return () => {
+      el.removeEventListener("scroll", sync);
+      ro.disconnect();
+      window.removeEventListener("resize", sync);
+    };
+  }, [collapsed]);
 
   // Auth surfaces stand alone: no rail, no chrome — you aren't "inside" yet.
   const bare = pathname.startsWith("/login");
@@ -345,7 +369,7 @@ export function Shell({
           {!collapsed && <span className="text-[15px] font-bold tracking-[-0.03em]">PursuitOS</span>}
         </Link>
       </div>
-      <nav className="scroll-thin flex-1 space-y-3.5 overflow-y-auto overflow-x-hidden px-3 pb-3">
+      <nav ref={navRef} className="pos-rail-scroll flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 pb-3">
         {navGroups.map((group, i) => (
           <div key={i}>
             {group.label && !collapsed && (

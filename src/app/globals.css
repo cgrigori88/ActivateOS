@@ -673,6 +673,20 @@ html.dark main :is(div, section, li, article).rounded-2xl.border:not(.pos-card):
   background-attachment: local, local, scroll, scroll;
 }
 
+/* The rail's scroll region: no permanent scrollbar, a fade only when there is
+   more below. Scrolling still works by wheel, trackpad and keyboard. */
+.pos-rail-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior: contain;
+  transition: mask-image var(--dur-react) linear;
+}
+.pos-rail-scroll::-webkit-scrollbar { width: 0; height: 0; }
+.pos-rail-scroll.is-overflowing {
+  mask-image: linear-gradient(to bottom, #000 0%, #000 88%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 88%, transparent 100%);
+}
+
 /* Thin scrollbars for dense panes */
 .scroll-thin { scrollbar-width: thin; }
 .scroll-thin::-webkit-scrollbar { height: 6px; width: 6px; }
