@@ -53,16 +53,8 @@ export function Card({
  */
 export function BackLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link
-      href={href}
-      className="mb-3 inline-flex min-h-[32px] items-center gap-2 rounded-full py-1 pl-1 pr-3.5 text-sm font-medium text-neutral-500 transition-colors duration-[140ms] hover:bg-neutral-900/[0.06] hover:text-neutral-900 dark:hover:bg-white/10 dark:hover:text-neutral-100"
-    >
-      <span
-        aria-hidden
-        className="grid h-6 w-6 place-items-center rounded-full bg-neutral-900/[0.06] text-[12px] dark:bg-white/10"
-      >
-        ←
-      </span>
+    <Link href={href} className="pos-backlink">
+      <span aria-hidden>←</span>
       {label}
     </Link>
   );
@@ -307,7 +299,10 @@ export function CountChip({
     sky: "text-accent",
     amber: "text-amber",
     red: "text-rose",
-    neutral: "",
+    /* The neutral tone is for the inert band. Left as default ink it became the
+       loudest figure in the row, which reads backwards — the lowest band should
+       not shout. */
+    neutral: "text-neutral-500",
   };
   const inner = (
     <>
@@ -331,7 +326,11 @@ export function CountChip({
       </div>
     </>
   );
-  const attrs = { "data-tone": tone, "data-empty": empty ? "true" : undefined };
+  const attrs = {
+    "data-tone": tone,
+    "data-empty": empty ? "true" : undefined,
+    "data-active": active ? "true" : undefined,
+  };
   return href ? (
     <Link href={href} {...attrs} className={`pos-lift block ${cls}`}>
       {inner}

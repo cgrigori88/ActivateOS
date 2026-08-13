@@ -419,22 +419,22 @@ select:not([multiple]) {
    away. An explicit tone still wins, and a zero stays grey — a count of nothing
    should never wear a hue.
    --------------------------------------------------------------------------- */
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: var(--color-cat-1); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: var(--color-cat-2); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 3) .pos-bento-fig { color: var(--color-cat-3); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 4) .pos-bento-fig { color: var(--color-cat-4); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: var(--color-cat-5); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: var(--color-cat-6); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: var(--color-cat-7); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: var(--color-cat-1); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: var(--color-cat-2); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 3) .pos-bento-fig { color: var(--color-cat-3); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 4) .pos-bento-fig { color: var(--color-cat-4); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: var(--color-cat-5); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: var(--color-cat-6); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: var(--color-cat-7); }
 .dark {
   /* The solids are tuned for a light ground; on dark they lift so they read. */
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: #60a5fa; }
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: #a78bfa; }
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 3) .pos-bento-fig { color: #22d3ee; }
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 4) .pos-bento-fig { color: #fbbf24; }
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: #34d399; }
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: #fb7185; }
-  .pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: #818cf8; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: #60a5fa; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: #a78bfa; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 3) .pos-bento-fig { color: #22d3ee; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 4) .pos-bento-fig { color: #fbbf24; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: #34d399; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: #fb7185; }
+  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: #818cf8; }
 }
 
 /* ---------------------------------------------------------------------------
@@ -468,16 +468,16 @@ html.dark .glass {
 }
 
 /* Bento tiles: the hue of the figure, washed across the surface. */
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 1) { --tile-hue: var(--color-cat-1); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 2) { --tile-hue: var(--color-cat-2); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 3) { --tile-hue: var(--color-cat-3); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 4) { --tile-hue: var(--color-cat-4); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 5) { --tile-hue: var(--color-cat-5); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 6) { --tile-hue: var(--color-cat-6); }
-.pos-bento:not([data-tone]):not([data-empty="true"]):nth-child(7n + 7) { --tile-hue: var(--color-cat-7); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 1) { --tile-hue: var(--color-cat-1); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 2) { --tile-hue: var(--color-cat-2); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 3) { --tile-hue: var(--color-cat-3); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 4) { --tile-hue: var(--color-cat-4); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 5) { --tile-hue: var(--color-cat-5); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 6) { --tile-hue: var(--color-cat-6); }
+.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 7) { --tile-hue: var(--color-cat-7); }
 
-.pos-bento.glass[data-tone],
-.pos-bento.glass:not([data-empty="true"]) {
+.pos-bento.glass[data-tone]:not([data-active="true"]),
+.pos-bento.glass:not([data-active="true"]):not([data-empty="true"]) {
   background-image:
     linear-gradient(
       152deg,
@@ -488,8 +488,8 @@ html.dark .glass {
     linear-gradient(168deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 70%);
   border-color: color-mix(in srgb, var(--tile-hue, var(--color-accent)) 22%, var(--glass-edge));
 }
-html.dark .pos-bento.glass[data-tone],
-html.dark .pos-bento.glass:not([data-empty="true"]) {
+html.dark .pos-bento.glass[data-tone]:not([data-active="true"]),
+html.dark .pos-bento.glass:not([data-active="true"]):not([data-empty="true"]) {
   background-image:
     linear-gradient(
       152deg,
@@ -518,6 +518,64 @@ html.dark .pos-card.glass {
   background-image:
     linear-gradient(180deg, color-mix(in srgb, var(--color-accent-tint) 8%, transparent) 0%, transparent 40%),
     linear-gradient(168deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 72%);
+}
+
+/* ---------------------------------------------------------------------------
+   Back-navigation, unified.
+
+   Four treatments had grown up across the app: a capsule with an arrow tile, a
+   14px grey link, a 12px blue one, and a "›" breadcrumb — different sizes,
+   colours and baselines for the same act of going back. One class now sets the
+   metrics; the pages keep their own markup and arrow glyph.
+   --------------------------------------------------------------------------- */
+.pos-backlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin-bottom: 12px;
+  padding: 4px 14px 4px 10px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-neutral-500);
+  text-decoration: none;
+  transition: background-color var(--dur-react) linear, color var(--dur-react) linear;
+}
+.pos-backlink:hover {
+  background: var(--hover-veil, rgba(11, 18, 32, 0.05));
+  color: var(--color-neutral-900);
+  text-decoration: none;
+}
+html.dark .pos-backlink:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-neutral-100);
+}
+/* Breadcrumb trail: same size and rhythm, the tail quieter than the head. */
+.pos-crumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-neutral-400);
+}
+.pos-crumb a {
+  color: var(--color-neutral-500);
+  text-decoration: none;
+  border-radius: 999px;
+  padding: 2px 6px;
+  transition: background-color var(--dur-react) linear, color var(--dur-react) linear;
+}
+.pos-crumb a:hover {
+  background: var(--hover-veil, rgba(11, 18, 32, 0.05));
+  color: var(--color-neutral-900);
+}
+html.dark .pos-crumb a:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-neutral-100);
 }
 
 /* ---------------------------------------------------------------------------

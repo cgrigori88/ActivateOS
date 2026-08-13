@@ -158,7 +158,7 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
   return (
     <main>
       <p className="mb-4 text-sm">
-        <Link href="/accounts" className="text-neutral-500 hover:underline">
+        <Link href="/accounts" className="pos-backlink">
           ← Accounts
         </Link>
       </p>
