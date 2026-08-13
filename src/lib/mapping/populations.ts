@@ -194,10 +194,10 @@ export async function matrix(
   colTotals: Map<string, number>;
   kpi: MatrixKpi;
 }> {
-  const [rows, cols] = await Promise.all([
-    listPopulations(db, { orgId: args.orgId, partnerId: null, status: "approved" }),
-    listColPopulations(db, args.orgId, args.partnerId),
-  ]);
+  // Sequential: both helpers query the same checked-out client, and parallel
+  // query() on one client is deprecated (pg@9 removes it) — it only queues.
+  const rows = await listPopulations(db, { orgId: args.orgId, partnerId: null, status: "approved" });
+  const cols = await listColPopulations(db, args.orgId, args.partnerId);
 
   // One pass yields cells AND per-row / per-col distinct totals (grouping sets).
   const { rows: cellRows } = await db.query<{

@@ -25,35 +25,38 @@ export async function partnerHub(
   db: pg.PoolClient,
   args: { orgId: string; partnerId: string | null },
 ): Promise<PartnerHubData> {
-  const [pops, motions, campaigns, touches, opps] = await Promise.all([
-    db.query<{ n: number }>(
+  /* Sequential on purpose: these five run on ONE checked-out client, and
+     parallel query() calls on a shared client are deprecated (removed in
+     pg@9) — they only queue anyway. Fanning out over separate connections
+     would spend pool slots we can't spare on serverless. */
+  const pops = await db.query<{ n: number }>(
       `select count(*)::int n from account_populations
        where org_id = $1 and partner_id is not null and ($2::uuid is null or partner_id = $2) and status = 'approved'`,
-      [args.orgId, args.partnerId],
-    ),
-    db.query<{ total: number; active: number }>(
+    [args.orgId, args.partnerId],
+  );
+  const motions = await db.query<{ total: number; active: number }>(
       `select count(*)::int total,
               count(*) filter (where status in ('active','approved'))::int active
        from revenue_motions
        where partner_id is not null and ($1::uuid is null or partner_id = $1)`,
-      [args.partnerId],
-    ),
-    db.query<{ total: number; live: number }>(
+    [args.partnerId],
+  );
+  const campaigns = await db.query<{ total: number; live: number }>(
       `select count(*)::int total,
               count(*) filter (where ca.status in ('launched','completed'))::int live
        from campaigns ca join revenue_motions m on m.id = ca.motion_id
        where m.partner_id is not null and ($1::uuid is null or m.partner_id = $1) and ca.dismissed_at is null`,
-      [args.partnerId],
-    ),
-    db.query<{ sent: number }>(
+    [args.partnerId],
+  );
+  const touches = await db.query<{ sent: number }>(
       `select count(*)::int sent
        from campaign_touches t
        join campaigns ca on ca.id = t.campaign_id
        join revenue_motions m on m.id = ca.motion_id
        where t.status = 'sent' and m.partner_id is not null and ($1::uuid is null or m.partner_id = $1)`,
-      [args.partnerId],
-    ),
-    db.query<{ open_n: number; open_usd: string; won_n: number; won_usd: string }>(
+    [args.partnerId],
+  );
+  const opps = await db.query<{ open_n: number; open_usd: string; won_n: number; won_usd: string }>(
       `select
          count(*) filter (where o.stage not in ('closed_won','closed_lost'))::int as open_n,
          coalesce(sum(o.amount_usd) filter (where o.stage not in ('closed_won','closed_lost')), 0) as open_usd,
@@ -61,9 +64,8 @@ export async function partnerHub(
          coalesce(sum(o.amount_usd) filter (where o.stage = 'closed_won'), 0) as won_usd
        from opportunities o join revenue_motions m on m.id = o.motion_id
        where m.partner_id is not null and ($1::uuid is null or m.partner_id = $1)`,
-      [args.partnerId],
-    ),
-  ]);
+    [args.partnerId],
+  );
 
   return {
     populations: pops.rows[0]?.n ?? 0,
