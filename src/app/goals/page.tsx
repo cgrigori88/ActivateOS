@@ -39,8 +39,9 @@ export default async function GoalsPage({
   const currentYear = new Date().getFullYear();
 
   const dueDays = ["7", "30", "90"].includes(sp.due ?? "") ? Number(sp.due) : null;
+  const statusFilter = sp.status ?? "active"; // matches the select's default — bare /goals shows active goals
   const goals = all.filter((g) => {
-    if (sp.status && sp.status !== "all" && g.status !== sp.status) return false;
+    if (statusFilter !== "all" && g.status !== statusFilter) return false;
     if (dueDays != null) {
       if (g.daysLeft == null) return false;
       if (g.daysLeft < 0 || g.daysLeft > dueDays) return false;
@@ -104,7 +105,8 @@ export default async function GoalsPage({
               <Card key={g.id}>
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <span className="font-semibold">{g.name}</span>
-                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${PACE_TONE[g.pace]}`}>{PACE_LABEL[g.pace]}</span>
+                  {/* pace only means something while the goal is live; done/archived goals keep just their status */}
+                  {g.status === "active" && <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${PACE_TONE[g.pace]}`}>{PACE_LABEL[g.pace]}</span>}
                   {g.status !== "active" && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-neutral-500 dark:bg-neutral-800">{g.status}</span>}
                   <span className="ml-auto text-xs text-neutral-400">
                     {g.motionsLinked} motion{g.motionsLinked === 1 ? "" : "s"} · {g.campaignsLinked} campaign{g.campaignsLinked === 1 ? "" : "s"}

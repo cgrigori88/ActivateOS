@@ -168,8 +168,10 @@ export async function revokePartnership(pool: Pool, orgId: string, partnershipId
       [partnershipId],
     );
 
-    await audit(db, p.initiator_org_id, "partnership.revoked", { by_org: orgId }, partnershipId);
-    if (p.counterpart_org_id) await audit(db, p.counterpart_org_id, "partnership.revoked", { by_org: orgId }, partnershipId);
+    const { rows: me } = await db.query<{ name: string }>(`select name from organizations where id = $1`, [orgId]);
+    const detail = { by: me[0]?.name ?? orgId };
+    await audit(db, p.initiator_org_id, "partnership.revoked", detail, partnershipId);
+    if (p.counterpart_org_id) await audit(db, p.counterpart_org_id, "partnership.revoked", detail, partnershipId);
     await db.query("commit");
   } catch (err) {
     await db.query("rollback");

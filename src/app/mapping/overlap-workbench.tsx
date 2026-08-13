@@ -123,6 +123,7 @@ export function OverlapWorkbench({
           <span className="text-sm font-medium">{sel.size} account{sel.size === 1 ? "" : "s"} selected</span>
           <form action={createTarget} className="flex items-end gap-2">
             <input type="hidden" name="companyIds" value={ids} />
+            <input type="hidden" name="source" value="web" />
             <label className="text-sm">
               <span className="mb-1 block text-xs text-neutral-500">List name (feeds motions &amp; campaigns)</span>
               <input name="name" placeholder="e.g. East co-sell wave 1" className={`${input} w-56`} />

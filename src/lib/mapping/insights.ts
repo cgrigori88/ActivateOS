@@ -119,12 +119,12 @@ export function suggestedTargetLists(accounts: CrossPartnerAccount[]): TargetBuc
 /** Create an approved org-side 'target' population from a set of companies. */
 export async function createTargetFromCompanies(
   db: pg.PoolClient,
-  args: { orgId: string | null; name: string; companyIds: string[] },
+  args: { orgId: string | null; name: string; companyIds: string[]; createdBy?: string },
 ): Promise<{ populationId: string; added: number }> {
   const { rows } = await db.query<{ id: string }>(
     `insert into account_populations (org_id, partner_id, name, category, status, created_by)
-     values ($1, null, $2, 'target', 'approved', 'ai') returning id`,
-    [args.orgId, args.name],
+     values ($1, null, $2, 'target', 'approved', $3) returning id`,
+    [args.orgId, args.name, args.createdBy ?? "ai"],
   );
   const populationId = rows[0].id;
   if (args.companyIds.length === 0) return { populationId, added: 0 };

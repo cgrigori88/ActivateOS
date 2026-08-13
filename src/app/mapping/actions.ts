@@ -74,12 +74,15 @@ export async function createTargetListAction(formData: FormData): Promise<void> 
   await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const name = String(formData.get("name") ?? "").trim() || "Target list";
   const companyIds = String(formData.get("companyIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  // Provenance: the workbench posts source=web (a person picked the accounts);
+  // absent means the AI-recommend view created it.
+  const createdBy = String(formData.get("source") ?? "") === "web" ? "web" : "ai";
   const pool = getPool();
   const db = await pool.connect();
   let added = 0;
   try {
     const orgId = await soleOrgId(db);
-    const res = await createTargetFromCompanies(db, { orgId, name, companyIds });
+    const res = await createTargetFromCompanies(db, { orgId, name, companyIds, createdBy });
     added = res.added;
   } finally {
     db.release();
