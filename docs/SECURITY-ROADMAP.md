@@ -157,6 +157,23 @@ scoped by `partner_id`. The migration is an upgrade, not a rewrite.
    secrets in a managed store (Vercel/Railway env is fine; no secrets in
    code or chat), Supabase backups verified, dependency update cadence.
 
+## Incident log
+
+- **2026-08-12 — production outage, `EMAXCONNSESSION` (resolved).** First
+  night on the production domain: `DATABASE_URL` pointed at Supabase's
+  session-mode pooler (15-client ceiling); each warm Vercel instance holds a
+  pool of 5, so three instances exhausted it and every page 500'd, recovering
+  whenever idle connections timed out — an outage that surfaces exactly under
+  load. Fixed both sides: `DATABASE_URL` moved to the transaction pooler
+  (same host/user, port 6543), and the app pool became serverless-shaped
+  (10s idle release, 5s fail-fast, `PG_POOL_MAX` knob). Two latent bugs
+  fixed in the same pass: the pipeline advisory lock is now
+  transaction-scoped (a session lock leaks onto a pooled backend forever
+  under transaction mode), and /mapping no longer runs parallel queries on
+  one checked-out client (pg@9 removes that). Rule going forward: serverless
+  deployments use the transaction pooler; only the long-lived worker may use
+  session mode or a direct connection.
+
 ## Standing rules
 
 - Secrets live only in `.env.local` (gitignored) and host env vars — never in
