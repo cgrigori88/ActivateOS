@@ -98,6 +98,12 @@ release gate, not a wishlist.
   with zero violations, dark-mode boot executes under the policy, and an
   injected inline event handler (the markup-injection XSS class) is
   refused and reported.
+- **Next 16 upgrade (#66).** 15.3 → 16.3: clears every `npm audit` finding
+  (the bundled postcss and sharp advisories) — audit is now clean. The
+  gate file moved to the new `proxy.ts` convention (same code, new name);
+  builds run on Turbopack. Verified the same way as the CSP: production
+  build served locally, Chromium run, 7/7 including nonce injection,
+  dark-mode boot, hydration, and blocked markup injection.
   Remaining for a later slice: per-request scoped DB connections (the app's
   own pool still connects as table owner, so DB-level RLS backs the API path
   only; app-path scoping is enforced in code via `currentOrgId`). Deferred
@@ -112,7 +118,7 @@ release gate, not a wishlist.
 | 1 | **Credential rotation** (Supabase password + access token, Anthropic, Tavily, PDL, trigger secret, Basic Auth) — keys were shared in a chat session | Owner action pending | **Immediately**, and before the demo video circulates |
 | 2 | ~~No Content-Security-Policy~~ **Done** (#65) — nonce-based, verified in-browser | — | Watch the browser console after the next deploy; report-uri collection is a later nicety |
 | 3 | Rate limiter is **per-instance** (in-memory) | Real limiter shipped (#66); a shared store only matters at multi-instance scale | Move to Redis-class store when traffic warrants |
-| 4 | postcss/sharp advisories bundled in Next 15 | Build-time / removed-endpoint exposure only; npm fix is a breaking major | Next major upgrade window |
+| 4 | ~~postcss/sharp advisories bundled in Next 15~~ **Done** — Next 16.3, `npm audit` clean | — | Keep the dependency-update cadence |
 | 5 | **App pool connects as table owner** — DB-level RLS backs the API path; the app path relies on `currentOrgId` scoping in code | Sandbox can't verify a `DATABASE_URL` role switch (raw Postgres blocked); blind switch risks downtime | With a staging environment, before first customer |
 
 ## Before first customer: the multi-tenant architecture

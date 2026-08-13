@@ -38,7 +38,7 @@
     "@supabase/supabase-js": "^2.112.3",
     "@tailwindcss/postcss": "^4.3.3",
     "csv-parse": "^5.5.6",
-    "next": "^15.3.0",
+    "next": "^16.3.0",
     "pg": "^8.13.0",
     "playwright-core": "^1.62.1",
     "postcss": "^8.5.26",

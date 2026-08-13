@@ -73,7 +73,7 @@ async function basicAuthValid(req: NextRequest): Promise<boolean> {
   }
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const basicConfigured = Boolean(process.env.BASIC_AUTH_USER && process.env.BASIC_AUTH_PASS);
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
