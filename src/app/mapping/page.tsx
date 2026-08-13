@@ -694,12 +694,12 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
             </span>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <Bento label="lists" value={hub.populations.toLocaleString()} />
-            <Bento label="overlapping accounts" value={kpi.accounts.toLocaleString()} subs={[`${kpi.hot} hot`, kpi.avg != null ? `avg ${kpi.avg}` : ""]} />
-            <Bento label="propensity (hot)" value={kpi.hot.toLocaleString()} subs={[kpi.avg != null ? `avg ${kpi.avg}` : "no scores"]} />
-            <Bento label="motions" value={hub.motionsTotal.toLocaleString()} subs={[`${hub.motionsActive} active`]} />
-            <Bento label="campaigns" value={hub.campaignsTotal.toLocaleString()} subs={[`${hub.campaignsLive} live`, `${hub.touchesSent} sent`]} />
-            <Bento label="open pipeline" value={`$${Math.round(hub.pipelineUsd / 1000)}k`} subs={[`${hub.oppsOpen} open`, hub.oppsWon ? `${hub.oppsWon} won $${Math.round(hub.wonUsd / 1000)}k` : ""]} />
+            <Bento label="lists" value={hub.populations.toLocaleString()} href="/mapping?view=review" />
+            <Bento label="overlapping accounts" value={kpi.accounts.toLocaleString()} subs={[`${kpi.hot} hot`, kpi.avg != null ? `avg ${kpi.avg}` : ""]} href="/mapping?view=overlap" />
+            <Bento label="propensity (hot)" value={kpi.hot.toLocaleString()} subs={[kpi.avg != null ? `avg ${kpi.avg}` : "no scores"]} href="/mapping?view=overlap" />
+            <Bento label="motions" value={hub.motionsTotal.toLocaleString()} subs={[`${hub.motionsActive} active`]} href="/motions" />
+            <Bento label="campaigns" value={hub.campaignsTotal.toLocaleString()} subs={[`${hub.campaignsLive} live`, `${hub.touchesSent} sent`]} href="/campaigns" />
+            <Bento label="open pipeline" value={`$${Math.round(hub.pipelineUsd / 1000)}k`} subs={[`${hub.oppsOpen} open`, hub.oppsWon ? `${hub.oppsWon} won $${Math.round(hub.wonUsd / 1000)}k` : ""]} href="/pipeline" />
           </div>
           <p className="mt-3 text-[11px] text-neutral-400">
             {isAll

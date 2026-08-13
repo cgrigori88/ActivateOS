@@ -297,12 +297,12 @@ export default async function ContactsPage({
 
       {/* Bentos */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Bento label="contacts" value={rows.length} />
-        <Bento label="end users" value={endUsers} />
-        <Bento label="partner reps" value={reps} />
-        <Bento label="reachable" value={reachable} subs={[`${Math.round((reachable / Math.max(1, rows.length)) * 100)}% w/ address`]} />
-        <Bento label="companies" value={companies} />
-        <Bento label="partners" value={partnerOptions.length} />
+        <Bento label="contacts" value={rows.length} href="/contacts" />
+        <Bento label="end users" value={endUsers} href="/contacts?type=end_user" />
+        <Bento label="partner reps" value={reps} href="/contacts?group=partner" />
+        <Bento label="reachable" value={reachable} subs={[`${Math.round((reachable / Math.max(1, rows.length)) * 100)}% w/ address`]} href="/contacts?eng=reachable" />
+        <Bento label="companies" value={companies} href="/contacts?group=company" />
+        <Bento label="partners" value={partnerOptions.length} href="/mapping" />
       </div>
 
       {/* Filters */}

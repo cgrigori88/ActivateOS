@@ -144,12 +144,12 @@ export default async function PipelinePage({
         return (
           <>
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <Bento label="open opportunities" value={open.length} />
+              <Bento label="open opportunities" value={open.length} href="/pipeline" />
               <Bento label="total pipeline" value={`$${Math.round(total / 1000)}k`} />
               <Bento label="weighted" value={`$${Math.round(weighted / 1000)}k`} subs={["by stage probability"]} />
               <Bento label="avg qualification" value={avgQual == null ? "—" : `${avgQual}`} subs={["MEDDPICC health"]} />
-              <Bento label="won" value={wonCount} subs={[`$${Math.round(wonUsd / 1000)}k`]} />
-              <Bento label="reg'd deals" value={regRows.length} />
+              <Bento label="won" value={wonCount} subs={[`$${Math.round(wonUsd / 1000)}k`]} href="/pipeline?stage=closed_won" />
+              <Bento label="reg'd deals" value={regRows.length} href="/pipeline?view=review" />
             </div>
 
             {/* Roll-up chips — each is a count AND an atomic filter (click to slice). */}

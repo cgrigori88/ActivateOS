@@ -396,8 +396,8 @@ export default async function AdminPage({
         <Bento label="agent runs" value={totalRuns} />
         <Bento label="AI spend" value={`$${totalCost.toFixed(2)}`} />
         <Bento label="research queue" value={Number(qd.research_pending)} subs={[`${qd.research_running} running`]} />
-        <Bento label="evidence to review" value={Number(qd.review_pending)} />
-        <Bento label="touches scheduled" value={Number(qd.touches_scheduled)} />
+        <Bento label="evidence to review" value={Number(qd.review_pending)} href="/review" />
+        <Bento label="touches scheduled" value={Number(qd.touches_scheduled)} href="/upcoming" />
         <Bento label="worker" value={workerStatus === "healthy" ? "✓" : workerStatus === "not configured" ? "—" : "✗"} subs={[workerStatus]} />
       </div>
 

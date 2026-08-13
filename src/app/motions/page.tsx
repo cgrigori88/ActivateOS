@@ -109,12 +109,12 @@ export default async function MotionsPage({
 
       {/* Bentos */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Bento label="motions" value={motions.length} />
-        <Bento label="active" value={activeN} subs={[`${wonN} won`]} />
+        <Bento label="motions" value={motions.length} href="/motions" />
+        <Bento label="active" value={activeN} subs={[`${wonN} won`]} href="/motions?status=active" />
         <Bento label="avg propensity" value={avgProp ?? "—"} />
-        <Bento label="est. pipeline" value={`$${Math.round(estPipe / 1000)}k`} />
+        <Bento label="est. pipeline" value={`$${Math.round(estPipe / 1000)}k`} href="/pipeline" />
         <Bento label="expected" value={`$${Math.round(expected / 1000)}k`} subs={["value × propensity"]} />
-        <Bento label="partners" value={partnerOptions.length} />
+        <Bento label="partners" value={partnerOptions.length} href="/motions?group=partner" />
       </div>
 
       {/* Filters + group-by */}

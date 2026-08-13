@@ -163,11 +163,11 @@ export default async function QueuePage({
 
       {/* Bentos */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Bento label="open actions" value={items.length} />
-        <Bento label="overdue" value={overdueN} />
-        <Bento label="due today" value={todayN} />
-        <Bento label="due this week" value={weekN} />
-        <Bento label="from conversations" value={convoN} />
+        <Bento label="open actions" value={items.length} href="/queue" />
+        <Bento label="overdue" value={overdueN} href="/queue?window=overdue" />
+        <Bento label="due today" value={todayN} href="/queue?window=today" />
+        <Bento label="due this week" value={weekN} href="/queue?window=7" />
+        <Bento label="from conversations" value={convoN} href="/queue?source=conversation" />
       </div>
 
       {/* Filters */}

@@ -133,12 +133,12 @@ export default async function CampaignsPage({
 
       {/* Bentos */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Bento label="campaigns" value={rest.length} />
-        <Bento label="live" value={liveN} subs={["launched / completed"]} />
-        <Bento label="accounts in reach" value={reachTotal} subs={[`${listsLinked} list${listsLinked === 1 ? "" : "s"} linked`]} />
-        <Bento label="touches sent" value={touchesSent} />
-        <Bento label="avg engagement" value={avgEng ?? "—"} />
-        <Bento label="AI suggestions" value={suggestions.length} subs={["awaiting review"]} />
+        <Bento label="campaigns" value={rest.length} href="/campaigns" />
+        <Bento label="live" value={liveN} subs={["launched / completed"]} href="/campaigns?status=launched" />
+        <Bento label="accounts in reach" value={reachTotal} subs={[`${listsLinked} list${listsLinked === 1 ? "" : "s"} linked`]} href="/contacts" />
+        <Bento label="touches sent" value={touchesSent} href="/analytics" />
+        <Bento label="avg engagement" value={avgEng ?? "—"} href="/analytics" />
+        <Bento label="AI suggestions" value={suggestions.length} subs={["awaiting review"]} href="/campaigns?source=ai_suggested" />
       </div>
 
       {/* Compose — two paths: AI-generated from a motion, or hand-authored from an account */}

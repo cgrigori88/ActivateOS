@@ -62,10 +62,10 @@ export default async function GoalsPage({
 
       {/* Bentos */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Bento label="active goals" value={active.length} />
-        <Bento label="behind pace" value={behind} subs={["need attention"]} />
-        <Bento label="at target" value={achieved} />
-        <Bento label="all goals" value={all.length} />
+        <Bento label="active goals" value={active.length} href="/goals?status=active" />
+        <Bento label="behind pace" value={behind} subs={["need attention"]} href="/goals?status=active" />
+        <Bento label="at target" value={achieved} href="/goals?status=achieved" />
+        <Bento label="all goals" value={all.length} href="/goals?status=all" />
       </div>
 
       {/* Filters */}

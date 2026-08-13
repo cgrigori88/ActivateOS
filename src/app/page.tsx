@@ -110,7 +110,7 @@ export default async function TodayPage() {
         <CountChip label="Awaiting approval" value={c.draft_motions} href="/motions" tone={Number(c.draft_motions) > 0 ? "amber" : "neutral"} />
         <CountChip label="Evidence to review" value={c.pending_review} href="/review" tone={Number(c.pending_review) > 0 ? "amber" : "neutral"} />
         <CountChip label="Scored accounts" value={c.scored_accounts} href="/accounts" tone="sky" />
-        <CountChip label="Verified evidence" value={c.verified_evidence} tone="green" />
+        <CountChip label="Verified evidence" value={c.verified_evidence} href="/sources" tone="green" />
       </div>
 
       {nextActions.length > 0 && (

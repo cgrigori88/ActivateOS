@@ -123,11 +123,11 @@ export default async function ReviewPage({
 
       {/* Bentos */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Bento label="pending" value={all.length} />
-        <Bento label="contradictions" value={byReason("contradiction")} />
-        <Bento label="checker disputes" value={byReason("checker_disagreement")} />
-        <Bento label="high impact" value={byReason("high_impact")} />
-        <Bento label="accounts affected" value={accounts} />
+        <Bento label="pending" value={all.length} href="/review" />
+        <Bento label="contradictions" value={byReason("contradiction")} href="/review?reason=contradiction" />
+        <Bento label="checker disputes" value={byReason("checker_disagreement")} href="/review?reason=checker_disagreement" />
+        <Bento label="high impact" value={byReason("high_impact")} href="/review?reason=high_impact" />
+        <Bento label="accounts affected" value={accounts} href="/review?group=account" />
       </div>
 
       {/* Filters */}

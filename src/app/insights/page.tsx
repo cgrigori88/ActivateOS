@@ -54,9 +54,9 @@ export default async function InsightsPage() {
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Bento label="closed deals" value={closedN} />
+        <Bento label="closed deals" value={closedN} href="/pipeline" />
         <Bento label="win rate" value={winRate == null ? "—" : `${winRate}%`} subs={[`${wonN} won`]} />
-        <Bento label="deals won" value={wonN} />
+        <Bento label="deals won" value={wonN} href="/pipeline?stage=closed_won" />
         <Bento label="edit intensity" value={intensity ?? "—"} subs={["0 sent as-is · 1 rewritten"]} />
       </div>
 
