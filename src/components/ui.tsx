@@ -233,21 +233,40 @@ export function StatChip({
   href?: string;
   tone?: "default" | "attention";
 }) {
-  const body = (
-    <div
-      className={`pos-bento rounded-card p-4 ${
-        tone === "attention" && Number(value) > 0
-          ? "border border-amber/30 bg-amber/10"
-          : Number(value) === 0
-            ? "border border-dashed border-neutral-200 dark:border-neutral-800"
-            : "glass"
-      }`}
-    >
-      <div className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${Number(value) === 0 ? "text-neutral-300 dark:text-neutral-700" : ""}`}>{value}</div>
+  const empty = Number(value) === 0;
+  /* The pos-bento hooks live on the OUTER element (the Link when clickable):
+     nested inside it, :nth-child saw one child per link and every tile
+     resolved to the same position — which is why positional colour never
+     showed on stat rows. (Ported from design PR #7.) */
+  const cls = `pos-bento rounded-card p-4 ${
+    tone === "attention" && !empty
+      ? "border border-amber/30 bg-amber/10"
+      : empty
+        ? "border border-dashed border-neutral-200 dark:border-neutral-800"
+        : "glass"
+  }`;
+  const inner = (
+    <>
+      <div
+        className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${
+          empty ? "text-neutral-300 dark:text-neutral-700" : ""
+        }`}
+      >
+        {value}
+      </div>
       <div className="mt-1.5 text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">{label}</div>
+    </>
+  );
+  const attrs = { "data-empty": empty ? "true" : undefined };
+  return href ? (
+    <Link href={href} {...attrs} className={`pos-lift block ${cls}`}>
+      {inner}
+    </Link>
+  ) : (
+    <div {...attrs} className={cls}>
+      {inner}
     </div>
   );
-  return href ? <Link href={href}>{body}</Link> : body;
 }
 
 /**
