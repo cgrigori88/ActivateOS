@@ -77,6 +77,8 @@ export interface OutboundRequest {
   motionId: string | null;
   identity: { displayName: string; localPart: string };
   to: string[];
+  /** Copied contacts. Suppressed CCs are dropped (the send proceeds); a suppressed TO refuses the send. */
+  cc?: string[];
   subject: string;
   body: string; // human-approved final text
   html?: string | null; // human-approved branded HTML (campaigns); text is the fallback
@@ -102,6 +104,14 @@ export async function sendOutbound(
   if (suppressed.length > 0) {
     throw new Error(`recipient suppressed: ${suppressed.join(", ")} — send refused`);
   }
+  // CC list: normalized, deduped against TO, and suppression-FILTERED — a
+  // suppressed copy drops off rather than blocking the primary send.
+  const toSet = new Set(req.to.map((e) => e.toLowerCase().trim()));
+  let ccList = [...new Set((req.cc ?? []).map((e) => e.toLowerCase().trim()).filter((e) => e && !toSet.has(e)))];
+  if (ccList.length > 0) {
+    const ccSuppressed = new Set(await checkSuppression(db, req.orgId, ccList));
+    ccList = ccList.filter((e) => !ccSuppressed.has(e));
+  }
 
   const { threadId, alias } = await ensureThread(db, {
     orgId: req.orgId,
@@ -122,7 +132,7 @@ export async function sendOutbound(
       req.mode === "facilitated" ? fromEmail : "seller-mailbox",
       req.identity.displayName,
       req.to,
-      req.mode === "seller_assisted" ? [replyTo] : [],
+      req.mode === "seller_assisted" ? [...ccList, replyTo] : ccList,
       req.subject,
       req.body,
       req.html ?? null,
@@ -156,6 +166,7 @@ export async function sendOutbound(
   const result = await provider.send({
     from: { name: `${req.identity.displayName} via PursuitOS`, email: fromEmail },
     to: req.to,
+    cc: ccList.length > 0 ? ccList : undefined,
     replyTo,
     subject: req.subject,
     text: req.body,

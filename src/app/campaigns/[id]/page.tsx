@@ -46,6 +46,7 @@ interface Touch {
   scheduled_at: Date | null;
   rejected_reason: string | null;
   sent_at: Date | null;
+  cc_emails: string[];
 }
 
 /** Shared field set for adding or editing a touch by hand. */
@@ -62,6 +63,10 @@ function TouchFormFields({ t }: { t?: Touch }) {
       <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Highlights (one per line)</span><textarea name="highlights" defaultValue={(t?.highlights ?? []).join("\n")} rows={2} className={input} /></label>
       <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">CTA label</span><input name="ctaLabel" defaultValue={t?.cta_label ?? ""} placeholder="Book 20 minutes" className={input} /></label>
       <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">CTA link (optional)</span><input name="ctaUrl" defaultValue={t?.cta_url ?? ""} placeholder="https://…" className={input} /></label>
+      <label className="text-sm sm:col-span-2">
+        <span className="mb-1 block text-xs text-neutral-500">CC — additional contacts copied on this touch (comma-separated; the recipient above stays primary)</span>
+        <input name="cc" defaultValue={(t?.cc_emails ?? []).join(", ")} placeholder="champion@account.com, seller@partner.com" className={input} />
+      </label>
       <label className="text-sm sm:col-span-2">
         <span className="mb-1 block text-xs text-neutral-500">
           Account angle — per-recipient layer (tokens: <code className="text-neutral-400">{"{{account}} {{industry}} {{solution}} {{trigger}}"}</code>)
@@ -142,7 +147,7 @@ export default async function CampaignDetailPage({
 
   const { rows: touches } = await pool.query<Touch>(
     `select id, touch_no, name, subject, preheader, headline, status, html_body,
-            body, custom_html, account_angle, highlights, cta_label, cta_url, send_offset_days, scheduled_at, rejected_reason, sent_at
+            body, custom_html, account_angle, highlights, cta_label, cta_url, send_offset_days, scheduled_at, rejected_reason, sent_at, cc_emails
      from campaign_touches where campaign_id = $1 order by touch_no`,
     [id],
   );
@@ -448,6 +453,11 @@ export default async function CampaignDetailPage({
                 <span className="text-xs text-neutral-500">
                   Scheduled for {t.scheduled_at ? formatInTz(new Date(t.scheduled_at), ca.send_tz ?? "UTC") : "—"}
                 </span>
+                {t.cc_emails.length > 0 && (
+                  <span className="text-[11px] text-neutral-500" title={t.cc_emails.join(", ")}>
+                    cc: {t.cc_emails.length === 1 ? t.cc_emails[0] : `${t.cc_emails[0]} +${t.cc_emails.length - 1}`}
+                  </span>
+                )}
                 <form action={sendTouchAction.bind(null, t.id)}>
                   <button className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
                     Send now
@@ -490,6 +500,11 @@ export default async function CampaignDetailPage({
                     <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
                       Send
                     </button>
+                    {t.cc_emails.length > 0 && (
+                      <span className="pb-2 text-[11px] text-neutral-500" title={t.cc_emails.join(", ")}>
+                        cc: {t.cc_emails.length === 1 ? t.cc_emails[0] : `${t.cc_emails[0]} +${t.cc_emails.length - 1}`}
+                      </span>
+                    )}
                   </form>
                 )}
               </div>

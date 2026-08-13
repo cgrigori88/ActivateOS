@@ -29,6 +29,16 @@ export async function unlinkListAction(campaignId: string, populationId: string)
   revalidatePath("/campaigns");
 }
 
+/** Comma/semicolon/whitespace-separated emails -> validated, deduped, lowercased. */
+function parseCcList(raw: string): string[] {
+  const seen = new Set<string>();
+  for (const part of raw.split(/[\s,;]+/)) {
+    const e = part.trim().toLowerCase();
+    if (e && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) seen.add(e);
+  }
+  return [...seen].slice(0, 10); // a CC line, not a mailing list
+}
+
 function touchFieldsFrom(formData: FormData): TouchFields {
   const highlights = String(formData.get("highlights") ?? "")
     .split("\n")
@@ -46,6 +56,7 @@ function touchFieldsFrom(formData: FormData): TouchFields {
     sendOffsetDays: Number(formData.get("sendOffsetDays") ?? 0) || 0,
     customHtml: String(formData.get("customHtml") ?? "").trim() || null,
     accountAngle: String(formData.get("accountAngle") ?? "").trim() || null,
+    ccEmails: parseCcList(String(formData.get("cc") ?? "")),
   };
 }
 

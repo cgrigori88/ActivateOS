@@ -81,6 +81,7 @@ export async function sendTouchNow(
     text_body: string | null;
     html_body: string | null;
     recipient_email: string | null;
+    cc_emails: string[] | null;
     org_id: string | null;
     company_id: string | null;
     m_company: string | null;
@@ -89,7 +90,7 @@ export async function sendTouchNow(
     seller_id: string | null;
     seller_name: string | null;
   }>(
-    `select t.campaign_id, t.status, t.subject, t.text_body, t.html_body,
+    `select t.campaign_id, t.status, t.subject, t.text_body, t.html_body, t.cc_emails,
             ca.recipient_email, ca.org_id, ca.company_id, ca.sender_name as campaign_sender,
             m.company_id as m_company, m.id as motion_id,
             m.partner_seller_id as seller_id, s.name as seller_name
@@ -119,6 +120,7 @@ export async function sendTouchNow(
     motionId: t.motion_id,
     identity: { displayName: senderName, localPart },
     to: [to],
+    cc: t.cc_emails ?? [],
     subject: t.subject,
     body: t.text_body ?? t.subject,
     html: t.html_body,

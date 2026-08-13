@@ -23,6 +23,8 @@ export interface TouchFields {
   customHtml?: string | null;
   /** Per-recipient layer: token-templated angle resolved per account on send. */
   accountAngle?: string | null;
+  /** Additional contacts copied on this touch (primary recipient stays the sequence target). */
+  ccEmails?: string[];
 }
 
 export async function resolveBrand(
@@ -159,20 +161,22 @@ export async function upsertTouch(
     await db.query(
       `update campaign_touches set name=$2, subject=$3, preheader=$4, headline=$5, body=$6,
          highlights=$7, cta_label=$8, cta_url=$9, html_body=$10, text_body=$11, send_offset_days=$12,
-         custom_html=$13, account_angle=$14, status = case when status = 'rejected' then 'draft' else status end
+         custom_html=$13, account_angle=$14, cc_emails=$15, status = case when status = 'rejected' then 'draft' else status end
        where id = $1`,
       [args.touchId, f.name, f.subject, f.preheader ?? null, f.headline ?? null, f.body ?? "",
-       f.highlights ?? [], f.ctaLabel ?? null, f.ctaUrl ?? null, html, text, offset, f.customHtml ?? null, f.accountAngle ?? null],
+       f.highlights ?? [], f.ctaLabel ?? null, f.ctaUrl ?? null, html, text, offset, f.customHtml ?? null, f.accountAngle ?? null,
+       f.ccEmails ?? []],
     );
     return { touchId: args.touchId };
   }
   const { rows } = await db.query<{ id: string }>(
     `insert into campaign_touches
        (campaign_id, touch_no, name, subject, preheader, headline, body, highlights,
-        cta_label, cta_url, html_body, text_body, send_offset_days, custom_html, account_angle, status)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'draft') returning id`,
+        cta_label, cta_url, html_body, text_body, send_offset_days, custom_html, account_angle, cc_emails, status)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'draft') returning id`,
     [args.campaignId, touchNo, f.name, f.subject, f.preheader ?? null, f.headline ?? null, f.body ?? "",
-     f.highlights ?? [], f.ctaLabel ?? null, f.ctaUrl ?? null, html, text, offset, f.customHtml ?? null, f.accountAngle ?? null],
+     f.highlights ?? [], f.ctaLabel ?? null, f.ctaUrl ?? null, html, text, offset, f.customHtml ?? null, f.accountAngle ?? null,
+     f.ccEmails ?? []],
   );
   return { touchId: rows[0].id };
 }
