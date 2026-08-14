@@ -18,6 +18,7 @@ import { crossPartnerOpportunities, suggestedTargetLists } from "@/lib/mapping/i
 import { suggestMultiVendorPlays, coverageWinRates } from "@/lib/campaigns/multi-vendor";
 import { createTargetListAction, generateMotionsForSelectionAction, createMultiVendorCampaignAction } from "./actions";
 import { SelectableAccounts } from "./selectable-accounts";
+import { JointPlayCard } from "./joint-play-card";
 import { OverlapWorkbench, type OverlapRow } from "./overlap-workbench";
 import { alignedFieldKeys, populationFields } from "@/lib/mapping/populations";
 import { createPopulationAction, setPopulationStatusAction, targetFromCellAction, acceptPopulationAction } from "./actions";
@@ -567,40 +568,18 @@ async function RecommendSection() {
               {plays.map((p) => {
                 const defaultName = `Joint play — ${p.partners.map((x) => x.name.split(" ")[0]).join(" × ")}`;
                 return (
-                  <Card key={p.key}>
-                    {/* Who plays, in which role */}
-                    <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
-                      {p.partners.map((x) => (
-                        <span key={x.id} className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-800 ring-1 ring-inset ring-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900" title={x.type ?? "partner"}>
-                          {x.name} <span className="font-normal opacity-60">{x.role.replace(/_/g, " ")}</span>
-                        </span>
-                      ))}
-                    </div>
-                    {/* The play being run */}
-                    {p.play && (
-                      <p className="mb-1 text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                        {p.play.name}
-                        {p.play.offer && <span className="block text-xs font-normal text-neutral-500">CTA: {p.play.offer}</span>}
-                      </p>
-                    )}
-                    {/* Reach */}
-                    <p className="mb-3 text-xs text-neutral-500">
-                      <span className="tnum font-semibold text-neutral-700 dark:text-neutral-300">{p.accounts.length}</span> account{p.accounts.length === 1 ? "" : "s"}
-                      {p.avgScore != null && <> · avg propensity <span className="tnum font-semibold text-neutral-700 dark:text-neutral-300">{p.avgScore}</span></>}
-                      <span className="mt-0.5 block text-[11px] text-neutral-400">
-                        {p.accounts.slice(0, 4).map((a) => a.name).join(", ")}{p.accounts.length > 4 ? ` +${p.accounts.length - 4} more` : ""}
-                      </span>
-                    </p>
-                    <form action={createMultiVendorCampaignAction} className="flex flex-wrap items-end gap-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-                      <input type="hidden" name="companyIds" value={p.accounts.map((a) => a.companyId).join(",")} />
-                      <input type="hidden" name="partners" value={p.partners.map((x) => `${x.id}:${x.role}`).join(",")} />
-                      <label className="text-sm">
-                        <span className="mb-1 block text-xs text-neutral-500">Campaign name</span>
-                        <input name="name" defaultValue={defaultName} className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
-                      </label>
-                      <button className="rounded-md bg-violet-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-800">Create joint campaign</button>
-                    </form>
-                  </Card>
+                  <JointPlayCard
+                    key={p.key}
+                    play={{
+                      key: p.key,
+                      partners: p.partners,
+                      accounts: p.accounts,
+                      avgScore: p.avgScore,
+                      play: p.play,
+                      defaultName,
+                    }}
+                    create={createMultiVendorCampaignAction}
+                  />
                 );
               })}
             </div>

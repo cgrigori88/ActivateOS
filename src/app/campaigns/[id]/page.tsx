@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { ListPicker } from "./list-picker";
+import { CcPicker, type CcContact } from "./cc-picker";
 import { QuerySelect } from "@/components/query-select";
 import { TZ_OPTIONS, formatInTz } from "@/lib/comms/tz";
 import { campaignAccounts, linkedLists, attachableLists, mergeAccountData, renderAngle } from "@/lib/campaigns/lists";
@@ -53,7 +54,7 @@ interface Touch {
 }
 
 /** Shared field set for adding or editing a touch by hand. */
-function TouchFormFields({ t }: { t?: Touch }) {
+function TouchFormFields({ t, contacts = [] }: { t?: Touch; contacts?: CcContact[] }) {
   const input = "w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
   return (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -66,10 +67,9 @@ function TouchFormFields({ t }: { t?: Touch }) {
       <label className="text-sm sm:col-span-2"><span className="mb-1 block text-xs text-neutral-500">Highlights (one per line)</span><textarea name="highlights" defaultValue={(t?.highlights ?? []).join("\n")} rows={2} className={input} /></label>
       <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">CTA label</span><input name="ctaLabel" defaultValue={t?.cta_label ?? ""} placeholder="Book 20 minutes" className={input} /></label>
       <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">CTA link (optional)</span><input name="ctaUrl" defaultValue={t?.cta_url ?? ""} placeholder="https://…" className={input} /></label>
-      <label className="text-sm sm:col-span-2">
-        <span className="mb-1 block text-xs text-neutral-500">CC — additional contacts copied on this touch (comma-separated; the recipient above stays primary)</span>
-        <input name="cc" defaultValue={(t?.cc_emails ?? []).join(", ")} placeholder="champion@account.com, seller@partner.com" className={input} />
-      </label>
+      <div className="text-sm sm:col-span-2">
+        <CcPicker contacts={contacts} defaultCc={t?.cc_emails ?? []} />
+      </div>
       <label className="text-sm sm:col-span-2">
         <span className="mb-1 block text-xs text-neutral-500">
           Account angle — per-recipient layer (tokens: <code className="text-neutral-400">{"{{account}} {{industry}} {{solution}} {{trigger}}"}</code>)
@@ -525,7 +525,7 @@ export default async function CampaignDetailPage({
                     Edit copy & timing
                   </summary>
                   <form action={editTouchAction.bind(null, t.id)} className="mt-3 space-y-3">
-                    <TouchFormFields t={t} />
+                    <TouchFormFields t={t} contacts={contacts} />
                     <div className="flex items-center gap-3">
                       <button className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-800">Save & re-render</button>
                       <span className="text-[11px] text-neutral-400">Editing resets a rejected touch to draft.</span>
@@ -577,7 +577,7 @@ export default async function CampaignDetailPage({
           <details>
             <summary className="cursor-pointer text-sm font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100">+ Write a touch by hand</summary>
             <form action={addTouchAction.bind(null, ca.id)} className="mt-3 space-y-3">
-              <TouchFormFields />
+              <TouchFormFields contacts={contacts} />
               <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">Add touch</button>
             </form>
           </details>

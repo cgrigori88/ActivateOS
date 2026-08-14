@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { Shell } from "@/components/shell";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
-import { currentRole } from "@/lib/auth/org";
+import { currentOrgId, currentRole } from "@/lib/auth/org";
 import { getPool } from "@/db/client";
 import { signOutAction } from "@/app/login/actions";
 
@@ -55,16 +55,28 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       /* no request cookies (build) — chip falls back to Operator */
     }
   }
-  // Attention badges for the rail: work waiting on a human decision. Kept to
-  // one cheap count per room; failures never block the shell.
+  // Attention badges for the rail: work waiting on a human decision, scoped to
+  // the caller's tenant. One query; failures never block the shell.
   const badges: Record<string, number> = {};
   try {
-    const { rows } = await getPool().query<{ pending_lists: string; pending_review: string }>(
-      `select (select count(*) from account_populations where status = 'pending') as pending_lists,
-              (select count(*) from review_queue where status = 'pending') as pending_review`,
-    );
-    if (Number(rows[0].pending_lists) > 0) badges["/mapping"] = Number(rows[0].pending_lists);
-    if (Number(rows[0].pending_review) > 0) badges["/review"] = Number(rows[0].pending_review);
+    const pool = getPool();
+    const orgId = await currentOrgId(pool);
+    if (orgId) {
+      const { rows } = await pool.query<{ pending_lists: string; pending_review: string; incoming_offers: string }>(
+        `select
+           (select count(*) from account_populations where status = 'pending' and org_id = $1) as pending_lists,
+           (select count(*) from review_queue where status = 'pending' and org_id = $1) as pending_review,
+           (select count(*) from list_grants g
+            join partnerships p on p.id = g.partnership_id
+            where g.status = 'offered' and g.from_org_id <> $1
+              and (p.initiator_org_id = $1 or p.counterpart_org_id = $1)) as incoming_offers`,
+        [orgId],
+      );
+      if (Number(rows[0].pending_lists) > 0) badges["/mapping"] = Number(rows[0].pending_lists);
+      if (Number(rows[0].pending_review) > 0) badges["/review"] = Number(rows[0].pending_review);
+      // Cross-tenant shares waiting on the owner's accept/decline live in /admin.
+      if (Number(rows[0].incoming_offers) > 0) badges["/admin"] = Number(rows[0].incoming_offers);
+    }
   } catch {
     /* build pass or db unavailable — no badges, shell still renders */
   }
