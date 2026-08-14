@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
+import { ListPicker } from "./list-picker";
 import { QuerySelect } from "@/components/query-select";
 import { TZ_OPTIONS, formatInTz } from "@/lib/comms/tz";
 import { campaignAccounts, linkedLists, attachableLists, mergeAccountData, renderAngle } from "@/lib/campaigns/lists";
@@ -265,17 +266,19 @@ export default async function CampaignDetailPage({
         {/* Add a list + AI/heuristic suggestions */}
         {attachable.length > 0 && (
           <div className="flex flex-wrap items-end gap-3">
-            <form action={linkListAction.bind(null, ca.id)} className="flex items-end gap-2">
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Add lists — Ctrl/Cmd-click to pick several</span>
-                <select name="populationId" multiple size={Math.min(4, attachable.length)} className="w-72 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
-                  {attachable.map((l) => (
-                    <option key={l.populationId} value={l.populationId}>{l.name} — {l.reason}</option>
-                  ))}
-                </select>
-              </label>
-              <button className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">Attach selected</button>
-            </form>
+            <ListPicker
+              lists={attachable.map((l) => ({
+                populationId: l.populationId,
+                name: l.name,
+                category: l.category,
+                partnerName: l.partnerName,
+                members: l.members,
+                avgScore: l.avgScore,
+                overlap: l.overlap,
+                reason: l.reason,
+              }))}
+              attach={linkListAction.bind(null, ca.id)}
+            />
             {suggestions.length > 0 && (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-medium uppercase tracking-wide text-blue-700 dark:text-blue-400">Suggested</span>
