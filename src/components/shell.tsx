@@ -335,14 +335,14 @@ export function Shell({
         <span className={collapsed ? "sr-only" : "truncate"}>{item.label}</span>
         {(badges?.[item.href] ?? 0) > 0 && !collapsed && (
           <span
-            className="ml-auto rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
+            className="ml-auto rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-[0_0_0_1px_rgba(255,255,255,0.14)]"
             title={`${badges![item.href]} item(s) need review`}
           >
             {badges![item.href]}
           </span>
         )}
         {(badges?.[item.href] ?? 0) > 0 && collapsed && (
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-amber-500" title={`${badges![item.href]} item(s) need review`} />
+          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent-tint" title={`${badges![item.href]} item(s) need review`} />
         )}
         {active && !collapsed && !(badges?.[item.href] ?? 0) && (
           <span className="absolute right-3 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-accent-tint" />
