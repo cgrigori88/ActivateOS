@@ -104,6 +104,20 @@ release gate, not a wishlist.
   builds run on Turbopack. Verified the same way as the CSP: production
   build served locally, Chromium run, 7/7 including nonce injection,
   dark-mode boot, hydration, and blocked markup injection.
+- **Staged CSV intake (#48, migration 0035).** Partner books are the most
+  sensitive thing the platform holds, so intake became a two-step handshake
+  with an explicit data-minimization contract: upload → the file is parsed
+  and profiled entirely in-app (deterministic detection, no AI, no third
+  party sees the content) → raw rows are staged in `import_rows` behind
+  org-membership RLS → the operator confirms the column mapping and chooses
+  which fields are surfaced (`selected_fields`) → commit resolves rows into
+  the identity graph and a *pending* population (human review gate), and the
+  staged rows are **deleted** on commit or discard (plus a 7-day sweep for
+  abandoned reviews). Surfacing is enforced at read time in the mapping
+  workbench: unsurfaced attributes stay stored but never reach a screen or
+  the column menu. Verified end-to-end in Chromium against the local mirror
+  (32 detection unit cases across 8 messy CSV shapes; upload → map → commit
+  → DB ground truth; discard deletes staged rows).
   Remaining for a later slice: per-request scoped DB connections (the app's
   own pool still connects as table owner, so DB-level RLS backs the API path
   only; app-path scoping is enforced in code via `currentOrgId`). Deferred

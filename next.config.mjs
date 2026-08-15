@@ -2,6 +2,13 @@
 const nextConfig = {
   serverExternalPackages: ["pg"],
 
+  // CSV intake uploads the file to a server action (analysis runs in-app so
+  // partner data never transits a third party). Default cap is 1MB; the
+  // intake code enforces its own 8MB/10k-row limits inside that envelope.
+  experimental: {
+    serverActions: { bodySizeLimit: "10mb" },
+  },
+
   // The app renders no <Image>; disabling the optimizer removes the
   // /_next/image endpoint (and with it the sharp/libvips attack surface,
   // which npm audit flags and which only a breaking Next major would patch).

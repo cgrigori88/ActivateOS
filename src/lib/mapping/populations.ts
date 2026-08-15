@@ -301,23 +301,35 @@ export interface IntersectionRow {
   attributes: Record<string, unknown>;
 }
 
-/** The accounts in both a row and a column population, with merged attributes. */
+/**
+ * The accounts in both a row and a column population, with merged attributes.
+ * Each side's attributes are filtered to that population's selected_fields
+ * (when set) — the surfacing choice made at import/share time is enforced
+ * here, at read time, so unsurfaced fields never reach a screen.
+ */
 export async function intersection(
   db: pg.PoolClient,
   args: { rowPopId: string; colPopId: string },
 ): Promise<{ row: Population | null; col: Population | null; accounts: IntersectionRow[] }> {
-  const { rows: pops } = await db.query<Population>(
-    `select ap.id, ap.name, ap.category, ap.status, ap.partner_id, 0 as members
+  const { rows: pops } = await db.query<Population & { selected_fields: string[] | null }>(
+    `select ap.id, ap.name, ap.category, ap.status, ap.partner_id, ap.selected_fields, 0 as members
      from account_populations ap where ap.id = any($1)`,
     [[args.rowPopId, args.colPopId]],
   );
   const row = pops.find((p) => p.id === args.rowPopId) ?? null;
   const col = pops.find((p) => p.id === args.colPopId) ?? null;
+  const rowAllowed = row?.selected_fields ? new Set(row.selected_fields) : null;
+  const colAllowed = col?.selected_fields ? new Set(col.selected_fields) : null;
+  const keep = (attrs: Record<string, unknown> | null, allowed: Set<string> | null): Record<string, unknown> => {
+    if (!attrs) return {};
+    if (!allowed) return attrs;
+    return Object.fromEntries(Object.entries(attrs).filter(([k]) => allowed.has(k)));
+  };
 
-  const { rows: accounts } = await db.query<IntersectionRow>(
+  const { rows: accounts } = await db.query<IntersectionRow & { row_attrs: Record<string, unknown> | null; col_attrs: Record<string, unknown> | null }>(
     `select c.id as company_id, c.legal_name, c.primary_domain, c.industry, c.employee_count,
             ps.score, ps.band,
-            (coalesce(rm.attributes, '{}'::jsonb) || coalesce(cm.attributes, '{}'::jsonb)) as attributes
+            rm.attributes as row_attrs, cm.attributes as col_attrs
      from population_members rm
      join population_members cm on cm.company_id = rm.company_id and cm.population_id = $2
      join companies c on c.id = rm.company_id
@@ -330,8 +342,9 @@ export async function intersection(
     [args.rowPopId, args.colPopId],
   );
   // pg returns numeric/int as strings — coerce so the UI can format them.
-  const coerced = accounts.map((a) => ({
+  const coerced = accounts.map(({ row_attrs, col_attrs, ...a }) => ({
     ...a,
+    attributes: { ...keep(row_attrs, rowAllowed), ...keep(col_attrs, colAllowed) },
     score: a.score == null ? null : Number(a.score),
     employee_count: a.employee_count == null ? null : Number(a.employee_count),
   }));
@@ -400,16 +413,23 @@ export async function populationFields(
   return { fields, total, sample };
 }
 
-/** Union of attribute keys across both populations' members — the column menu. */
+/**
+ * Union of attribute keys across both populations' members — the column menu.
+ * Honors each population's selected_fields (surfacing choice): keys a side
+ * keeps unsurfaced don't appear as available columns at all.
+ */
 export async function availableFields(
   db: pg.PoolClient,
   args: { rowPopId: string; colPopId: string },
 ): Promise<string[]> {
   const { rows } = await db.query<{ key: string }>(
-    `select distinct jsonb_object_keys(attributes) as key
-     from population_members
-     where population_id in ($1, $2)
-     order by key`,
+    `select distinct k.key
+     from population_members m
+     join account_populations ap on ap.id = m.population_id
+     cross join lateral jsonb_object_keys(m.attributes) as k(key)
+     where m.population_id in ($1, $2)
+       and (ap.selected_fields is null or k.key = any(ap.selected_fields))
+     order by k.key`,
     [args.rowPopId, args.colPopId],
   );
   return rows.map((r) => r.key);
