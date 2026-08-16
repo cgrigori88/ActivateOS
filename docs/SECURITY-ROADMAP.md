@@ -118,6 +118,24 @@ release gate, not a wishlist.
   the column menu. Verified end-to-end in Chromium against the local mirror
   (32 detection unit cases across 8 messy CSV shapes; upload → map → commit
   → DB ground truth; discard deletes staged rows).
+- **Data resilience (#70).** Findings, 2026-08-16: the GitHub repo was
+  PUBLIC (code only — a full-history secret scan found nothing beyond
+  `.env.example` placeholders; flipping it private is a user-side step), and
+  the Supabase project has ZERO restorable backups (Management API:
+  `pitr_enabled=false`, empty backup list — free-tier behavior). Mitigation
+  shipped: an independent logical backup path — `src/lib/backup/dump.ts`
+  (full jsonb dump of every public table, FK-topological restore order,
+  `import_rows` deliberately excluded so staged uploads never outlive their
+  delete-on-decision contract) + `scripts/backup-dump.ts` /
+  `scripts/backup-restore.ts` (restore refuses non-empty tables without
+  `--force`, targets `TARGET_DATABASE_URL` so production can't be hit by
+  accident) + a worker nightly job (BACKUP_DIR on a Railway volume,
+  BACKUP_KEEP retention, `POST /backup` on-demand). Roundtrip verified
+  locally: dump → schema-only scratch DB → restore, all row counts match,
+  jsonb/array payloads intact. A backup file is a complete copy of tenant
+  data — the volume is exactly as sensitive as the database itself.
+  User-side remaining: make the repo private, upgrade Supabase for native
+  daily backups/PITR, attach the Railway volume + env vars.
   Remaining for a later slice: per-request scoped DB connections (the app's
   own pool still connects as table owner, so DB-level RLS backs the API path
   only; app-path scoping is enforced in code via `currentOrgId`). Deferred

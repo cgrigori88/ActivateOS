@@ -1,5 +1,9 @@
 import http from "node:http";
+import { mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { getPool } from "../db/client";
+import { dumpDatabase } from "../lib/backup/dump";
 import { secretEquals } from "../lib/security/compare";
 import { rateLimited } from "../lib/security/rate-limit";
 import { importAccountsCsv } from "../lib/ingest/ingest-accounts";
@@ -84,6 +88,38 @@ async function queueStatus() {
     `select status, count(*) as n from research_jobs group by status`,
   );
   return Object.fromEntries(rows.map((r) => [r.status, Number(r.n)]));
+}
+
+/**
+ * Nightly logical backup (task #70). Supabase's free tier keeps no restorable
+ * backups, so the worker writes its own full dump to BACKUP_DIR (mount a
+ * Railway volume there) and prunes to BACKUP_KEEP files. Off unless
+ * BACKUP_DIR is set. The dump is a complete copy of tenant data — the volume
+ * is exactly as sensitive as the database.
+ */
+async function runBackup() {
+  const dir = process.env.BACKUP_DIR;
+  if (!dir) return { skipped: "BACKUP_DIR not set" };
+  const keep = Math.max(1, Number(process.env.BACKUP_KEEP ?? 14));
+  const pool = getPool();
+  const db = await pool.connect();
+  try {
+    const dump = await dumpDatabase(db);
+    mkdirSync(dir, { recursive: true });
+    const stamp = dump.manifest.createdAt.replace(/[:.]/g, "-").slice(0, 19);
+    const path = join(dir, `pursuitos-backup-${stamp}.json.gz`);
+    writeFileSync(path, gzipSync(Buffer.from(JSON.stringify(dump), "utf8")));
+
+    // retention: newest BACKUP_KEEP files survive
+    const files = readdirSync(dir).filter((f) => f.startsWith("pursuitos-backup-") && f.endsWith(".json.gz")).sort();
+    for (const stale of files.slice(0, Math.max(0, files.length - keep))) {
+      unlinkSync(join(dir, stale));
+    }
+    const rows = Object.values(dump.manifest.rowCounts).reduce((a, b) => a + b, 0);
+    return { path, rows, tables: dump.manifest.tableOrder.length, kept: Math.min(files.length, keep) };
+  } finally {
+    db.release();
+  }
 }
 
 async function runImport(
@@ -188,6 +224,10 @@ const server = http.createServer(async (req, res) => {
       const result = await runOutreach();
       return send(res, 200, result);
     }
+    if (method === "POST" && url.pathname === "/backup") {
+      log("http: backup");
+      return send(res, 200, await runBackup());
+    }
     if (method === "POST" && url.pathname === "/import") {
       const csv = await readBody(req);
       if (!csv.trim()) return send(res, 400, { error: "empty body — POST the CSV content" });
@@ -223,6 +263,7 @@ function startScheduler(): void {
   const autosend = process.env.OUTREACH_AUTOSEND === "on";
   let lastResearch = Date.now(); // first research fires after one interval
   let lastScreenDay = ""; // YYYY-MM-DD of the last screening sweep
+  let lastBackupDay = ""; // YYYY-MM-DD of the last nightly backup
 
   log("scheduler on", { screenHour, researchIntervalHours: researchIntervalMs / 3_600_000, outreachAutosend: autosend });
 
@@ -245,6 +286,18 @@ function startScheduler(): void {
         if (o.sent > 0 || o.errors.length > 0) log("cron: outreach", o);
       } catch (err) {
         log("cron: outreach error", { error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    // Backup: once per day at BACKUP_HOUR_UTC (default 8), when BACKUP_DIR set.
+    const backupHour = Number(process.env.BACKUP_HOUR_UTC ?? 8);
+    const backupDay = now.toISOString().slice(0, 10);
+    if (process.env.BACKUP_DIR && now.getUTCHours() === backupHour && lastBackupDay !== backupDay) {
+      lastBackupDay = backupDay;
+      try {
+        const b = await runBackup();
+        log("cron: backup", b);
+      } catch (err) {
+        log("cron: backup error", { error: err instanceof Error ? err.message : String(err) });
       }
     }
     // Screen: once per day at the target UTC hour.
