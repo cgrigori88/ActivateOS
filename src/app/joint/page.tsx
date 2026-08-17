@@ -4,6 +4,7 @@ import { currentOrgId } from "@/lib/auth/org";
 import { Card, PageHeader } from "@/components/ui";
 import { listPartnerships } from "@/lib/partnerships/partnerships";
 import { listJointPursuits, namedOverlapAccounts } from "@/lib/partnerships/joint";
+import { settlementStatement, type SettlementStatement } from "@/lib/partnerships/settlement";
 import { decidePursuitAction, proposePursuitAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,16 @@ export default async function JointPage() {
 
   const pursuits = await listJointPursuits(pool, orgId);
   const partnerships = (await listPartnerships(pool, orgId)).filter((p) => p.status === "active");
+
+  // Settlement statements — one per partnership that has any opened room.
+  const pursued = new Set(pursuits.filter((x) => x.status === "active" || x.status === "closed").map((x) => x.partnershipId));
+  const statements: (SettlementStatement & { otherOrgName: string | null })[] = [];
+  for (const p of partnerships) {
+    if (!pursued.has(p.id)) continue;
+    const s = await settlementStatement(pool, p.id);
+    if (s.settled.length + s.inFlight.length + Object.values(s.lostCount).reduce((a, b) => a + b, 0) === 0) continue;
+    statements.push({ ...s, otherOrgName: p.otherOrgName ?? p.myLensName });
+  }
 
   // Proposable accounts per partnership: named overlap minus existing pursuits.
   const taken = new Set(pursuits.filter((x) => x.status !== "declined").map((x) => `${x.partnershipId}:${x.companyId}`));
@@ -88,6 +99,65 @@ export default async function JointPage() {
           ))}
         </div>
       )}
+
+      {/* Settlement — the statement both sides read identically (task #75) */}
+      {statements.map((s) => {
+        const fmt = (n: number | null) => (n == null ? "—" : `$${Math.round(n / 1000)}k`);
+        return (
+          <Card key={s.partnershipId} className="mb-6">
+            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+                Settlement — with {s.otherOrgName}
+              </h2>
+              <span className="text-[11px] text-neutral-400">identical on both sides · only jointly pursued accounts settle jointly</span>
+            </div>
+            <p className="mb-3 text-xs text-neutral-500">
+              An opportunity appears here only if its account has an opened joint room in this
+              partnership — opening the room together is the agreement to settle its outcome together.
+              <span className="font-medium"> Sourced</span> = deal-registered through the partner;
+              <span className="font-medium"> influenced</span> = jointly pursued.
+            </p>
+
+            <div className="mb-3 flex flex-wrap gap-4">
+              {Object.entries(s.settledTotals).map(([org, total]) => (
+                <div key={org}>
+                  <div className="pos-bento-fig tnum text-[22px] font-extrabold leading-none tracking-[-0.03em]">{fmt(total)}</div>
+                  <div className="mt-0.5 text-[11px] text-neutral-500">
+                    settled by {s.orgNames[org] ?? "org"}
+                    {s.lostCount[org] > 0 ? ` · ${s.lostCount[org]} lost` : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {(s.settled.length > 0 || s.inFlight.length > 0) && (
+              <div className="overflow-x-auto scroll-thin">
+                <table className="data-table">
+                  <thead><tr><th>Account</th><th>Closed by</th><th>Attribution</th><th>Stage</th><th className="text-right">Amount</th><th>Quarter</th></tr></thead>
+                  <tbody>
+                    {[...s.settled, ...s.inFlight].map((e, i) => (
+                      <tr key={i}>
+                        <td className="font-medium">{e.account}</td>
+                        <td className="text-xs text-neutral-500">{s.orgNames[e.closerOrgId] ?? "—"}</td>
+                        <td>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset ${
+                            e.attribution === "sourced"
+                              ? "bg-violet-50 text-violet-800 ring-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900"
+                              : "bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:ring-neutral-700"
+                          }`}>{e.attribution}</span>
+                        </td>
+                        <td className="text-xs text-neutral-500">{e.stage.replace(/_/g, " ")}{e.closedAt ? ` · ${e.closedAt}` : ""}</td>
+                        <td className="tnum text-right">{fmt(e.amountUsd)}</td>
+                        <td className="text-xs text-neutral-400">{e.quarter ?? "in flight"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        );
+      })}
 
       {proposable.length > 0 && (
         <Card>
