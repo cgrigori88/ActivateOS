@@ -148,5 +148,7 @@ export async function proxy(req: NextRequest) {
 export const config = {
   // Webhooks authenticate with provider signatures (svix); the research trigger
   // authenticates with its own bearer secret — neither uses Basic Auth.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/webhooks|api/research).*)"],
+  // api/mcp carries its own bearer-key auth (task #76) — the gate would
+  // otherwise demand Basic Auth from every personal agent.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/webhooks|api/research|api/mcp).*)"],
 };

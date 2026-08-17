@@ -204,6 +204,37 @@ export async function revokeGrantAction(grantId: string): Promise<void> {
   notice("Share revoked — their copy is withdrawn.");
 }
 
+// ── Agent API keys (task #76) ───────────────────────────────────────────────
+
+export async function mintApiKeyAction(
+  _prev: { key?: string; name?: string; error?: string } | null,
+  formData: FormData,
+): Promise<{ key?: string; name?: string; error?: string } | null> {
+  try {
+    const { pool, orgId } = await ownerOrg();
+    const name = String(formData.get("name") ?? "").trim().slice(0, 80);
+    if (!name) return { error: "Name the key so you can recognize it later." };
+    const { mintKey } = await import("@/lib/agents/mcp-tools");
+    const { plaintext, hash } = mintKey();
+    await pool.query(`insert into api_keys (org_id, name, key_hash) values ($1, $2, $3)`, [orgId, name, hash]);
+    await audit(pool, orgId, "agent_key.minted", { name });
+    revalidatePath("/admin");
+    return { key: plaintext, name };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't mint the key." };
+  }
+}
+
+export async function revokeApiKeyAction(keyId: string): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const { rowCount } = await pool.query(
+    `update api_keys set revoked_at = now() where id = $1 and org_id = $2 and revoked_at is null`,
+    [keyId, orgId],
+  );
+  if (rowCount) await audit(pool, orgId, "agent_key.revoked", { keyId });
+  revalidatePath("/admin");
+}
+
 // ── Blind overlap (task #72) ────────────────────────────────────────────────
 
 export async function requestOverlapAction(partnershipId: string, level: string): Promise<void> {

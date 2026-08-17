@@ -8,7 +8,9 @@ import {
   createInviteAction, redeemInviteAction, revokePartnershipAction,
   offerGrantAction, acceptGrantAction, declineGrantAction, revokeGrantAction, syncGrantAction,
   requestOverlapAction, decideOverlapAction,
+  mintApiKeyAction, revokeApiKeyAction,
 } from "./actions";
+import { AgentKeys, type KeyRow } from "./agent-keys";
 import { auditEntries, listGrantViews, listPartnerships } from "@/lib/partnerships/partnerships";
 import {
   OVERLAP_LEVELS, LEVEL_LABEL, LEVEL_EXPLAIN, overlapLadder, bookSize,
@@ -95,6 +97,22 @@ export default async function AdminPage({
       ladders.push({ ...ladder, otherOrgName: p.otherOrgName ?? p.myLensName });
     }
   }
+
+  // Agent API keys (task #76) — the BYO-bot surface.
+  const { rows: apiKeys } = orgId
+    ? await pool.query<{ id: string; name: string; created_at: Date; last_used_at: Date | null }>(
+        `select id, name, created_at, last_used_at from api_keys
+         where org_id = $1 and revoked_at is null order by created_at desc`,
+        [orgId],
+      )
+    : { rows: [] };
+  const keyRows: KeyRow[] = apiKeys.map((k) => ({
+    id: k.id,
+    name: k.name,
+    createdAt: new Date(k.created_at).toISOString().slice(0, 10),
+    lastUsedAt: k.last_used_at ? new Date(k.last_used_at).toISOString().slice(0, 16).replace("T", " ") : null,
+  }));
+  const mcpEndpoint = `${process.env.APP_URL ?? "https://pursuitos.io"}/api/mcp`;
 
   // ── AI operations ─────────────────────────────────────────────────────────
   const [{ rows: agents }, { rows: recentRuns }, { rows: providerErrors }, { rows: queues }] = await Promise.all([
@@ -436,6 +454,12 @@ export default async function AdminPage({
           ))}
         </>
       )}
+
+      {/* ── Agent access (task #76) ── */}
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Agent access</h2>
+      <Card className="mb-4">
+        <AgentKeys keys={keyRows} endpoint={mcpEndpoint} mint={mintApiKeyAction} revoke={revokeApiKeyAction} />
+      </Card>
 
       {/* ── Shared lists ── */}
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Shared lists</h2>
