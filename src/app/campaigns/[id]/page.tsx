@@ -89,7 +89,7 @@ export default async function CampaignDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ notice?: string; preview?: string }>;
+  searchParams: Promise<{ notice?: string; preview?: string; compose?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -574,11 +574,21 @@ export default async function CampaignDetailPage({
               )
             )}
           </div>
-          <details>
+          {/* Adding a touch redirects back with ?compose=1, so the composer
+              stays open (and scrolled to) for the next touch — sequences are
+              written several touches at a time, not one per page load. */}
+          <details id="add-touches" open={sp.compose === "1"}>
             <summary className="cursor-pointer text-sm font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100">+ Write a touch by hand</summary>
+            {sp.compose === "1" && (
+              <p className="mt-2 rounded-lg border border-green-200 bg-green-50/70 px-3 py-1.5 text-xs text-green-800 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300">
+                Touch added — it&apos;s in the sequence above. Write the next one below, or collapse this when the sequence is complete.
+              </p>
+            )}
             <form action={addTouchAction.bind(null, ca.id)} className="mt-3 space-y-3">
               <TouchFormFields contacts={contacts} />
-              <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">Add touch</button>
+              <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">
+                Add touch{touches.length > 0 ? ` ${touches.length + 1}` : ""}
+              </button>
             </form>
           </details>
         </Card>

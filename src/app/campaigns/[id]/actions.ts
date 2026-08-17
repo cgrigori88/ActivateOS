@@ -154,6 +154,9 @@ export async function addTouchAction(campaignId: string, formData: FormData): Pr
     db.release();
   }
   revalidatePath(`/campaigns/${campaignId}`);
+  // Keep the composer open (and in view) so the next touch can be written
+  // immediately — sequences are authored several touches at a time.
+  redirect(`/campaigns/${campaignId}?compose=1#add-touches`);
 }
 
 /** Edit an existing (unsent) touch — re-renders its HTML. */
