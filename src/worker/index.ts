@@ -11,6 +11,7 @@ import { runPendingResearchLocked } from "../lib/intel/research-runner";
 import { runScreeningSweepAllOrgs, runScreeningSweepLocked } from "../lib/intel/screen-runner";
 import { drainScheduledTouches } from "../lib/comms/sequence";
 import { suggestCampaigns } from "../lib/comms/suggest";
+import { runDueRoutines } from "../lib/routines/routines";
 
 /**
  * Pipeline worker (Railway). A single long-lived process that drives the
@@ -287,6 +288,15 @@ function startScheduler(): void {
       } catch (err) {
         log("cron: outreach error", { error: err instanceof Error ? err.message : String(err) });
       }
+    }
+    // Routines (task #73): each enabled routine fires at its configured hour;
+    // the library enforces once-per-day and weekly cadences itself.
+    try {
+      const pool = getPool();
+      const r = await runDueRoutines(pool);
+      if (r.ran.length > 0) log("cron: routines", r);
+    } catch (err) {
+      log("cron: routines error", { error: err instanceof Error ? err.message : String(err) });
     }
     // Backup: once per day at BACKUP_HOUR_UTC (default 8), when BACKUP_DIR set.
     const backupHour = Number(process.env.BACKUP_HOUR_UTC ?? 8);

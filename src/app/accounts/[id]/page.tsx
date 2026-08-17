@@ -10,6 +10,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import { loadCompanyIntel } from "@/lib/intel/company-intel";
+import { currentOrgId } from "@/lib/auth/org";
 import { setTeamStatusAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +27,16 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
     return <main>Unknown account.</main>;
   }
   const company = companies[0];
+
+  // Latest account digest for this company (Routines, task #73).
+  const digestOrgId = await currentOrgId(pool);
+  const { rows: digests } = await pool.query<{ items: unknown; period_end: Date }>(
+    `select d.items, d.period_end from account_digests d
+     where d.company_id = $1 and d.org_id = $2
+     order by d.created_at desc limit 1`,
+    [id, digestOrgId],
+  );
+  const digest = digests[0] ?? null;
 
   const { rows: scores } = await pool.query(
     `select p.id, p.score, p.band, n.slug, p.computed_at,
@@ -173,6 +184,36 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
           .filter(Boolean)
           .join(" · ")}
       />
+
+      {/* Latest account digest (Routines, task #73) — what changed since the
+          last run, written by the weekly digest routine. */}
+      {digest && (digest.items as { type: string; text: string; at: string }[]).length > 0 && (
+        <Card className="mb-6">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              What&apos;s new on this account
+            </h2>
+            <span className="text-[11px] text-neutral-400">
+              digest through {new Date(digest.period_end).toISOString().slice(0, 10)} ·{" "}
+              <Link href="/routines" className="text-blue-700 hover:underline dark:text-blue-400">Routines</Link>
+            </span>
+          </div>
+          <ul className="space-y-1.5">
+            {(digest.items as { type: string; text: string; at: string }[]).map((it, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm">
+                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  it.type === "evidence" ? "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
+                  : it.type === "renewal" ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
+                  : it.type === "engagement" ? "bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400"
+                  : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"
+                }`}>{it.type}</span>
+                <span className="min-w-0 flex-1">{it.text}</span>
+                <span className="shrink-0 text-xs text-neutral-400">{it.at}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {scores.length > 0 && (
         <Card className="mb-6">
