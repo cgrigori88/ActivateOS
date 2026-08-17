@@ -26,7 +26,10 @@ export interface StageCalibration {
   divergent: boolean;
 }
 
-export function calibrateStages(closed: ClosedOpportunity[]): StageCalibration[] {
+export function calibrateStages(
+  closed: ClosedOpportunity[],
+  declaredCurve?: Partial<Record<Stage, number>>, // editable weights (0036); falls back to v1
+): StageCalibration[] {
   return STAGES.map((stage) => {
     const reached = closed.filter((o) => o.stagesReached.includes(stage));
     const sample = reached.length;
@@ -34,7 +37,7 @@ export function calibrateStages(closed: ClosedOpportunity[]): StageCalibration[]
       sample >= MIN_SAMPLE
         ? Math.round((reached.filter((o) => o.won).length / sample) * 100) / 100
         : null;
-    const declared = STAGE_PROBABILITY[stage];
+    const declared = declaredCurve?.[stage] ?? STAGE_PROBABILITY[stage];
     return {
       stage,
       declared,

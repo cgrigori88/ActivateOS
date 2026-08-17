@@ -49,8 +49,9 @@ export default async function UpcomingPage() {
         subtitle="Scheduled sends across every launched sequence — the cadence, made concrete."
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <Bento label="scheduled" value={rows.length} />
+      {/* items-stretch + a sub line on both tiles keeps the pair the same height */}
+      <div className="mb-4 flex flex-wrap items-stretch gap-3">
+        <Bento label="scheduled" value={rows.length} subs={["queued sends with a date"]} />
         <Bento label="due now" value={dueCount} subs={[dueCount > 0 ? "waiting on you (or the armed worker)" : "all future-dated"]} />
         <span className={`ml-auto self-start rounded px-2 py-0.5 text-[11px] font-medium ${autosend ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
           worker auto-send: {autosend ? "armed" : "off (manual)"}

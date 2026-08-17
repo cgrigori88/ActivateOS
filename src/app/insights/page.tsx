@@ -1,8 +1,12 @@
 import { getPool } from "@/db/client";
+import { currentOrgId } from "@/lib/auth/org";
 import { calibrateStages, editIntensity } from "@/lib/insights/calibration";
 import { computeFunnel } from "@/lib/insights/funnel";
-import type { Stage } from "@/lib/opportunities/lifecycle";
+import { STAGES, type Stage } from "@/lib/opportunities/lifecycle";
+import { loadStageWeights } from "@/lib/opportunities/stage-weights";
 import { Bento, Card, PageHeader } from "@/components/ui";
+import { QuerySelect } from "@/components/query-select";
+import { saveStageWeightsAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +16,24 @@ export const dynamic = "force-dynamic";
  * probabilities, source predictive value, agent spend, and how heavily
  * humans edit AI drafts. Every number reproducible from stored events.
  */
-export default async function InsightsPage() {
+export default async function InsightsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ wscope?: string }>;
+}) {
+  const sp = await searchParams;
   const pool = getPool();
+  const orgId = await currentOrgId(pool);
+
+  // Editable stage weights (0036): the calibration card is also the editor.
+  const { rows: partnerRows } = await pool.query<{ id: string; name: string }>(
+    `select id, name from partners where org_id = $1 order by name`,
+    [orgId],
+  );
+  const stageWeights = await loadStageWeights(pool, orgId);
+  const wscope = partnerRows.some((p) => p.id === sp.wscope) ? sp.wscope! : "";
+  const scopeCurve = stageWeights.curveFor(wscope || null);
+  const defaultCurve = stageWeights.curveFor(null);
 
   const [{ rows: events }, { rows: closed }, { rows: edits }, { rows: replies }] =
     await Promise.all([
@@ -38,6 +58,7 @@ export default async function InsightsPage() {
   const maxCount = Math.max(1, ...funnel.map((s) => s.count));
   const calibration = calibrateStages(
     closed.map((o) => ({ stagesReached: o.stages as Stage[], won: o.won })),
+    scopeCurve,
   );
   const intensity = editIntensity(
     edits.map((e) => ({ editDistance: Number(e.edit_distance), draftLength: Number(e.draft_length) })),
@@ -86,13 +107,28 @@ export default async function InsightsPage() {
       </Card>
 
       <Card className="mb-6">
-        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-          Stage probability calibration
-        </h2>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            Stage probability calibration
+          </h2>
+          <QuerySelect
+            param="wscope"
+            value={wscope || "all"}
+            label="Weights for"
+            options={[
+              { value: "all", label: "Default (all partners)" },
+              ...partnerRows.map((p) => ({
+                value: p.id,
+                label: stageWeights.overriddenPartnerIds.includes(p.id) ? `${p.name} · custom` : p.name,
+              })),
+            ]}
+          />
+        </div>
         <p className="mb-3 text-xs text-neutral-500">
-          Declared v1 probabilities vs observed win rates. Observed shows only past 10 closed
-          deals per stage; divergence beyond ±15 points flags a human review — never a silent
-          weight update.
+          Declared weights vs observed win rates. These weights drive the weighted pipeline
+          everywhere it appears — edit them below, per partner if their funnel genuinely converts
+          differently. Observed shows only past 10 closed deals per stage; divergence beyond ±15
+          points flags a human review — never a silent weight update.
         </p>
         <table className="w-full text-sm">
           <thead>
@@ -122,6 +158,49 @@ export default async function InsightsPage() {
             ))}
           </tbody>
         </table>
+
+        {/* The editor — same card, so declared numbers and their controls live together. */}
+        <details className="mt-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+          <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
+            Edit weights — {wscope ? partnerRows.find((p) => p.id === wscope)?.name : "default (all partners)"}
+          </summary>
+          <form action={saveStageWeightsAction} className="mt-3">
+            <input type="hidden" name="scope" value={wscope} />
+            <div className="flex flex-wrap items-end gap-3">
+              {STAGES.map((s) => (
+                <label key={s} className="text-sm">
+                  <span className="mb-1 block text-xs text-neutral-500">{s.replace(/_/g, " ")} %</span>
+                  <input
+                    name={`w_${s}`}
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    defaultValue={Math.round(scopeCurve[s] * 100)}
+                    className="w-20 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm tnum dark:border-neutral-700 dark:bg-neutral-900"
+                  />
+                </label>
+              ))}
+              <button className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+                Save weights
+              </button>
+              <button
+                name="reset"
+                value="1"
+                formNoValidate
+                className="text-sm font-medium text-neutral-500 hover:underline"
+              >
+                Reset to {wscope ? "org default" : "declared v1"}
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-neutral-400">
+              {wscope
+                ? `Overrides apply only to deals attributed to this partner; unset stages inherit the org default (${STAGES.map((s) => `${Math.round(defaultCurve[s] * 100)}%`).join(" / ")}).`
+                : "The org default applies to every deal without a partner-specific override."}{" "}
+              Weighted pipeline on the Pipeline room recalculates immediately.
+            </p>
+          </form>
+        </details>
       </Card>
 
       <Card>

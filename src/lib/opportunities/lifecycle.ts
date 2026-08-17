@@ -47,6 +47,8 @@ export function canAdvance(from: Stage, to: Stage): boolean {
 export interface PipelineRow {
   stage: Stage;
   amountUsd: number | null;
+  /** effective stage weight for this deal (per-partner override, 0036); falls back to the declared v1 curve */
+  probability?: number;
 }
 
 /** Weighted pipeline value across open opportunities. */
@@ -54,7 +56,7 @@ export function weightedPipelineValue(rows: PipelineRow[]): number {
   return Math.round(
     rows
       .filter((r) => r.stage !== "closed_won" && r.stage !== "closed_lost")
-      .reduce((sum, r) => sum + (r.amountUsd ?? 0) * STAGE_PROBABILITY[r.stage], 0),
+      .reduce((sum, r) => sum + (r.amountUsd ?? 0) * (r.probability ?? STAGE_PROBABILITY[r.stage]), 0),
   );
 }
 

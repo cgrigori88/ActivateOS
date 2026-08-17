@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
+import { currentOrgId } from "@/lib/auth/org";
+import { loadStageWeights } from "@/lib/opportunities/stage-weights";
 import {
   STAGE_PROBABILITY,
   STAGES,
@@ -56,7 +58,7 @@ export default async function PipelinePage({
   const { rows: allOpps } = await pool.query(
     `select o.id, o.name, o.stage, o.amount_usd, o.next_step, o.expected_close_date,
             o.company_id, c.legal_name, n.slug, o.motion_id,
-            pa.name as partner_name
+            pa.name as partner_name, m.partner_id
      from opportunities o
      join companies c on c.id = o.company_id
      left join taxonomy_nodes n on n.id = o.taxonomy_node_id
@@ -116,8 +118,17 @@ export default async function PipelinePage({
   );
 
   const open = opps.filter((o) => !o.stage.startsWith("closed"));
+  // Stage weights: the org's editable curve (Insights → calibration card),
+  // with per-partner overrides applied to deals attributed to that partner.
+  const stageWeights = await loadStageWeights(pool, await currentOrgId(pool));
+  const probOf = (o: { partner_id: string | null; stage: string }) =>
+    stageWeights.weightFor(o.partner_id ?? null, o.stage as Stage);
   const weighted = weightedPipelineValue(
-    opps.map((o) => ({ stage: o.stage as Stage, amountUsd: o.amount_usd ? Number(o.amount_usd) : null })),
+    opps.map((o) => ({
+      stage: o.stage as Stage,
+      amountUsd: o.amount_usd ? Number(o.amount_usd) : null,
+      probability: probOf(o),
+    })),
   );
   const total = open.reduce((s, o) => s + Number(o.amount_usd ?? 0), 0);
 
@@ -339,7 +350,7 @@ export default async function PipelinePage({
                     <td className="text-xs uppercase tracking-wide text-neutral-500">{o.stage.replace(/_/g, " ")}</td>
                     <td className="tnum text-right">{amt != null ? `$${Math.round(amt / 1000)}k` : "—"}</td>
                     <td className="tnum text-right text-neutral-500">
-                      {amt != null && !closed ? `$${Math.round((amt * STAGE_PROBABILITY[o.stage as Stage]) / 1000)}k` : "—"}
+                      {amt != null && !closed ? `$${Math.round((amt * probOf(o)) / 1000)}k` : "—"}
                     </td>
                     <td className="tnum text-right">
                       {(() => {
@@ -414,7 +425,7 @@ export default async function PipelinePage({
                   <span className="tnum text-sm text-neutral-500">
                     ${Math.round(Number(o.amount_usd) / 1000)}k
                     {!o.stage.startsWith("closed") &&
-                      ` · $${Math.round((Number(o.amount_usd) * STAGE_PROBABILITY[o.stage as Stage]) / 1000)}k weighted`}
+                      ` · $${Math.round((Number(o.amount_usd) * probOf(o)) / 1000)}k weighted`}
                   </span>
                 )}
                 {o.partner_name && (

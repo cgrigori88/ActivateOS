@@ -101,10 +101,14 @@ export default async function BriefPage({
 
   return (
     <main>
-      <div className="mb-1 flex flex-wrap items-center gap-3">
+      {/* Both nav links share the pos-backlink treatment so they sit on one
+          baseline at the same size/weight — ← back on the left, forward → on
+          the right. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <BackLink href="/motions" label="Motions" />
-        <Link href={`/accounts/${m.company_id}`} className="text-sm text-neutral-500 hover:underline">
-          {m.legal_name} account →
+        <Link href={`/accounts/${m.company_id}`} className="pos-backlink">
+          {m.legal_name} account
+          <span aria-hidden>→</span>
         </Link>
       </div>
       <PageHeader
@@ -160,11 +164,14 @@ export default async function BriefPage({
         )}
       </Card>
 
-      {cited.length > 0 && (
-        <Card className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Evidence behind this motion
-          </h2>
+      {/* Every brief shows the same sections — a section with nothing in it
+          explains where its content comes from, rather than vanishing and
+          making two briefs look like two different products. */}
+      <Card className="mb-6">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          Evidence behind this motion
+        </h2>
+        {cited.length > 0 ? (
           <ul className="ml-4 list-disc space-y-1">
             {cited.map((e) => (
               <EvidenceLine
@@ -174,14 +181,32 @@ export default async function BriefPage({
               />
             ))}
           </ul>
-        </Card>
-      )}
+        ) : (
+          <p className="text-sm text-neutral-400">
+            No cited evidence on this motion yet — citations attach when the AI designer grounds a
+            motion in verified evidence, or as research on{" "}
+            <Link href={`/accounts/${m.company_id}`} className="text-blue-700 hover:underline dark:text-blue-400">
+              the account
+            </Link>{" "}
+            verifies new claims.
+          </p>
+        )}
+      </Card>
 
-      {steps.length > 0 && (
-        <Card className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Cadence
-          </h2>
+      <Card className="mb-6">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          Cadence
+        </h2>
+        {steps.length === 0 ? (
+          <p className="text-sm text-neutral-400">
+            No cadence yet — dated pursuit steps are generated when the motion is activated with a
+            pursuit plan, and they land in the{" "}
+            <Link href="/queue" className="text-blue-700 hover:underline dark:text-blue-400">
+              action queue
+            </Link>{" "}
+            as they come due.
+          </p>
+        ) : (
           <ol className="space-y-1.5">
             {steps.map((s) => (
               <li key={s.step} className="flex items-center gap-3 text-sm">
@@ -207,14 +232,21 @@ export default async function BriefPage({
               </li>
             ))}
           </ol>
-        </Card>
-      )}
+        )}
+      </Card>
 
-      {["approved", "active"].includes(m.status) && (
-        <Card className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Conversation
-          </h2>
+      <Card className="mb-6">
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          Conversation
+        </h2>
+        {!["approved", "active"].includes(m.status) && threadMessages.length === 0 ? (
+          <p className="text-sm text-neutral-400">
+            {m.status === "completed"
+              ? "This motion is completed — no conversation was captured on it."
+              : "Outreach opens when the motion is approved — then a 1:1 draft can be generated and sent (or packaged for the partner seller), with replies captured on a thread alias."}
+          </p>
+        ) : (
+        <>
           {thread && (
             <p className="mb-3 text-xs text-neutral-500">
               Thread alias:{" "}
@@ -320,7 +352,7 @@ export default async function BriefPage({
                 </p>
               )}
             </form>
-          ) : (
+          ) : ["approved", "active"].includes(m.status) ? (
             <form action={generateDraftAction.bind(null, motionId)}>
               <button
                 type="submit"
@@ -328,10 +360,20 @@ export default async function BriefPage({
               >
                 Generate outreach draft
               </button>
+              <p className="mt-2 text-[11px] text-neutral-400">
+                A single 1:1 email for this motion&apos;s conversation — review, then send via
+                PursuitOS or package for the partner seller; replies are captured here. For
+                one-to-many sequenced sends, use a{" "}
+                <Link href="/campaigns" className="text-blue-700 hover:underline dark:text-blue-400">
+                  campaign
+                </Link>
+                .
+              </p>
             </form>
-          )}
-        </Card>
-      )}
+          ) : null}
+        </>
+        )}
+      </Card>
 
       {assets.length > 0 && (
         <Card>
