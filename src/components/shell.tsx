@@ -133,6 +133,16 @@ const NAV: NavGroup[] = [
   {
     label: "Intelligence",
     items: [
+      {
+        href: "/joint",
+        label: "Joint pursuits",
+        icon: (
+          <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+            <circle cx="5.5" cy="8" r="3.8" />
+            <circle cx="10.5" cy="8" r="3.8" />
+          </svg>
+        ),
+      },
       { href: "/accounts", label: "Accounts", icon: icons.accounts },
       { href: "/sources", label: "Sources", icon: icons.sources },
       { href: "/provider-health", label: "Provider health", icon: icons.providerHealth },

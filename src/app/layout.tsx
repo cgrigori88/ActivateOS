@@ -62,10 +62,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     const pool = getPool();
     const orgId = await currentOrgId(pool);
     if (orgId) {
-      const { rows } = await pool.query<{ pending_lists: string; pending_review: string; incoming_offers: string }>(
+      const { rows } = await pool.query<{ pending_lists: string; pending_review: string; incoming_offers: string; pending_pursuits: string }>(
         `select
            (select count(*) from account_populations where status = 'pending' and org_id = $1) as pending_lists,
            (select count(*) from review_queue where status = 'pending' and org_id = $1) as pending_review,
+           (select count(*) from joint_pursuits jp
+            join partnerships p on p.id = jp.partnership_id
+            where jp.status = 'proposed' and jp.proposed_by_org <> $1
+              and (p.initiator_org_id = $1 or p.counterpart_org_id = $1)) as pending_pursuits,
            (select count(*) from list_grants g
             join partnerships p on p.id = g.partnership_id
             where g.status = 'offered' and g.from_org_id <> $1
@@ -81,6 +85,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       if (Number(rows[0].pending_review) > 0) badges["/review"] = Number(rows[0].pending_review);
       // Cross-tenant shares waiting on the owner's accept/decline live in /admin.
       if (Number(rows[0].incoming_offers) > 0) badges["/admin"] = Number(rows[0].incoming_offers);
+      // Joint pursuits proposed by the partner, waiting on this side.
+      if (Number(rows[0].pending_pursuits) > 0) badges["/joint"] = Number(rows[0].pending_pursuits);
     }
   } catch {
     /* build pass or db unavailable — no badges, shell still renders */
