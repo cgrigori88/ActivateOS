@@ -16,6 +16,7 @@ import {
   revokePartnership,
   syncListGrant,
 } from "@/lib/partnerships/partnerships";
+import { decideOverlapProbe, requestOverlapProbe, type OverlapLevel } from "@/lib/partnerships/overlap";
 
 function notice(msg: string): never {
   redirect(`/admin?notice=${encodeURIComponent(msg)}`);
@@ -201,4 +202,28 @@ export async function revokeGrantAction(grantId: string): Promise<void> {
   if (failed) notice(failed);
   revalidatePath("/admin");
   notice("Share revoked — their copy is withdrawn.");
+}
+
+// ── Blind overlap (task #72) ────────────────────────────────────────────────
+
+export async function requestOverlapAction(partnershipId: string, level: string): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const failed = await attempt(
+    () => requestOverlapProbe(pool, orgId, partnershipId, level as OverlapLevel),
+    "Couldn't request the overlap probe.",
+  );
+  if (failed) notice(failed);
+  revalidatePath("/admin");
+  notice("Probe requested — their owner sees it now; nothing is computed until they approve.");
+}
+
+export async function decideOverlapAction(probeId: string, approve: boolean): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const failed = await attempt(
+    () => decideOverlapProbe(pool, orgId, probeId, approve),
+    "Couldn't record the decision.",
+  );
+  if (failed) notice(failed);
+  revalidatePath("/admin");
+  notice(approve ? "Probe approved — the result is now visible to both sides, identically." : "Probe declined.");
 }

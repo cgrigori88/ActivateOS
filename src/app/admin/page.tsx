@@ -7,8 +7,13 @@ import {
   inviteMemberAction, setMemberRoleAction, removeMemberAction,
   createInviteAction, redeemInviteAction, revokePartnershipAction,
   offerGrantAction, acceptGrantAction, declineGrantAction, revokeGrantAction, syncGrantAction,
+  requestOverlapAction, decideOverlapAction,
 } from "./actions";
 import { auditEntries, listGrantViews, listPartnerships } from "@/lib/partnerships/partnerships";
+import {
+  OVERLAP_LEVELS, LEVEL_LABEL, LEVEL_EXPLAIN, overlapLadder, bookSize,
+  type BandsResults, type CountsResults, type NamedResults, type OverlapLadder,
+} from "@/lib/partnerships/overlap";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +83,18 @@ export default async function AdminPage({
       ])
     : [[], [], [], { rows: [] }, { rows: [] }];
   const activePartnerships = partnerships.filter((p) => p.status === "active");
+
+  // Blind overlap ladders — one per active partnership; sequential on the
+  // shared pool client semantics (small N, no parallel query hazards).
+  const ladders: (OverlapLadder & { otherOrgName: string | null })[] = [];
+  let myBookSize = 0;
+  if (orgId && activePartnerships.length > 0) {
+    myBookSize = await bookSize(pool, orgId);
+    for (const p of activePartnerships) {
+      const ladder = await overlapLadder(pool, orgId, p.id);
+      ladders.push({ ...ladder, otherOrgName: p.otherOrgName ?? p.myLensName });
+    }
+  }
 
   // ── AI operations ─────────────────────────────────────────────────────────
   const [{ rows: agents }, { rows: recentRuns }, { rows: providerErrors }, { rows: queues }] = await Promise.all([
@@ -271,6 +288,154 @@ export default async function AdminPage({
           </div>
         </div>
       </Card>
+
+      {/* ── Blind overlap (task #72) ── */}
+      {ladders.length > 0 && (
+        <>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Blind overlap</h2>
+          {ladders.map((ladder) => (
+            <Card key={ladder.partnershipId} className="mb-4">
+              <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-sm font-semibold">{ladder.otherOrgName ?? "Partner org"}</span>
+                <span className="text-[11px] text-neutral-400">every step needs both owners · on the ledger</span>
+              </div>
+              <p className="mb-4 text-xs text-neutral-500">
+                Learn how much your books overlap <em>before</em> either side reveals an account. The
+                overlap can only contain accounts already in your own book — a probe never shows you an
+                account you don&apos;t know; it discloses which of yours the partner also has.
+              </p>
+              <div className="space-y-3">
+                {OVERLAP_LEVELS.map((level, li) => {
+                  const rung = ladder.rungs[level];
+                  return (
+                    <div
+                      key={level}
+                      className={`rounded-lg border p-3 ${
+                        rung.state === "awaiting_you"
+                          ? "border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/30"
+                          : "border-neutral-200 dark:border-neutral-800"
+                      } ${rung.state === "locked" ? "opacity-50" : ""}`}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="tnum w-4 text-right text-xs font-bold text-neutral-400">{li + 1}</span>
+                        <span className="text-sm font-medium">{LEVEL_LABEL[level]}</span>
+                        {rung.state === "approved" && (
+                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-800 dark:bg-green-950 dark:text-green-300">
+                            approved {rung.decidedAt}
+                          </span>
+                        )}
+                        {rung.state === "requested_by_us" && (
+                          <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500 dark:bg-neutral-800">
+                            waiting on {ladder.otherOrgName ?? "them"} · {rung.requestedAt}
+                          </span>
+                        )}
+                        {rung.state === "awaiting_you" && (
+                          <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-white">
+                            awaiting your approval
+                          </span>
+                        )}
+                        {rung.state === "declined" && (
+                          <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold text-neutral-500 dark:bg-neutral-800">
+                            declined {rung.decidedAt}
+                          </span>
+                        )}
+                        <span className="ml-auto flex items-center gap-2">
+                          {(rung.state === "available" || rung.state === "declined") && (
+                            <form action={requestOverlapAction.bind(null, ladder.partnershipId, level)}>
+                              <button className="rounded-md px-3 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
+                                {rung.state === "declined" ? "Request again" : "Request"}
+                              </button>
+                            </form>
+                          )}
+                          {rung.state === "awaiting_you" && (
+                            <>
+                              <form action={decideOverlapAction.bind(null, rung.probeId, true)}>
+                                <button className="rounded-md bg-blue-700 px-3 py-1 text-xs font-medium text-white hover:bg-blue-800">
+                                  Approve
+                                </button>
+                              </form>
+                              <form action={decideOverlapAction.bind(null, rung.probeId, false)}>
+                                <button className="rounded-md px-3 py-1 text-xs font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900">
+                                  Decline
+                                </button>
+                              </form>
+                            </>
+                          )}
+                          {rung.state === "locked" && (
+                            <span className="text-[11px] text-neutral-400">
+                              unlocks after &ldquo;{LEVEL_LABEL[OVERLAP_LEVELS[li - 1]]}&rdquo; is approved
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      <p className="mt-1 pl-6 text-[11px] text-neutral-400">{LEVEL_EXPLAIN[level]}</p>
+
+                      {rung.state === "approved" && level === "counts" && (() => {
+                        const r = rung.results as CountsResults;
+                        return (
+                          <div className="mt-2 flex items-baseline gap-3 pl-6">
+                            <span className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">{r.overlap}</span>
+                            <span className="text-xs text-neutral-500">
+                              overlapping accounts{myBookSize > 0 ? ` · ${Math.round((r.overlap / myBookSize) * 100)}% of your book` : ""}
+                            </span>
+                          </div>
+                        );
+                      })()}
+
+                      {rung.state === "approved" && level === "bands" && orgId && (() => {
+                        const r = rung.results as BandsResults;
+                        const mine = r.categories[orgId] ?? {};
+                        const theirs = Object.entries(r.categories).find(([k]) => k !== orgId)?.[1] ?? {};
+                        const fmt = (m: Record<string, number>) =>
+                          Object.entries(m).sort((x, y) => y[1] - x[1]).map(([c, n]) => `${n} ${c.replace(/_/g, " ")}`).join(" · ") || "—";
+                        return (
+                          <div className="mt-2 space-y-1 pl-6 text-xs">
+                            <p><span className="font-medium text-neutral-700 dark:text-neutral-300">In your book:</span> <span className="text-neutral-500">{fmt(mine)}</span></p>
+                            <p><span className="font-medium text-neutral-700 dark:text-neutral-300">In theirs:</span> <span className="text-neutral-500">{fmt(theirs)}</span></p>
+                            <p className="flex flex-wrap gap-1.5 pt-1">
+                              {r.industries.map((i) => (
+                                <span key={i.industry} className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                                  {i.industry} · {i.count}
+                                </span>
+                              ))}
+                            </p>
+                          </div>
+                        );
+                      })()}
+
+                      {rung.state === "approved" && level === "named" && orgId && (() => {
+                        const r = rung.results as NamedResults;
+                        return (
+                          <div className="mt-2 max-h-56 overflow-y-auto pl-6 scroll-thin">
+                            <table className="data-table">
+                              <thead><tr><th>Account</th><th>Industry</th><th>In your book as</th><th>In theirs as</th></tr></thead>
+                              <tbody>
+                                {r.accounts.map((a) => {
+                                  const mine = a.cats[orgId] ?? [];
+                                  const theirs = Object.entries(a.cats).find(([k]) => k !== orgId)?.[1] ?? [];
+                                  return (
+                                    <tr key={a.company_id}>
+                                      <td className="font-medium">{a.name}</td>
+                                      <td className="text-xs text-neutral-500">{a.industry ?? "—"}</td>
+                                      <td className="text-xs text-neutral-500">{mine.map((c) => c.replace(/_/g, " ")).join(", ") || "—"}</td>
+                                      <td className="text-xs text-neutral-500">{theirs.map((c) => c.replace(/_/g, " ")).join(", ") || "—"}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                            {r.truncated && <p className="mt-1 text-[11px] text-neutral-400">showing the first 500 — the count above is the full overlap</p>}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          ))}
+        </>
+      )}
 
       {/* ── Shared lists ── */}
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Shared lists</h2>

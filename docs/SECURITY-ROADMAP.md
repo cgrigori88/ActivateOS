@@ -136,6 +136,24 @@ release gate, not a wishlist.
   data — the volume is exactly as sensitive as the database itself.
   User-side remaining: make the repo private, upgrade Supabase for native
   daily backups/PITR, attach the Railway volume + env vars.
+- **Blind overlap (#72, migration 0037 — Phase A of the unicorn roadmap).**
+  "How much do our books overlap?" answered before either side reveals an
+  account: a disclosure ladder (counts → bands → named) on each active
+  partnership where the requester's request is their consent and the
+  counterpart must approve every rung; results are computed once at approval
+  by the platform as neutral broker and stored SYMMETRIC — both sides read
+  the identical payload, viewer-relative framing ("% of your book") is
+  computed at render from the viewer's own data. Safety property: an
+  intersection can only contain accounts already in the viewer's own book,
+  so a probe never reveals an unknown account — only which of yours the
+  partner also has (and, at the named rung, each side's categorization).
+  Every request/decision lands in BOTH orgs' audit ledgers. Verified with a
+  seeded second tenant: 20/20 lib tests (ladder enforcement, self-approval
+  and stranger rejection, symmetric payloads, equal ledgers) and 16/16
+  Chromium checks (request → waiting → counterpart approval → results at
+  every rung, incoming-probe rail badge appearing and clearing). PSI-based
+  computation, where the platform itself cannot see undisclosed rows, stays
+  on the roadmap as the endgame hardening.
   Remaining for a later slice: per-request scoped DB connections (the app's
   own pool still connects as table owner, so DB-level RLS backs the API path
   only; app-path scoping is enforced in code via `currentOrgId`). Deferred

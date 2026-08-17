@@ -69,6 +69,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
            (select count(*) from list_grants g
             join partnerships p on p.id = g.partnership_id
             where g.status = 'offered' and g.from_org_id <> $1
+              and (p.initiator_org_id = $1 or p.counterpart_org_id = $1))
+           +
+           (select count(*) from overlap_probes op
+            join partnerships p on p.id = op.partnership_id
+            where op.status = 'requested' and op.requested_by_org <> $1
               and (p.initiator_org_id = $1 or p.counterpart_org_id = $1)) as incoming_offers`,
         [orgId],
       );
