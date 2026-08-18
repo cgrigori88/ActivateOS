@@ -12,7 +12,8 @@ export type ActionType =
   | "COMPOSE_CAMPAIGN"
   | "REVIEW_EVIDENCE"
   | "RESOLVE_CONTRADICTION"
-  | "REFRESH_DUE";
+  | "REFRESH_DUE"
+  | "RENEWAL_WINDOW"; // surfaced by the account-digest routine (task #77)
 
 export interface NextAction {
   type: ActionType;

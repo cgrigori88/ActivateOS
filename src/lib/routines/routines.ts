@@ -82,6 +82,7 @@ interface BriefData {
   incoming: number; // share offers + overlap probes awaiting this org
   topOpps: { name: string; stage: string; amount: number | null }[];
   digestHighlights: { account: string; items: number }[];
+  failedRoutines: string[]; // routine kinds whose LATEST run failed
 }
 
 async function gatherBrief(db: Db, orgId: string): Promise<BriefData> {
@@ -118,6 +119,18 @@ async function gatherBrief(db: Db, orgId: string): Promise<BriefData> {
     [orgId],
   );
 
+  // A silently broken routine is worse than no routine — the brief tells on
+  // its own siblings (and on itself, on the run after a failure).
+  const { rows: failedRows } = await db.query<{ kind: string }>(
+    `select x.kind from (
+       select distinct on (r.id) r.kind, rr.status
+       from routines r join routine_runs rr on rr.routine_id = r.id
+       where r.org_id = $1 and r.enabled
+       order by r.id, rr.ran_at desc
+     ) x where x.status = 'failed'`,
+    [orgId],
+  );
+
   return {
     pendingMotions,
     evidenceToReview,
@@ -126,12 +139,16 @@ async function gatherBrief(db: Db, orgId: string): Promise<BriefData> {
     incoming,
     topOpps: topOpps.map((o) => ({ name: o.name, stage: o.stage, amount: o.amount ? Number(o.amount) : null })),
     digestHighlights: digestRows.map((r) => ({ account: r.account, items: Number(r.items) })),
+    failedRoutines: failedRows.map((r) => r.kind.replace(/_/g, " ")),
   };
 }
 
 function renderBrief(data: BriefData, appUrl: string): { text: string; subject: string } {
   const today = new Date().toISOString().slice(0, 10);
   const lines: string[] = [`PursuitOS morning brief — ${today}`, ""];
+  if (data.failedRoutines.length > 0) {
+    lines.push(`!! ROUTINE FAILURE: ${data.failedRoutines.join(", ")} failed on the last run — check the Routines room.`, "");
+  }
   const decisions: string[] = [];
   if (data.pendingMotions > 0) decisions.push(`${data.pendingMotions} motion${data.pendingMotions === 1 ? "" : "s"} awaiting approval`);
   if (data.evidenceToReview > 0) decisions.push(`${data.evidenceToReview} evidence item${data.evidenceToReview === 1 ? "" : "s"} to review`);

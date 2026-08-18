@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
-import { rankNextActions, type PortfolioState } from "@/lib/portfolio/next-best";
+import { currentOrgId } from "@/lib/auth/org";
+import { rankNextActions, type NextAction, type PortfolioState } from "@/lib/portfolio/next-best";
 import { BandBadge, Card, CountChip, PageHeader, StatusBadge } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +61,38 @@ async function loadNextActions() {
       tier: r.refresh_tier ?? "low",
     })),
   };
-  return rankNextActions(state, 6);
+  const ranked = rankNextActions(state, 6);
+
+  // Renewal windows surfaced by the account-digest routine (task #77): a
+  // renewal inside 90 days is decision-shaped, not FYI — it belongs here,
+  // not just on the account card.
+  const orgId = await currentOrgId(pool);
+  const renewalActions: NextAction[] = [];
+  if (orgId) {
+    const { rows: digests } = await pool.query<{
+      company_id: string;
+      legal_name: string;
+      items: { type: string; text: string; at: string }[];
+    }>(
+      `select distinct on (d.company_id) d.company_id, c.legal_name, d.items
+       from account_digests d join companies c on c.id = d.company_id
+       where d.org_id = $1
+       order by d.company_id, d.created_at desc`,
+      [orgId],
+    );
+    for (const d of digests) {
+      const renewal = (d.items ?? []).find((it) => it.type === "renewal");
+      if (!renewal) continue;
+      renewalActions.push({
+        type: "RENEWAL_WINDOW",
+        priority: 70,
+        title: `Plan the renewal — ${d.legal_name}`,
+        reason: `${renewal.text} (from this week's account digest)`,
+        href: `/accounts/${d.company_id}`,
+      });
+    }
+  }
+  return [...ranked, ...renewalActions].slice(0, 7);
 }
 
 export default async function TodayPage() {

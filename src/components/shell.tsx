@@ -225,6 +225,7 @@ export function Shell({
   signOut,
   isOwner,
   badges,
+  alerts,
 }: {
   children: ReactNode;
   /** Signed-in identity email; null in Basic-Auth / local-dev mode. */
@@ -234,6 +235,8 @@ export function Shell({
   isOwner?: boolean;
   /** Attention counts by nav href — e.g. { "/mapping": 2 } renders an amber pill on that item. */
   badges?: Record<string, number>;
+  /** FAILURE counts by nav href — red pill (something broke), never "waiting on you" blue. */
+  alerts?: Record<string, number>;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -353,7 +356,18 @@ export function Shell({
           {item.icon}
         </span>
         <span className={collapsed ? "sr-only" : "truncate"}>{item.label}</span>
-        {(badges?.[item.href] ?? 0) > 0 && !collapsed && (
+        {(alerts?.[item.href] ?? 0) > 0 && !collapsed && (
+          <span
+            className="ml-auto rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-[0_0_0_1px_rgba(255,255,255,0.14)]"
+            title={`${alerts![item.href]} failure(s) — something broke`}
+          >
+            {alerts![item.href]}
+          </span>
+        )}
+        {(alerts?.[item.href] ?? 0) > 0 && collapsed && (
+          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" title={`${alerts![item.href]} failure(s)`} />
+        )}
+        {(badges?.[item.href] ?? 0) > 0 && !(alerts?.[item.href] ?? 0) && !collapsed && (
           <span
             className="ml-auto rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-[0_0_0_1px_rgba(255,255,255,0.14)]"
             title={`${badges![item.href]} item(s) need review`}
@@ -361,10 +375,10 @@ export function Shell({
             {badges![item.href]}
           </span>
         )}
-        {(badges?.[item.href] ?? 0) > 0 && collapsed && (
+        {(badges?.[item.href] ?? 0) > 0 && !(alerts?.[item.href] ?? 0) && collapsed && (
           <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent-tint" title={`${badges![item.href]} item(s) need review`} />
         )}
-        {active && !collapsed && !(badges?.[item.href] ?? 0) && (
+        {active && !collapsed && !(badges?.[item.href] ?? 0) && !(alerts?.[item.href] ?? 0) && (
           <span className="absolute right-3 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-accent-tint" />
         )}
       </Link>

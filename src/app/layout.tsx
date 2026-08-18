@@ -58,6 +58,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // Attention badges for the rail: work waiting on a human decision, scoped to
   // the caller's tenant. One query; failures never block the shell.
   const badges: Record<string, number> = {};
+  const alerts: Record<string, number> = {};
   try {
     const pool = getPool();
     const orgId = await currentOrgId(pool);
@@ -87,6 +88,19 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       if (Number(rows[0].incoming_offers) > 0) badges["/admin"] = Number(rows[0].incoming_offers);
       // Joint pursuits proposed by the partner, waiting on this side.
       if (Number(rows[0].pending_pursuits) > 0) badges["/joint"] = Number(rows[0].pending_pursuits);
+
+      // Routines whose LATEST run failed — red, not blue: something broke,
+      // it isn't waiting on a decision (task #77).
+      const { rows: failed } = await pool.query<{ n: string }>(
+        `select count(*)::text as n from (
+           select distinct on (r.id) rr.status
+           from routines r join routine_runs rr on rr.routine_id = r.id
+           where r.org_id = $1 and r.enabled
+           order by r.id, rr.ran_at desc
+         ) x where x.status = 'failed'`,
+        [orgId],
+      );
+      if (Number(failed[0]?.n ?? 0) > 0) alerts["/routines"] = Number(failed[0].n);
     }
   } catch {
     /* build pass or db unavailable — no badges, shell still renders */
@@ -100,7 +114,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
       <body className="min-h-screen font-sans">
-        <Shell user={user} signOut={signOutAction} isOwner={isOwner} badges={badges}>{children}</Shell>
+        <Shell user={user} signOut={signOutAction} isOwner={isOwner} badges={badges} alerts={alerts}>{children}</Shell>
       </body>
     </html>
   );
