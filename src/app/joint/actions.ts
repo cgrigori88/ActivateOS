@@ -41,6 +41,8 @@ export async function decidePursuitAction(pursuitId: string, accept: boolean): P
   await decideJointPursuit(pool, orgId, pursuitId, accept);
   revalidatePath("/joint");
   revalidatePath(`/joint/${pursuitId}`);
+  // Next-step pull (#79): accepting fires the broker — its play is waiting in the room.
+  if (accept) redirect(`/joint?accepted=${pursuitId}`);
 }
 
 export async function closePursuitAction(pursuitId: string): Promise<void> {

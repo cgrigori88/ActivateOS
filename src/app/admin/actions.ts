@@ -256,5 +256,13 @@ export async function decideOverlapAction(probeId: string, approve: boolean): Pr
   );
   if (failed) notice(failed);
   revalidatePath("/admin");
-  notice(approve ? "Probe approved — the result is now visible to both sides, identically." : "Probe declined.");
+  if (!approve) notice("Probe declined.");
+  // Next-step pull (#79): an approved NAMED overlap unlocks joint pursuit rooms —
+  // counts/bands don't, so only that rung gets the pull.
+  const { rows } = await pool.query<{ level: string }>(`select level from overlap_probes where id = $1`, [probeId]);
+  redirect(
+    `/admin?notice=${encodeURIComponent("Probe approved — the result is now visible to both sides, identically.")}${
+      rows[0]?.level === "named" ? "&next=joint" : ""
+    }`,
+  );
 }

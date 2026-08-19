@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
-import { Bento, Card, MiniBar, PageHeader, StatusBadge } from "@/components/ui";
+import { Bento, Card, MiniBar, NextStep, PageHeader, StatusBadge } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
 import { currentOrgId } from "@/lib/auth/org";
@@ -50,7 +50,7 @@ const GROUPS: Record<string, { label: string; key: (m: MotionRow) => string }> =
 export default async function MotionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; partner?: string; goal?: string; group?: string }>;
+  searchParams: Promise<{ status?: string; partner?: string; goal?: string; group?: string; approved?: string }>;
 }) {
   const sp = await searchParams;
   const groupKey = GROUPS[sp.group ?? "status"] ? (sp.group ?? "status") : "status";
@@ -73,6 +73,7 @@ export default async function MotionsPage({
   const orgId = await currentOrgId(pool);
   const goals = orgId ? await goalOptions(pool, orgId) : [];
 
+  const justApproved = sp.approved ? all.find((m) => m.id === sp.approved && m.status === "approved") : undefined;
   const partnerOptions = [...new Set(all.map((m) => m.partner_name).filter(Boolean) as string[])];
   const motions = all.filter(
     (m) =>
@@ -107,6 +108,14 @@ export default async function MotionsPage({
   return (
     <main>
       <PageHeader title="Motions" subtitle="Agents propose, you dispose — grouped and filtered so it holds at scale. Approvals feed the learning loop." />
+      {/* Next-step pull (#79): the just-approved play flows straight into outreach. */}
+      {justApproved && (
+        <NextStep
+          message={`Motion approved — ${justApproved.legal_name} is ready to become outreach.`}
+          href={`/campaigns?motion=${justApproved.id}#composer`}
+          cta="Compose the campaign"
+        />
+      )}
 
       {/* Bentos */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

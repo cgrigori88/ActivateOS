@@ -51,7 +51,7 @@ interface MotionOption {
 export default async function CampaignsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ notice?: string; status?: string; source?: string; partner?: string; solution?: string; goal?: string }>;
+  searchParams: Promise<{ notice?: string; status?: string; source?: string; partner?: string; solution?: string; goal?: string; motion?: string }>;
 }) {
   const sp = await searchParams;
   const notice = sp.notice;
@@ -144,8 +144,10 @@ export default async function CampaignsPage({
         <Bento label="AI suggestions" value={suggestions.length} subs={["awaiting review"]} href="/campaigns?source=ai_suggested" />
       </div>
 
-      {/* Compose — two paths: AI-generated from a motion, or hand-authored from an account */}
-      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+      {/* Compose — two paths: AI-generated from a motion, or hand-authored from an
+          account. The id is the landing spot for the approve-motion next-step pull
+          (#79), which arrives with ?motion= preselecting the play. */}
+      <div id="composer" className="mb-6 grid gap-4 lg:grid-cols-2">
         <Card>
           <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Generate from a motion</h2>
           <p className="mb-3 text-xs text-neutral-500">AI drafts a grounded sequence from an approved/active motion. Each touch is a draft until you approve it.</p>
@@ -164,7 +166,7 @@ export default async function CampaignsPage({
             <form action={generateSequenceAction} className="flex flex-wrap items-end gap-3">
               <label className="text-sm">
                 <span className="mb-1 block text-xs text-neutral-500">Motion</span>
-                <select name="motionId" className="w-56 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                <select name="motionId" defaultValue={sp.motion} className="w-56 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
                   {motions.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.legal_name}{m.primary_persona ? ` — ${m.primary_persona}` : ""}

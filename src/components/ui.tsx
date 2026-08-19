@@ -134,6 +134,26 @@ export function MiniBar({ rows, unit }: { rows: { label: string; value: number; 
   );
 }
 
+/**
+ * Next-step banner (#79, PLATFORM-REVIEW-2 §III.C): a terminal action pulls
+ * the operator into the next room instead of leaving them to find it. Green
+ * is the "it worked" ground; the CTA is the only button in the strip.
+ */
+export function NextStep({ message, href, cta }: { message: string; href: string; cta: string }) {
+  return (
+    <div className="mb-5 flex flex-wrap items-center gap-3 rounded-card border border-green-300 bg-green-50 px-4 py-3 dark:border-green-800 dark:bg-green-950">
+      <span className="text-sm text-green-800 dark:text-green-300">{message}</span>
+      <Link
+        href={href}
+        className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[13px] font-bold text-white shadow-[var(--shadow-float)] transition-colors duration-[140ms] hover:bg-blue-800"
+      >
+        {cta}
+        <span aria-hidden>→</span>
+      </Link>
+    </div>
+  );
+}
+
 export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <header className="mb-7">

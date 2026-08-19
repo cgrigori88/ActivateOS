@@ -222,6 +222,8 @@ export async function scheduleSequenceAction(campaignId: string, formData: FormD
     db.release();
   }
   revalidatePath(`/campaigns/${campaignId}`);
+  // Next-step pull (#79): a launched sequence lives on the dated send plan now.
+  redirect(`/campaigns/${campaignId}?launched=1`);
 }
 
 /** Arm the sequence using only the touches already approved. */
@@ -237,6 +239,8 @@ export async function launchCampaignAction(campaignId: string, formData: FormDat
     db.release();
   }
   revalidatePath(`/campaigns/${campaignId}`);
+  // Next-step pull (#79): a launched sequence lives on the dated send plan now.
+  redirect(`/campaigns/${campaignId}?launched=1`);
 }
 
 /** Send a single touch now (pre-launch to a chosen recipient, or a due scheduled touch). */

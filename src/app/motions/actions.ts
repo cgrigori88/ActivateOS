@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getPool } from "@/db/client";
 import { requireWrite } from "@/lib/auth/org";
 import { approveMotion, rejectMotion } from "@/lib/motions/approve";
@@ -25,6 +26,8 @@ export async function approveMotionAction(motionId: string): Promise<void> {
     db.release();
   }
   revalidatePath("/motions");
+  // Next-step pull (#79): an approved play's natural next room is the composer.
+  redirect(`/motions?approved=${motionId}`);
 }
 
 export async function rejectMotionAction(motionId: string): Promise<void> {

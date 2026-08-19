@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
 import { currentOrgId } from "@/lib/auth/org";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, NextStep, PageHeader } from "@/components/ui";
 import { listPartnerships } from "@/lib/partnerships/partnerships";
 import { listJointPursuits, namedOverlapAccounts } from "@/lib/partnerships/joint";
 import { settlementStatement, type SettlementStatement } from "@/lib/partnerships/settlement";
@@ -23,7 +23,12 @@ const STATUS_TONE: Record<string, string> = {
   closed: "bg-neutral-100 text-neutral-500 ring-neutral-200 dark:bg-neutral-800 dark:ring-neutral-700",
 };
 
-export default async function JointPage() {
+export default async function JointPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ accepted?: string }>;
+}) {
+  const sp = (await searchParams) ?? {};
   const pool = getPool();
   const orgId = await currentOrgId(pool);
   if (!orgId) return <main>No organization.</main>;
@@ -56,6 +61,15 @@ export default async function JointPage() {
         title="Joint pursuits"
         subtitle="Co-sell rooms shared with a partner tenant. Each side sees the identical ledger; the broker proposes plays from data both sides already approved — nothing else."
       />
+      {/* Next-step pull (#79): accepting fired the broker; its play waits in the room.
+          Validated against the caller's own pursuit list — never a raw param. */}
+      {sp.accepted && pursuits.some((x) => x.id === sp.accepted && x.status === "active") && (
+        <NextStep
+          message="Pursuit accepted — the broker has drafted the opening play from the partnership's approved data."
+          href={`/joint/${sp.accepted}`}
+          cta="Read the broker's play"
+        />
+      )}
 
       {pursuits.length === 0 && proposable.length === 0 && (
         <Card muted>

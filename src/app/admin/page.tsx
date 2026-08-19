@@ -39,7 +39,7 @@ const ROLE_HINT: Record<string, string> = {
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ notice?: string }>;
+  searchParams: Promise<{ notice?: string; next?: string }>;
 }) {
   const sp = await searchParams;
   const pool = getPool();
@@ -164,8 +164,18 @@ export default async function AdminPage({
       />
 
       {sp.notice && (
-        <div className="mb-4 rounded-lg border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
-          {sp.notice}
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+          <span>{sp.notice}</span>
+          {/* Next-step pull (#79): a named overlap just opened the door to joint rooms. */}
+          {sp.next === "joint" && (
+            <Link
+              href="/joint"
+              className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[13px] font-bold text-white shadow-[var(--shadow-float)] transition-colors duration-[140ms] hover:bg-blue-800"
+            >
+              Propose a joint pursuit
+              <span aria-hidden>→</span>
+            </Link>
+          )}
         </div>
       )}
 

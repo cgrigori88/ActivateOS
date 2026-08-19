@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPool } from "@/db/client";
-import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
+import { Bento, Card, NextStep, PageHeader, StatusBadge } from "@/components/ui";
 import { ListPicker } from "./list-picker";
 import { CcPicker, type CcContact } from "./cc-picker";
 import { QuerySelect } from "@/components/query-select";
@@ -89,7 +89,7 @@ export default async function CampaignDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ notice?: string; preview?: string; compose?: string }>;
+  searchParams: Promise<{ notice?: string; preview?: string; compose?: string; launched?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -204,6 +204,15 @@ export default async function CampaignDetailPage({
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
           {notice}
         </div>
+      )}
+
+      {/* Next-step pull (#79): the sequence is armed — its touches are dated now. */}
+      {sp.launched === "1" && ca.status === "launched" && (
+        <NextStep
+          message="Campaign launched — every approved touch now sits on the dated send plan."
+          href="/upcoming"
+          cta="Watch the scheduled sends"
+        />
       )}
 
       <div className="mb-6 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
