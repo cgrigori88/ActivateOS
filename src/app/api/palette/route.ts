@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
     for (const r of motions.rows)
       results.push({ group: "Motions", label: `${r.legal_name} — activation brief`, sub: r.status, href: `/briefs/${r.id}` });
     for (const r of partners.rows)
-      results.push({ group: "Partners", label: r.name, sub: r.partner_type, href: `/accounts?partner=${encodeURIComponent(r.name)}` });
+      results.push({ group: "Partners", label: r.name, sub: r.partner_type, href: `/partners/${r.id}` });
     for (const r of pursuits.rows)
       results.push({ group: "Joint pursuits", label: r.name, sub: r.status, href: `/joint/${r.id}` });
   } catch {

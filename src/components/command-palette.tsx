@@ -31,6 +31,7 @@ const ROOMS: Hit[] = [
   { group: "Rooms", label: "Contacts", sub: "buying committees", href: "/contacts" },
   { group: "Rooms", label: "Campaigns", sub: "outreach sequences", href: "/campaigns" },
   { group: "Rooms", label: "Scheduled sends", sub: "the dated send plan", href: "/upcoming" },
+  { group: "Rooms", label: "Partners", sub: "one room per partner", href: "/partners" },
   { group: "Rooms", label: "Joint pursuits", sub: "co-sell rooms", href: "/joint" },
   { group: "Rooms", label: "Pipeline", sub: "opportunities", href: "/pipeline" },
   { group: "Rooms", label: "Goals", sub: "targets", href: "/goals" },

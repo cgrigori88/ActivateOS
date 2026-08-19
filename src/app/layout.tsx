@@ -86,8 +86,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       if (Number(rows[0].pending_review) > 0) badges["/review"] = Number(rows[0].pending_review);
       // Cross-tenant shares waiting on the owner's accept/decline live in /admin.
       if (Number(rows[0].incoming_offers) > 0) badges["/admin"] = Number(rows[0].incoming_offers);
-      // Joint pursuits proposed by the partner, waiting on this side.
-      if (Number(rows[0].pending_pursuits) > 0) badges["/joint"] = Number(rows[0].pending_pursuits);
+      // Joint pursuits proposed by the partner, waiting on this side. The rail
+      // item is Partners (Joint lives as its tab), so the pill hangs there.
+      if (Number(rows[0].pending_pursuits) > 0) badges["/partners"] = Number(rows[0].pending_pursuits);
 
       // Routines whose LATEST run failed — red, not blue: something broke,
       // it isn't waiting on a decision (task #77).

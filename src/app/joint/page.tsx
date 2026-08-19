@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getPool } from "@/db/client";
 import { currentOrgId } from "@/lib/auth/org";
 import { Card, NextStep, PageHeader } from "@/components/ui";
+import { RoomTabs } from "@/components/room-tabs";
 import { listPartnerships } from "@/lib/partnerships/partnerships";
 import { listJointPursuits, namedOverlapAccounts } from "@/lib/partnerships/joint";
 import { settlementStatement, type SettlementStatement } from "@/lib/partnerships/settlement";
@@ -61,6 +62,7 @@ export default async function JointPage({
         title="Joint pursuits"
         subtitle="Co-sell rooms shared with a partner tenant. Each side sees the identical ledger; the broker proposes plays from data both sides already approved — nothing else."
       />
+      <RoomTabs tabs={[{ href: "/partners", label: "Partners" }, { href: "/joint", label: "Joint pursuits" }]} />
       {/* Next-step pull (#79): accepting fired the broker; its play waits in the room.
           Validated against the caller's own pursuit list — never a raw param. */}
       {sp.accepted && pursuits.some((x) => x.id === sp.accepted && x.status === "active") && (
