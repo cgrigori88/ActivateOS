@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { CommandPalette } from "@/components/command-palette";
 
 /**
  * Application shell: grouped left sidebar on desktop, horizontal nav on
@@ -15,6 +16,8 @@ interface NavItem {
   href: string;
   label: string;
   icon: ReactNode;
+  /** Extra routes that light this item up — rooms living as tabs under it. */
+  also?: string[];
 }
 interface NavGroup {
   label: string | null;
@@ -112,26 +115,31 @@ const icons = {
   ),
 };
 
+/* The rail follows the loop (#78, PLATFORM-REVIEW-2 §III.B): Decide → Build →
+   Partner → Measure → Platform. Queue, Scheduled sends and Provider health
+   live as TABS inside Today, Campaigns and Intelligence — their routes
+   survive, `also` keeps the rail item lit while you're on them. */
 const NAV: NavGroup[] = [
-  { label: null, items: [{ href: "/", label: "Today", icon: icons.today }] },
+  { label: null, items: [{ href: "/", label: "Today", icon: icons.today, also: ["/queue"] }] },
   {
-    label: "Ecosystem",
+    label: "Decide",
+    items: [
+      { href: "/review", label: "Review", icon: icons.review },
+      { href: "/motions", label: "Motions", icon: icons.motions, also: ["/briefs"] },
+    ],
+  },
+  {
+    label: "Build",
     items: [
       { href: "/intake", label: "Intake", icon: icons.intake },
       { href: "/mapping", label: "Mapping", icon: icons.mapping },
+      { href: "/accounts", label: "Accounts", icon: icons.accounts },
       { href: "/contacts", label: "Contacts", icon: icons.contacts },
+      { href: "/campaigns", label: "Campaigns", icon: icons.campaigns, also: ["/upcoming"] },
     ],
   },
   {
-    label: "Outreach",
-    items: [
-      { href: "/campaigns", label: "Campaigns", icon: icons.campaigns },
-      { href: "/upcoming", label: "Upcoming", icon: icons.upcoming },
-      { href: "/analytics", label: "Analytics", icon: icons.insights },
-    ],
-  },
-  {
-    label: "Intelligence",
+    label: "Partner",
     items: [
       {
         href: "/joint",
@@ -143,54 +151,48 @@ const NAV: NavGroup[] = [
           </svg>
         ),
       },
-      { href: "/accounts", label: "Accounts", icon: icons.accounts },
-      { href: "/sources", label: "Sources", icon: icons.sources },
-      { href: "/provider-health", label: "Provider health", icon: icons.providerHealth },
-      { href: "/review", label: "Review", icon: icons.review },
     ],
   },
   {
-    label: "Execution",
+    label: "Measure",
     items: [
-      { href: "/motions", label: "Motions", icon: icons.motions },
-      { href: "/queue", label: "Queue", icon: icons.queue },
-    ],
-  },
-  {
-    label: "Revenue",
-    items: [
-      { href: "/goals", label: "Goals", icon: icons.today },
       { href: "/pipeline", label: "Pipeline", icon: icons.pipeline },
+      { href: "/goals", label: "Goals", icon: icons.today },
+      { href: "/analytics", label: "Analytics", icon: icons.providerHealth },
       { href: "/insights", label: "Insights", icon: icons.insights },
+    ],
+  },
+  {
+    label: "Platform",
+    items: [
+      { href: "/sources", label: "Intelligence", icon: icons.sources, also: ["/provider-health"] },
     ],
   },
 ];
 
-const ADMIN_GROUP: NavGroup = {
-  label: "Platform",
-  items: [
-    {
-      href: "/routines",
-      label: "Routines",
-      icon: (
-        <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
-          <circle cx="8" cy="8" r="6.2" />
-          <path d="M8 4.5V8l2.5 1.5" />
-        </svg>
-      ),
-    },
-    {
-      href: "/admin",
-      label: "Admin",
-      icon: (
-        <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
-          <circle cx="8" cy="8" r="2.2" />
-          <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6L11 5M5 11l-1.4 1.4" />
-        </svg>
-      ),
-    },
-  ],
-};
+/* Owners see these appended to the Platform group. */
+const ADMIN_ITEMS: NavItem[] = [
+  {
+    href: "/routines",
+    label: "Routines",
+    icon: (
+      <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+        <circle cx="8" cy="8" r="6.2" />
+        <path d="M8 4.5V8l2.5 1.5" />
+      </svg>
+    ),
+  },
+  {
+    href: "/admin",
+    label: "Admin",
+    icon: (
+      <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+        <circle cx="8" cy="8" r="2.2" />
+        <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6L11 5M5 11l-1.4 1.4" />
+      </svg>
+    ),
+  },
+];
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
@@ -242,9 +244,10 @@ export function Shell({
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [dark, setDark] = useState(false);
+  const [palette, setPalette] = useState(false);
   const navRef = useRef<HTMLElement | null>(null);
 
-  /* The rail only sometimes overflows — 17 destinations fit on a tall window
+  /* The rail only sometimes overflows — 16 destinations fit on a tall window
      and not on a short one. A permanent scrollbar for an occasional overflow is
      chrome that earns nothing, so the bar is hidden and a fade marks the edge
      only when there is actually more to reach. */
@@ -270,7 +273,12 @@ export function Shell({
   // Auth surfaces stand alone: no rail, no chrome — you aren't "inside" yet.
   const bare = pathname.startsWith("/login");
 
-  const navGroups = isOwner === false ? NAV : [...NAV, ADMIN_GROUP];
+  // Owners get Routines + Admin folded into the Platform group (never a
+  // separate group — Intelligence belongs to everyone, governance to owners).
+  const navGroups =
+    isOwner === false
+      ? NAV
+      : NAV.map((g, i) => (i === NAV.length - 1 ? { ...g, items: [...g.items, ...ADMIN_ITEMS] } : g));
 
   /* Light is the default: the app opens light regardless of the OS setting, and
      only a stored choice turns it dark. */
@@ -318,9 +326,15 @@ export function Shell({
     });
   }, []);
 
-  // "[" toggles the rail from anywhere that is not a text field.
+  // "[" toggles the rail from anywhere that is not a text field; ⌘K / Ctrl-K
+  // opens the palette from ANYWHERE, text fields included — that is the point.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette((p) => !p);
+        return;
+      }
       const el = e.target as HTMLElement | null;
       const tag = el?.tagName?.toLowerCase();
       if (tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable) return;
@@ -336,10 +350,12 @@ export function Shell({
 
   useEffect(() => {
     setDrawer(false);
+    setPalette(false);
   }, [pathname]);
 
   const link = (item: NavItem) => {
-    const active = isActive(pathname, item.href);
+    const active =
+      isActive(pathname, item.href) || (item.also ?? []).some((h) => isActive(pathname, h));
     return (
       <Link
         key={item.href}
@@ -417,6 +433,27 @@ export function Shell({
           {!collapsed && <span className="text-[15px] font-bold tracking-[-0.03em]">PursuitOS</span>}
         </Link>
       </div>
+      <div className="px-3 pb-2">
+        <button
+          type="button"
+          onClick={() => setPalette(true)}
+          title="Search  ⌘K"
+          className={`flex w-full min-h-[34px] items-center gap-3 rounded-full px-3 py-[6px] text-[13px] font-medium text-rail-ink-soft transition-colors duration-[140ms] hover:bg-white/[0.07] hover:text-rail-ink ${
+            collapsed ? "justify-center" : ""
+          }`}
+        >
+          <svg viewBox="0 0 16 16" className="h-4 w-4 shrink-0" {...stroke}>
+            <circle cx="7" cy="7" r="4.5" />
+            <path d="M10.5 10.5L14 14" />
+          </svg>
+          {!collapsed && <span className="truncate">Search</span>}
+          {!collapsed && (
+            <kbd className="ml-auto rounded-md border border-white/15 px-1.5 py-0.5 font-mono text-[10px] leading-none text-rail-ink-soft/80">
+              ⌘K
+            </kbd>
+          )}
+        </button>
+      </div>
       <nav ref={navRef} className="pos-rail-scroll flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 pb-3">
         {navGroups.map((group, i) => (
           <div key={i}>
@@ -459,6 +496,7 @@ export function Shell({
 
   return (
     <div className="min-h-screen">
+      {palette && <CommandPalette onClose={() => setPalette(false)} />}
       {/* Chrome floats over content rather than butting against it. */}
       <aside
         className={`glass-rail fixed bottom-3 left-3 top-3 z-20 hidden flex-col overflow-hidden rounded-panel text-rail-ink transition-[width] duration-[220ms] md:flex ${

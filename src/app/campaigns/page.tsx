@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
+import { RoomTabs } from "@/components/room-tabs";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
 import { currentOrgId } from "@/lib/auth/org";
@@ -125,6 +126,7 @@ export default async function CampaignsPage({
         title="Campaigns"
         subtitle="Branded, multi-touch email sequences composed from approved motions — preview, approve per touch, then send."
       />
+      <RoomTabs tabs={[{ href: "/campaigns", label: "Campaigns" }, { href: "/upcoming", label: "Scheduled sends" }]} />
 
       {notice && (
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">

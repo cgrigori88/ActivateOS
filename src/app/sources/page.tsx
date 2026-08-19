@@ -1,5 +1,6 @@
 import { getPool } from "@/db/client";
 import { Card, PageHeader } from "@/components/ui";
+import { RoomTabs } from "@/components/room-tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export default async function SourcesPage() {
         title="Sources"
         subtitle="Every source earns its trust. Verification outcomes, audit history, and current sampling — per source."
       />
+      <RoomTabs tabs={[{ href: "/sources", label: "Sources" }, { href: "/provider-health", label: "Provider health" }]} />
       {sources.length === 0 && (
         <p className="text-sm text-neutral-500">Sources register automatically as evidence flows in.</p>
       )}

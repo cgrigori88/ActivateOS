@@ -1,5 +1,6 @@
 import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
+import { RoomTabs } from "@/components/room-tabs";
 import { loadProviderHealth, TIER_LABELS, type ProviderHealthRow } from "@/lib/intel/provider-health";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ export default async function ProviderHealthPage() {
         title="Provider health"
         subtitle="Every intelligence provider's live state — tier, cost, enabled/disabled reason, and run outcomes. Nothing is hidden."
       />
+      <RoomTabs tabs={[{ href: "/sources", label: "Sources" }, { href: "/provider-health", label: "Provider health" }]} />
 
       <div className="mb-6 flex flex-wrap gap-3">
         <Bento value={rows.length} label="registered" />

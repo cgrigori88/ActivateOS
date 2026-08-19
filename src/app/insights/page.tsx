@@ -71,7 +71,7 @@ export default async function InsightsPage({
     <main>
       <PageHeader
         title="Insights"
-        subtitle="What the outcome log says. Declared assumptions stay visibly declared until observed data earns the right to replace them."
+        subtitle="AI calibration — what the outcome log says. Declared assumptions stay visibly declared until observed data earns the right to replace them."
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">

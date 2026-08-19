@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
+import { RoomTabs } from "@/components/room-tabs";
 import { sendScheduledAction, unscheduleAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -45,9 +46,10 @@ export default async function UpcomingPage() {
   return (
     <main>
       <PageHeader
-        title="Upcoming"
-        subtitle="Scheduled sends across every launched sequence — the cadence, made concrete."
+        title="Scheduled sends"
+        subtitle="The dated send plan across every launched sequence — the cadence, made concrete."
       />
+      <RoomTabs tabs={[{ href: "/campaigns", label: "Campaigns" }, { href: "/upcoming", label: "Scheduled sends" }]} />
 
       {/* items-stretch + a sub line on both tiles keeps the pair the same height */}
       <div className="mb-4 flex flex-wrap items-stretch gap-3">

@@ -3,6 +3,7 @@ import { getPool } from "@/db/client";
 import { currentOrgId } from "@/lib/auth/org";
 import { rankNextActions, type NextAction, type PortfolioState } from "@/lib/portfolio/next-best";
 import { BandBadge, Card, CountChip, PageHeader, StatusBadge } from "@/components/ui";
+import { RoomTabs } from "@/components/room-tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -137,6 +138,7 @@ export default async function TodayPage() {
         title="Today"
         subtitle="What needs your decision, and where the next revenue is."
       />
+      <RoomTabs tabs={[{ href: "/", label: "Today" }, { href: "/queue", label: "Queue" }]} />
 
       <div className="mb-6 flex flex-wrap gap-2">
         <CountChip label="Awaiting approval" value={c.draft_motions} href="/motions" tone={Number(c.draft_motions) > 0 ? "amber" : "neutral"} />

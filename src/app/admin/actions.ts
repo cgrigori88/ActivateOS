@@ -178,7 +178,7 @@ export async function acceptGrantAction(grantId: string): Promise<void> {
   const failed = await attempt(() => acceptListGrant(pool, orgId, grantId), "Couldn't accept the share.");
   if (failed) notice(failed);
   revalidatePath("/admin");
-  notice("Share accepted — the list is now in your account populations.");
+  notice("Share accepted — the list is now in your account lists on Mapping.");
 }
 
 export async function declineGrantAction(grantId: string): Promise<void> {

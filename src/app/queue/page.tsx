@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
+import { RoomTabs } from "@/components/room-tabs";
 import { QuerySelect } from "@/components/query-select";
 import { resolveActionAction, resolveCommActionAction } from "./actions";
 
@@ -160,6 +161,7 @@ export default async function QueuePage({
         title="Action queue"
         subtitle="One worklist across active motions and live conversations. Overdue floats up — activation means scheduled work, not a status."
       />
+      <RoomTabs tabs={[{ href: "/", label: "Today" }, { href: "/queue", label: "Queue" }]} />
 
       {/* Bentos */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
