@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getPool } from "@/db/client";
 import { currentOrgId } from "@/lib/auth/org";
-import { Bento, Card, PageHeader } from "@/components/ui";
+import { Bento, Card, NextStep, PageHeader } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { listPartnerRooms } from "@/lib/partners/hub";
 
@@ -16,7 +16,12 @@ export const dynamic = "force-dynamic";
 const money = (n: number) =>
   n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : n > 0 ? `$${Math.round(n / 1000)}k` : "$0";
 
-export default async function PartnersPage() {
+export default async function PartnersPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ welcome?: string }>;
+}) {
+  const sp = (await searchParams) ?? {};
   const pool = getPool();
   const orgId = await currentOrgId(pool);
   if (!orgId) return <main>No organization.</main>;
@@ -34,6 +39,20 @@ export default async function PartnersPage() {
         subtitle="One room per partner — their book, the trust ladder, shared lists, joint rooms, and what has actually settled."
       />
       <RoomTabs tabs={[{ href: "/partners", label: "Partners" }, { href: "/joint", label: "Joint pursuits" }]} />
+
+      {/* Next-step pull after a /join redemption (B+2): the partnership is
+          live — climbing the disclosure ladder is what makes it real. */}
+      {(sp.welcome === "guest" || sp.welcome === "connected") && (
+        <NextStep
+          message={
+            sp.welcome === "guest"
+              ? "Your workspace is ready, and the partnership is live. Nothing is shared yet — the trust ladder is how that changes, one approved rung at a time."
+              : "Partnership active. Nothing new is shared yet — the trust ladder is where disclosure starts."
+          }
+          href="/admin"
+          cta="Open the trust ladder"
+        />
+      )}
 
       <div className="mb-6 flex flex-wrap gap-3">
         <Bento label="partners" value={partners.length} />

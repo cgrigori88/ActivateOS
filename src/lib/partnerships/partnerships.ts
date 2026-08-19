@@ -78,6 +78,13 @@ export async function createPartnershipInvite(
   );
   if (!lens[0]) throw new Error("That partner doesn't belong to your organization.");
 
+  // Guest cap (B+2): a guest workspace co-sells inside the partnership that
+  // created it — inviting partners of its own is the upgrade.
+  const { rows: kind } = await db.query<{ kind: string }>(`select kind from organizations where id = $1`, [orgId]);
+  if (kind[0]?.kind === "guest") {
+    throw new Error("Guest workspaces can't invite partners — upgrade to a full workspace to build your own network.");
+  }
+
   const inviteCode = makeInviteCode();
   const { rows } = await db.query<{ id: string }>(
     `insert into partnerships (initiator_org_id, initiator_partner_id, invite_code)

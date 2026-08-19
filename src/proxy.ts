@@ -98,6 +98,11 @@ export async function proxy(req: NextRequest) {
 
   if (!basicConfigured && !identityConfigured) return pass(); // local dev
 
+  // Guest-seat landing (B+2): /join/<code> is deliberately public — the
+  // ~93-bit invite code in the URL is the credential, its actions are
+  // rate-limited, and a dead code reveals nothing. Everything else stays gated.
+  if (req.nextUrl.pathname.startsWith("/join")) return pass();
+
   // 1. Basic Auth — the demo path, exactly as before.
   if (await basicAuthValid(req)) return pass();
 

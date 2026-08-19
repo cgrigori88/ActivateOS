@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { currentOrgId, currentRole } from "@/lib/auth/org";
@@ -12,6 +13,7 @@ import {
 } from "./actions";
 import { AgentKeys, type KeyRow } from "./agent-keys";
 import { auditEntries, listGrantViews, listPartnerships } from "@/lib/partnerships/partnerships";
+import { orgKind } from "@/lib/partnerships/guest";
 import {
   OVERLAP_LEVELS, LEVEL_LABEL, LEVEL_EXPLAIN, overlapLadder, bookSize,
   type BandsResults, type CountsResults, type NamedResults, type OverlapLadder,
@@ -55,6 +57,11 @@ export default async function AdminPage({
   }
 
   const orgId = await currentOrgId(pool);
+  const isGuest = orgId ? (await orgKind(pool, orgId)) === "guest" : false;
+  // Absolute base for shareable /join links — the invite code doubles as a
+  // guest-seat claim URL (B+2).
+  const hdrs = await headers();
+  const joinBase = `https://${hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "pursuitos.io"}`;
 
   // ── Access ────────────────────────────────────────────────────────────────
   const { rows: members } = orgId
@@ -179,6 +186,20 @@ export default async function AdminPage({
         </div>
       )}
 
+      {/* ── Guest workspace identity (B+2) ── */}
+      {isGuest && (
+        <Card tone="amber" className="mb-4">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Guest workspace</h2>
+          <p className="max-w-[88ch] text-sm text-neutral-600 dark:text-neutral-300">
+            This is a free seat, created from a partner&apos;s invite. Everything in it is yours — your book, your
+            contacts, your side of the trust ladder — behind the same tenant isolation as any workspace, and your
+            partner sees only what you explicitly approve. The one cap: a guest workspace can&apos;t invite partners
+            of its own. When you&apos;re ready to run your own partner network here, upgrading to a full workspace
+            lifts it.
+          </p>
+        </Card>
+      )}
+
       {/* ── Access ── */}
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Access</h2>
       <Card className="mb-4">
@@ -260,6 +281,9 @@ export default async function AdminPage({
                       {p.inviteCode && (
                         <div className="mt-0.5 font-mono text-[11px] text-neutral-500" title="Share this code with their owner">
                           code: {p.inviteCode}
+                          {/* The same code as a link claims a FREE guest workspace (B+2) —
+                              no PursuitOS account needed on their side. */}
+                          <span className="block text-accent dark:text-blue-300">{joinBase}/join/{p.inviteCode}</span>
                         </div>
                       )}
                     </td>
@@ -290,8 +314,16 @@ export default async function AdminPage({
         <div className="grid gap-6 lg:grid-cols-2">
           <div>
             <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Invite a partner org</h3>
-            <p className="mb-2 text-xs text-neutral-500">Bound to one of your partners; share the code out-of-band.</p>
-            {myPartners.length === 0 ? (
+            <p className="mb-2 text-xs text-neutral-500">
+              Bound to one of your partners. The code works two ways: their owner redeems it on their Admin page, or
+              — if they aren&apos;t on PursuitOS yet — the join link claims them a free guest workspace.
+            </p>
+            {isGuest ? (
+              <p className="text-sm text-neutral-500">
+                Guest workspaces can&apos;t invite partners — upgrading to a full workspace unlocks building your own
+                network here.
+              </p>
+            ) : myPartners.length === 0 ? (
               <p className="text-sm text-neutral-500">No partners yet — add one first.</p>
             ) : (
               <form action={createInviteAction} className="flex flex-wrap items-end gap-2">

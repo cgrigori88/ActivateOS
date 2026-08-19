@@ -59,10 +59,16 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // the caller's tenant. One query; failures never block the shell.
   const badges: Record<string, number> = {};
   const alerts: Record<string, number> = {};
+  let guest = false;
   try {
     const pool = getPool();
     const orgId = await currentOrgId(pool);
     if (orgId) {
+      const { rows: kindRows } = await pool.query<{ kind: string }>(
+        `select kind from organizations where id = $1`,
+        [orgId],
+      );
+      guest = kindRows[0]?.kind === "guest";
       const { rows } = await pool.query<{ pending_lists: string; pending_review: string; incoming_offers: string; pending_pursuits: string }>(
         `select
            (select count(*) from account_populations where status = 'pending' and org_id = $1) as pending_lists,
@@ -115,7 +121,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
       <body className="min-h-screen font-sans">
-        <Shell user={user} signOut={signOutAction} isOwner={isOwner} badges={badges} alerts={alerts}>{children}</Shell>
+        <Shell user={user} signOut={signOutAction} isOwner={isOwner} badges={badges} alerts={alerts} guest={guest}>{children}</Shell>
       </body>
     </html>
   );

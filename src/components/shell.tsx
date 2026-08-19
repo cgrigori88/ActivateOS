@@ -229,6 +229,7 @@ export function Shell({
   isOwner,
   badges,
   alerts,
+  guest,
 }: {
   children: ReactNode;
   /** Signed-in identity email; null in Basic-Auth / local-dev mode. */
@@ -240,6 +241,8 @@ export function Shell({
   badges?: Record<string, number>;
   /** FAILURE counts by nav href — red pill (something broke), never "waiting on you" blue. */
   alerts?: Record<string, number>;
+  /** Guest workspace (B+2): free seat riding a partnership; Admin explains the cap. */
+  guest?: boolean;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -272,7 +275,8 @@ export function Shell({
   }, [collapsed]);
 
   // Auth surfaces stand alone: no rail, no chrome — you aren't "inside" yet.
-  const bare = pathname.startsWith("/login");
+  // /join is the public guest-seat landing (B+2), same posture.
+  const bare = pathname.startsWith("/login") || pathname.startsWith("/join");
 
   // Owners get Routines + Admin folded into the Platform group (never a
   // separate group — Intelligence belongs to everyone, governance to owners).
@@ -433,6 +437,15 @@ export function Shell({
           <span className="text-accent-tint">{MARK}</span>
           {!collapsed && <span className="text-[15px] font-bold tracking-[-0.03em]">PursuitOS</span>}
         </Link>
+        {guest && !collapsed && (
+          <Link
+            href="/admin"
+            title="Guest workspace — a free seat riding your partnership. Admin explains what's included."
+            className="ml-auto rounded-full bg-amber/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-amber-300 hover:bg-amber/30"
+          >
+            Guest
+          </Link>
+        )}
       </div>
       <div className="px-3 pb-2">
         <button
