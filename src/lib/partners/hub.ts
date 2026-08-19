@@ -1,7 +1,8 @@
 import type { Pool } from "pg";
 import { partnerHub, type PartnerHubData } from "@/lib/mapping/partner-hub";
 import { overlapLadder, type OverlapLadder } from "@/lib/partnerships/overlap";
-import { listJointPursuits, type PursuitView } from "@/lib/partnerships/joint";
+import { listJointPursuits, namedOverlapAccounts, type PursuitView } from "@/lib/partnerships/joint";
+import { listWarmIntros, type WarmIntroView } from "@/lib/partnerships/warm-intros";
 import { settlementStatement, type SettlementStatement } from "@/lib/partnerships/settlement";
 
 /**
@@ -131,6 +132,12 @@ export interface PartnerRoomData {
   pursuits: PursuitView[];
   settlement: SettlementStatement | null;
   scorecard: PartnerScorecard;
+  /** Warm intros on this partnership (B+3), newest awaiting first. */
+  intros: WarmIntroView[];
+  /** Named-overlap accounts still open for an intro request. */
+  introEligible: { companyId: string; name: string }[];
+  /** For requests awaiting the viewer: their own contacts on each account. */
+  contactOptions: Record<string, { id: string; label: string }[]>;
 }
 
 export async function partnerRoom(db: Pool, orgId: string, partnerId: string): Promise<PartnerRoomData | null> {
@@ -197,6 +204,9 @@ export async function partnerRoom(db: Pool, orgId: string, partnerId: string): P
   let grants: PartnerRoomData["grants"] = [];
   let pursuits: PursuitView[] = [];
   let settlement: SettlementStatement | null = null;
+  let intros: WarmIntroView[] = [];
+  let introEligible: PartnerRoomData["introEligible"] = [];
+  const contactOptions: PartnerRoomData["contactOptions"] = {};
 
   if (partnership && partnership.status === "active") {
     ladder = await overlapLadder(db, orgId, partnership.id);
@@ -216,6 +226,28 @@ export async function partnerRoom(db: Pool, orgId: string, partnerId: string): P
     pursuits = (await listJointPursuits(db, orgId)).filter((x) => x.partnershipId === partnership.id);
     if (pursuits.some((x) => x.status === "active" || x.status === "closed")) {
       settlement = await settlementStatement(db, partnership.id);
+    }
+
+    // Warm intros (B+3): open requests, form eligibility, and — for requests
+    // awaiting THIS side — the viewer's own contacts on each account.
+    intros = await listWarmIntros(db, orgId, partnership.id);
+    const taken = new Set(intros.filter((w) => w.status !== "declined").map((w) => w.companyId));
+    if (ladder.rungs.named.state === "approved") {
+      introEligible = (await namedOverlapAccounts(db, partnership.id))
+        .filter((a) => !taken.has(a.company_id))
+        .map((a) => ({ companyId: a.company_id, name: a.name }));
+    }
+    const awaiting = intros.filter((w) => w.awaitingYou);
+    for (const w of awaiting) {
+      const { rows: cs } = await db.query<{ id: string; name: string | null; title: string | null; email: string }>(
+        `select id, name, title, email from contacts
+         where org_id = $1 and company_id = $2 order by name nulls last limit 25`,
+        [orgId, w.companyId],
+      );
+      contactOptions[w.companyId] = cs.map((c) => ({
+        id: c.id,
+        label: `${c.name ?? c.email}${c.title ? ` — ${c.title}` : ""}`,
+      }));
     }
   }
 
@@ -282,5 +314,8 @@ export async function partnerRoom(db: Pool, orgId: string, partnerId: string): P
     pursuits,
     settlement,
     scorecard,
+    intros,
+    introEligible,
+    contactOptions,
   };
 }

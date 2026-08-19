@@ -5,6 +5,7 @@ import { currentOrgId } from "@/lib/auth/org";
 import { BackLink, Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { partnerRoom } from "@/lib/partners/hub";
 import { OVERLAP_LEVELS, LEVEL_LABEL, type RungState } from "@/lib/partnerships/overlap";
+import { decideIntroAction, requestIntroAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -42,15 +43,24 @@ function rungChip(state: RungState["state"]) {
   );
 }
 
-export default async function PartnerRoomPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PartnerRoomPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ intro?: string }>;
+}) {
   const { id } = await params;
+  const sp = (await searchParams) ?? {};
   const pool = getPool();
   const orgId = await currentOrgId(pool);
   if (!orgId) return <main>No organization.</main>;
 
   const room = await partnerRoom(pool, orgId, id);
   if (!room) notFound();
-  const { partner, hub, book, partnership, ladder, grants, pursuits, settlement, scorecard } = room;
+  const { partner, hub, book, partnership, ladder, grants, pursuits, settlement, scorecard, intros, introEligible, contactOptions } = room;
+  const awaitingIntros = intros.filter((w) => w.awaitingYou);
+  const otherIntros = intros.filter((w) => !w.awaitingYou);
   const encName = encodeURIComponent(partner.name);
 
   const meta = [
@@ -228,6 +238,108 @@ export default async function PartnerRoomPage({ params }: { params: Promise<{ id
           )}
         </Card>
       </div>
+
+      {/* ── Warm intros — the ecosystem-qualified lead (B+3) ── */}
+      {partnership?.status === "active" && (
+        <Card tone="violet" className="mb-6">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Warm intros</h2>
+          <p className="mb-3 max-w-[88ch] text-xs text-neutral-500">
+            Ask {partner.name} for an introduction at any account in the approved named overlap. Accepting is the
+            disclosure: they choose which one contact to reveal — nothing else moves.
+          </p>
+
+          {sp.intro === "sent" && (
+            <div className="mb-3 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+              Request sent — {partner.name} sees your ask verbatim and decides.
+            </div>
+          )}
+
+          {/* Requests waiting on THIS side: the ask verbatim + the reveal choice. */}
+          {awaitingIntros.map((w) => (
+            <div key={w.id} className="mb-3 rounded-xl border border-accent/40 bg-accent/[0.05] p-4">
+              <p className="text-sm">
+                <span className="font-semibold">{w.otherOrgName ?? "Your partner"}</span> asks for an intro at{" "}
+                <span className="font-semibold">{w.accountName}</span>:
+              </p>
+              <p className="mt-1 border-l-2 border-accent/40 pl-3 text-sm italic text-neutral-600 dark:text-neutral-300">
+                {w.ask}
+              </p>
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                {(contactOptions[w.companyId] ?? []).length > 0 ? (
+                  <form action={decideIntroAction.bind(null, partner.id, w.id, true)} className="flex flex-wrap items-end gap-2">
+                    <label className="text-sm">
+                      <span className="mb-1 block text-xs text-neutral-500">Introduce (reveals name, title, email)</span>
+                      <select name="contactId" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                        {(contactOptions[w.companyId] ?? []).map((c) => (
+                          <option key={c.id} value={c.id}>{c.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">Introduce</button>
+                  </form>
+                ) : (
+                  <p className="text-xs text-neutral-500">
+                    You have no captured contacts on this account yet — Contacts is where they come from.
+                  </p>
+                )}
+                <form action={decideIntroAction.bind(null, partner.id, w.id, false)}>
+                  <button className="rounded-md px-4 py-1.5 text-sm font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-100 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-800">
+                    Decline
+                  </button>
+                </form>
+              </div>
+            </div>
+          ))}
+
+          {/* Everything else: sent requests and settled decisions. */}
+          {otherIntros.length > 0 && (
+            <ul className="mb-3 space-y-2">
+              {otherIntros.map((w) => (
+                <li key={w.id} className="text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 truncate font-medium">{w.accountName}</span>
+                    <span className="text-[11px] text-neutral-400">{w.mine ? "you asked" : `${w.otherOrgName ?? "they"} asked`}</span>
+                    <StatusBadge status={w.status === "accepted" ? "approved" : w.status === "declined" ? "rejected" : w.status} />
+                    <span className="ml-auto text-[11px] text-neutral-400">{w.decidedAt ?? w.createdAt}</span>
+                  </div>
+                  {w.status === "accepted" && w.revealedContact && (
+                    <p className="mt-1 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[13px] text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+                      Meet <span className="font-semibold">{w.revealedContact.name}</span>
+                      {w.revealedContact.title ? ` — ${w.revealedContact.title}` : ""} ·{" "}
+                      <span className="font-mono text-[12px]">{w.revealedContact.email}</span>
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* New request — named-overlap accounts without an open ask. */}
+          {introEligible.length > 0 ? (
+            <form action={requestIntroAction.bind(null, partner.id, partnership.id)} className="flex flex-wrap items-end gap-2">
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Account (named overlap)</span>
+                <select name="companyId" className="w-56 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                  {introEligible.map((a) => (
+                    <option key={a.companyId} value={a.companyId}>{a.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="min-w-64 flex-1 text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Who do you hope to reach, and why? (they see this verbatim)</span>
+                <input name="ask" required maxLength={500} placeholder="Trying to reach whoever owns the modernization budget…" className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+              </label>
+              <button className="rounded-md bg-violet-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-800">Request a warm intro</button>
+            </form>
+          ) : (
+            <p className="text-xs text-neutral-500">
+              {ladder?.rungs.named.state === "approved"
+                ? "Every named-overlap account already has a request — decisions live above."
+                : "Intro requests unlock with the named-accounts rung of the trust ladder."}
+            </p>
+          )}
+        </Card>
+      )}
 
       {/* ── Settlement ── */}
       {settlement && (

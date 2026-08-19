@@ -67,6 +67,60 @@ export default async function PipelinePage({
      order by o.updated_at desc`,
   );
 
+  // Renewal radar (B+3): every account on an approved list whose renewal_date
+  // sits inside 120 days — the co-sell clock. Engagement quiet = decay risk;
+  // partners on the account = who to attach before it runs out.
+  const orgIdForRadar = await currentOrgId(pool);
+  const { rows: renewalRows } = orgIdForRadar
+    ? await pool.query<{ company_id: string; legal_name: string; renewal: string; list_name: string }>(
+        `select distinct on (pm.company_id)
+                pm.company_id, c.legal_name,
+                pm.attributes->>'renewal_date' as renewal, ap.name as list_name
+         from population_members pm
+         join account_populations ap on ap.id = pm.population_id
+           and ap.org_id = $1 and ap.status = 'approved'
+         join companies c on c.id = pm.company_id
+         where pm.attributes ? 'renewal_date'
+           and (pm.attributes->>'renewal_date')::date
+               between now()::date and (now() + interval '120 days')::date
+         order by pm.company_id, (pm.attributes->>'renewal_date')::date asc`,
+        [orgIdForRadar],
+      )
+    : { rows: [] };
+  const renewalIds = renewalRows.map((r) => r.company_id);
+  const engagementByCompany = new Map<string, number>();
+  const partnersByRenewal = new Map<string, string[]>();
+  if (renewalIds.length) {
+    const { rows: eng } = await pool.query<{ company_id: string; score: string }>(
+      `select company_id, max(engagement_score) as score
+       from engagement_scores where company_id = any($1) group by company_id`,
+      [renewalIds],
+    );
+    for (const e of eng) engagementByCompany.set(e.company_id, Number(e.score));
+    const { rows: pns } = await pool.query<{ company_id: string; partners: string[] }>(
+      `select pm.company_id, array_agg(distinct p.name order by p.name) as partners
+       from population_members pm
+       join account_populations ap on ap.id = pm.population_id
+         and ap.org_id = $2 and ap.partner_id is not null and ap.status = 'approved'
+       join partners p on p.id = ap.partner_id
+       where pm.company_id = any($1) group by pm.company_id`,
+      [renewalIds, orgIdForRadar],
+    );
+    for (const r of pns) partnersByRenewal.set(r.company_id, r.partners);
+  }
+  const renewals = renewalRows
+    .map((r) => ({
+      ...r,
+      daysOut: Math.max(0, Math.ceil((new Date(r.renewal).getTime() - Date.now()) / 86_400_000)),
+      openUsd: allOpps
+        .filter((o) => o.company_id === r.company_id && !["closed_won", "closed_lost"].includes(o.stage))
+        .reduce((s, o) => s + Number(o.amount_usd ?? 0), 0),
+      engagement: engagementByCompany.get(r.company_id) ?? null,
+      partners: partnersByRenewal.get(r.company_id) ?? [],
+    }))
+    .sort((a, b) => a.daysOut - b.daysOut)
+    .slice(0, 12);
+
   // Timeframe filter: opportunities whose expected close falls within N days.
   const horizon = timeframe ? Date.now() + timeframe * 86_400_000 : null;
   const opps = horizon
@@ -162,6 +216,47 @@ export default async function PipelinePage({
               <Bento label="won" value={wonCount} subs={[`$${Math.round(wonUsd / 1000)}k`]} href="/pipeline?stage=closed_won" />
               <Bento label="reg'd deals" value={regRows.length} href="/pipeline?view=review" />
             </div>
+
+            {/* ── Renewal radar (B+3): the co-sell clock ── */}
+            {renewals.length > 0 && (
+              <Card tone="amber" className="mb-5">
+                <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Renewal radar</h2>
+                <p className="mb-3 text-xs text-neutral-500">
+                  Renewals inside 120 days across your approved lists. Quiet engagement is decay risk; the partners
+                  column is who to attach before the clock runs out.
+                </p>
+                <ul className="space-y-1.5">
+                  {renewals.map((r) => (
+                    <li key={r.company_id} className="flex flex-wrap items-center gap-2 text-sm">
+                      <Link href={`/accounts/${r.company_id}`} className="min-w-0 font-medium hover:underline">
+                        {r.legal_name}
+                      </Link>
+                      <span
+                        className={`tnum rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                          r.daysOut <= 30
+                            ? "bg-rose/12 text-rose dark:text-rose-300"
+                            : "bg-amber/14 text-amber dark:text-amber-300"
+                        }`}
+                      >
+                        in {r.daysOut}d
+                      </span>
+                      <span className="text-[11px] text-neutral-400">{r.renewal} · from “{r.list_name}”</span>
+                      <span className="ml-auto flex items-center gap-2 text-[11.5px]">
+                        {r.partners.length > 0 && (
+                          <span className="text-violet dark:text-violet-300">{r.partners.join(", ")}</span>
+                        )}
+                        <span className={r.engagement == null ? "text-neutral-400" : "text-neutral-500"}>
+                          {r.engagement == null ? "engagement quiet" : `engagement ${Math.round(r.engagement)}`}
+                        </span>
+                        <span className={r.openUsd > 0 ? "tnum font-semibold" : "text-neutral-400"}>
+                          {r.openUsd > 0 ? `$${Math.round(r.openUsd / 1000)}k open` : "no open opp"}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
 
             {/* Roll-up chips — each is a count AND an atomic filter (click to slice). */}
             {(() => {

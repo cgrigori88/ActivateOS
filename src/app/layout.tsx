@@ -69,7 +69,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         [orgId],
       );
       guest = kindRows[0]?.kind === "guest";
-      const { rows } = await pool.query<{ pending_lists: string; pending_review: string; incoming_offers: string; pending_pursuits: string }>(
+      const { rows } = await pool.query<{ pending_lists: string; pending_review: string; incoming_offers: string; pending_pursuits: string; pending_intros: string }>(
         `select
            (select count(*) from account_populations where status = 'pending' and org_id = $1) as pending_lists,
            (select count(*) from review_queue where status = 'pending' and org_id = $1) as pending_review,
@@ -77,6 +77,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             join partnerships p on p.id = jp.partnership_id
             where jp.status = 'proposed' and jp.proposed_by_org <> $1
               and (p.initiator_org_id = $1 or p.counterpart_org_id = $1)) as pending_pursuits,
+           (select count(*) from warm_intro_requests w
+            join partnerships p on p.id = w.partnership_id
+            where w.status = 'requested' and w.requested_by_org <> $1
+              and (p.initiator_org_id = $1 or p.counterpart_org_id = $1)) as pending_intros,
            (select count(*) from list_grants g
             join partnerships p on p.id = g.partnership_id
             where g.status = 'offered' and g.from_org_id <> $1
@@ -92,9 +96,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       if (Number(rows[0].pending_review) > 0) badges["/review"] = Number(rows[0].pending_review);
       // Cross-tenant shares waiting on the owner's accept/decline live in /admin.
       if (Number(rows[0].incoming_offers) > 0) badges["/admin"] = Number(rows[0].incoming_offers);
-      // Joint pursuits proposed by the partner, waiting on this side. The rail
-      // item is Partners (Joint lives as its tab), so the pill hangs there.
-      if (Number(rows[0].pending_pursuits) > 0) badges["/partners"] = Number(rows[0].pending_pursuits);
+      // Partner-side decisions waiting on this org — proposed pursuits plus
+      // warm-intro asks (B+3) — pool on the Partners rail item.
+      const partnerWaiting = Number(rows[0].pending_pursuits) + Number(rows[0].pending_intros);
+      if (partnerWaiting > 0) badges["/partners"] = partnerWaiting;
 
       // Routines whose LATEST run failed — red, not blue: something broke,
       // it isn't waiting on a decision (task #77).
