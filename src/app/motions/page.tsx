@@ -9,6 +9,7 @@ import {
   activateMotionAction,
   approveMotionAction,
   completeMotionAction,
+  draftMotionsAction,
   rejectMotionAction,
   setMotionGoalAction,
 } from "./actions";
@@ -50,7 +51,18 @@ const GROUPS: Record<string, { label: string; key: (m: MotionRow) => string }> =
 export default async function MotionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; partner?: string; goal?: string; group?: string; approved?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    partner?: string;
+    goal?: string;
+    group?: string;
+    approved?: string;
+    compose?: string;
+    drafted?: string;
+    failed?: string;
+    skipped?: string;
+    more?: string;
+  }>;
 }) {
   const sp = await searchParams;
   const groupKey = GROUPS[sp.group ?? "status"] ? (sp.group ?? "status") : "status";
@@ -72,6 +84,35 @@ export default async function MotionsPage({
   );
   const orgId = await currentOrgId(pool);
   const goals = orgId ? await goalOptions(pool, orgId) : [];
+
+  // Composer targets (task #83): approved lists with how many members are
+  // still motion-less, and the top unmotioned accounts by propensity.
+  const { rows: draftLists } = orgId
+    ? await pool.query<{ id: string; name: string; partner_name: string | null; members: string; ready: string }>(
+        `select ap.id, ap.name, p.name as partner_name,
+                (select count(*) from population_members pm where pm.population_id = ap.id) as members,
+                (select count(*) from population_members pm where pm.population_id = ap.id
+                   and not exists (select 1 from revenue_motions m
+                                   where m.company_id = pm.company_id
+                                     and m.status in ('draft', 'approved', 'active'))) as ready
+         from account_populations ap
+         left join partners p on p.id = ap.partner_id
+         where ap.org_id = $1 and ap.status = 'approved'
+         order by ap.name`,
+        [orgId],
+      )
+    : { rows: [] };
+  const { rows: draftCandidates } = await pool.query<{ company_id: string; legal_name: string; score: string }>(
+    `select company_id, legal_name, score from (
+       select distinct on (p.company_id) p.company_id, c.legal_name, p.score
+       from propensity_scores p join companies c on c.id = p.company_id
+       where not exists (select 1 from revenue_motions m
+                         where m.company_id = p.company_id
+                           and m.status in ('draft', 'approved', 'active'))
+       order by p.company_id, p.computed_at desc
+     ) x order by x.score desc limit 18`,
+  );
+  const draftedN = sp.drafted !== undefined ? Number(sp.drafted) : null;
 
   const justApproved = sp.approved ? all.find((m) => m.id === sp.approved && m.status === "approved") : undefined;
   const partnerOptions = [...new Set(all.map((m) => m.partner_name).filter(Boolean) as string[])];
@@ -116,6 +157,91 @@ export default async function MotionsPage({
           cta="Compose the campaign"
         />
       )}
+
+      {/* Draft-run results (task #83) — honest about every account: drafted,
+          skipped (open motion), failed (no score/evidence/AI), still queued. */}
+      {draftedN !== null && (
+        <div
+          className={`mb-4 rounded-lg border px-4 py-2.5 text-sm ${
+            draftedN > 0
+              ? "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300"
+              : "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+          }`}
+        >
+          {draftedN > 0 ? `Drafted ${draftedN} motion${draftedN === 1 ? "" : "s"} — review below.` : "Nothing drafted."}
+          {Number(sp.skipped ?? 0) > 0 && ` ${sp.skipped} skipped (already carry an open motion).`}
+          {Number(sp.failed ?? 0) > 0 && ` ${sp.failed} couldn't draft (each needs a propensity score, verified evidence, and AI configured).`}
+          {Number(sp.more ?? 0) > 0 && ` ${sp.more} more ready — run again for the next batch of 10.`}
+        </div>
+      )}
+
+      {/* ── Draft motions (task #83): scalable targeting — a list or a pick ── */}
+      <details className="pos-card glass mb-6 rounded-card p-5" open={sp.compose === "1" || draftedN !== null}>
+        <summary className="cursor-pointer text-sm font-semibold">
+          ＋ Draft motions (AI)
+          <span className="ml-2 text-xs font-normal text-neutral-500">
+            target a whole list or pick accounts — every draft grounded in that account&apos;s evidence
+          </span>
+        </summary>
+        <div className="mt-4 grid gap-6 lg:grid-cols-2">
+          <form action={draftMotionsAction}>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">From a list</h3>
+            <p className="mb-2 text-xs text-neutral-500">
+              Targets every account on the list. &ldquo;Ready&rdquo; counts members without an open motion.
+            </p>
+            {draftLists.length === 0 ? (
+              <p className="text-sm text-neutral-500">No approved lists yet — Intake and Mapping create them.</p>
+            ) : (
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="text-sm">
+                  <span className="mb-1 block text-xs text-neutral-500">List</span>
+                  <select name="populationId" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                    {draftLists.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}{l.partner_name ? ` · ${l.partner_name}` : ""} — {l.ready}/{l.members} ready
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+                  Draft motions from list
+                </button>
+              </div>
+            )}
+          </form>
+
+          <form action={draftMotionsAction}>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Pick accounts</h3>
+            <p className="mb-2 text-xs text-neutral-500">
+              Top accounts by propensity without an open motion.
+            </p>
+            {draftCandidates.length === 0 ? (
+              <p className="text-sm text-neutral-500">
+                Every scored account already has an open motion — the pipeline scores new ones as intelligence lands.
+              </p>
+            ) : (
+              <>
+                <div className="mb-3 grid max-h-44 gap-1 overflow-y-auto pr-1 scroll-thin sm:grid-cols-2">
+                  {draftCandidates.map((c) => (
+                    <label key={c.company_id} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-neutral-900/[0.04] dark:hover:bg-white/5">
+                      <input type="checkbox" name="companyIds" value={c.company_id} className="h-4 w-4 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">{c.legal_name}</span>
+                      <span className="tnum text-xs text-neutral-400">{Math.round(Number(c.score))}</span>
+                    </label>
+                  ))}
+                </div>
+                <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+                  Draft motions for selected
+                </button>
+              </>
+            )}
+          </form>
+        </div>
+        <p className="mt-3 text-[11px] text-neutral-400">
+          Drafts run in batches of 10, highest propensity first — rerun for the next batch. Accounts already carrying
+          a draft, approved, or active motion are skipped, so drafting a whole list is always safe.
+        </p>
+      </details>
 
       {/* Bentos */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

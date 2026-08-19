@@ -12,11 +12,19 @@ import {
 import { loadCompanyIntel } from "@/lib/intel/company-intel";
 import { currentOrgId } from "@/lib/auth/org";
 import { setTeamStatusAction } from "./actions";
+import { draftAccountMotionAction } from "@/app/motions/actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function AccountPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AccountPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ notice?: string }>;
+}) {
   const { id } = await params;
+  const sp = (await searchParams) ?? {};
   const pool = getPool();
 
   const { rows: companies } = await pool.query(
@@ -37,6 +45,16 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
     [id, digestOrgId],
   );
   const digest = digests[0] ?? null;
+
+  // Draft-a-motion affordance (task #83): one open motion per account — if
+  // one exists the button becomes the road to it instead of a duplicate.
+  const { rows: openMotions } = await pool.query<{ id: string; status: string }>(
+    `select id, status from revenue_motions
+     where company_id = $1 and status in ('draft', 'approved', 'active')
+     order by created_at desc limit 1`,
+    [id],
+  );
+  const openMotion = openMotions[0] ?? null;
 
   const { rows: scores } = await pool.query(
     `select p.id, p.score, p.band, n.slug, p.computed_at,
@@ -184,6 +202,32 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
           .filter(Boolean)
           .join(" · ")}
       />
+
+      {sp.notice && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          {sp.notice}
+        </div>
+      )}
+
+      {/* Draft a motion from the room (task #83) — same evidence-grounded
+          agent as Mapping and the Motions composer. */}
+      <div className="-mt-3 mb-6">
+        {openMotion ? (
+          <Link
+            href={`/briefs/${openMotion.id}`}
+            className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300/80 px-4 py-1.5 text-[13px] font-semibold transition-colors duration-[140ms] hover:bg-neutral-900/[0.04] dark:border-white/15 dark:hover:bg-white/10"
+          >
+            Open motion ({openMotion.status}) — read the brief <span aria-hidden>→</span>
+          </Link>
+        ) : (
+          <form action={draftAccountMotionAction.bind(null, id)}>
+            <button className="inline-flex items-center gap-1.5 rounded-full bg-blue-700 px-4 py-1.5 text-[13px] font-bold text-white transition-colors duration-[140ms] hover:bg-blue-800">
+              Draft a motion (AI)
+            </button>
+            <span className="ml-2 text-[11px] text-neutral-400">grounded in this account&apos;s evidence — lands as a draft for your approval</span>
+          </form>
+        )}
+      </div>
 
       {/* Latest account digest (Routines, task #73) — what changed since the
           last run, written by the weekly digest routine. */}
