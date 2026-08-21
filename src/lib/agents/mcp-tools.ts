@@ -6,6 +6,8 @@ import { listJointPursuits, pursuitEvents } from "../partnerships/joint";
 import { overlapLadder } from "../partnerships/overlap";
 import { listPartnerships } from "../partnerships/partnerships";
 import { upsertTouch } from "../comms/authoring";
+import { dealTimeline } from "../context/timeline";
+import { accountDivergences } from "../context/divergence";
 
 /**
  * BYO-bot tool surface (task #76). The tools a personal agent may call
@@ -219,6 +221,44 @@ export const MCP_TOOLS: McpToolDef[] = [
         campaign: rows[0].name,
         status: "draft",
         note: "Draft only — a human approves it in the campaign room before anything can send.",
+      };
+    },
+  },
+  {
+    name: "deal_context",
+    description:
+      "The full fused context of one account as a chronological timeline: gathered evidence (with source provenance), outreach sends and replies, motion lifecycle, opportunities, joint-room events and warm intros from the partnership fabric (consent-filtered — only what both sides already approved), and renewal signals. Includes reality-divergence findings where systems disagree. This is the whole deal, both companies' consented halves. Read-only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        account: { type: "string", description: "Account (company) name, fuzzy matched" },
+        limit: { type: "number", description: "Max timeline events (default 40, max 80)" },
+      },
+      required: ["account"],
+      additionalProperties: false,
+    },
+    async run(pool, orgId, args) {
+      const q = String(args.account ?? "").trim();
+      if (!q) throw new Error("account is required");
+      const limit = Math.min(Math.max(Number(args.limit) || 40, 1), 80);
+      const { rows: companies } = await pool.query<{ id: string; legal_name: string }>(
+        `select id, legal_name from companies where legal_name ilike $1 order by legal_name limit 1`,
+        [`%${q}%`],
+      );
+      const c = companies[0];
+      if (!c) return { found: false, message: `No account matching "${q}".` };
+      const [timeline, allDivergences] = await Promise.all([
+        dealTimeline(pool, orgId, c.id, limit),
+        accountDivergences(pool, orgId),
+      ]);
+      return {
+        found: true,
+        account: c.legal_name,
+        timeline: timeline.map(({ href: _href, ...rest }) => rest),
+        divergences: allDivergences
+          .filter((d) => d.companyId === c.id)
+          .map((d) => ({ kind: d.kind, finding: d.text })),
+        note: "Every event names its source. Partner-side events are the symmetric records both tenants read identically — nothing here exceeds what the partnership already consented to.",
       };
     },
   },

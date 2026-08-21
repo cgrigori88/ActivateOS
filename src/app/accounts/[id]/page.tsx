@@ -13,6 +13,7 @@ import { loadCompanyIntel } from "@/lib/intel/company-intel";
 import { currentOrgId } from "@/lib/auth/org";
 import { setTeamStatusAction } from "./actions";
 import { draftAccountMotionAction } from "@/app/motions/actions";
+import { dealTimeline, type TimelineEvent } from "@/lib/context/timeline";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,11 @@ export default async function AccountPage({
     [id],
   );
   const openMotion = openMotions[0] ?? null;
+
+  // The account flight recorder (task #83): every system's events fused into
+  // one record, each with provenance; the partner half consent-filtered by
+  // construction.
+  const timeline: TimelineEvent[] = digestOrgId ? await dealTimeline(pool, digestOrgId, id, 40) : [];
 
   const { rows: scores } = await pool.query(
     `select p.id, p.score, p.band, n.slug, p.computed_at,
@@ -253,6 +259,54 @@ export default async function AccountPage({
                 }`}>{it.type}</span>
                 <span className="min-w-0 flex-1">{it.text}</span>
                 <span className="shrink-0 text-xs text-neutral-400">{it.at}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {/* ── Deal Timeline — the flight recorder (task #83). Everything fused,
+          every event with provenance, the partner half consent-filtered. ── */}
+      {timeline.length > 0 && (
+        <Card className="mb-6">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Deal timeline</h2>
+            <span className="text-[11px] text-neutral-400">
+              every system, one record — each event names its source
+            </span>
+          </div>
+          <ul className="space-y-1.5">
+            {timeline.map((ev, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm">
+                <span className="tnum mt-0.5 w-[76px] shrink-0 font-mono text-[11px] text-neutral-400">
+                  {ev.at.slice(0, 10)}
+                </span>
+                <span
+                  className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                    ev.kind === "joint" || ev.kind === "intro"
+                      ? "bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400"
+                      : ev.kind === "renewal"
+                        ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
+                        : ev.kind === "reply" || ev.kind === "opportunity"
+                          ? "bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400"
+                          : ev.kind === "send" || ev.kind === "motion"
+                            ? "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
+                            : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"
+                  }`}
+                >
+                  {ev.kind}
+                </span>
+                <span className="min-w-0 flex-1">
+                  {ev.href ? (
+                    <Link href={ev.href} className="hover:underline">{ev.title}</Link>
+                  ) : (
+                    ev.title
+                  )}
+                  {ev.detail && <span className="text-neutral-400"> — {ev.detail}</span>}
+                </span>
+                <span className="shrink-0 font-mono text-[10.5px] text-neutral-400" title="provenance">
+                  {ev.source}
+                </span>
               </li>
             ))}
           </ul>

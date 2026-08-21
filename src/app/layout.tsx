@@ -24,7 +24,7 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "PursuitOS",
-  description: "The AI decision and orchestration layer for partner-led revenue.",
+  description: "PursuitOS closes the partner-context gap: consented context, joint execution, and settled revenue between companies.",
 };
 
 /* Applies a remembered dark choice BEFORE first paint — the shell's toggle owns

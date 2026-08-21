@@ -182,14 +182,14 @@ export default async function LoginPage({
 
           <div className="absolute inset-x-0 bottom-0 p-10">
             <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-300/70">
-              Partner-led revenue
+              The partner-context gap
             </p>
             <p className="mt-3 max-w-[22ch] text-[34px] font-extrabold leading-[1.08] tracking-[-0.03em] text-white">
-              Know where revenue moves next.
+              Your CRM ends at your company&apos;s wall. Revenue doesn&apos;t.
             </p>
             <p className="mt-4 max-w-[46ch] text-[14px] leading-relaxed text-white/55">
-              PursuitOS scores the intersection of customer, product, partner, seller and timing,
-              then assembles the motion to pursue it.
+              PursuitOS holds the whole deal — your context and your partner&apos;s consented half —
+              then runs the motion and settles the outcome on a ledger both sides trust.
             </p>
           </div>
         </div>

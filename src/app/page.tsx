@@ -4,6 +4,7 @@ import { currentOrgId } from "@/lib/auth/org";
 import { rankNextActions, type NextAction, type PortfolioState } from "@/lib/portfolio/next-best";
 import { BandBadge, Card, CountChip, PageHeader, StatusBadge } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
+import { accountDivergences } from "@/lib/context/divergence";
 
 export const dynamic = "force-dynamic";
 
@@ -100,6 +101,11 @@ export default async function TodayPage() {
   const pool = getPool();
   const nextActions = await loadNextActions();
 
+  // Reality-divergence detection (task #83): where the systems disagree —
+  // with each other, or with the partner's side of the deal.
+  const divOrgId = await currentOrgId(pool);
+  const divergences = divOrgId ? await accountDivergences(pool, divOrgId, 6) : [];
+
   const [{ rows: counts }, { rows: drafts }, { rows: top }, { rows: activity }] =
     await Promise.all([
       pool.query(
@@ -165,6 +171,39 @@ export default async function TodayPage() {
               </li>
             ))}
           </ol>
+        </Card>
+      )}
+
+      {/* ── Where your systems disagree (task #83): reality divergence, with
+          the receipts — including the cross-company rules only a two-sided
+          platform can run. ── */}
+      {divergences.length > 0 && (
+        <Card tone="amber" className="mb-6">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              Where your systems disagree
+            </h2>
+            <span className="text-[11px] text-neutral-400">each row names both records in conflict</span>
+          </div>
+          <ul className="space-y-2">
+            {divergences.map((d, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm">
+                <span
+                  className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                    d.kind === "joint_vs_pipeline"
+                      ? "bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400"
+                      : "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
+                  }`}
+                >
+                  {d.kind.replace(/_/g, " ")}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <Link href={d.href} className="font-medium hover:underline">{d.account}</Link>
+                  <span className="text-neutral-500"> — {d.text}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
         </Card>
       )}
 
