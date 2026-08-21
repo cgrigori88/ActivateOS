@@ -203,6 +203,28 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
     }
   }
 
+  // 8b. CRM-export snapshots: what the customer's own system said, verbatim.
+  const { rows: snaps } = await db.query<{
+    opportunity_name: string; stage: string; stage_raw: string | null;
+    amount_usd: string | null; reported_at: Date;
+  }>(
+    `select opportunity_name, stage, stage_raw, amount_usd, reported_at
+     from crm_snapshots where org_id = $2 and company_id = $1
+     order by reported_at desc limit 10`,
+    [companyId, orgId],
+  );
+  for (const s of snaps) {
+    const amt = s.amount_usd ? ` ($${Math.round(Number(s.amount_usd) / 1000)}k)` : "";
+    events.push({
+      at: iso(s.reported_at),
+      kind: "opportunity",
+      title: `CRM reports "${s.opportunity_name}" at ${s.stage_raw ?? s.stage}${amt}`,
+      detail: null,
+      source: "crm_export",
+      href: "/pipeline",
+    });
+  }
+
   // 8. Renewal signals from approved lists (upcoming inside 180 days).
   const { rows: renewals } = await db.query<{ renewal: string; list: string }>(
     `select distinct on (ap.id) pm.attributes->>'renewal_date' as renewal, ap.name as list

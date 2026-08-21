@@ -36,7 +36,7 @@ export interface AnalyzeResult {
 
 export async function analyzeCsvToBatch(
   db: pg.PoolClient,
-  args: { orgId: string; csv: string; filename: string | null; uploadedBy?: string },
+  args: { orgId: string; csv: string; filename: string | null; uploadedBy?: string; kind?: "book" | "crm" },
 ): Promise<AnalyzeResult> {
   if (Buffer.byteLength(args.csv, "utf8") > MAX_CSV_BYTES) {
     throw new Error(`File too large — the cap is ${Math.round(MAX_CSV_BYTES / 1024 / 1024)}MB per upload.`);
@@ -72,6 +72,7 @@ export async function analyzeCsvToBatch(
       args.uploadedBy ?? null,
       sniffed.rows.length,
       JSON.stringify({
+        kind: args.kind ?? "book",
         delimiter: sniffed.delimiter,
         hasHeaderRow: sniffed.hasHeaderRow,
         headers: sniffed.headers,
@@ -328,6 +329,205 @@ export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Pr
   }
 }
 
+// ── CRM lane (task #83) ──────────────────────────────────────────────────────
+
+/**
+ * Map a CRM's stage vocabulary onto the platform's. Unrecognized stages fall
+ * to 'qualification' but keep the verbatim string in stage_raw — the snapshot
+ * never loses what the CRM actually said.
+ */
+export function normalizeCrmStage(raw: string): { stage: string; recognized: boolean } {
+  const s = raw.toLowerCase().replace(/[^a-z]/g, "");
+  const table: [RegExp, string][] = [
+    [/closedwon|won$/, "closed_won"],
+    [/closedlost|lost$|disqualified|churn/, "closed_lost"],
+    [/discovery|prospect|new|open$|lead/, "discovery"],
+    [/qualif/, "qualification"],
+    [/validat|evaluat|needsanalysis|demo|poc|pilot|technical/, "business_validation"],
+    [/proposal|quote|pricing|presentation/, "proposal"],
+    [/negotiat|contract|commit|legal|review/, "negotiation"],
+  ];
+  for (const [re, stage] of table) if (re.test(s)) return { stage, recognized: true };
+  return { stage: "qualification", recognized: false };
+}
+
+export interface CrmCommitArgs {
+  orgId: string;
+  batchId: string;
+  targets: Record<number, string>;
+}
+
+export interface CrmCommitResult {
+  imported: number;
+  skippedNoCompany: number;
+  matched: number;
+  created: number;
+  snapshots: number;
+  oppsCreated: number;
+  evidenceAdded: number;
+}
+
+/**
+ * Commit a CRM opportunity export. The contract, stated plainly: the CRM's
+ * version of a deal is a SIGNAL with provenance, not the truth —
+ *
+ *  - every row lands as a crm_snapshot (stage verbatim + normalized, amount,
+ *    close date) and as first-party evidence through the same quality gates
+ *    as every other source;
+ *  - a live opportunity is created ONLY when we hold no open one for the
+ *    account (sync-in for deals we've never seen);
+ *  - an existing record is never overwritten — divergence detection compares
+ *    the latest snapshot against it and says so on Today.
+ *
+ * Staged rows are deleted on commit, same data-minimization contract as the
+ * book lane.
+ */
+export async function commitCrmBatch(db: pg.PoolClient, args: CrmCommitArgs): Promise<CrmCommitResult> {
+  const { rows: batchRows } = await db.query<{ id: string; status: string; mapping: { kind?: string } | null }>(
+    `select id, status, mapping from import_batches where id = $1 and org_id = $2`,
+    [args.batchId, args.orgId],
+  );
+  const batch = batchRows[0];
+  if (!batch) throw new Error("Import not found (or it belongs to another organization).");
+  if (batch.status !== "analyzed") throw new Error(`Import is ${batch.status} — only an analyzed upload can be committed.`);
+  if (batch.mapping?.kind !== "crm") throw new Error("This upload isn't a CRM export — commit it as a list instead.");
+
+  const companyCol = Object.entries(args.targets).find(([, t]) => t === "company")?.[0];
+  if (companyCol == null) throw new Error("Map one column to Company name first — accounts need an identity.");
+  const companyIdx = Number(companyCol);
+
+  await db.query(`update import_batches set status = 'importing' where id = $1`, [args.batchId]);
+
+  try {
+    const { rows: staged } = await db.query<{ row_no: number; data: string[] }>(
+      `select row_no, data from import_rows where batch_id = $1 order by row_no`,
+      [args.batchId],
+    );
+
+    const { rows: existing } = await db.query<{
+      id: string; normalized_name: string; primary_domain: string | null; country: string | null;
+    }>(`select id, normalized_name, primary_domain, country from companies`);
+    const candidates: CompanyCandidate[] = existing.map((c) => ({
+      id: c.id,
+      normalizedName: c.normalized_name,
+      primaryDomain: c.primary_domain,
+      country: c.country,
+    }));
+
+    await db.query(
+      `insert into signal_sources (name, kind, trust_score, audit_sample_rate)
+       values ('crm_export', 'first_party', 0.9, 0.05) on conflict (name) do nothing`,
+    );
+
+    const result: CrmCommitResult = {
+      imported: 0, skippedNoCompany: 0, matched: 0, created: 0,
+      snapshots: 0, oppsCreated: 0, evidenceAdded: 0,
+    };
+
+    for (const row of staged) {
+      const cells = row.data;
+      const get = (key: string): string => {
+        const idx = Object.entries(args.targets).find(([, t]) => t === key)?.[0];
+        return idx == null ? "" : (cells[Number(idx)] ?? "").trim();
+      };
+
+      const companyName = (cells[companyIdx] ?? "").trim();
+      if (!companyName) {
+        result.skippedNoCompany++;
+        continue;
+      }
+
+      const domain = get("domain") ? extractDomain(get("domain")) : null;
+      const normalized = normalizeCompanyName(companyName);
+      const resolution = resolveCompany({ name: companyName, domain }, candidates);
+      let companyId: string;
+      if (resolution) {
+        companyId = resolution.companyId;
+        result.matched++;
+      } else {
+        const { rows: inserted } = await db.query<{ id: string }>(
+          `insert into companies (legal_name, normalized_name, primary_domain, industry)
+           values ($1, $2, $3, nullif($4, '')) returning id`,
+          [companyName, normalized, domain, get("industry")],
+        );
+        companyId = inserted[0].id;
+        candidates.push({ id: companyId, normalizedName: normalized, primaryDomain: domain });
+        result.created++;
+      }
+
+      const oppName = get("opportunity_name") || `${companyName} — CRM opportunity`;
+      const stageRaw = get("deal_stage");
+      const { stage } = stageRaw ? normalizeCrmStage(stageRaw) : { stage: "qualification" };
+      const amountRaw = get("deal_value").replace(/[$,\s]/g, "");
+      const amount = /^\d+(\.\d+)?$/.test(amountRaw) ? Number(amountRaw) : null;
+      const closeRaw = get("close_date");
+      const closeDate = closeRaw && !Number.isNaN(Date.parse(closeRaw)) ? new Date(closeRaw).toISOString().slice(0, 10) : null;
+
+      // 1. The snapshot — what the CRM said, verbatim and normalized.
+      await db.query(
+        `insert into crm_snapshots (org_id, company_id, opportunity_name, stage, stage_raw, amount_usd, close_date, batch_id)
+         values ($1, $2, $3, $4, nullif($5, ''), $6, $7, $8)`,
+        [args.orgId, companyId, oppName.slice(0, 200), stage, stageRaw, amount, closeDate, args.batchId],
+      );
+      result.snapshots++;
+
+      // 2. Sync-in, never overwrite: create a live opportunity only when the
+      //    account has NO open one and the CRM stage is itself open.
+      if (stage !== "closed_won" && stage !== "closed_lost") {
+        const { rows: open } = await db.query(
+          `select 1 from opportunities where org_id = $1 and company_id = $2
+             and stage not in ('closed_won', 'closed_lost') limit 1`,
+          [args.orgId, companyId],
+        );
+        if (open.length === 0) {
+          await db.query(
+            `insert into opportunities (org_id, company_id, name, stage, amount_usd, expected_close_date)
+             values ($1, $2, $3, $4, $5, $6)`,
+            [args.orgId, companyId, oppName.slice(0, 200), stage, amount, closeDate],
+          );
+          result.oppsCreated++;
+        }
+      }
+
+      // 3. First-party evidence through the standard quality gates.
+      const claim = `CRM export: "${oppName}" at ${stageRaw || stage}${amount ? `, $${amount.toLocaleString()}` : ""}${closeDate ? `, closing ${closeDate}` : ""}`;
+      const { rows: ev } = await db.query<{ id: string }>(
+        `insert into evidence (org_id, company_id, source_type, claim, raw_excerpt, confidence, observed_at)
+         values ($1, $2, 'crm_export', $3, $4, 0.9, now()) returning id`,
+        [args.orgId, companyId, claim, claim],
+      );
+      result.evidenceAdded++;
+      await verifyEvidence(db, {
+        id: ev[0].id,
+        orgId: args.orgId,
+        companyId,
+        sourceName: "crm_export",
+        claim,
+        rawExcerpt: claim,
+        observedAt: new Date(),
+        extractionConfidence: 0.9,
+      });
+
+      result.imported++;
+    }
+
+    await db.query(`delete from import_rows where batch_id = $1`, [args.batchId]);
+    await db.query(
+      `update import_batches set status = 'imported', matched_count = $2, created_count = $3, evidence_count = $4,
+         mapping = mapping || jsonb_build_object('confirmed', $5::jsonb)
+       where id = $1`,
+      [args.batchId, result.matched, result.created, result.evidenceAdded, JSON.stringify(args.targets)],
+    );
+    return result;
+  } catch (err) {
+    await db.query(`update import_batches set status = 'failed', error = $2 where id = $1`, [
+      args.batchId,
+      err instanceof Error ? err.message : String(err),
+    ]);
+    throw err;
+  }
+}
+
 // ── Discard ──────────────────────────────────────────────────────────────────
 
 export async function discardImportBatch(db: pg.PoolClient, args: { orgId: string; batchId: string }): Promise<void> {
@@ -346,6 +546,8 @@ export interface StagedBatch {
   filename: string | null;
   rowCount: number;
   createdAt: Date;
+  /** "book" = partner book / account list (default); "crm" = CRM opportunity export. */
+  kind: "book" | "crm";
   headers: string[];
   hasHeaderRow: boolean;
   profiles: ColumnProfile[];
@@ -363,6 +565,7 @@ export async function loadStagedBatch(
     row_count: number;
     created_at: Date;
     mapping: {
+      kind?: "book" | "crm";
       headers: string[];
       hasHeaderRow: boolean;
       profiles: ColumnProfile[];
@@ -384,6 +587,7 @@ export async function loadStagedBatch(
     filename: b.filename,
     rowCount: Number(b.row_count),
     createdAt: b.created_at,
+    kind: b.mapping.kind === "crm" ? "crm" : "book",
     headers: b.mapping.headers,
     hasHeaderRow: b.mapping.hasHeaderRow,
     profiles: b.mapping.profiles,

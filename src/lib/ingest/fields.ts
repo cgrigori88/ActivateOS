@@ -163,6 +163,13 @@ export const CANONICAL_FIELDS: CanonicalField[] = [
     headers: [/^(targetproduct|targetsolution|product|solution|offering|sku|proposedproduct)$/],
   },
   {
+    key: "opportunity_name",
+    label: "Opportunity name",
+    group: "commercial",
+    headers: [/^(opportunityname|opportunity|oppname|opp|dealname|deal|pursuitname)$/],
+    hint: "CRM exports: each row becomes a stage/amount snapshot compared against the live record",
+  },
+  {
     key: "deal_stage",
     label: "Deal stage",
     group: "commercial",

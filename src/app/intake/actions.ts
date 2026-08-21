@@ -6,6 +6,7 @@ import { getPool } from "@/db/client";
 import { currentOrgId, requireWrite } from "@/lib/auth/org";
 import {
   analyzeCsvToBatch,
+  commitCrmBatch,
   commitImportBatch,
   discardImportBatch,
   loadStagedBatch,
@@ -35,6 +36,7 @@ export async function analyzeUploadAction(formData: FormData): Promise<void> {
   }
 
   const csv = await file.text();
+  const kind = String(formData.get("kind") ?? "book") === "crm" ? ("crm" as const) : ("book" as const);
   const db = await pool.connect();
   let batchId: string;
   try {
@@ -43,6 +45,7 @@ export async function analyzeUploadAction(formData: FormData): Promise<void> {
       csv,
       filename: file.name || null,
       uploadedBy: "web",
+      kind,
     });
     batchId = result.batchId;
   } finally {
@@ -131,6 +134,46 @@ export async function commitImportAction(batchId: string, formData: FormData): P
     `/mapping?view=review&notice=${encodeURIComponent(
       `Imported ${imported} accounts — the list is pending your review before it joins the matrix.`,
     )}&pop=${populationId}`,
+  );
+}
+
+/**
+ * CRM lane (task #83): rows become snapshots + evidence; opportunities are
+ * synced in only where the account holds nothing. Never overwrites — the
+ * disagreements surface on Today as crm_vs_platform divergences.
+ */
+export async function commitCrmAction(batchId: string, formData: FormData): Promise<void> {
+  const pool = getPool();
+  await requireWrite(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+
+  const db = await pool.connect();
+  let snapshots = 0;
+  let oppsCreated = 0;
+  try {
+    const batch = await loadStagedBatch(db, { orgId, batchId });
+    if (!batch) throw new Error("Import not found or already handled.");
+    const rawTargets: Record<string, string> = {};
+    for (let i = 0; i < batch.headers.length; i++) {
+      const v = formData.get(`target_${i}`);
+      if (typeof v === "string") rawTargets[String(i)] = v;
+    }
+    const targets = sanitizeTargets(rawTargets, batch.headers);
+    const result = await commitCrmBatch(db, { orgId, batchId, targets });
+    snapshots = result.snapshots;
+    oppsCreated = result.oppsCreated;
+  } finally {
+    db.release();
+  }
+
+  revalidatePath("/intake");
+  revalidatePath("/pipeline");
+  revalidatePath("/");
+  redirect(
+    `/intake?notice=${encodeURIComponent(
+      `CRM export synced — ${snapshots} snapshot${snapshots === 1 ? "" : "s"}, ${oppsCreated} new opportunit${oppsCreated === 1 ? "y" : "ies"} created where you held nothing. Disagreements with live records surface on Today.`,
+    )}`,
   );
 }
 

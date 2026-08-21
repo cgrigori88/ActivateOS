@@ -11,7 +11,7 @@ type Db = Pool | PoolClient;
  */
 
 export interface Divergence {
-  kind: "stale_deal" | "stage_vs_engagement" | "joint_vs_pipeline" | "renewal_uncovered" | "motion_stalled";
+  kind: "stale_deal" | "stage_vs_engagement" | "joint_vs_pipeline" | "renewal_uncovered" | "motion_stalled" | "crm_vs_platform";
   companyId: string;
   account: string;
   text: string;
@@ -131,6 +131,46 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
       text: `The motion is active but nothing has been sent in 14+ days — the plan says moving, the outbox says stopped.`,
       href: `/briefs/${r.motion_id}`,
     });
+  }
+
+  // 6. CRM vs platform: the latest CRM-export snapshot disagrees with the
+  //    live record — different stage, or amounts more than 20% apart. The
+  //    exported-truth-vs-observed-truth comparison; the snapshot carries the
+  //    CRM's words verbatim.
+  const { rows: snaps } = await db.query<{
+    company_id: string; legal_name: string; opportunity_name: string;
+    crm_stage: string; stage_raw: string | null; crm_amount: string | null;
+    live_stage: string | null; live_amount: string | null;
+  }>(
+    `select distinct on (s.company_id, lower(s.opportunity_name))
+            s.company_id, c.legal_name, s.opportunity_name,
+            s.stage as crm_stage, s.stage_raw, s.amount_usd as crm_amount,
+            o.stage as live_stage, o.amount_usd as live_amount
+     from crm_snapshots s
+     join companies c on c.id = s.company_id
+     left join opportunities o on o.org_id = s.org_id and o.company_id = s.company_id
+       and lower(o.name) = lower(s.opportunity_name)
+     where s.org_id = $1 and s.reported_at > now() - interval '45 days'
+     order by s.company_id, lower(s.opportunity_name), s.reported_at desc`,
+    [orgId],
+  );
+  for (const s of snaps) {
+    if (!s.live_stage) continue; // nothing to disagree with (sync-in handled it)
+    const a = s.crm_amount == null ? null : Number(s.crm_amount);
+    const b = s.live_amount == null ? null : Number(s.live_amount);
+    const stageDiffers = s.live_stage !== s.crm_stage;
+    const amountDiffers = a != null && b != null && b > 0 && Math.abs(a - b) / b > 0.2;
+    if (!stageDiffers && !amountDiffers) continue;
+    const crmSaid = `${s.stage_raw ?? s.crm_stage.replace(/_/g, " ")}${a != null ? ` ($${Math.round(a / 1000)}k)` : ""}`;
+    const weHold = `${s.live_stage.replace(/_/g, " ")}${b != null ? ` ($${Math.round(b / 1000)}k)` : ""}`;
+    out.push({
+      kind: "crm_vs_platform",
+      companyId: s.company_id,
+      account: s.legal_name,
+      text: `Your CRM export says "${s.opportunity_name}" is ${crmSaid}; PursuitOS holds ${weHold} — two systems, two stories.`,
+      href: `/accounts/${s.company_id}`,
+    });
+    if (out.length >= limit + 5) break;
   }
 
   return out.slice(0, limit);

@@ -30,7 +30,12 @@ function freshness(last: Date | null): { label: string; tone: string } {
   return { label: "AGING", tone: "bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400" };
 }
 
-export default async function IntakePage() {
+export default async function IntakePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ notice?: string }>;
+}) {
+  const sp = (await searchParams) ?? {};
   const pool = getPool();
   const orgId = await currentOrgId(pool);
 
@@ -70,16 +75,29 @@ export default async function IntakePage() {
     <main>
       <PageHeader
         title="Intake"
-        subtitle="Partner account books — uploaded, matched into the graph, and screened. One card per partner."
+        subtitle="Partner account books and CRM exports — uploaded, matched into the graph, and screened."
       />
+
+      {sp.notice && (
+        <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+          {sp.notice}
+        </div>
+      )}
 
       {/* Upload → analyze → mapping review */}
       <Card className="mb-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Upload a list</h2>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Upload a file</h2>
         <form action={analyzeUploadAction} className="flex flex-wrap items-end gap-3">
           <label className="text-sm">
             <span className="mb-1 block text-xs text-neutral-500">CSV file — any columns, any naming</span>
             <input type="file" name="file" accept=".csv,text/csv,text/plain" required className="text-sm" />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-neutral-500">What is this file?</span>
+            <select name="kind" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+              <option value="book">Partner book / account list</option>
+              <option value="crm">CRM export (opportunities)</option>
+            </select>
           </label>
           <button type="submit" className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
             Analyze columns
@@ -87,8 +105,9 @@ export default async function IntakePage() {
         </form>
         <p className="mt-2 text-xs text-neutral-500">
           No fixed template needed. The file is profiled inside your tenant (no third party sees it), the columns are
-          auto-matched to platform fields, and you confirm the mapping — including which fields are surfaced — before
-          anything is imported. Whose book it is (yours or a partner&apos;s) is chosen at that review step.
+          auto-matched to platform fields, and you confirm the mapping before anything is imported. A partner book
+          lands as a reviewable list; a CRM export lands as stage/amount snapshots compared against your live
+          records — never overwriting them.
         </p>
       </Card>
 

@@ -56,6 +56,7 @@ export function MappingReview({
   defaultCategory,
   commit,
   discard,
+  kind = "book",
 }: {
   batchId: string;
   filename: string | null;
@@ -69,6 +70,8 @@ export function MappingReview({
   defaultCategory: string;
   commit: (fd: FormData) => Promise<void>;
   discard: () => Promise<void>;
+  /** "book" = partner/account list (default); "crm" = CRM opportunity export. */
+  kind?: "book" | "crm";
 }) {
   const [cols, setCols] = useState<ColState[]>(() =>
     headers.map((_, i) => {
@@ -241,8 +244,16 @@ export function MappingReview({
         </div>
       )}
 
-      {/* Destination */}
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+      {/* Destination — a CRM export has none: rows become snapshots, evidence,
+          and (only where the account holds nothing) synced-in opportunities. */}
+      {kind === "crm" && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          CRM lane: each row lands as a snapshot of what your CRM says (stage, amount, close date — verbatim, with
+          provenance) plus first-party evidence. A live opportunity is created only where PursuitOS holds no open one;
+          an existing record is never overwritten — disagreements surface on Today instead.
+        </div>
+      )}
+      <div className={kind === "crm" ? "hidden" : "flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200 p-4 dark:border-neutral-800"}>
         <label className="text-sm">
           <span className="mb-1 block text-xs text-neutral-500">List name</span>
           <input name="name" defaultValue={defaultName} className={`${input} w-64`} />
@@ -294,14 +305,17 @@ export function MappingReview({
           disabled={!companyMapped}
           className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800 disabled:opacity-40"
         >
-          Import {rowCount.toLocaleString()} rows · {kept} fields ({surfacedCount} surfaced)
+          {kind === "crm"
+            ? `Sync CRM export · ${rowCount.toLocaleString()} rows`
+            : `Import ${rowCount.toLocaleString()} rows · ${kept} fields (${surfacedCount} surfaced)`}
         </button>
         <button formAction={discard} formNoValidate className="text-sm font-medium text-red-700 hover:underline dark:text-red-400">
           Discard upload
         </button>
         <span className="text-[11px] text-neutral-400">
-          The imported list lands in Pending review — nothing joins the matrix without your approval. Staged rows are
-          deleted on import or discard.
+          {kind === "crm"
+            ? "Snapshots carry provenance; divergences from the live record surface on Today. Staged rows are deleted on sync or discard."
+            : "The imported list lands in Pending review — nothing joins the matrix without your approval. Staged rows are deleted on import or discard."}
         </span>
       </div>
       <input type="hidden" name="batchId" value={batchId} />
