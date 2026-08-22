@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getPool } from "@/db/client";
 import { currentOrgId, requireWrite } from "@/lib/auth/org";
 import { STAGES } from "@/lib/opportunities/lifecycle";
+import { isTriggerKey, setTriggerEnabled } from "@/lib/triggers/catalog";
 
 /**
  * Editable stage weights (migration 0036). Scope "" = the org default curve;
@@ -54,5 +55,27 @@ export async function saveStageWeightsAction(formData: FormData): Promise<void> 
   }
 
   revalidatePath("/insights");
+  revalidatePath("/pipeline");
+}
+
+/**
+ * Attention-trigger toggles (task #83): flip one catalog trigger on or off
+ * for the org. The catalog itself lives in code — this only stores the
+ * preference; every surface that runs the trigger re-reads it on render.
+ */
+export async function setTriggerEnabledAction(formData: FormData): Promise<void> {
+  const pool = getPool();
+  await requireWrite(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+
+  const key = String(formData.get("trigger") ?? "").trim();
+  if (!isTriggerKey(key)) throw new Error(`Unknown trigger "${key}".`);
+  const enabled = String(formData.get("enabled")) === "1";
+
+  await setTriggerEnabled(pool, orgId, key, enabled);
+
+  revalidatePath("/insights");
+  revalidatePath("/");
   revalidatePath("/pipeline");
 }

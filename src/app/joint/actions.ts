@@ -11,6 +11,7 @@ import {
   decideJointPursuit,
   proposeJointPursuit,
 } from "@/lib/partnerships/joint";
+import { saveJointPlaybook } from "@/lib/playbooks/playbooks";
 
 /**
  * Joint pursuit actions (task #74). Working a pursuit is operator-level
@@ -55,6 +56,13 @@ export async function closePursuitAction(pursuitId: string): Promise<void> {
 export async function addNoteAction(pursuitId: string, formData: FormData): Promise<void> {
   const { pool, orgId } = await writerOrg();
   await addPursuitNote(pool, orgId, pursuitId, String(formData.get("body") ?? ""));
+  revalidatePath(`/joint/${pursuitId}`);
+}
+
+/** Joint playbook (task #83): one shared body per partnership — both sides edit the identical text, every save audited on both ledgers. */
+export async function saveJointPlaybookAction(pursuitId: string, partnershipId: string, formData: FormData): Promise<void> {
+  const { pool, orgId } = await writerOrg();
+  await saveJointPlaybook(pool, orgId, partnershipId, String(formData.get("body") ?? ""));
   revalidatePath(`/joint/${pursuitId}`);
 }
 

@@ -4,6 +4,7 @@ import type pg from "pg";
 import { z } from "zod";
 import { completeStructuredMeta } from "../ai/client";
 import { computeMotionEconomics, type PlayEconomics } from "../motions/economics";
+import { loadPartnerPlaybook } from "../playbooks/playbooks";
 
 /**
  * Motion Designer (docs/AGENT_LAYER.md §3) — the first frontier-tier
@@ -108,6 +109,11 @@ export async function designMotion(
   );
   const team = teams[0] ?? null;
 
+  // Partner playbook (task #83): the org's own notes on selling WITH this
+  // partner — grounding, not generation fodder; injected only when the
+  // routed team names the partner.
+  const playbook = team ? await loadPartnerPlaybook(db, args.orgId, team.partner_id) : null;
+
   // Evidence-gated context: verified rows only.
   const { rows: evidence } = await db.query<{ id: string; claim: string; source_type: string; observed_at: Date }>(
     `select id, claim, source_type, observed_at from evidence
@@ -152,7 +158,13 @@ ${
     ? `## Pursuit team (routed)\nThis motion will be executed by partner ${team.partner_name}` +
       `${team.partner_type ? ` (${team.partner_type.replace(/_/g, " ")})` : ""}` +
       `${team.seller_name ? `, seller ${team.seller_name}` : ""}. ` +
-      `Frame the actions for that partner; do not invent facts about them.\n`
+      `Frame the actions for that partner; do not invent facts about them.\n` +
+      (playbook
+        ? `### Partner playbook (our team's notes on working with ${team.partner_name} — follow these)\n` +
+          `${playbook.positioning ? `Joint positioning: ${playbook.positioning}\n` : ""}` +
+          `${playbook.strengths ? `Their strengths: ${playbook.strengths}\n` : ""}` +
+          `${playbook.rules ? `Rules of engagement: ${playbook.rules}\n` : ""}`
+        : "")
     : ""
 }
 Design the Revenue Motion.`;

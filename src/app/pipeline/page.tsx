@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getPool } from "@/db/client";
 import { currentOrgId } from "@/lib/auth/org";
 import { loadStageWeights } from "@/lib/opportunities/stage-weights";
+import { enabledTriggers } from "@/lib/triggers/catalog";
 import {
   STAGE_PROBABILITY,
   STAGES,
@@ -71,7 +72,10 @@ export default async function PipelinePage({
   // sits inside 120 days — the co-sell clock. Engagement quiet = decay risk;
   // partners on the account = who to attach before it runs out.
   const orgIdForRadar = await currentOrgId(pool);
-  const { rows: renewalRows } = orgIdForRadar
+  const radarOn = orgIdForRadar
+    ? (await enabledTriggers(pool, orgIdForRadar)).has("renewal_window")
+    : false;
+  const { rows: renewalRows } = orgIdForRadar && radarOn
     ? await pool.query<{ company_id: string; legal_name: string; renewal: string; list_name: string }>(
         `select distinct on (pm.company_id)
                 pm.company_id, c.legal_name,

@@ -1,5 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 
+import { enabledTriggers } from "@/lib/triggers/catalog";
+
 type Db = Pool | PoolClient;
 
 /**
@@ -21,8 +23,12 @@ export interface Divergence {
 export async function accountDivergences(db: Db, orgId: string, limit = 12): Promise<Divergence[]> {
   const out: Divergence[] = [];
 
+  // Attention-trigger toggles (task #83): each rule below maps to a catalog
+  // key; a rule the org switched off simply doesn't run.
+  const on = await enabledTriggers(db, orgId);
+
   // 1. Stale deal: open in the pipeline, untouched for 21+ days.
-  const { rows: stale } = await db.query<{ company_id: string; legal_name: string; name: string; days: string }>(
+  const { rows: stale } = on.has("stale_deal") ? await db.query<{ company_id: string; legal_name: string; name: string; days: string }>(
     `select o.company_id, c.legal_name, o.name,
             extract(day from now() - o.updated_at)::int::text as days
      from opportunities o join companies c on c.id = o.company_id
@@ -30,7 +36,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
        and o.updated_at < now() - interval '21 days'
      order by o.updated_at asc limit 5`,
     [orgId],
-  );
+  ) : { rows: [] };
   for (const r of stale) {
     out.push({
       kind: "stale_deal",
@@ -42,7 +48,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
   }
 
   // 2. Late stage, silent engagement: the pipeline believes, the inbox doesn't.
-  const { rows: silent } = await db.query<{ company_id: string; legal_name: string; name: string; stage: string }>(
+  const { rows: silent } = on.has("engagement_decay") ? await db.query<{ company_id: string; legal_name: string; name: string; stage: string }>(
     `select o.company_id, c.legal_name, o.name, o.stage
      from opportunities o join companies c on c.id = o.company_id
      where o.stage in ('proposal', 'negotiation') and ($1::uuid is null or o.org_id = $1)
@@ -51,7 +57,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
                          and es.last_engaged_at > now() - interval '30 days')
      limit 5`,
     [orgId],
-  );
+  ) : { rows: [] };
   for (const r of silent) {
     out.push({
       kind: "stage_vs_engagement",
@@ -64,7 +70,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
 
   // 3. CROSS-COMPANY: the joint room is live, your pipeline is empty. The
   //    partner fabric says this deal is being worked; your own systems don't.
-  const { rows: roomOnly } = await db.query<{ company_id: string; legal_name: string; pursuit_id: string }>(
+  const { rows: roomOnly } = on.has("joint_room_gap") ? await db.query<{ company_id: string; legal_name: string; pursuit_id: string }>(
     `select jp.company_id, c.legal_name, jp.id as pursuit_id
      from joint_pursuits jp
      join partnerships p on p.id = jp.partnership_id
@@ -75,7 +81,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
                          and o.stage not in ('closed_won', 'closed_lost'))
      limit 5`,
     [orgId],
-  );
+  ) : { rows: [] };
   for (const r of roomOnly) {
     out.push({
       kind: "joint_vs_pipeline",
@@ -87,7 +93,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
   }
 
   // 4. Renewal on the clock, nothing covering it.
-  const { rows: uncovered } = await db.query<{ company_id: string; legal_name: string; renewal: string }>(
+  const { rows: uncovered } = on.has("renewal_window") ? await db.query<{ company_id: string; legal_name: string; renewal: string }>(
     `select distinct on (pm.company_id) pm.company_id, c.legal_name, pm.attributes->>'renewal_date' as renewal
      from population_members pm
      join account_populations ap on ap.id = pm.population_id and ap.org_id = $1 and ap.status = 'approved'
@@ -100,7 +106,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
                        and m.status in ('draft', 'approved', 'active'))
      order by pm.company_id, (pm.attributes->>'renewal_date')::date asc limit 5`,
     [orgId],
-  );
+  ) : { rows: [] };
   for (const r of uncovered) {
     out.push({
       kind: "renewal_uncovered",
@@ -112,7 +118,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
   }
 
   // 5. Motion active, outreach silent for 14+ days.
-  const { rows: stalled } = await db.query<{ company_id: string; legal_name: string; motion_id: string }>(
+  const { rows: stalled } = on.has("motion_stalled") ? await db.query<{ company_id: string; legal_name: string; motion_id: string }>(
     `select m.company_id, c.legal_name, m.id as motion_id
      from revenue_motions m join companies c on c.id = m.company_id
      where m.status = 'active'
@@ -122,7 +128,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
                        where ca.motion_id = m.id and t.sent_at > now() - interval '14 days')
      limit 5`,
     [orgId],
-  );
+  ) : { rows: [] };
   for (const r of stalled) {
     out.push({
       kind: "motion_stalled",
@@ -137,7 +143,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
   //    live record — different stage, or amounts more than 20% apart. The
   //    exported-truth-vs-observed-truth comparison; the snapshot carries the
   //    CRM's words verbatim.
-  const { rows: snaps } = await db.query<{
+  const { rows: snaps } = on.has("crm_divergence") ? await db.query<{
     company_id: string; legal_name: string; opportunity_name: string;
     crm_stage: string; stage_raw: string | null; crm_amount: string | null;
     live_stage: string | null; live_amount: string | null;
@@ -153,7 +159,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
      where s.org_id = $1 and s.reported_at > now() - interval '45 days'
      order by s.company_id, lower(s.opportunity_name), s.reported_at desc`,
     [orgId],
-  );
+  ) : { rows: [] };
   for (const s of snaps) {
     if (!s.live_stage) continue; // nothing to disagree with (sync-in handled it)
     const a = s.crm_amount == null ? null : Number(s.crm_amount);

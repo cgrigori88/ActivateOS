@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getPool } from "@/db/client";
 import { currentOrgId, requireWrite } from "@/lib/auth/org";
 import { decideWarmIntro, requestWarmIntro } from "@/lib/partnerships/warm-intros";
+import { savePartnerPlaybook } from "@/lib/playbooks/playbooks";
 
 /**
  * Warm-intro actions (B+3, task #82). Operator-level like joint pursuits —
@@ -36,4 +37,16 @@ export async function decideIntroAction(partnerId: string, requestId: string, ac
   await decideWarmIntro(pool, orgId, requestId, accept, contactId);
   revalidatePath(`/partners/${partnerId}`);
   revalidatePath("/partners");
+}
+
+/** Partner playbook (task #83): org-private notes that ground the AI when this partner is on the pursuit. */
+export async function savePlaybookAction(partnerId: string, formData: FormData): Promise<void> {
+  const { pool, orgId } = await writerOrg();
+  await savePartnerPlaybook(pool, orgId, partnerId, {
+    positioning: String(formData.get("positioning") ?? ""),
+    strengths: String(formData.get("strengths") ?? ""),
+    rules: String(formData.get("rules") ?? ""),
+  });
+  revalidatePath(`/partners/${partnerId}`);
+  redirect(`/partners/${partnerId}?playbook=saved`);
 }

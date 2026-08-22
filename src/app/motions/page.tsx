@@ -61,6 +61,7 @@ export default async function MotionsPage({
     drafted?: string;
     failed?: string;
     skipped?: string;
+    blocked?: string;
     more?: string;
   }>;
 }) {
@@ -109,8 +110,16 @@ export default async function MotionsPage({
        where not exists (select 1 from revenue_motions m
                          where m.company_id = p.company_id
                            and m.status in ('draft', 'approved', 'active'))
+         -- Suppression is a hard guardrail: blocked accounts never even appear.
+         and ($1::uuid is null or not exists (
+           select 1 from account_suppressions sl
+           where sl.org_id = $1 and (
+             (sl.kind = 'domain' and c.primary_domain is not null
+               and (c.primary_domain = sl.value or c.primary_domain like '%.' || sl.value))
+             or (sl.kind = 'name' and c.normalized_name = sl.value))))
        order by p.company_id, p.computed_at desc
      ) x order by x.score desc limit 18`,
+    [orgId],
   );
   const draftedN = sp.drafted !== undefined ? Number(sp.drafted) : null;
 
@@ -170,6 +179,7 @@ export default async function MotionsPage({
         >
           {draftedN > 0 ? `Drafted ${draftedN} motion${draftedN === 1 ? "" : "s"} — review below.` : "Nothing drafted."}
           {Number(sp.skipped ?? 0) > 0 && ` ${sp.skipped} skipped (already carry an open motion).`}
+          {Number(sp.blocked ?? 0) > 0 && ` ${sp.blocked} blocked by your suppression list.`}
           {Number(sp.failed ?? 0) > 0 && ` ${sp.failed} couldn't draft (each needs a propensity score, verified evidence, and AI configured).`}
           {Number(sp.more ?? 0) > 0 && ` ${sp.more} more ready — run again for the next batch of 10.`}
         </div>

@@ -6,7 +6,8 @@ import { STAGES, type Stage } from "@/lib/opportunities/lifecycle";
 import { loadStageWeights } from "@/lib/opportunities/stage-weights";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
-import { saveStageWeightsAction } from "./actions";
+import { saveStageWeightsAction, setTriggerEnabledAction } from "./actions";
+import { TRIGGER_CATALOG, enabledTriggers } from "@/lib/triggers/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ export default async function InsightsPage({
   const sp = await searchParams;
   const pool = getPool();
   const orgId = await currentOrgId(pool);
+  const triggersOn = await enabledTriggers(pool, orgId);
 
   // Editable stage weights (0036): the calibration card is also the editor.
   const { rows: partnerRows } = await pool.query<{ id: string; name: string }>(
@@ -226,6 +228,51 @@ export default async function InsightsPage({
           </span>
           {intensity != null && <span className="text-xs"> (0 = sent as drafted, 1 = rewritten)</span>}
         </p>
+      </Card>
+
+      {/* Attention triggers (task #83): the named catalog of deterministic
+          "this deserves attention" rules, each with an org-level switch. */}
+      <Card>
+        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          Attention triggers
+        </h2>
+        <p className="mb-3 text-sm text-neutral-500">
+          Every rule that raises an account for attention, by name. Switch one
+          off and it stops running everywhere it&rsquo;s surfaced — no hidden
+          heuristics.
+        </p>
+        <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+          {TRIGGER_CATALOG.map((t) => {
+            const isOn = triggersOn.has(t.key);
+            return (
+              <li key={t.key} className="flex items-start justify-between gap-4 py-2.5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{t.label}</span>
+                    <span
+                      className={
+                        isOn
+                          ? "rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                          : "rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"
+                      }
+                    >
+                      {isOn ? "on" : "off"}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-sm text-neutral-500">{t.description}</p>
+                  <p className="mt-0.5 text-[11px] text-neutral-400">Shows up in: {t.surfaces.join(" · ")}</p>
+                </div>
+                <form action={setTriggerEnabledAction} className="shrink-0 pt-0.5">
+                  <input type="hidden" name="trigger" value={t.key} />
+                  <input type="hidden" name="enabled" value={isOn ? "0" : "1"} />
+                  <button className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
+                    {isOn ? "Turn off" : "Turn on"}
+                  </button>
+                </form>
+              </li>
+            );
+          })}
+        </ul>
       </Card>
     </main>
   );

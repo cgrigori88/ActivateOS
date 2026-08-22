@@ -10,7 +10,9 @@ import {
   offerGrantAction, acceptGrantAction, declineGrantAction, revokeGrantAction, syncGrantAction,
   requestOverlapAction, decideOverlapAction,
   mintApiKeyAction, revokeApiKeyAction,
+  saveIcpAction, addSuppressionAction, removeSuppressionAction,
 } from "./actions";
+import { icpFit, listSuppressions, loadIcp, type IcpFit } from "@/lib/icp/icp";
 import { AgentKeys, type KeyRow } from "./agent-keys";
 import { auditEntries, listGrantViews, listPartnerships } from "@/lib/partnerships/partnerships";
 import { orgKind } from "@/lib/partnerships/guest";
@@ -102,6 +104,30 @@ export default async function AdminPage({
     for (const p of activePartnerships) {
       const ladder = await overlapLadder(pool, orgId, p.id);
       ladders.push({ ...ladder, otherOrgName: p.otherOrgName ?? p.myLensName });
+    }
+  }
+
+  // Targeting (task #83): the ICP profile + suppression list, and a fit map
+  // for every account in approved named-overlap results.
+  const icp = orgId ? await loadIcp(pool, orgId) : null;
+  const suppressions = orgId ? await listSuppressions(pool, orgId) : [];
+  const fitById = new Map<string, IcpFit>();
+  if (icp) {
+    const namedIds = new Set<string>();
+    for (const l of ladders) {
+      const rung = l.rungs.named;
+      if (rung.state === "approved") {
+        for (const a of (rung.results as NamedResults).accounts) namedIds.add(a.company_id);
+      }
+    }
+    if (namedIds.size > 0) {
+      const { rows } = await pool.query<{ id: string; industry: string | null; employee_count: number | null; country: string | null }>(
+        `select id, industry, employee_count, country from companies where id = any($1)`,
+        [[...namedIds]],
+      );
+      for (const c of rows) {
+        fitById.set(c.id, icpFit(icp, { industry: c.industry, employeeCount: c.employee_count, country: c.country }));
+      }
     }
   }
 
@@ -258,6 +284,81 @@ export default async function AdminPage({
             </form>
           </>
         )}
+      </Card>
+
+      {/* ── Targeting: ICP + suppression (task #83) ── */}
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Targeting</h2>
+      <Card className="mb-4">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Ideal customer profile</h3>
+            <p className="mb-2 text-xs text-neutral-500">
+              Advisory, never blocking: fit chips render on named-overlap results and rankings. Unknown attributes
+              count as unknown, not misfit.
+            </p>
+            <form action={saveIcpAction} className="space-y-2">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Industries (comma-separated)</span>
+                <input name="industries" defaultValue={icp?.industries.join(", ") ?? ""} placeholder="Financial Services, Manufacturing" className={`${input} w-full`} />
+              </label>
+              <div className="flex gap-2">
+                <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Employees min</span>
+                  <input name="employeeMin" defaultValue={icp?.employeeMin ?? ""} inputMode="numeric" className={`${input} w-28`} />
+                </label>
+                <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Employees max</span>
+                  <input name="employeeMax" defaultValue={icp?.employeeMax ?? ""} inputMode="numeric" className={`${input} w-28`} />
+                </label>
+              </div>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Countries (comma-separated)</span>
+                <input name="geos" defaultValue={icp?.geos.join(", ") ?? ""} placeholder="germany, united states" className={`${input} w-full`} />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Notes (who to ignore, in words)</span>
+                <input name="icpNotes" defaultValue={icp?.notes ?? ""} placeholder="No agencies; no sub-50-seat shops" className={`${input} w-full`} />
+              </label>
+              <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">Save profile</button>
+            </form>
+          </div>
+          <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Suppression list</h3>
+            <p className="mb-2 text-xs text-neutral-500">
+              A hard guardrail: matching accounts are excluded from motion drafting and candidate surfaces entirely —
+              competitors, existing customers, do-not-pursue.
+            </p>
+            <form action={addSuppressionAction} className="mb-3 flex flex-wrap items-end gap-2">
+              <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Match by</span>
+                <select name="kind" className={input}>
+                  <option value="name">Company name</option>
+                  <option value="domain">Domain</option>
+                </select>
+              </label>
+              <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Value</span>
+                <input name="value" required placeholder="Acme Corp or acme.com" className={`${input} w-44`} />
+              </label>
+              <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Reason</span>
+                <input name="reason" placeholder="competitor" className={`${input} w-36`} />
+              </label>
+              <button className="rounded-md bg-red-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-800">Suppress</button>
+            </form>
+            {suppressions.length === 0 ? (
+              <p className="text-sm text-neutral-500">Nothing suppressed yet.</p>
+            ) : (
+              <ul className="space-y-1">
+                {suppressions.map((s) => (
+                  <li key={s.id} className="flex items-center gap-2 text-sm">
+                    <span className="rounded-full bg-red-600/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700 dark:text-red-400">{s.kind}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{s.label}</span>
+                    {s.reason && <span className="text-xs text-neutral-400">{s.reason}</span>}
+                    <form action={removeSuppressionAction.bind(null, s.id)}>
+                      <button className="text-[11px] font-medium text-neutral-500 hover:underline">remove</button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       </Card>
 
       {/* ── Partnerships ── */}
@@ -468,15 +569,27 @@ export default async function AdminPage({
                         return (
                           <div className="mt-2 max-h-56 overflow-y-auto pl-6 scroll-thin">
                             <table className="data-table">
-                              <thead><tr><th>Account</th><th>Industry</th><th>In your book as</th><th>In theirs as</th></tr></thead>
+                              <thead><tr><th>Account</th><th>Industry</th>{icp && <th>ICP</th>}<th>In your book as</th><th>In theirs as</th></tr></thead>
                               <tbody>
                                 {r.accounts.map((a) => {
                                   const mine = a.cats[orgId] ?? [];
                                   const theirs = Object.entries(a.cats).find(([k]) => k !== orgId)?.[1] ?? [];
+                                  const fit = fitById.get(a.company_id);
                                   return (
                                     <tr key={a.company_id}>
                                       <td className="font-medium">{a.name}</td>
                                       <td className="text-xs text-neutral-500">{a.industry ?? "—"}</td>
+                                      {icp && (
+                                        <td>
+                                          {fit === "fit" ? (
+                                            <span className="rounded-full bg-emerald/12 px-2 py-0.5 text-[10.5px] font-bold text-emerald dark:text-emerald-300">fit</span>
+                                          ) : fit === "off_profile" ? (
+                                            <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-neutral-500">off-profile</span>
+                                          ) : (
+                                            <span className="text-xs text-neutral-400">—</span>
+                                          )}
+                                        </td>
+                                      )}
                                       <td className="text-xs text-neutral-500">{mine.map((c) => c.replace(/_/g, " ")).join(", ") || "—"}</td>
                                       <td className="text-xs text-neutral-500">{theirs.map((c) => c.replace(/_/g, " ")).join(", ") || "—"}</td>
                                     </tr>

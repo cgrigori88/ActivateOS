@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { audit, currentActor } from "./partnerships";
 import type { NamedResults } from "./overlap";
+import { loadJointPlaybook } from "@/lib/playbooks/playbooks";
 
 type Db = Pool | PoolClient;
 
@@ -233,10 +234,18 @@ export async function brokerPropose(db: Db, pursuitId: string): Promise<void> {
     "Set the joint success criterion for the next 30 days and note it here.",
   ];
 
+  // Joint playbook (task #83): co-authored by both sides, so quoting it keeps
+  // the broker's symmetric-information invariant intact.
+  const jointPlaybook = await loadJointPlaybook(db, pursuit.partnership_id);
+  const playbookLine = jointPlaybook
+    ? `Per the joint playbook both sides wrote: "${jointPlaybook.body.slice(0, 280)}${jointPlaybook.body.length > 280 ? "…" : ""}"`
+    : null;
+
   const body = [
     `Broker proposal for ${account.name}:`,
     ...rationale,
     play,
+    ...(playbookLine ? [playbookLine] : []),
     "Next steps:",
     ...nextSteps.map((s, i) => `${i + 1}. ${s}`),
     "(Composed only from the partnership's approved named-overlap data — both sides see this identically.)",

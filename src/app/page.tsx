@@ -5,6 +5,7 @@ import { rankNextActions, type NextAction, type PortfolioState } from "@/lib/por
 import { BandBadge, Card, CountChip, PageHeader, StatusBadge } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { accountDivergences } from "@/lib/context/divergence";
+import { enabledTriggers } from "@/lib/triggers/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +71,7 @@ async function loadNextActions() {
   // not just on the account card.
   const orgId = await currentOrgId(pool);
   const renewalActions: NextAction[] = [];
-  if (orgId) {
+  if (orgId && (await enabledTriggers(pool, orgId)).has("renewal_window")) {
     const { rows: digests } = await pool.query<{
       company_id: string;
       legal_name: string;

@@ -7,6 +7,7 @@ import { currentOrgId, requireWrite } from "@/lib/auth/org";
 import { approveMotion, rejectMotion } from "@/lib/motions/approve";
 import { transitionMotion, type MotionOutcome } from "@/lib/motions/lifecycle";
 import { designMotion } from "@/lib/agents/motion-designer";
+import { suppressedCompanyIds } from "@/lib/icp/icp";
 
 // Single-taxonomy v1, same slug Mapping drafts against.
 const MOTION_TARGET_SLUG = "infrastructure-automation";
@@ -31,6 +32,7 @@ export async function draftMotionsAction(formData: FormData): Promise<void> {
   let ok = 0;
   let fail = 0;
   let skipped = 0; // already carry an open motion
+  let blocked = 0; // on the suppression list — the machine may not pursue them
   let more = 0; // ready but beyond this run's batch
   try {
     const orgId = await currentOrgId(db);
@@ -58,7 +60,13 @@ export async function draftMotionsAction(formData: FormData): Promise<void> {
       );
       const openSet = new Set(open.map((r) => r.company_id));
       skipped = candidates.filter((c) => openSet.has(c)).length;
-      const ready = candidates.filter((c) => !openSet.has(c));
+      let ready = candidates.filter((c) => !openSet.has(c));
+
+      // Hard guardrail (ICP slice, task #83): suppressed accounts never enter
+      // a draft run, whatever the scores say.
+      const suppressed = await suppressedCompanyIds(db, orgId, ready);
+      blocked = ready.filter((c) => suppressed.has(c)).length;
+      ready = ready.filter((c) => !suppressed.has(c));
 
       // Highest propensity first; unscored accounts sort last (they'd fail
       // the designer's score gate anyway, so the batch spends itself well).
@@ -84,7 +92,7 @@ export async function draftMotionsAction(formData: FormData): Promise<void> {
     db.release();
   }
   revalidatePath("/motions");
-  redirect(`/motions?status=draft&drafted=${ok}&failed=${fail}&skipped=${skipped}&more=${more}`);
+  redirect(`/motions?status=draft&drafted=${ok}&failed=${fail}&skipped=${skipped}&blocked=${blocked}&more=${more}`);
 }
 
 /**
@@ -101,6 +109,10 @@ export async function draftAccountMotionAction(companyId: string): Promise<void>
   try {
     const orgId = await currentOrgId(db);
     if (!orgId) throw new Error("No organization in scope.");
+    const suppressed = await suppressedCompanyIds(db, orgId, [companyId]);
+    if (suppressed.has(companyId)) {
+      throw new Error("This account is on your suppression list — remove it on Admin first if that's wrong.");
+    }
     const res = await designMotion(db, { orgId, companyId, targetSlug: MOTION_TARGET_SLUG });
     motionId = res.motionId;
   } catch (err) {

@@ -17,6 +17,7 @@ import {
   syncListGrant,
 } from "@/lib/partnerships/partnerships";
 import { decideOverlapProbe, requestOverlapProbe, type OverlapLevel } from "@/lib/partnerships/overlap";
+import { addSuppression, removeSuppression, saveIcp } from "@/lib/icp/icp";
 
 function notice(msg: string): never {
   redirect(`/admin?notice=${encodeURIComponent(msg)}`);
@@ -265,4 +266,60 @@ export async function decideOverlapAction(probeId: string, approve: boolean): Pr
       rows[0]?.level === "named" ? "&next=joint" : ""
     }`,
   );
+}
+
+// ── Targeting: ICP + suppression (task #83) ──────────────────────────────────
+
+export async function saveIcpAction(formData: FormData): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const list = (k: string) =>
+    String(formData.get(k) ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 40);
+  const int = (k: string) => {
+    const v = String(formData.get(k) ?? "").trim();
+    return /^\d+$/.test(v) ? Number(v) : null;
+  };
+  const failed = await attempt(
+    () =>
+      saveIcp(pool, orgId, {
+        industries: list("industries"),
+        employeeMin: int("employeeMin"),
+        employeeMax: int("employeeMax"),
+        geos: list("geos"),
+        notes: String(formData.get("icpNotes") ?? "").trim() || null,
+      }),
+    "Couldn't save the targeting profile.",
+  );
+  if (failed) notice(failed);
+  revalidatePath("/admin");
+  notice("Targeting profile saved — fit chips now render wherever named overlap shows.");
+}
+
+export async function addSuppressionAction(formData: FormData): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const kind = String(formData.get("kind") ?? "name") === "domain" ? ("domain" as const) : ("name" as const);
+  const failed = await attempt(
+    () =>
+      addSuppression(pool, orgId, {
+        kind,
+        value: String(formData.get("value") ?? ""),
+        reason: String(formData.get("reason") ?? "").trim(),
+      }),
+    "Couldn't add the suppression.",
+  );
+  if (failed) notice(failed);
+  revalidatePath("/admin");
+  revalidatePath("/motions");
+  notice("Suppressed — the machine will not pursue matching accounts.");
+}
+
+export async function removeSuppressionAction(id: string): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  await removeSuppression(pool, orgId, id);
+  revalidatePath("/admin");
+  revalidatePath("/motions");
+  notice("Suppression removed.");
 }

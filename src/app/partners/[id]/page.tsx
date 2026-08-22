@@ -5,7 +5,8 @@ import { currentOrgId } from "@/lib/auth/org";
 import { BackLink, Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { partnerRoom } from "@/lib/partners/hub";
 import { OVERLAP_LEVELS, LEVEL_LABEL, type RungState } from "@/lib/partnerships/overlap";
-import { decideIntroAction, requestIntroAction } from "../actions";
+import { decideIntroAction, requestIntroAction, savePlaybookAction } from "../actions";
+import { loadPartnerPlaybook } from "@/lib/playbooks/playbooks";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export default async function PartnerRoomPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ intro?: string }>;
+  searchParams?: Promise<{ intro?: string; playbook?: string }>;
 }) {
   const { id } = await params;
   const sp = (await searchParams) ?? {};
@@ -58,6 +59,7 @@ export default async function PartnerRoomPage({
 
   const room = await partnerRoom(pool, orgId, id);
   if (!room) notFound();
+  const playbook = await loadPartnerPlaybook(pool, orgId, id);
   const { partner, hub, book, partnership, ladder, grants, pursuits, settlement, scorecard, intros, introEligible, contactOptions } = room;
   const awaitingIntros = intros.filter((w) => w.awaitingYou);
   const otherIntros = intros.filter((w) => !w.awaitingYou);
@@ -340,6 +342,61 @@ export default async function PartnerRoomPage({
           )}
         </Card>
       )}
+
+      {/* ── Playbook (task #83): org-private; grounds the AI when this partner is on the pursuit ── */}
+      <Card className="mb-6">
+        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Playbook</h2>
+        <p className="mb-3 text-sm text-neutral-500">
+          How your team sells with {partner.name}. Private to your workspace — the motion designer reads
+          this whenever {partner.name} is on the pursuit team.
+          {playbook?.updatedAt && <span className="text-neutral-400"> Last saved {playbook.updatedAt}.</span>}
+        </p>
+        {sp.playbook === "saved" && (
+          <p className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+            Playbook saved — future motions with {partner.name} will draft against it.
+          </p>
+        )}
+        <form action={savePlaybookAction.bind(null, partner.id)} className="grid gap-3 md:grid-cols-3">
+          <label className="block text-xs font-medium text-neutral-500">
+            Joint positioning
+            <textarea
+              name="positioning"
+              rows={4}
+              maxLength={4000}
+              defaultValue={playbook?.positioning ?? ""}
+              placeholder="What the combined story is — why us + them beats either alone…"
+              className="mt-1 w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            />
+          </label>
+          <label className="block text-xs font-medium text-neutral-500">
+            Their strengths
+            <textarea
+              name="strengths"
+              rows={4}
+              maxLength={4000}
+              defaultValue={playbook?.strengths ?? ""}
+              placeholder="Where this partner is genuinely strong — segments, geos, relationships, delivery…"
+              className="mt-1 w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            />
+          </label>
+          <label className="block text-xs font-medium text-neutral-500">
+            Rules of engagement
+            <textarea
+              name="rules"
+              rows={4}
+              maxLength={4000}
+              defaultValue={playbook?.rules ?? ""}
+              placeholder="Who opens, deal registration, accounts that are off-limits, escalation paths…"
+              className="mt-1 w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            />
+          </label>
+          <div className="md:col-span-3">
+            <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+              Save playbook
+            </button>
+          </div>
+        </form>
+      </Card>
 
       {/* ── Settlement ── */}
       {settlement && (

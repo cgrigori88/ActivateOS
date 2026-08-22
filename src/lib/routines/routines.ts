@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { ResendProvider, resendConfigured } from "../comms/resend";
 import { commsConfig } from "../comms/provider";
+import { enabledTriggers } from "../triggers/catalog";
 
 type Db = Pool | PoolClient;
 
@@ -226,6 +227,7 @@ export async function runAccountDigests(
   const orgId = routine.org_id;
   const since = routine.state.coveredThrough ?? new Date(Date.now() - 7 * 86_400_000).toISOString();
   const now = new Date().toISOString();
+  const triggersOn = await enabledTriggers(db, orgId);
 
   // Strategic accounts: open pipeline first, then very-high propensity.
   const { rows: strategic } = await db.query<{ company_id: string; name: string }>(
@@ -263,7 +265,7 @@ export async function runAccountDigests(
       });
     }
 
-    const { rows: renewals } = await db.query<{ renewal: string; list: string }>(
+    const { rows: renewals } = triggersOn.has("renewal_window") ? await db.query<{ renewal: string; list: string }>(
       `select pm.attributes->>'renewal_date' as renewal, ap.name as list
        from population_members pm join account_populations ap on ap.id = pm.population_id
        where pm.company_id = $1 and ap.org_id = $2 and ap.status = 'approved'
@@ -271,7 +273,7 @@ export async function runAccountDigests(
          and (pm.attributes->>'renewal_date')::date between now()::date and (now() + interval '90 days')::date
        limit 2`,
       [acct.company_id, orgId],
-    );
+    ) : { rows: [] };
     for (const r of renewals) items.push({ type: "renewal", text: `Renewal within 90 days (${r.renewal}, from "${r.list}")`, at: r.renewal });
 
     const { rows: sends } = await db.query<{ subject: string; sent_at: Date }>(

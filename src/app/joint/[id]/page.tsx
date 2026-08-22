@@ -4,7 +4,8 @@ import { getPool } from "@/db/client";
 import { currentOrgId } from "@/lib/auth/org";
 import { Card, PageHeader } from "@/components/ui";
 import { namedOverlapAccounts, pursuitEvents } from "@/lib/partnerships/joint";
-import { addNoteAction, closePursuitAction, decidePursuitAction, refreshBrokerAction } from "../actions";
+import { addNoteAction, closePursuitAction, decidePursuitAction, refreshBrokerAction, saveJointPlaybookAction } from "../actions";
+import { loadJointPlaybook } from "@/lib/playbooks/playbooks";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,7 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
 
   const events = await pursuitEvents(pool, orgId, id);
   const named = await namedOverlapAccounts(pool, pursuit.partnership_id);
+  const jointPlaybook = await loadJointPlaybook(pool, pursuit.partnership_id);
   const account = named.find((a) => a.company_id === pursuit.company_id);
   const otherOrgId = pursuit.initiator_org_id === orgId ? pursuit.counterpart_org_id : pursuit.initiator_org_id;
   const myCats = account?.cats[orgId] ?? [];
@@ -162,6 +164,32 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
                 </button>
               </form>
             )}
+          </Card>
+
+          {/* Joint playbook (task #83): one shared text per partnership, symmetric like the ledger */}
+          <Card tone="violet">
+            <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Joint playbook</h2>
+            <p className="mb-2 text-xs text-neutral-500">
+              How the two companies work together — one text, co-edited. {pursuit.other_name ?? "The partner"} sees
+              this identically, and every save lands on both audit ledgers. The broker cites it.
+              {jointPlaybook?.updatedAt && <span className="text-neutral-400"> Last saved {jointPlaybook.updatedAt}.</span>}
+            </p>
+            <form action={saveJointPlaybookAction.bind(null, pursuit.id, pursuit.partnership_id)}>
+              <textarea
+                name="body"
+                rows={6}
+                maxLength={8000}
+                defaultValue={jointPlaybook?.body ?? ""}
+                readOnly={pursuit.status !== "active"}
+                placeholder="Who opens, how deals register, the joint pitch, escalation paths…"
+                className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+              />
+              {pursuit.status === "active" && (
+                <button className="mt-2 rounded-md bg-violet-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-800">
+                  Save joint playbook
+                </button>
+              )}
+            </form>
           </Card>
 
           {pursuit.status === "active" && (
