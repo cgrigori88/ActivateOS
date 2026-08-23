@@ -2,7 +2,8 @@ import Link from "next/link";
 import { getPool } from "@/db/client";
 import { currentOrgId } from "@/lib/auth/org";
 import { Card, PageHeader } from "@/components/ui";
-import { SKILL_KINDS, listSkills, type SkillKind } from "@/lib/skills/skills";
+import { SKILL_KINDS, listSkills, sharedInSkills, type SkillKind } from "@/lib/skills/skills";
+import { editIntensity } from "@/lib/insights/calibration";
 import { createSkillAction, setSkillStatusAction, updateSkillBodyAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ const KIND_STYLE: Record<SkillKind, string> = {
 export default async function SkillsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ notice?: string }>;
+  searchParams?: Promise<{ notice?: string; kind?: string }>;
 }) {
   const sp = (await searchParams) ?? {};
   const pool = getPool();
@@ -36,6 +37,20 @@ export default async function SkillsPage({
   const skills = await listSkills(pool, orgId);
   const active = skills.filter((s) => s.status === "active");
   const archived = skills.filter((s) => s.status === "archived");
+  const shared = await sharedInSkills(pool, orgId);
+
+  // "Turn your edits into a skill" (task #85): the edit-intensity signal we
+  // already collect, pointed at skill creation. Heavy rewriting of AI drafts
+  // with no style skill on file = the team has a voice the machine hasn't
+  // been told about.
+  const { rows: edits } = await pool.query<{ edit_distance: string; draft_length: string }>(
+    `select edit_distance, length(ai_original) as draft_length from message_edits`,
+  );
+  const intensity = editIntensity(
+    edits.map((e) => ({ editDistance: Number(e.edit_distance), draftLength: Number(e.draft_length) })),
+  );
+  const suggestStyle =
+    intensity != null && intensity >= 0.25 && !active.some((s) => s.kind === "style");
 
   const { rows: partners } = await pool.query<{ id: string; name: string }>(
     `select id, name from partners where org_id = $1 order by name`,
@@ -74,6 +89,21 @@ export default async function SkillsPage({
         </Card>
       )}
 
+      {suggestStyle && (
+        <Card tone="amber" className="mb-6">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            Turn your edits into a skill
+          </h2>
+          <p className="text-sm text-neutral-600 dark:text-neutral-300">
+            Your team rewrites AI drafts heavily (edit intensity{" "}
+            <span className="tnum font-semibold">{intensity}</span>, where 0 = sent as drafted) and there&rsquo;s
+            no style skill on file — the rewrites are a voice the machine hasn&rsquo;t been told about. Capture
+            the pattern once below and every future draft starts closer to how your team actually writes.{" "}
+            <a href="?kind=style#add" className="font-medium text-accent hover:underline">Add a style skill</a>
+          </p>
+        </Card>
+      )}
+
       {/* ── The library ── */}
       <Card className="mb-6">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Library</h2>
@@ -104,6 +134,16 @@ export default async function SkillsPage({
                       {" · "}
                       <span className="tnum font-semibold text-neutral-600 dark:text-neutral-300">{s.uses}</span>{" "}
                       {s.uses === 1 ? "use" : "uses"}
+                      {s.uses > 0 && ` (${s.motionRuns} motion${s.motionRuns === 1 ? "" : "s"}, ${s.campaignRuns} campaign${s.campaignRuns === 1 ? "" : "s"})`}
+                      {s.touchesSent > 0 && (
+                        <>
+                          {" · "}
+                          <span className="tnum font-semibold text-neutral-600 dark:text-neutral-300">
+                            {s.replies}/{s.touchesSent}
+                          </span>{" "}
+                          replies
+                        </>
+                      )}
                       {s.lastUsedAt ? ` · last ${s.lastUsedAt}` : ""}
                     </span>
                   </summary>
@@ -151,7 +191,42 @@ export default async function SkillsPage({
         )}
       </Card>
 
+      {/* ── Shared with you (task #85): partners' skills, accepted through consent ── */}
+      {shared.length > 0 && (
+        <Card tone="violet" className="mb-6">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            Shared with you
+          </h2>
+          <p className="mb-3 text-sm text-neutral-500">
+            Skills partner organizations shared and you accepted. Read live from their tenant — their edits
+            apply instantly, and each grounds your agents only on deals with that partner.
+          </p>
+          <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
+            {shared.map((s) => (
+              <li key={s.id} className="py-2.5">
+                <details>
+                  <summary className="flex cursor-pointer flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{s.name}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ${KIND_STYLE[s.kind]}`}>
+                      {kindLabel(s.kind).label.toLowerCase()}
+                    </span>
+                    <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10.5px] font-semibold text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">
+                      from {s.fromOrgName}
+                    </span>
+                    <span className="ml-auto text-xs text-neutral-400">
+                      {s.partnerName ? `Grounds deals with ${s.partnerName}` : "Grounds joint deals"}
+                    </span>
+                  </summary>
+                  <p className="mt-2 whitespace-pre-wrap pl-1 text-sm text-neutral-600 dark:text-neutral-300">{s.body}</p>
+                </details>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {/* ── Add a skill ── */}
+      <span id="add" />
       <Card className="mb-6">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Add a skill</h2>
         <p className="mb-3 text-sm text-neutral-500">
@@ -166,7 +241,7 @@ export default async function SkillsPage({
             </label>
             <label className="text-sm">
               <span className="mb-1 block text-xs text-neutral-500">Kind</span>
-              <select name="kind" className={input}>
+              <select name="kind" defaultValue={SKILL_KINDS.some((k) => k.kind === sp.kind) ? sp.kind : undefined} className={input}>
                 {SKILL_KINDS.map((k) => (
                   <option key={k.kind} value={k.kind}>{k.label}</option>
                 ))}

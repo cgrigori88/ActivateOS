@@ -5,8 +5,9 @@ import { currentOrgId } from "@/lib/auth/org";
 import { BackLink, Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { partnerRoom } from "@/lib/partners/hub";
 import { OVERLAP_LEVELS, LEVEL_LABEL, type RungState } from "@/lib/partnerships/overlap";
-import { decideIntroAction, requestIntroAction, savePlaybookAction } from "../actions";
+import { decideIntroAction, decideSkillShareAction, offerSkillShareAction, requestIntroAction, revokeSkillShareAction, savePlaybookAction } from "../actions";
 import { loadPartnerPlaybook } from "@/lib/playbooks/playbooks";
+import { listSkillShares, type SkillShareView } from "@/lib/skills/skills";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,21 @@ export default async function PartnerRoomPage({
   const room = await partnerRoom(pool, orgId, id);
   if (!room) notFound();
   const playbook = await loadPartnerPlaybook(pool, orgId, id);
+
+  // Skill sharing (task #85): both directions on this partnership, plus the
+  // skills of ours that could still be offered.
+  const skillShares: SkillShareView[] = room.partnership ? await listSkillShares(pool, orgId, room.partnership.id) : [];
+  const { rows: shareableSkills } = room.partnership?.status === "active"
+    ? await pool.query<{ id: string; name: string; kind: string }>(
+        `select s.id, s.name, s.kind from skills s
+         where s.org_id = $1 and s.status = 'active'
+           and (s.scope_type = 'org' or (s.scope_type = 'partner' and s.scope_id = $2))
+           and not exists (select 1 from skill_shares sh
+                           where sh.skill_id = s.id and sh.partnership_id = $3 and sh.status in ('offered', 'accepted'))
+         order by s.name`,
+        [orgId, id, room.partnership.id],
+      )
+    : { rows: [] };
   const { partner, hub, book, partnership, ladder, grants, pursuits, settlement, scorecard, intros, introEligible, contactOptions } = room;
   const awaitingIntros = intros.filter((w) => w.awaitingYou);
   const otherIntros = intros.filter((w) => !w.awaitingYou);
@@ -397,6 +413,80 @@ export default async function PartnerRoomPage({
           </div>
         </form>
       </Card>
+
+      {/* ── Skill sharing (task #85): consent-gated, live-read, audited both sides ── */}
+      {room.partnership?.status === "active" && (
+        <Card tone="violet" className="mb-6">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Skill sharing</h2>
+          <p className="mb-3 text-sm text-neutral-500">
+            Share a skill and {partner.name}&rsquo;s agents follow it on your joint deals — they read it live,
+            so your edits (and a revoke) apply instantly. Their offers need your accept before anything grounds.
+          </p>
+
+          {skillShares.filter((s) => s.direction === "incoming" && s.status === "offered").map((s) => (
+            <div key={s.id} className="mb-3 rounded-lg border border-violet-200 bg-violet-50/60 p-3 dark:border-violet-900 dark:bg-violet-950/30">
+              <p className="mb-1 text-sm">
+                <span className="font-semibold">{s.fromOrgName}</span> offers the skill{" "}
+                <span className="font-semibold">&ldquo;{s.skillName}&rdquo;</span>{" "}
+                <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-neutral-500">{s.kind}</span>
+              </p>
+              <p className="mb-2 text-xs text-neutral-500">{s.body.slice(0, 240)}{s.body.length > 240 ? "…" : ""}</p>
+              <div className="flex gap-2">
+                <form action={decideSkillShareAction.bind(null, partner.id, s.id, true)}>
+                  <button className="rounded-md bg-violet-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-800">
+                    Accept — our agents start following it
+                  </button>
+                </form>
+                <form action={decideSkillShareAction.bind(null, partner.id, s.id, false)}>
+                  <button className="rounded-md px-3 py-1.5 text-xs font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900">Decline</button>
+                </form>
+              </div>
+            </div>
+          ))}
+
+          {skillShares.some((s) => s.status === "accepted" || s.direction === "outgoing") && (
+            <ul className="mb-3 space-y-1">
+              {skillShares
+                .filter((s) => s.status === "accepted" || s.direction === "outgoing")
+                .map((s) => (
+                  <li key={s.id} className="flex items-center gap-2 text-sm">
+                    <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-neutral-500">
+                      {s.direction === "outgoing" ? "yours" : "theirs"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{s.skillName}</span>
+                    <span className="text-[11px] text-neutral-400">{s.kind} · {s.status}{s.status === "accepted" ? " — live" : ""}</span>
+                    {s.direction === "outgoing" && (
+                      <form action={revokeSkillShareAction.bind(null, partner.id, s.id)}>
+                        <button className="text-[11px] font-medium text-rose hover:underline">revoke</button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+            </ul>
+          )}
+
+          {shareableSkills.length > 0 ? (
+            <form action={offerSkillShareAction.bind(null, partner.id, room.partnership.id)} className="flex flex-wrap items-end gap-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Share one of your skills</span>
+                <select name="skillId" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                  {shareableSkills.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.kind})</option>
+                  ))}
+                </select>
+              </label>
+              <button className="rounded-md bg-violet-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-800">
+                Offer to {partner.name}
+              </button>
+            </form>
+          ) : (
+            <p className="border-t border-neutral-100 pt-3 text-xs text-neutral-500 dark:border-neutral-800">
+              Nothing left to offer — every eligible skill is already shared or pending. Add skills in the{" "}
+              <Link className="font-medium text-accent hover:underline" href="/skills">Skills library</Link>.
+            </p>
+          )}
+        </Card>
+      )}
 
       {/* ── Settlement ── */}
       {settlement && (

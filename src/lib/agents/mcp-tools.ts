@@ -8,6 +8,7 @@ import { listPartnerships } from "../partnerships/partnerships";
 import { upsertTouch } from "../comms/authoring";
 import { dealTimeline } from "../context/timeline";
 import { accountDivergences } from "../context/divergence";
+import { listSkills, sharedInSkills } from "../skills/skills";
 
 /**
  * BYO-bot tool surface (task #76). The tools a personal agent may call
@@ -259,6 +260,46 @@ export const MCP_TOOLS: McpToolDef[] = [
           .filter((d) => d.companyId === c.id)
           .map((d) => ({ kind: d.kind, finding: d.text })),
         note: "Every event names its source. Partner-side events are the symmetric records both tenants read identically — nothing here exceeds what the partnership already consented to.",
+      };
+    },
+  },
+  {
+    name: "org_skills",
+    description:
+      "The organization's skills library: curated, typed instructions (positioning / process / style / rules) that PursuitOS's own agents follow when drafting motions and campaigns — plus skills partner organizations have shared through the consent fabric. Use these to ground your own drafting the same way the platform's agents are grounded. Read-only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          enum: ["positioning", "process", "style", "rules"],
+          description: "Optional filter to one kind",
+        },
+      },
+      additionalProperties: false,
+    },
+    async run(pool, orgId, args) {
+      const kind = args.kind ? String(args.kind) : null;
+      const own = (await listSkills(pool, orgId)).filter(
+        (s) => s.status === "active" && (!kind || s.kind === kind),
+      );
+      const shared = (await sharedInSkills(pool, orgId)).filter((s) => !kind || s.kind === kind);
+      return {
+        skills: own.map((s) => ({
+          name: s.name,
+          kind: s.kind,
+          appliesTo: s.scopeLabel,
+          instructions: s.body,
+          groundedRuns: s.uses,
+        })),
+        sharedByPartners: shared.map((s) => ({
+          name: s.name,
+          kind: s.kind,
+          from: s.fromOrgName,
+          appliesTo: s.partnerName ? `Deals with ${s.partnerName}` : "Shared context",
+          instructions: s.body,
+        })),
+        note: "Same library the platform's agents read. Partner-shared skills were explicitly accepted by this organization and are read live from the sharing tenant — treat them as that partner's guidance for joint deals.",
       };
     },
   },

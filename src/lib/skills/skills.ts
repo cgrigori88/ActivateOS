@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { audit } from "@/lib/partnerships/partnerships";
 
 type Db = Pool | PoolClient;
 
@@ -68,6 +69,10 @@ export interface Skill {
   updatedAt: string;
   uses: number;
   lastUsedAt: string | null;
+  motionRuns: number;
+  campaignRuns: number;
+  touchesSent: number;
+  replies: number;
 }
 
 export async function listSkills(db: Db, orgId: string): Promise<Skill[]> {
@@ -75,16 +80,32 @@ export async function listSkills(db: Db, orgId: string): Promise<Skill[]> {
     id: string; name: string; kind: SkillKind; scope_type: SkillScope; scope_id: string | null;
     body: string; status: "active" | "archived"; created_by: string | null; updated_at: Date;
     scope_label: string | null; uses: string; last_used_at: Date | null;
+    motion_runs: string; campaign_runs: string; sent: string; replied: string;
   }>(
     `select s.id, s.name, s.kind, s.scope_type, s.scope_id, s.body, s.status, s.created_by, s.updated_at,
             case s.scope_type
               when 'partner' then (select p.name from partners p where p.id = s.scope_id)
               when 'list' then (select ap.name from account_populations ap where ap.id = s.scope_id)
               else null end as scope_label,
-            coalesce(u.uses, 0)::text as uses, u.last_used_at
+            coalesce(u.uses, 0)::text as uses, u.last_used_at,
+            coalesce(u.motion_runs, 0)::text as motion_runs,
+            coalesce(u.campaign_runs, 0)::text as campaign_runs,
+            coalesce(oc.sent, 0)::text as sent, coalesce(oc.replied, 0)::text as replied
      from skills s
-     left join (select unnest(skill_ids) as skill_id, count(*) as uses, max(created_at) as last_used_at
+     left join (select unnest(skill_ids) as skill_id, count(*) as uses,
+                       count(*) filter (where workflow = 'motion_designer') as motion_runs,
+                       count(*) filter (where workflow = 'campaign_composer') as campaign_runs,
+                       max(created_at) as last_used_at
                 from agent_runs where org_id = $1 group by 1) u on u.skill_id = s.id
+     left join (select r.skill_id,
+                       count(distinct t.id) filter (where t.status = 'sent') as sent,
+                       count(distinct t.id) filter (where e.id is not null) as replied
+                from (select unnest(skill_ids) as skill_id, motion_id from agent_runs
+                      where org_id = $1 and workflow = 'campaign_composer' and motion_id is not null) r
+                join campaigns ca on ca.motion_id = r.motion_id
+                join campaign_touches t on t.campaign_id = ca.id
+                left join email_events e on e.message_id = t.message_id and e.event_type = 'REPLIED'
+                group by 1) oc on oc.skill_id = s.id
      where s.org_id = $1
      order by s.status asc, u.uses desc nulls last, s.updated_at desc`,
     [orgId],
@@ -102,6 +123,10 @@ export async function listSkills(db: Db, orgId: string): Promise<Skill[]> {
     updatedAt: new Date(r.updated_at).toISOString().slice(0, 10),
     uses: Number(r.uses),
     lastUsedAt: r.last_used_at ? new Date(r.last_used_at).toISOString().slice(0, 10) : null,
+    motionRuns: Number(r.motion_runs),
+    campaignRuns: Number(r.campaign_runs),
+    touchesSent: Number(r.sent),
+    replies: Number(r.replied),
   }));
 }
 
@@ -175,7 +200,161 @@ export async function skillsForContext(
      limit 8`,
     [orgId, kinds, ctx.partnerId ?? null, ctx.companyId ?? null],
   );
-  return rows;
+
+  // Skills the partner on this pursuit shared with us (accepted, live-read):
+  // consent already happened at accept time; they ground only when THAT
+  // partner is on the deal, and carry their origin in the name.
+  const { rows: shared } = ctx.partnerId
+    ? await db.query<{ id: string; name: string; kind: SkillKind; body: string }>(
+        `select s.id, s.name || ' — shared by ' || o.name as name, s.kind, s.body
+         from skill_shares sh
+         join skills s on s.id = sh.skill_id and s.status = 'active' and s.org_id <> $1
+         join organizations o on o.id = s.org_id
+         join partnerships p on p.id = sh.partnership_id and p.status = 'active'
+         where sh.status = 'accepted' and s.kind = any($2)
+           and ((p.initiator_org_id = $1 and p.initiator_partner_id = $3)
+                or (p.counterpart_org_id = $1 and p.counterpart_partner_id = $3))
+         order by sh.offered_at desc limit 4`,
+        [orgId, kinds, ctx.partnerId],
+      )
+    : { rows: [] };
+
+  return [...rows, ...shared].slice(0, 10);
+}
+
+// ── Cross-tenant sharing (task #85): offer → accept, like list grants ───────
+
+export interface SkillShareView {
+  id: string;
+  skillId: string;
+  skillName: string;
+  kind: SkillKind;
+  status: "offered" | "accepted" | "declined";
+  direction: "outgoing" | "incoming";
+  fromOrgName: string;
+  body: string;
+  offeredAt: string;
+}
+
+async function partnershipOrgs(db: Db, partnershipId: string): Promise<{ initiator: string; counterpart: string | null; status: string }> {
+  const { rows } = await db.query<{ initiator_org_id: string; counterpart_org_id: string | null; status: string }>(
+    `select initiator_org_id, counterpart_org_id, status from partnerships where id = $1`,
+    [partnershipId],
+  );
+  if (!rows[0]) throw new Error("Partnership not found.");
+  return { initiator: rows[0].initiator_org_id, counterpart: rows[0].counterpart_org_id, status: rows[0].status };
+}
+
+export async function offerSkillShare(db: Db, orgId: string, skillId: string, partnershipId: string): Promise<void> {
+  const p = await partnershipOrgs(db, partnershipId);
+  if (p.status !== "active") throw new Error("Skill sharing needs an active partnership.");
+  const members = [p.initiator, p.counterpart].filter(Boolean) as string[];
+  if (!members.includes(orgId)) throw new Error("Your organization is not part of this partnership.");
+  const { rows: sk } = await db.query<{ name: string }>(
+    `select name from skills where id = $1 and org_id = $2 and status = 'active'`,
+    [skillId, orgId],
+  );
+  if (!sk[0]) throw new Error("You can only share your own active skills.");
+  // Re-offering after a decline is a fresh ask; an accepted share stays accepted.
+  await db.query(
+    `insert into skill_shares (skill_id, partnership_id) values ($1, $2)
+     on conflict (skill_id, partnership_id) do update
+       set status = case when skill_shares.status = 'accepted' then 'accepted' else 'offered' end,
+           offered_at = now(), decided_at = case when skill_shares.status = 'accepted' then skill_shares.decided_at else null end`,
+    [skillId, partnershipId],
+  );
+  for (const org of members) {
+    await audit(db, org, "skill.offered", { skill: sk[0].name, by: org === orgId ? "us" : "counterpart" }, partnershipId);
+  }
+}
+
+export async function decideSkillShare(db: Db, orgId: string, shareId: string, accept: boolean): Promise<void> {
+  const { rows } = await db.query<{ partnership_id: string; status: string; owner_org: string; name: string }>(
+    `select sh.partnership_id, sh.status, s.org_id as owner_org, s.name
+     from skill_shares sh join skills s on s.id = sh.skill_id where sh.id = $1`,
+    [shareId],
+  );
+  if (!rows[0]) throw new Error("Share not found.");
+  const p = await partnershipOrgs(db, rows[0].partnership_id);
+  const members = [p.initiator, p.counterpart].filter(Boolean) as string[];
+  if (!members.includes(orgId)) throw new Error("Your organization is not part of this partnership.");
+  if (rows[0].owner_org === orgId) throw new Error("The sharing side can't accept its own offer.");
+  if (rows[0].status !== "offered") throw new Error(`This share is already ${rows[0].status}.`);
+  await db.query(`update skill_shares set status = $2, decided_at = now() where id = $1`, [shareId, accept ? "accepted" : "declined"]);
+  for (const org of members) {
+    await audit(db, org, accept ? "skill.accepted" : "skill.declined", { skill: rows[0].name, by: org === orgId ? "us" : "counterpart" }, rows[0].partnership_id);
+  }
+}
+
+export async function revokeSkillShare(db: Db, orgId: string, shareId: string): Promise<void> {
+  const { rows } = await db.query<{ partnership_id: string; owner_org: string; name: string }>(
+    `select sh.partnership_id, s.org_id as owner_org, s.name
+     from skill_shares sh join skills s on s.id = sh.skill_id where sh.id = $1`,
+    [shareId],
+  );
+  if (!rows[0]) throw new Error("Share not found.");
+  if (rows[0].owner_org !== orgId) throw new Error("Only the sharing side can revoke a share.");
+  await db.query(`delete from skill_shares where id = $1`, [shareId]);
+  const p = await partnershipOrgs(db, rows[0].partnership_id);
+  for (const org of [p.initiator, p.counterpart].filter(Boolean) as string[]) {
+    await audit(db, org, "skill.revoked", { skill: rows[0].name, by: org === orgId ? "us" : "counterpart" }, rows[0].partnership_id);
+  }
+}
+
+/** Both directions of sharing on one partnership, viewer-relative. */
+export async function listSkillShares(db: Db, orgId: string, partnershipId: string): Promise<SkillShareView[]> {
+  const { rows } = await db.query<{
+    id: string; skill_id: string; name: string; kind: SkillKind; status: SkillShareView["status"];
+    owner_org: string; from_org_name: string; body: string; offered_at: Date;
+  }>(
+    `select sh.id, sh.skill_id, s.name, s.kind, sh.status, s.org_id as owner_org,
+            o.name as from_org_name, s.body, sh.offered_at
+     from skill_shares sh
+     join skills s on s.id = sh.skill_id and s.status = 'active'
+     join organizations o on o.id = s.org_id
+     where sh.partnership_id = $1
+     order by sh.offered_at desc`,
+    [partnershipId],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    skillId: r.skill_id,
+    skillName: r.name,
+    kind: r.kind,
+    status: r.status,
+    direction: r.owner_org === orgId ? "outgoing" : "incoming",
+    fromOrgName: r.from_org_name,
+    body: r.body,
+    offeredAt: new Date(r.offered_at).toISOString().slice(0, 10),
+  }));
+}
+
+/** Accepted skills other tenants shared with this org — read live, never copied. */
+export async function sharedInSkills(
+  db: Db,
+  orgId: string,
+): Promise<{ id: string; name: string; kind: SkillKind; body: string; fromOrgName: string; partnerId: string | null; partnerName: string | null }[]> {
+  const { rows } = await db.query<{
+    id: string; name: string; kind: SkillKind; body: string; from_org_name: string;
+    partner_id: string | null; partner_name: string | null;
+  }>(
+    `select s.id, s.name, s.kind, s.body, o.name as from_org_name,
+            case when p.initiator_org_id = $1 then p.initiator_partner_id else p.counterpart_partner_id end as partner_id,
+            pa.name as partner_name
+     from skill_shares sh
+     join skills s on s.id = sh.skill_id and s.status = 'active' and s.org_id <> $1
+     join organizations o on o.id = s.org_id
+     join partnerships p on p.id = sh.partnership_id and p.status = 'active'
+       and (p.initiator_org_id = $1 or p.counterpart_org_id = $1)
+     left join partners pa on pa.id = case when p.initiator_org_id = $1 then p.initiator_partner_id else p.counterpart_partner_id end
+     where sh.status = 'accepted'
+     order by sh.offered_at desc`,
+    [orgId],
+  );
+  return rows.map((r) => ({
+    id: r.id, name: r.name, kind: r.kind, body: r.body,
+    fromOrgName: r.from_org_name, partnerId: r.partner_id, partnerName: r.partner_name,
+  }));
 }
 
 /** Render skills as a prompt section. Empty list → empty string (no section). */

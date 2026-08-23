@@ -6,6 +6,7 @@ import { getPool } from "@/db/client";
 import { currentOrgId, requireWrite } from "@/lib/auth/org";
 import { decideWarmIntro, requestWarmIntro } from "@/lib/partnerships/warm-intros";
 import { savePartnerPlaybook } from "@/lib/playbooks/playbooks";
+import { decideSkillShare, offerSkillShare, revokeSkillShare } from "@/lib/skills/skills";
 
 /**
  * Warm-intro actions (B+3, task #82). Operator-level like joint pursuits —
@@ -49,4 +50,27 @@ export async function savePlaybookAction(partnerId: string, formData: FormData):
   });
   revalidatePath(`/partners/${partnerId}`);
   redirect(`/partners/${partnerId}?playbook=saved`);
+}
+
+/** Skill sharing (task #85): offer → accept, audited on both ledgers like every consent step. */
+export async function offerSkillShareAction(partnerId: string, partnershipId: string, formData: FormData): Promise<void> {
+  const { pool, orgId } = await writerOrg();
+  const skillId = String(formData.get("skillId") ?? "");
+  if (!skillId) throw new Error("Pick a skill to share.");
+  await offerSkillShare(pool, orgId, skillId, partnershipId);
+  revalidatePath(`/partners/${partnerId}`);
+}
+
+export async function decideSkillShareAction(partnerId: string, shareId: string, accept: boolean): Promise<void> {
+  const { pool, orgId } = await writerOrg();
+  await decideSkillShare(pool, orgId, shareId, accept);
+  revalidatePath(`/partners/${partnerId}`);
+  revalidatePath("/skills");
+}
+
+export async function revokeSkillShareAction(partnerId: string, shareId: string): Promise<void> {
+  const { pool, orgId } = await writerOrg();
+  await revokeSkillShare(pool, orgId, shareId);
+  revalidatePath(`/partners/${partnerId}`);
+  revalidatePath("/skills");
 }
