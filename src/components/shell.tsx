@@ -167,6 +167,15 @@ const NAV: NavGroup[] = [
     label: "Platform",
     items: [
       { href: "/sources", label: "Intelligence", icon: icons.sources, also: ["/provider-health"] },
+      {
+        href: "/skills",
+        label: "Skills",
+        icon: (
+          <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+            <path d="M8 1.8l1.5 3.6 3.9.4-2.9 2.6.8 3.8L8 10.3l-3.3 1.9.8-3.8-2.9-2.6 3.9-.4z" />
+          </svg>
+        ),
+      },
     ],
   },
 ];

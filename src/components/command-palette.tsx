@@ -39,6 +39,7 @@ const ROOMS: Hit[] = [
   { group: "Rooms", label: "Insights", sub: "AI calibration", href: "/insights" },
   { group: "Rooms", label: "Intelligence — sources", sub: "earned trust per source", href: "/sources" },
   { group: "Rooms", label: "Intelligence — providers", sub: "provider health", href: "/provider-health" },
+  { group: "Rooms", label: "Skills", sub: "the library your agents follow", href: "/skills" },
   { group: "Rooms", label: "Routines", sub: "briefs & digests", href: "/routines" },
   { group: "Rooms", label: "Admin", sub: "partnerships & governance", href: "/admin" },
 ];

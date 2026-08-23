@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type pg from "pg";
 import { z } from "zod";
 import { completeStructuredMeta } from "../ai/client";
+import { renderSkillsSection, skillsForContext } from "../skills/skills";
 
 /**
  * Campaign Composer (docs/AGENT_LAYER.md §3): approved motion → seller-facing
@@ -61,6 +62,13 @@ export async function composeCampaign(
     /* optional */
   }
 
+  // Skills library (task #84): org/partner/list-scoped curated instructions
+  // (style included — this is the customer-facing surface). Ids land on the run.
+  const skills = await skillsForContext(db, motion.org_id, "campaign", {
+    companyId: motion.company_id,
+    partnerId: motion.partner_id ?? null,
+  });
+
   const system = `You compose channel campaign assets from an APPROVED Revenue Motion for partner sellers.
 
 Hard rules:
@@ -83,7 +91,7 @@ Confidence: ${motion.confidence}
 ${JSON.stringify(motion.play, null, 2)}
 
 ${solutionProfile ? `## Solution profile\n${solutionProfile}` : ""}
-
+${renderSkillsSection(skills)}
 Compose the campaign assets.`;
 
   const { output: draft, meta } = await completeStructuredMeta({
@@ -97,8 +105,8 @@ Compose the campaign assets.`;
   await db.query(
     `insert into agent_runs (org_id, workflow, workflow_version, model, input_summary,
         raw_output, validated, motion_id, prompt_version, input_tokens, output_tokens,
-        cost_usd, latency_ms)
-     values ($1, 'campaign_composer', 'v1', $2, $3, $4, true, $5, 'v1', $6, $7, $8, $9)`,
+        cost_usd, latency_ms, skill_ids)
+     values ($1, 'campaign_composer', 'v1', $2, $3, $4, true, $5, 'v1', $6, $7, $8, $9, $10)`,
     [
       motion.org_id,
       meta.model,
@@ -109,6 +117,7 @@ Compose the campaign assets.`;
       meta.outputTokens,
       meta.costUsd,
       meta.latencyMs,
+      skills.map((s) => s.id),
     ],
   );
 

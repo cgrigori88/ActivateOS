@@ -5,6 +5,7 @@ import { z } from "zod";
 import { completeStructuredMeta } from "../ai/client";
 import { computeMotionEconomics, type PlayEconomics } from "../motions/economics";
 import { loadPartnerPlaybook } from "../playbooks/playbooks";
+import { renderSkillsSection, skillsForContext } from "../skills/skills";
 
 /**
  * Motion Designer (docs/AGENT_LAYER.md §3) — the first frontier-tier
@@ -114,6 +115,14 @@ export async function designMotion(
   // routed team names the partner.
   const playbook = team ? await loadPartnerPlaybook(db, args.orgId, team.partner_id) : null;
 
+  // Skills library (task #84): org-curated grounding — org-wide skills,
+  // skills scoped to the routed partner, and skills scoped to lists this
+  // account sits on. Ids are recorded on the run for usage attribution.
+  const skills = await skillsForContext(db, args.orgId, "motion", {
+    companyId: args.companyId,
+    partnerId: team?.partner_id ?? null,
+  });
+
   // Evidence-gated context: verified rows only.
   const { rows: evidence } = await db.query<{ id: string; claim: string; source_type: string; observed_at: Date }>(
     `select id, claim, source_type, observed_at from evidence
@@ -167,7 +176,7 @@ ${
         : "")
     : ""
 }
-Design the Revenue Motion.`;
+${renderSkillsSection(skills)}Design the Revenue Motion.`;
 
   const { output: draft, meta } = await completeStructuredMeta({
     tier: MODEL_TIER,
@@ -183,8 +192,8 @@ Design the Revenue Motion.`;
   const { rows: runRows } = await db.query<{ id: string }>(
     `insert into agent_runs (org_id, workflow, workflow_version, model, input_evidence_ids,
         input_summary, raw_output, validated, prompt_version, input_tokens, output_tokens,
-        cost_usd, latency_ms)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $3, $9, $10, $11, $12)
+        cost_usd, latency_ms, skill_ids)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $3, $9, $10, $11, $12, $13)
      returning id`,
     [
       args.orgId,
@@ -199,6 +208,7 @@ Design the Revenue Motion.`;
       meta.outputTokens,
       meta.costUsd,
       meta.latencyMs,
+      skills.map((s) => s.id),
     ],
   );
   if (!citation.ok) throw new Error(`motion rejected: ${citation.reason}`);
