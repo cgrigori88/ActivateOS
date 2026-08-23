@@ -11,7 +11,7 @@
 
 // ── Canonical fields ─────────────────────────────────────────────────────────
 
-export type FieldGroup = "account" | "relationship" | "contact" | "commercial";
+export type FieldGroup = "account" | "relationship" | "contact" | "commercial" | "enrichment";
 
 export interface CanonicalField {
   key: string; // attribute key on population_members (or core column)
@@ -153,7 +153,7 @@ export const CANONICAL_FIELDS: CanonicalField[] = [
     key: "installed_products",
     label: "Installed products",
     group: "commercial",
-    headers: [/^(installedproducts|existingproducts|products|currentproducts|installbase|installedbase|techstack|solutions)$/],
+    headers: [/^(installedproducts|existingproducts|products|currentproducts|installbase|installedbase|techstack|solutions|technology|technologies|technologyinstall|technologyinstalls|installedtechnology|techinstall)$/],
     hint: "claims become evidence rows (verified like any other source)",
   },
   {
@@ -202,6 +202,28 @@ export const CANONICAL_FIELDS: CanonicalField[] = [
     group: "commercial",
     headers: [/^(notes|note|comments|comment|description|remarks|context)$/],
   },
+  {
+    key: "intent_score",
+    label: "Intent / surge score",
+    group: "enrichment",
+    headers: [/^(intent|intentscore|buyerintent|surge|surgescore|intentlevel|buyingstage)$/],
+    hint: "Enrichment exports (HG Insights, Bombora…): lands as third-party evidence feeding the next scoring sweep",
+  },
+  {
+    key: "it_spend",
+    label: "IT spend / budget",
+    group: "enrichment",
+    headers: [/^(itspend|itbudget|techspend|techbudget|spend|estimatedspend|verticalitspend)$/],
+    value: (v) => NUMBERISH_RE.test(v.replace(/[$,kKmM]/g, "")),
+    hint: "Enrichment exports: lands as third-party evidence feeding the next scoring sweep",
+  },
+  {
+    key: "health_score",
+    label: "Health / NPS score",
+    group: "enrichment",
+    headers: [/^(health|healthscore|customerhealth|nps|npsscore|csat|riskscore)$/],
+    hint: "Gainsight-style exports: lands as third-party evidence feeding the next scoring sweep",
+  },
 ];
 
 export const FIELD_BY_KEY = new Map(CANONICAL_FIELDS.map((f) => [f.key, f]));
@@ -211,6 +233,7 @@ export const GROUP_LABEL: Record<FieldGroup, string> = {
   relationship: "Relationship / coverage",
   contact: "Contacts",
   commercial: "Commercial",
+  enrichment: "Enrichment signals",
 };
 
 

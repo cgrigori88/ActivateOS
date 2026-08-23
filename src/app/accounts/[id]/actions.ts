@@ -1,7 +1,33 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getPool } from "@/db/client";
+import { currentOrgId, requireWrite } from "@/lib/auth/org";
+import { currentActor } from "@/lib/partnerships/partnerships";
+import { addMeetingNote } from "@/lib/context/meetings";
+
+/** Meeting notes (task #86): each note is also first-party evidence + engagement. */
+export async function addMeetingNoteAction(companyId: string, formData: FormData): Promise<void> {
+  const pool = getPool();
+  await requireWrite(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  const db = await pool.connect();
+  try {
+    await addMeetingNote(db, orgId, companyId, {
+      metAt: String(formData.get("metAt") ?? ""),
+      title: String(formData.get("title") ?? ""),
+      attendees: String(formData.get("attendees") ?? ""),
+      body: String(formData.get("body") ?? ""),
+      createdBy: await currentActor(),
+    });
+  } finally {
+    db.release();
+  }
+  revalidatePath(`/accounts/${companyId}`);
+  redirect(`/accounts/${companyId}?notice=${encodeURIComponent("Meeting recorded — it now grounds the AI, counts as engagement, and appears on the timeline.")}`);
+}
 
 /** Partner-manager gate on routing: accept or decline the recommended team. */
 export async function setTeamStatusAction(

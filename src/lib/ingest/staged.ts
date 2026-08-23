@@ -36,7 +36,7 @@ export interface AnalyzeResult {
 
 export async function analyzeCsvToBatch(
   db: pg.PoolClient,
-  args: { orgId: string; csv: string; filename: string | null; uploadedBy?: string; kind?: "book" | "crm" },
+  args: { orgId: string; csv: string; filename: string | null; uploadedBy?: string; kind?: "book" | "crm" | "enrichment"; sourceLabel?: string },
 ): Promise<AnalyzeResult> {
   if (Buffer.byteLength(args.csv, "utf8") > MAX_CSV_BYTES) {
     throw new Error(`File too large — the cap is ${Math.round(MAX_CSV_BYTES / 1024 / 1024)}MB per upload.`);
@@ -73,6 +73,7 @@ export async function analyzeCsvToBatch(
       sniffed.rows.length,
       JSON.stringify({
         kind: args.kind ?? "book",
+        sourceLabel: args.sourceLabel?.trim().slice(0, 80) || null,
         delimiter: sniffed.delimiter,
         hasHeaderRow: sniffed.hasHeaderRow,
         headers: sniffed.headers,
@@ -528,6 +529,181 @@ export async function commitCrmBatch(db: pg.PoolClient, args: CrmCommitArgs): Pr
   }
 }
 
+// ── Enrichment exports (task #86): HG Insights / D&B / Gainsight CSVs ───────
+
+export interface CommitArgsBase {
+  orgId: string;
+  batchId: string;
+  targets: Record<number, string>;
+}
+
+export interface EnrichmentCommitResult {
+  imported: number;
+  skippedNoCompany: number;
+  matched: number;
+  created: number;
+  evidenceAdded: number;
+  firmographicsFilled: number;
+}
+
+/**
+ * Commit a third-party enrichment export. Contract:
+ *  - every recognized signal column lands as EVIDENCE with the vendor named
+ *    as provenance (third-party trust, 0.7) — through the same quality gates
+ *    as every other source, feeding the next propensity sweep;
+ *  - firmographics fill EMPTINESS only (industry/employees/country set only
+ *    where the record has none) — enrichment never overwrites observed data;
+ *  - no list, no opportunities: signals, not targets.
+ */
+export async function commitEnrichmentBatch(
+  db: pg.PoolClient,
+  args: CommitArgsBase,
+): Promise<EnrichmentCommitResult> {
+  const { rows: batchRows } = await db.query<{ id: string; status: string; mapping: { kind?: string; sourceLabel?: string | null } | null }>(
+    `select id, status, mapping from import_batches where id = $1 and org_id = $2`,
+    [args.batchId, args.orgId],
+  );
+  const batch = batchRows[0];
+  if (!batch) throw new Error("Import not found (or it belongs to another organization).");
+  if (batch.status !== "analyzed") throw new Error(`Import is ${batch.status} — only an analyzed upload can be committed.`);
+  if (batch.mapping?.kind !== "enrichment") throw new Error("This upload isn't an enrichment export — commit it as a list or CRM export instead.");
+
+  const companyCol = Object.entries(args.targets).find(([, t]) => t === "company")?.[0];
+  if (companyCol == null) throw new Error("Map one column to Company name first — signals need an account.");
+  const companyIdx = Number(companyCol);
+
+  const label = (batch.mapping.sourceLabel ?? "").trim() || "enrichment export";
+  const sourceName = `enrichment:${label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "unnamed"}`;
+
+  await db.query(`update import_batches set status = 'importing' where id = $1`, [args.batchId]);
+
+  try {
+    const { rows: staged } = await db.query<{ row_no: number; data: string[] }>(
+      `select row_no, data from import_rows where batch_id = $1 order by row_no`,
+      [args.batchId],
+    );
+
+    const { rows: existing } = await db.query<{
+      id: string; normalized_name: string; primary_domain: string | null; country: string | null;
+    }>(`select id, normalized_name, primary_domain, country from companies`);
+    const candidates: CompanyCandidate[] = existing.map((c) => ({
+      id: c.id,
+      normalizedName: c.normalized_name,
+      primaryDomain: c.primary_domain,
+      country: c.country,
+    }));
+
+    await db.query(
+      `insert into signal_sources (name, kind, trust_score, audit_sample_rate)
+       values ($1, 'third_party', 0.7, 0.1) on conflict (name) do nothing`,
+      [sourceName],
+    );
+
+    const result: EnrichmentCommitResult = {
+      imported: 0, skippedNoCompany: 0, matched: 0, created: 0, evidenceAdded: 0, firmographicsFilled: 0,
+    };
+
+    for (const row of staged) {
+      const cells = row.data;
+      const get = (key: string): string => {
+        const idx = Object.entries(args.targets).find(([, t]) => t === key)?.[0];
+        return idx == null ? "" : (cells[Number(idx)] ?? "").trim();
+      };
+
+      const companyName = (cells[companyIdx] ?? "").trim();
+      if (!companyName) {
+        result.skippedNoCompany++;
+        continue;
+      }
+
+      const domain = get("domain") ? extractDomain(get("domain")) : null;
+      const normalized = normalizeCompanyName(companyName);
+      const resolution = resolveCompany({ name: companyName, domain }, candidates);
+      let companyId: string;
+      if (resolution) {
+        companyId = resolution.companyId;
+        result.matched++;
+      } else {
+        const { rows: inserted } = await db.query<{ id: string }>(
+          `insert into companies (legal_name, normalized_name, primary_domain, industry)
+           values ($1, $2, $3, nullif($4, '')) returning id`,
+          [companyName, normalized, domain, get("industry")],
+        );
+        companyId = inserted[0].id;
+        candidates.push({ id: companyId, normalizedName: normalized, primaryDomain: domain });
+        result.created++;
+      }
+
+      // Firmographic fill-only: enrich emptiness, never overwrite observation.
+      const employeesRaw = get("employees").replace(/[,\s]/g, "");
+      const employees = /^\d+$/.test(employeesRaw) ? Number(employeesRaw) : null;
+      const { rowCount: filled } = await db.query(
+        `update companies set
+           industry = coalesce(industry, nullif($2, '')),
+           employee_count = coalesce(employee_count, $3::int),
+           country = coalesce(country, nullif($4, ''))
+         where id = $1 and (
+           (industry is null and nullif($2, '') is not null)
+           or (employee_count is null and $3::int is not null)
+           or (country is null and nullif($4, '') is not null))`,
+        [companyId, get("industry"), employees, get("country").toLowerCase()],
+      );
+      if (filled) result.firmographicsFilled++;
+
+      // Each recognized signal column → one evidence claim, vendor named.
+      const claims: string[] = [];
+      const products = get("installed_products");
+      if (products) {
+        for (const p of products.split(/[;,|]/).map((s) => s.trim()).filter(Boolean).slice(0, 10)) {
+          claims.push(`${label} reports installed technology: ${p}`);
+        }
+      }
+      if (get("intent_score")) claims.push(`${label} intent signal: ${get("intent_score")}`);
+      if (get("it_spend")) claims.push(`${label} reports IT spend: ${get("it_spend")}`);
+      if (get("health_score")) claims.push(`${label} health score: ${get("health_score")}`);
+      if (get("notes")) claims.push(`${label} note: ${get("notes").slice(0, 300)}`);
+
+      for (const claim of claims) {
+        const { rows: ev } = await db.query<{ id: string }>(
+          `insert into evidence (org_id, company_id, source_type, claim, raw_excerpt, confidence, observed_at)
+           values ($1, $2, $3, $4, $5, 0.95, now()) returning id`,
+          [args.orgId, companyId, sourceName, claim, claim],
+        );
+        // Extraction is a deterministic CSV parse (0.95); the third-party
+        // skepticism lives in the SOURCE trust (0.7) where it belongs.
+        await verifyEvidence(db, {
+          id: ev[0].id,
+          orgId: args.orgId,
+          companyId,
+          sourceName,
+          claim,
+          rawExcerpt: claim,
+          observedAt: new Date(),
+          extractionConfidence: 0.95,
+        });
+        result.evidenceAdded++;
+      }
+
+      result.imported++;
+    }
+
+    await db.query(`delete from import_rows where batch_id = $1`, [args.batchId]);
+    await db.query(
+      `update import_batches set status = 'imported', matched_count = $2, created_count = $3, evidence_count = $4,
+         mapping = mapping || jsonb_build_object('confirmed', $5::jsonb)
+       where id = $1`,
+      [args.batchId, result.matched, result.created, result.evidenceAdded, JSON.stringify(args.targets)],
+    );
+    return result;
+  } catch (err) {
+    await db.query(`update import_batches set status = 'failed', error = $2 where id = $1`, [
+      args.batchId,
+      err instanceof Error ? err.message : String(err),
+    ]);
+    throw err;
+  }
+}
+
 // ── Discard ──────────────────────────────────────────────────────────────────
 
 export async function discardImportBatch(db: pg.PoolClient, args: { orgId: string; batchId: string }): Promise<void> {
@@ -546,8 +722,10 @@ export interface StagedBatch {
   filename: string | null;
   rowCount: number;
   createdAt: Date;
-  /** "book" = partner book / account list (default); "crm" = CRM opportunity export. */
-  kind: "book" | "crm";
+  /** "book" = partner book / account list (default); "crm" = CRM opportunity export; "enrichment" = third-party signal export (HG, D&B, Gainsight…). */
+  kind: "book" | "crm" | "enrichment";
+  /** Enrichment only: the vendor named as evidence provenance. */
+  sourceLabel: string | null;
   headers: string[];
   hasHeaderRow: boolean;
   profiles: ColumnProfile[];
@@ -565,7 +743,8 @@ export async function loadStagedBatch(
     row_count: number;
     created_at: Date;
     mapping: {
-      kind?: "book" | "crm";
+      kind?: "book" | "crm" | "enrichment";
+      sourceLabel?: string | null;
       headers: string[];
       hasHeaderRow: boolean;
       profiles: ColumnProfile[];
@@ -587,7 +766,8 @@ export async function loadStagedBatch(
     filename: b.filename,
     rowCount: Number(b.row_count),
     createdAt: b.created_at,
-    kind: b.mapping.kind === "crm" ? "crm" : "book",
+    kind: b.mapping.kind === "crm" ? "crm" : b.mapping.kind === "enrichment" ? "enrichment" : "book",
+    sourceLabel: b.mapping.sourceLabel ?? null,
     headers: b.mapping.headers,
     hasHeaderRow: b.mapping.hasHeaderRow,
     profiles: b.mapping.profiles,

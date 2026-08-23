@@ -70,8 +70,8 @@ export function MappingReview({
   defaultCategory: string;
   commit: (fd: FormData) => Promise<void>;
   discard: () => Promise<void>;
-  /** "book" = partner/account list (default); "crm" = CRM opportunity export. */
-  kind?: "book" | "crm";
+  /** "book" = partner/account list (default); "crm" = CRM opportunity export; "enrichment" = third-party signal export. */
+  kind?: "book" | "crm" | "enrichment";
 }) {
   const [cols, setCols] = useState<ColState[]>(() =>
     headers.map((_, i) => {
@@ -253,7 +253,15 @@ export function MappingReview({
           an existing record is never overwritten — disagreements surface on Today instead.
         </div>
       )}
-      <div className={kind === "crm" ? "hidden" : "flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200 p-4 dark:border-neutral-800"}>
+      {kind === "enrichment" && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          Enrichment lane: recognized signal columns (installed technology, intent, IT spend, health scores, notes)
+          land as third-party evidence with the vendor named as provenance — through the same quality gates as every
+          other source, feeding the next propensity sweep. Firmographics fill only where your record is empty;
+          nothing observed is ever overwritten, and no list or opportunity is created.
+        </div>
+      )}
+      <div className={kind !== "book" ? "hidden" : "flex flex-wrap items-end gap-3 rounded-xl border border-neutral-200 p-4 dark:border-neutral-800"}>
         <label className="text-sm">
           <span className="mb-1 block text-xs text-neutral-500">List name</span>
           <input name="name" defaultValue={defaultName} className={`${input} w-64`} />
@@ -307,7 +315,9 @@ export function MappingReview({
         >
           {kind === "crm"
             ? `Sync CRM export · ${rowCount.toLocaleString()} rows`
-            : `Import ${rowCount.toLocaleString()} rows · ${kept} fields (${surfacedCount} surfaced)`}
+            : kind === "enrichment"
+              ? `Import enrichment signals · ${rowCount.toLocaleString()} rows`
+              : `Import ${rowCount.toLocaleString()} rows · ${kept} fields (${surfacedCount} surfaced)`}
         </button>
         <button formAction={discard} formNoValidate className="text-sm font-medium text-red-700 hover:underline dark:text-red-400">
           Discard upload
@@ -315,7 +325,9 @@ export function MappingReview({
         <span className="text-[11px] text-neutral-400">
           {kind === "crm"
             ? "Snapshots carry provenance; divergences from the live record surface on Today. Staged rows are deleted on sync or discard."
-            : "The imported list lands in Pending review — nothing joins the matrix without your approval. Staged rows are deleted on import or discard."}
+            : kind === "enrichment"
+              ? "Signals land as vendor-attributed evidence; the next scoring sweep reads them. Staged rows are deleted on import or discard."
+              : "The imported list lands in Pending review — nothing joins the matrix without your approval. Staged rows are deleted on import or discard."}
         </span>
       </div>
       <input type="hidden" name="batchId" value={batchId} />

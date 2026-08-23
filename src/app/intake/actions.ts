@@ -7,6 +7,7 @@ import { currentOrgId, requireWrite } from "@/lib/auth/org";
 import {
   analyzeCsvToBatch,
   commitCrmBatch,
+  commitEnrichmentBatch,
   commitImportBatch,
   discardImportBatch,
   loadStagedBatch,
@@ -36,7 +37,9 @@ export async function analyzeUploadAction(formData: FormData): Promise<void> {
   }
 
   const csv = await file.text();
-  const kind = String(formData.get("kind") ?? "book") === "crm" ? ("crm" as const) : ("book" as const);
+  const kindRaw = String(formData.get("kind") ?? "book");
+  const kind = kindRaw === "crm" ? ("crm" as const) : kindRaw === "enrichment" ? ("enrichment" as const) : ("book" as const);
+  const sourceLabel = kind === "enrichment" ? String(formData.get("sourceLabel") ?? "").trim() : "";
   const db = await pool.connect();
   let batchId: string;
   try {
@@ -46,6 +49,7 @@ export async function analyzeUploadAction(formData: FormData): Promise<void> {
       filename: file.name || null,
       uploadedBy: "web",
       kind,
+      sourceLabel: sourceLabel || undefined,
     });
     batchId = result.batchId;
   } finally {
@@ -173,6 +177,40 @@ export async function commitCrmAction(batchId: string, formData: FormData): Prom
   redirect(
     `/intake?notice=${encodeURIComponent(
       `CRM export synced — ${snapshots} snapshot${snapshots === 1 ? "" : "s"}, ${oppsCreated} new opportunit${oppsCreated === 1 ? "y" : "ies"} created where you held nothing. Disagreements with live records surface on Today.`,
+    )}`,
+  );
+}
+
+export async function commitEnrichmentAction(batchId: string, formData: FormData): Promise<void> {
+  const pool = getPool();
+  await requireWrite(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+
+  const db = await pool.connect();
+  let evidenceAdded = 0;
+  let filled = 0;
+  try {
+    const batch = await loadStagedBatch(db, { orgId, batchId });
+    if (!batch) throw new Error("Import not found or already handled.");
+    const rawTargets: Record<string, string> = {};
+    for (let i = 0; i < batch.headers.length; i++) {
+      const v = formData.get(`target_${i}`);
+      if (typeof v === "string") rawTargets[String(i)] = v;
+    }
+    const targets = sanitizeTargets(rawTargets, batch.headers);
+    const result = await commitEnrichmentBatch(db, { orgId, batchId, targets });
+    evidenceAdded = result.evidenceAdded;
+    filled = result.firmographicsFilled;
+  } finally {
+    db.release();
+  }
+
+  revalidatePath("/intake");
+  revalidatePath("/accounts");
+  redirect(
+    `/intake?notice=${encodeURIComponent(
+      `Enrichment imported — ${evidenceAdded} signal${evidenceAdded === 1 ? "" : "s"} landed as evidence (vendor named as provenance) and ${filled} account${filled === 1 ? "" : "s"} gained missing firmographics. The next scoring sweep reads all of it.`,
     )}`,
   );
 }

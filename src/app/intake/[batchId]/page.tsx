@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui";
 import { loadStagedBatch } from "@/lib/ingest/staged";
 import { guessCategory } from "@/lib/ingest/detect";
 import { MappingReview } from "./mapping-review";
-import { commitCrmAction, commitImportAction, discardImportAction } from "../actions";
+import { commitCrmAction, commitEnrichmentAction, commitImportAction, discardImportAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -40,13 +40,21 @@ export default async function IntakeReviewPage({ params }: { params: Promise<{ b
   const defaultName = (batch.filename ?? "Imported list").replace(/\.csv$/i, "").replace(/[_-]+/g, " ").trim() || "Imported list";
   const defaultCategory = guessCategory(batch.filename, batch.proposal);
 
-  const commit = (batch.kind === "crm" ? commitCrmAction : commitImportAction).bind(null, batch.id);
+  const commit = (
+    batch.kind === "crm" ? commitCrmAction : batch.kind === "enrichment" ? commitEnrichmentAction : commitImportAction
+  ).bind(null, batch.id);
   const discard = discardImportAction.bind(null, batch.id);
 
   return (
     <main>
       <PageHeader
-        title={batch.kind === "crm" ? "Review CRM export mapping" : "Review import mapping"}
+        title={
+          batch.kind === "crm"
+            ? "Review CRM export mapping"
+            : batch.kind === "enrichment"
+              ? `Review enrichment mapping${batch.sourceLabel ? ` — ${batch.sourceLabel}` : ""}`
+              : "Review import mapping"
+        }
         subtitle={`${batch.filename ?? "upload"} — ${batch.rowCount.toLocaleString()} rows, ${batch.headers.length} columns${batch.hasHeaderRow ? "" : " (no header row detected — columns are positional)"}. Confirm where each column lands${batch.kind === "crm" ? "" : " and which fields are surfaced"}.`}
       />
       <p className="mb-4 -mt-2 text-xs text-neutral-500">

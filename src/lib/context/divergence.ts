@@ -55,6 +55,9 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
        and not exists (select 1 from engagement_scores es
                        where es.company_id = o.company_id
                          and es.last_engaged_at > now() - interval '30 days')
+       and not exists (select 1 from meeting_notes mn
+                       where mn.company_id = o.company_id and mn.org_id = $1
+                         and mn.met_at > (now() - interval '30 days')::date)
      limit 5`,
     [orgId],
   ) : { rows: [] };

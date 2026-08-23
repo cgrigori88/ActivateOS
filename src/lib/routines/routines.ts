@@ -215,7 +215,7 @@ export async function runMorningBrief(db: Db, routine: RoutineRow): Promise<{ st
 const STRATEGIC_CAP = 10;
 
 export interface DigestItem {
-  type: "evidence" | "engagement" | "renewal" | "send";
+  type: "evidence" | "engagement" | "renewal" | "send" | "meeting";
   text: string;
   at: string;
 }
@@ -275,6 +275,14 @@ export async function runAccountDigests(
       [acct.company_id, orgId],
     ) : { rows: [] };
     for (const r of renewals) items.push({ type: "renewal", text: `Renewal within 90 days (${r.renewal}, from "${r.list}")`, at: r.renewal });
+
+    const { rows: meetings } = await db.query<{ met_at: string; title: string | null }>(
+      `select met_at::text, title from meeting_notes
+       where company_id = $1 and org_id = $2 and created_at > $3
+       order by met_at desc limit 3`,
+      [acct.company_id, orgId, since],
+    );
+    for (const m of meetings) items.push({ type: "meeting", text: `Meeting recorded${m.title ? ` — ${m.title}` : ""}`, at: m.met_at });
 
     const { rows: sends } = await db.query<{ subject: string; sent_at: Date }>(
       `select t.subject, t.sent_at from campaign_touches t join campaigns ca on ca.id = t.campaign_id

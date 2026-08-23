@@ -11,9 +11,10 @@ import {
 } from "@/components/ui";
 import { loadCompanyIntel } from "@/lib/intel/company-intel";
 import { currentOrgId } from "@/lib/auth/org";
-import { setTeamStatusAction } from "./actions";
+import { addMeetingNoteAction, setTeamStatusAction } from "./actions";
 import { draftAccountMotionAction } from "@/app/motions/actions";
 import { dealTimeline, type TimelineEvent } from "@/lib/context/timeline";
+import { listMeetingNotes } from "@/lib/context/meetings";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,7 @@ export default async function AccountPage({
   // one record, each with provenance; the partner half consent-filtered by
   // construction.
   const timeline: TimelineEvent[] = digestOrgId ? await dealTimeline(pool, digestOrgId, id, 40) : [];
+  const meetings = digestOrgId ? await listMeetingNotes(pool, digestOrgId, id) : [];
 
   const { rows: scores } = await pool.query(
     `select p.id, p.score, p.band, n.slug, p.computed_at,
@@ -254,7 +256,7 @@ export default async function AccountPage({
                 <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                   it.type === "evidence" ? "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
                   : it.type === "renewal" ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
-                  : it.type === "engagement" ? "bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400"
+                  : it.type === "engagement" || it.type === "meeting" ? "bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400"
                   : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"
                 }`}>{it.type}</span>
                 <span className="min-w-0 flex-1">{it.text}</span>
@@ -287,7 +289,7 @@ export default async function AccountPage({
                       ? "bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400"
                       : ev.kind === "renewal"
                         ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
-                        : ev.kind === "reply" || ev.kind === "opportunity"
+                        : ev.kind === "reply" || ev.kind === "opportunity" || ev.kind === "meeting"
                           ? "bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400"
                           : ev.kind === "send" || ev.kind === "motion"
                             ? "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
@@ -312,6 +314,58 @@ export default async function AccountPage({
           </ul>
         </Card>
       )}
+
+      {/* ── Meetings (task #86): the engagement signal email can't see ── */}
+      <Card className="mb-6">
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Meetings</h2>
+          <span className="text-[11px] text-neutral-400">
+            each note lands as first-party evidence and counts as engagement
+          </span>
+        </div>
+        {meetings.length === 0 ? (
+          <p className="mb-3 text-sm text-neutral-500">
+            No meetings recorded yet. Paste the recap your meeting tool emails you (Teams and Meet both send one) —
+            it grounds the AI, feeds this account&apos;s digest, and keeps the engagement triggers honest.
+          </p>
+        ) : (
+          <ul className="mb-3 space-y-2">
+            {meetings.map((m) => (
+              <li key={m.id} className="rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+                <p className="mb-1 text-[11px] text-neutral-400">
+                  <span className="font-semibold text-neutral-600 dark:text-neutral-300">{m.metAt}</span>
+                  {m.title && <> · {m.title}</>}
+                  {m.attendees && <> · with {m.attendees}</>}
+                </p>
+                <p className="whitespace-pre-wrap leading-relaxed">{m.body.length > 400 ? `${m.body.slice(0, 400)}…` : m.body}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form action={addMeetingNoteAction.bind(null, id)} className="space-y-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">Meeting date</span>
+              <input type="date" name="metAt" required className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">Title (optional)</span>
+              <input name="title" maxLength={200} placeholder="Technical deep-dive" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-neutral-500">Attendees (optional)</span>
+              <input name="attendees" maxLength={500} placeholder="J. Smith (CTO), our SE" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+            </label>
+          </div>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-neutral-500">What happened — notes or a pasted recap</span>
+            <textarea name="body" rows={3} required maxLength={8000} placeholder="Decisions, next steps, objections, who said what…" className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+          </label>
+          <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+            Record meeting
+          </button>
+        </form>
+      </Card>
 
       {scores.length > 0 && (
         <Card className="mb-6">

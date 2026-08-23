@@ -20,7 +20,7 @@ type Db = Pool | PoolClient;
 
 export interface TimelineEvent {
   at: string; // ISO timestamp
-  kind: "evidence" | "send" | "reply" | "motion" | "opportunity" | "joint" | "intro" | "renewal";
+  kind: "evidence" | "send" | "reply" | "motion" | "opportunity" | "joint" | "intro" | "renewal" | "meeting";
   title: string;
   detail: string | null;
   /** Provenance: which system/source produced this event. */
@@ -37,6 +37,7 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
   const { rows: ev } = await db.query<{ claim: string; source_type: string; collected_at: Date }>(
     `select claim, source_type, collected_at from evidence
      where company_id = $1 and org_id = $2 and status = 'verified'
+       and source_type <> 'meeting' -- meetings render as their own event kind below
      order by collected_at desc limit 40`,
     [companyId, orgId],
   );
@@ -201,6 +202,23 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
         href: "/partners",
       });
     }
+  }
+
+  // 8a. Meetings (task #86): the engagement email can't see, seller-recorded.
+  const { rows: meetings } = await db.query<{ met_at: string; title: string | null; attendees: string | null; body: string }>(
+    `select met_at::text, title, attendees, body from meeting_notes
+     where org_id = $2 and company_id = $1 order by met_at desc limit 15`,
+    [companyId, orgId],
+  );
+  for (const m of meetings) {
+    events.push({
+      at: iso(m.met_at),
+      kind: "meeting",
+      title: `Meeting${m.title ? `: ${m.title}` : ""}${m.attendees ? ` — with ${m.attendees.slice(0, 80)}` : ""}`,
+      detail: m.body.slice(0, 160),
+      source: "meeting notes",
+      href: `/accounts/${companyId}`,
+    });
   }
 
   // 8b. CRM-export snapshots: what the customer's own system said, verbatim.

@@ -97,7 +97,17 @@ export default async function IntakePage({
             <select name="kind" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
               <option value="book">Partner book / account list</option>
               <option value="crm">CRM export (opportunities)</option>
+              <option value="enrichment">Enrichment export (HG, D&amp;B, Gainsight…)</option>
             </select>
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-neutral-500">Source name (enrichment only)</span>
+            <input
+              name="sourceLabel"
+              maxLength={80}
+              placeholder="HG Insights"
+              className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            />
           </label>
           <button type="submit" className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
             Analyze columns
@@ -107,7 +117,8 @@ export default async function IntakePage({
           No fixed template needed. The file is profiled inside your tenant (no third party sees it), the columns are
           auto-matched to platform fields, and you confirm the mapping before anything is imported. A partner book
           lands as a reviewable list; a CRM export lands as stage/amount snapshots compared against your live
-          records — never overwriting them.
+          records — never overwriting them; an enrichment export (technographics, intent, IT spend, health scores)
+          lands as third-party evidence with the vendor named as provenance, feeding the next scoring sweep.
         </p>
       </Card>
 
