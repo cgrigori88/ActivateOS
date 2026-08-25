@@ -22,6 +22,7 @@ import {
   type Status,
 } from "@/lib/opportunities/meddpicc";
 import { quoteSignals } from "@/lib/opportunities/quotes";
+import { dealMomentum, MOMENTUM_LABEL, type Momentum } from "@/lib/opportunities/momentum";
 import {
   advanceOpportunityAction,
   registerDealAction,
@@ -60,7 +61,7 @@ export default async function PipelinePage({
   const timeframe = ["7", "30", "90"].includes(sp.timeframe ?? "") ? Number(sp.timeframe) : null;
   const pool = getPool();
   const { rows: allOpps } = await pool.query(
-    `select o.id, o.name, o.stage, o.amount_usd, o.next_step, o.expected_close_date,
+    `select o.id, o.name, o.stage, o.amount_usd, o.next_step, o.expected_close_date, o.updated_at,
             o.company_id, c.legal_name, n.slug, o.motion_id,
             pa.name as partner_name, m.partner_id
      from opportunities o
@@ -165,6 +166,22 @@ export default async function PipelinePage({
   // Quote-delivered signal, read from each opportunity's email conversation.
   const quotes = await quoteSignals(pool, opps.map((o) => o.id));
   const quoteOf = (id: string) => quotes.get(id) ?? { delivered: false, note: null, at: null };
+
+  // Deal momentum (task #88): observed behavior beside the declared stage —
+  // deterministic, cross-company aware (joint-room activity counts).
+  const momentum = orgIdForRadar
+    ? await dealMomentum(
+        pool,
+        orgIdForRadar,
+        opps.map((o) => ({
+          id: o.id,
+          companyId: o.company_id,
+          stage: o.stage,
+          updatedAt: o.updated_at,
+          quote: quoteOf(o.id),
+        })),
+      )
+    : new Map<string, Momentum>();
 
   // Atomic filters (apply to both board and review; bentos/chart stay on the
   // full timeframe set so the totals don't move as you slice).
@@ -627,6 +644,7 @@ export default async function PipelinePage({
           const won = o.stage === "closed_won";
           const lost = o.stage === "closed_lost";
           const quote = quoteOf(o.id);
+          const mo = momentum.get(o.id);
           return (
             <Card key={o.id}>
               <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -636,6 +654,22 @@ export default async function PipelinePage({
                 <span className={`text-xs font-medium uppercase tracking-wide ${won ? "text-green-700 dark:text-green-400" : lost ? "text-red-700 dark:text-red-400" : "text-neutral-500"}`}>
                   {o.stage.replace(/_/g, " ")}
                 </span>
+                {mo && (
+                  <span
+                    title={mo.reasons.join(" · ") || "observed behavior over the last 14 days"}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      mo.verdict === "advancing"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                        : mo.verdict === "at_risk"
+                          ? "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                          : mo.verdict === "stalling"
+                            ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                            : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"
+                    }`}
+                  >
+                    {mo.jointActive ? "◆ " : ""}{MOMENTUM_LABEL[mo.verdict]}
+                  </span>
+                )}
                 {o.amount_usd != null && (
                   <span className="tnum text-sm text-neutral-500">
                     ${Math.round(Number(o.amount_usd) / 1000)}k
