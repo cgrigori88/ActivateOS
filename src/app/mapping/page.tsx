@@ -26,6 +26,9 @@ import { ViewSelect, PartnerSelect } from "./view-select";
 import { currentOrgId } from "@/lib/auth/org";
 
 export const dynamic = "force-dynamic";
+// AI drafting actions invoked from this segment can run tens of seconds —
+// raise the serverless limit so generation never dies as a platform timeout.
+export const maxDuration = 60;
 
 /**
  * Mapping (Phase 8→10): where the SAME account shows up across a reseller, a

@@ -15,6 +15,9 @@ import {
 } from "./actions";
 
 export const dynamic = "force-dynamic";
+// AI drafting actions invoked from this segment can run tens of seconds —
+// raise the serverless limit so generation never dies as a platform timeout.
+export const maxDuration = 60;
 
 const STATUS_ORDER = ["draft", "approved", "active", "completed", "abandoned"];
 
@@ -63,6 +66,7 @@ export default async function MotionsPage({
     skipped?: string;
     blocked?: string;
     more?: string;
+    notice?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -165,6 +169,12 @@ export default async function MotionsPage({
           href={`/campaigns?motion=${justApproved.id}#composer`}
           cta="Compose the campaign"
         />
+      )}
+
+      {sp.notice && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          {sp.notice}
+        </div>
       )}
 
       {/* Draft-run results (task #83) — honest about every account: drafted,

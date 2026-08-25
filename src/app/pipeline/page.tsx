@@ -34,6 +34,9 @@ import {
 const MEDDPICC_STATUSES: Status[] = ["unknown", "gap", "weak", "strong"];
 
 export const dynamic = "force-dynamic";
+// AI drafting actions invoked from this segment can run tens of seconds —
+// raise the serverless limit so generation never dies as a platform timeout.
+export const maxDuration = 60;
 
 const ROLES = ["economic_buyer", "technical_buyer", "champion", "influencer", "blocker", "end_user"];
 const SENTIMENTS = ["unknown", "positive", "neutral", "negative"];
@@ -190,6 +193,71 @@ export default async function PipelinePage({
   );
   const total = open.reduce((s, o) => s + Number(o.amount_usd ?? 0), 0);
 
+  // ── Tie-out (task #87): does the number tie out — across systems? ──
+  // The CRM's latest word per opportunity vs the live record, per account,
+  // plus a daily snapshot so number drift has history instead of hearsay.
+  const tieOrgId = orgIdForRadar;
+  let tieOut: {
+    crmUsd: number;
+    liveUsd: number;
+    weightedUsd: number;
+    deltas: { companyId: string; account: string; crm: number; live: number }[];
+    weekAgo: { openUsd: number; takenOn: string } | null;
+  } | null = null;
+  if (tieOrgId) {
+    const { rows: crmByCompany } = await pool.query<{ company_id: string; legal_name: string; crm: string }>(
+      `select s.company_id, c.legal_name, sum(s.amount_usd) as crm
+       from (select distinct on (company_id, lower(opportunity_name)) company_id, opportunity_name, amount_usd, stage
+             from crm_snapshots where org_id = $1
+             order by company_id, lower(opportunity_name), reported_at desc) s
+       join companies c on c.id = s.company_id
+       where s.stage not in ('closed_won', 'closed_lost') and s.amount_usd is not null
+       group by s.company_id, c.legal_name`,
+      [tieOrgId],
+    );
+    if (crmByCompany.length > 0) {
+      const liveByCompany = new Map<string, number>();
+      for (const o of allOpps) {
+        if (o.stage.startsWith("closed")) continue;
+        liveByCompany.set(o.company_id, (liveByCompany.get(o.company_id) ?? 0) + Number(o.amount_usd ?? 0));
+      }
+      const crmUsd = crmByCompany.reduce((s, r) => s + Number(r.crm), 0);
+      const liveUsd = crmByCompany.reduce((s, r) => s + (liveByCompany.get(r.company_id) ?? 0), 0);
+      const deltas = crmByCompany
+        .map((r) => ({
+          companyId: r.company_id,
+          account: r.legal_name,
+          crm: Number(r.crm),
+          live: liveByCompany.get(r.company_id) ?? 0,
+        }))
+        .filter((d) => Math.abs(d.crm - d.live) >= 1)
+        .sort((a, b) => Math.abs(b.crm - b.live) - Math.abs(a.crm - a.live))
+        .slice(0, 5);
+      const { rows: weekAgoRows } = await pool.query<{ open_usd: string; taken_on: string }>(
+        `select open_usd, taken_on::text from pipeline_snapshots
+         where org_id = $1 and taken_on <= (now() - interval '6 days')::date
+         order by taken_on desc limit 1`,
+        [tieOrgId],
+      );
+      tieOut = {
+        crmUsd,
+        liveUsd,
+        weightedUsd: weighted,
+        deltas,
+        weekAgo: weekAgoRows[0] ? { openUsd: Number(weekAgoRows[0].open_usd), takenOn: weekAgoRows[0].taken_on } : null,
+      };
+    }
+    // Today's snapshot, idempotent — history accrues just by looking.
+    await pool.query(
+      `insert into pipeline_snapshots (org_id, taken_on, open_count, open_usd, weighted_usd, crm_usd)
+       values ($1, now()::date, $2, $3, $4, $5)
+       on conflict (org_id, taken_on) do update
+         set open_count = excluded.open_count, open_usd = excluded.open_usd,
+             weighted_usd = excluded.weighted_usd, crm_usd = excluded.crm_usd`,
+      [tieOrgId, open.length, total, weighted, tieOut?.crmUsd ?? null],
+    );
+  }
+
   return (
     <main>
       <PageHeader
@@ -220,6 +288,54 @@ export default async function PipelinePage({
               <Bento label="won" value={wonCount} subs={[`$${Math.round(wonUsd / 1000)}k`]} href="/pipeline?stage=closed_won" />
               <Bento label="reg'd deals" value={regRows.length} href="/pipeline?view=review" />
             </div>
+
+            {/* ── Tie-out (task #87): one place where the numbers reconcile ── */}
+            {tieOut && (
+              <Card className="mb-5">
+                <div className="mb-1 flex items-baseline justify-between gap-2">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Does it tie out?</h2>
+                  <span className="text-[11px] text-neutral-400">CRM export vs live record, account by account</span>
+                </div>
+                <div className="mb-2 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                  <span>Your CRM export says <span className="tnum font-semibold">${Math.round(tieOut.crmUsd / 1000)}k</span></span>
+                  <span>PursuitOS holds <span className="tnum font-semibold">${Math.round(tieOut.liveUsd / 1000)}k</span> on those accounts</span>
+                  <span className={Math.abs(tieOut.crmUsd - tieOut.liveUsd) < 1 ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}>
+                    {Math.abs(tieOut.crmUsd - tieOut.liveUsd) < 1
+                      ? "Ties out."
+                      : `${tieOut.crmUsd > tieOut.liveUsd ? "+" : "−"}$${Math.round(Math.abs(tieOut.crmUsd - tieOut.liveUsd) / 1000)}k apart`}
+                  </span>
+                  {tieOut.weekAgo && (
+                    <span className="text-neutral-500">
+                      Open pipeline {tieOut.weekAgo.takenOn}: <span className="tnum">${Math.round(tieOut.weekAgo.openUsd / 1000)}k</span>
+                      {" → "}today: <span className="tnum">${Math.round(total / 1000)}k</span>
+                    </span>
+                  )}
+                </div>
+                {tieOut.deltas.length > 0 ? (
+                  <ul className="space-y-1">
+                    {tieOut.deltas.map((d) => (
+                      <li key={d.companyId} className="flex items-center gap-2 text-sm">
+                        <Link href={`/accounts/${d.companyId}`} className="min-w-0 flex-1 truncate font-medium hover:underline">
+                          {d.account}
+                        </Link>
+                        <span className="tnum text-xs text-neutral-500">CRM ${Math.round(d.crm / 1000)}k</span>
+                        <span className="tnum text-xs text-neutral-500">live ${Math.round(d.live / 1000)}k</span>
+                        <span className="tnum w-16 text-right text-xs font-semibold text-amber-700 dark:text-amber-400">
+                          {d.crm > d.live ? "+" : "−"}${Math.round(Math.abs(d.crm - d.live) / 1000)}k
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-emerald-700 dark:text-emerald-400">
+                    Every account with a CRM snapshot matches the live record.
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] text-neutral-400">
+                  Somebody&rsquo;s number is usually wrong — this names whose, with the receipts on each account&rsquo;s timeline.
+                </p>
+              </Card>
+            )}
 
             {/* ── Renewal radar (B+3): the co-sell clock ── */}
             {renewals.length > 0 && (

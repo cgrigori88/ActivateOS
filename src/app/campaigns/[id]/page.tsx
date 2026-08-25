@@ -24,6 +24,9 @@ import {
 } from "./actions";
 
 export const dynamic = "force-dynamic";
+// AI drafting actions invoked from this segment can run tens of seconds —
+// raise the serverless limit so generation never dies as a platform timeout.
+export const maxDuration = 60;
 
 /**
  * Campaign detail (Phase 9A composer): the sequence, each touch previewed as

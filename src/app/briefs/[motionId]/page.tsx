@@ -8,6 +8,7 @@ import { promoteMotionAction } from "@/app/pipeline/actions";
 import { generateDraftAction, sendDraftAction } from "./actions";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 /**
  * Activation Brief (BLUEPRINT Phase 4): everything a partner seller needs to

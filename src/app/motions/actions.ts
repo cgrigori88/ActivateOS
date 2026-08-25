@@ -34,6 +34,7 @@ export async function draftMotionsAction(formData: FormData): Promise<void> {
   let skipped = 0; // already carry an open motion
   let blocked = 0; // on the suppression list — the machine may not pursue them
   let more = 0; // ready but beyond this run's batch
+  let errNotice: string | null = null;
   try {
     const orgId = await currentOrgId(db);
     if (!orgId) throw new Error("No organization in scope.");
@@ -88,10 +89,14 @@ export async function draftMotionsAction(formData: FormData): Promise<void> {
         }
       }
     }
+  } catch (err) {
+    // A bad selection is a notice, never a crash screen.
+    errNotice = err instanceof Error ? err.message : String(err);
   } finally {
     db.release();
   }
   revalidatePath("/motions");
+  if (errNotice) redirect(`/motions?notice=${encodeURIComponent(errNotice)}`);
   redirect(`/motions?status=draft&drafted=${ok}&failed=${fail}&skipped=${skipped}&blocked=${blocked}&more=${more}`);
 }
 

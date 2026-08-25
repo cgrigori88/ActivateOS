@@ -15,6 +15,9 @@ import {
 import { deleteCampaignAction } from "./[id]/actions";
 
 export const dynamic = "force-dynamic";
+// AI drafting actions invoked from this segment can run tens of seconds —
+// raise the serverless limit so generation never dies as a platform timeout.
+export const maxDuration = 60;
 
 /**
  * Campaigns (Phase 9A): branded multi-touch email sequences composed from

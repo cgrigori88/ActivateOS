@@ -16,7 +16,9 @@ export async function generateSequenceAction(formData: FormData): Promise<void> 
   const motionId = String(formData.get("motionId") ?? "").trim();
   const touchCount = Number(formData.get("touchCount") ?? 3);
   const senderName = String(formData.get("senderName") ?? "").trim() || "The PursuitOS Team";
-  if (!motionId) throw new Error("motionId is required");
+  if (!motionId) {
+    redirect(`/campaigns?notice=${encodeURIComponent("Pick an approved motion first — campaigns generate from approved motions, and every motion here already has one.")}`);
+  }
 
   const pool = getPool();
   const db = await pool.connect();

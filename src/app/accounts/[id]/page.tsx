@@ -17,6 +17,9 @@ import { dealTimeline, type TimelineEvent } from "@/lib/context/timeline";
 import { listMeetingNotes } from "@/lib/context/meetings";
 
 export const dynamic = "force-dynamic";
+// AI drafting actions invoked from this segment can run tens of seconds —
+// raise the serverless limit so generation never dies as a platform timeout.
+export const maxDuration = 60;
 
 export default async function AccountPage({
   params,
