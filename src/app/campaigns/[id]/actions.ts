@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getPool } from "@/db/client";
-import { requireWrite } from "@/lib/auth/org";
+import { currentOrgId, requireWrite } from "@/lib/auth/org";
+import { assignInitiative } from "@/lib/partnerships/initiatives";
 import { launchCampaign, sendTouchNow } from "@/lib/comms/sequence";
 import { deleteTouch, upsertTouch, type TouchFields } from "@/lib/comms/authoring";
 import { appendAiTouches } from "@/lib/agents/campaign-email";
@@ -255,4 +256,16 @@ export async function sendTouchAction(touchId: string, formData: FormData): Prom
     db.release();
   }
   revalidatePath(`/campaigns/${await touchCampaign(touchId)}`);
+}
+
+/** Attach this campaign to an initiative (task #83 follow-up) — or detach with "". */
+export async function setCampaignInitiativeAction(campaignId: string, formData: FormData): Promise<void> {
+  const pool = getPool();
+  await requireWrite(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  const initiativeId = String(formData.get("initiativeId") ?? "").trim() || null;
+  await assignInitiative(pool, orgId, "campaign", campaignId, initiativeId);
+  revalidatePath(`/campaigns/${campaignId}`);
+  revalidatePath("/partners");
 }

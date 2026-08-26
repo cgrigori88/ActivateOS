@@ -132,7 +132,12 @@ export default async function PartnerRoomPage({
       <Card className="mb-6">
         <div className="mb-1 flex items-baseline justify-between gap-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Initiatives</h2>
-          <span className="text-xs text-neutral-400">targets the pipeline moves — nothing here is self-reported</span>
+          <span className="flex items-baseline gap-3 text-xs">
+            <span className="text-neutral-400">targets the pipeline moves — nothing here is self-reported</span>
+            <Link href={`/partners/${partner.id}/review`} className="whitespace-nowrap font-medium text-blue-700 hover:underline dark:text-blue-400" title="the document version — every figure pulled live, printable for whoever still wants a PDF">
+              Partnership review →
+            </Link>
+          </span>
         </div>
         {sp.initiative && sp.initiative !== "created" && (
           <p className="mb-3 rounded-lg bg-amber/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">{sp.initiative}</p>

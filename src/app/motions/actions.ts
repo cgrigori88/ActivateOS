@@ -8,6 +8,7 @@ import { approveMotion, rejectMotion } from "@/lib/motions/approve";
 import { transitionMotion, type MotionOutcome } from "@/lib/motions/lifecycle";
 import { designMotion } from "@/lib/agents/motion-designer";
 import { suppressedCompanyIds } from "@/lib/icp/icp";
+import { assignInitiative } from "@/lib/partnerships/initiatives";
 
 // Single-taxonomy v1, same slug Mapping drafts against.
 const MOTION_TARGET_SLUG = "infrastructure-automation";
@@ -140,6 +141,18 @@ export async function setMotionGoalAction(motionId: string, formData: FormData):
   await getPool().query(`update revenue_motions set goal_id = $2 where id = $1`, [motionId, goalId]);
   revalidatePath("/motions");
   revalidatePath("/goals");
+}
+
+/** Attach this motion to an initiative (task #83 follow-up) — or detach with "". */
+export async function setMotionInitiativeAction(motionId: string, formData: FormData): Promise<void> {
+  const pool = getPool();
+  await requireWrite(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  const initiativeId = String(formData.get("initiativeId") ?? "").trim() || null;
+  await assignInitiative(pool, orgId, "motion", motionId, initiativeId);
+  revalidatePath("/motions");
+  revalidatePath("/partners");
 }
 
 export async function approveMotionAction(motionId: string): Promise<void> {

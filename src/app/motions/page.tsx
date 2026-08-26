@@ -12,7 +12,9 @@ import {
   draftMotionsAction,
   rejectMotionAction,
   setMotionGoalAction,
+  setMotionInitiativeAction,
 } from "./actions";
+import { initiativeOptions } from "@/lib/partnerships/initiatives";
 
 export const dynamic = "force-dynamic";
 // AI drafting actions invoked from this segment can run tens of seconds —
@@ -39,6 +41,7 @@ interface MotionRow {
   propensity: string | null;
   partner_name: string | null;
   goal_id: string | null;
+  initiative_id: string | null;
   goal_name: string | null;
 }
 
@@ -78,7 +81,7 @@ export default async function MotionsPage({
     `select m.id, m.status, m.thesis, m.trigger_summary, m.cta, m.confidence, m.operator_notes,
             m.company_id, c.legal_name, n.slug, c.industry, m.outcome,
             m.estimated_value_usd, m.effort, p.score as propensity, pa.name as partner_name,
-            m.goal_id, g.name as goal_name
+            m.goal_id, g.name as goal_name, m.initiative_id
      from revenue_motions m
      join companies c on c.id = m.company_id
      join taxonomy_nodes n on n.id = m.taxonomy_node_id
@@ -89,6 +92,7 @@ export default async function MotionsPage({
   );
   const orgId = await currentOrgId(pool);
   const goals = orgId ? await goalOptions(pool, orgId) : [];
+  const initiativeOpts = orgId ? await initiativeOptions(pool, orgId) : [];
 
   // Composer targets (task #83): approved lists with how many members are
   // still motion-less, and the top unmotioned accounts by propensity.
@@ -333,6 +337,16 @@ export default async function MotionsPage({
                         </select>
                         <button className="font-medium text-blue-700 hover:underline dark:text-blue-400">set</button>
                         {m.goal_name && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">{m.goal_name}</span>}
+                      </form>
+                    )}
+                    {initiativeOpts.length > 0 && (
+                      <form action={setMotionInitiativeAction.bind(null, m.id)} className="mb-1 flex items-center gap-1.5 text-xs" title="initiative this motion's work rolls up into">
+                        <span className="text-neutral-400">Initiative:</span>
+                        <select name="initiativeId" defaultValue={m.initiative_id ?? ""} className={`rounded border bg-transparent px-1 py-0.5 text-xs ${m.initiative_id ? "border-violet-300 text-violet-700 dark:border-violet-800 dark:text-violet-300" : "border-neutral-300 dark:border-neutral-700"}`}>
+                          <option value="">— none —</option>
+                          {initiativeOpts.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                        </select>
+                        <button className="font-medium text-blue-700 hover:underline dark:text-blue-400">set</button>
                       </form>
                     )}
                     <details className="mb-1">

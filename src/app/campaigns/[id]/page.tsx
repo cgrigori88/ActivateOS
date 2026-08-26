@@ -21,7 +21,9 @@ import {
   unlinkListAction,
   linkMotionAction,
   deleteCampaignAction,
+  setCampaignInitiativeAction,
 } from "./actions";
+import { initiativeOptions } from "@/lib/partnerships/initiatives";
 
 export const dynamic = "force-dynamic";
 // AI drafting actions invoked from this segment can run tens of seconds —
@@ -111,6 +113,7 @@ export default async function CampaignDetailPage({
     legal_name: string;
     primary_domain: string | null;
     motion_id: string;
+    initiative_id: string | null;
     wordmark: string | null;
     recipient_email: string | null;
     launched_at: Date | null;
@@ -119,6 +122,7 @@ export default async function CampaignDetailPage({
     `select ca.id, ca.name, ca.status, ca.objective, ca.audience,
             coalesce(ca.org_id, $2::uuid) as org_id,
             c.id as company_id, c.legal_name, c.primary_domain, m.id as motion_id,
+            ca.initiative_id,
             bp.wordmark, ca.recipient_email, ca.launched_at, ca.send_tz
      from campaigns ca
      left join revenue_motions m on m.id = ca.motion_id
@@ -129,6 +133,7 @@ export default async function CampaignDetailPage({
   );
   if (caRows.length === 0) notFound();
   const ca = caRows[0];
+  const initiativeOpts = ca.org_id ? await initiativeOptions(pool, ca.org_id) : [];
 
   // Multi-vendor: the partners running this play, each in a role.
   const { rows: playPartners } = await pool.query<{ name: string; partner_type: string | null; role: string }>(
@@ -202,6 +207,17 @@ export default async function CampaignDetailPage({
         <Link href={`/accounts/${ca.company_id}`}>{ca.legal_name}</Link>
       </div>
       <PageHeader title={ca.name} subtitle={ca.objective ?? undefined} />
+
+      {initiativeOpts.length > 0 && (
+        <form action={setCampaignInitiativeAction.bind(null, ca.id)} className="-mt-2 mb-4 flex items-center gap-1.5 text-xs" title="initiative this campaign's work rolls up into">
+          <span className="text-neutral-400">Initiative:</span>
+          <select name="initiativeId" defaultValue={ca.initiative_id ?? ""} className={`rounded border bg-transparent px-1 py-0.5 text-xs ${ca.initiative_id ? "border-violet-300 text-violet-700 dark:border-violet-800 dark:text-violet-300" : "border-neutral-300 dark:border-neutral-700"}`}>
+            <option value="">— none —</option>
+            {initiativeOpts.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+          <button className="font-medium text-blue-700 hover:underline dark:text-blue-400">set</button>
+        </form>
+      )}
 
       {notice && (
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
