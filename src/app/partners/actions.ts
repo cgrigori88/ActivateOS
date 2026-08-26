@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getPool } from "@/db/client";
 import { currentOrgId, requireWrite } from "@/lib/auth/org";
+import { createInitiative, setInitiativeStatus } from "@/lib/partnerships/initiatives";
 import { decideWarmIntro, requestWarmIntro } from "@/lib/partnerships/warm-intros";
 import { savePartnerPlaybook } from "@/lib/playbooks/playbooks";
 import { decideSkillShare, offerSkillShare, revokeSkillShare } from "@/lib/skills/skills";
@@ -73,4 +74,32 @@ export async function revokeSkillShareAction(partnerId: string, shareId: string)
   await revokeSkillShare(pool, orgId, shareId);
   revalidatePath(`/partners/${partnerId}`);
   revalidatePath("/skills");
+}
+
+/** Create an initiative in this partner's room (task #83). */
+export async function createInitiativeAction(partnerId: string, formData: FormData): Promise<void> {
+  const { pool, orgId } = await writerOrg();
+  const name = String(formData.get("name") ?? "");
+  const targetRaw = String(formData.get("target") ?? "").replace(/[^0-9.]/g, "");
+  const res = await createInitiative(pool, orgId, {
+    partnerId,
+    name,
+    description: String(formData.get("description") ?? "").trim(),
+    targetUsd: targetRaw ? Number(targetRaw) : null,
+    periodLabel: String(formData.get("period") ?? "").trim(),
+  });
+  revalidatePath(`/partners/${partnerId}`);
+  if ("error" in res) redirect(`/partners/${partnerId}?initiative=${encodeURIComponent(res.error)}`);
+  redirect(`/partners/${partnerId}?initiative=created`);
+}
+
+/** Complete or archive an initiative — computed history stays intact. */
+export async function setInitiativeStatusAction(
+  partnerId: string,
+  initiativeId: string,
+  status: "active" | "completed" | "archived",
+): Promise<void> {
+  const { pool, orgId } = await writerOrg();
+  await setInitiativeStatus(pool, orgId, initiativeId, status);
+  revalidatePath(`/partners/${partnerId}`);
 }

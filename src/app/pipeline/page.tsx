@@ -25,12 +25,14 @@ import { quoteSignals } from "@/lib/opportunities/quotes";
 import { dealMomentum, MOMENTUM_LABEL, type Momentum } from "@/lib/opportunities/momentum";
 import {
   advanceOpportunityAction,
+  assignInitiativeAction,
   registerDealAction,
   setRegistrationStatusAction,
   setStakeholderAction,
   setMeddpiccAction,
   assessMeddpiccAction,
 } from "./actions";
+import { initiativeOptions } from "@/lib/partnerships/initiatives";
 
 const MEDDPICC_STATUSES: Status[] = ["unknown", "gap", "weak", "strong"];
 
@@ -62,7 +64,7 @@ export default async function PipelinePage({
   const pool = getPool();
   const { rows: allOpps } = await pool.query(
     `select o.id, o.name, o.stage, o.amount_usd, o.next_step, o.expected_close_date, o.updated_at,
-            o.company_id, c.legal_name, n.slug, o.motion_id,
+            o.company_id, c.legal_name, n.slug, o.motion_id, o.initiative_id,
             pa.name as partner_name, m.partner_id
      from opportunities o
      join companies c on c.id = o.company_id
@@ -162,6 +164,9 @@ export default async function PipelinePage({
     const m = meddpicc.get(id);
     return m ? meddpiccScore(m) : 0;
   };
+
+  // Initiatives (task #83): the named targets an opportunity can roll into.
+  const initiativeOpts = orgIdForRadar ? await initiativeOptions(pool, orgIdForRadar) : [];
 
   // Quote-delivered signal, read from each opportunity's email conversation.
   const quotes = await quoteSignals(pool, opps.map((o) => o.id));
@@ -689,6 +694,21 @@ export default async function PipelinePage({
                   </span>
                 ) : (
                   <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 dark:bg-neutral-800" title="no priced document detected in the conversation yet">no quote</span>
+                )}
+                {initiativeOpts.length > 0 && (
+                  <form action={assignInitiativeAction.bind(null, o.id)} className="flex items-center gap-1" title="initiative this deal rolls up into — the target moves the moment you link it">
+                    <select
+                      name="initiativeId"
+                      defaultValue={o.initiative_id ?? ""}
+                      className={`max-w-[180px] rounded border bg-transparent px-1 py-0.5 text-xs ${o.initiative_id ? "border-violet-300 text-violet-700 dark:border-violet-800 dark:text-violet-300" : "border-neutral-300 text-neutral-500 dark:border-neutral-700"}`}
+                    >
+                      <option value="">no initiative</option>
+                      {initiativeOpts.map((i) => (
+                        <option key={i.id} value={i.id}>{i.name}</option>
+                      ))}
+                    </select>
+                    <button className="text-[10px] font-medium text-neutral-400 underline-offset-2 hover:underline">set</button>
+                  </form>
                 )}
                 {o.motion_id && (
                   <Link

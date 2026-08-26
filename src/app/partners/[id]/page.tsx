@@ -5,8 +5,9 @@ import { currentOrgId } from "@/lib/auth/org";
 import { BackLink, Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { partnerRoom } from "@/lib/partners/hub";
 import { OVERLAP_LEVELS, LEVEL_LABEL, type RungState } from "@/lib/partnerships/overlap";
-import { decideIntroAction, decideSkillShareAction, offerSkillShareAction, requestIntroAction, revokeSkillShareAction, savePlaybookAction } from "../actions";
+import { createInitiativeAction, decideIntroAction, decideSkillShareAction, offerSkillShareAction, requestIntroAction, revokeSkillShareAction, savePlaybookAction, setInitiativeStatusAction } from "../actions";
 import { loadPartnerPlaybook } from "@/lib/playbooks/playbooks";
+import { listInitiatives } from "@/lib/partnerships/initiatives";
 import { listSkillShares, type SkillShareView } from "@/lib/skills/skills";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ export default async function PartnerRoomPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ intro?: string; playbook?: string }>;
+  searchParams?: Promise<{ intro?: string; playbook?: string; initiative?: string }>;
 }) {
   const { id } = await params;
   const sp = (await searchParams) ?? {};
@@ -61,6 +62,7 @@ export default async function PartnerRoomPage({
   const room = await partnerRoom(pool, orgId, id);
   if (!room) notFound();
   const playbook = await loadPartnerPlaybook(pool, orgId, id);
+  const initiatives = await listInitiatives(pool, orgId, { partnerId: id });
 
   // Skill sharing (task #85): both directions on this partnership, plus the
   // skills of ours that could still be offered.
@@ -122,6 +124,105 @@ export default async function PartnerRoomPage({
           subs={[`your motions with ${partner.name}`]}
         />
       </div>
+
+      {/* ── Initiatives (task #83): named targets that real activity rolls up
+          into. The anti-pattern this replaces: the partner-plan document whose
+          initiatives read Target $10M / Won $0 forever because nothing links
+          deals to them. Progress here is computed, never reported. ── */}
+      <Card className="mb-6">
+        <div className="mb-1 flex items-baseline justify-between gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Initiatives</h2>
+          <span className="text-xs text-neutral-400">targets the pipeline moves — nothing here is self-reported</span>
+        </div>
+        {sp.initiative && sp.initiative !== "created" && (
+          <p className="mb-3 rounded-lg bg-amber/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">{sp.initiative}</p>
+        )}
+        {sp.initiative === "created" && (
+          <p className="mb-3 rounded-lg bg-emerald/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+            Initiative created — attach motions, campaigns, and opportunities and the rollup moves on its own.
+          </p>
+        )}
+        {initiatives.length === 0 && (
+          <p className="mb-3 text-sm text-neutral-500">
+            No initiatives with {partner.name} yet. Name the play, give it a number, and let the pipeline report the progress.
+          </p>
+        )}
+        <div className="space-y-3">
+          {initiatives.map((init) => {
+            const denom = init.targetUsd && init.targetUsd > 0 ? init.targetUsd : null;
+            const wonPct = denom ? Math.min(100, Math.round((init.wonUsd / denom) * 100)) : null;
+            const openPct = denom ? Math.min(100 - (wonPct ?? 0), Math.round((init.openUsd / denom) * 100)) : null;
+            return (
+              <div key={init.id} className="rounded-xl border border-neutral-200 p-3 dark:border-neutral-800">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="font-semibold">{init.name}</span>
+                  {init.periodLabel && <span className="text-xs text-neutral-400">{init.periodLabel}</span>}
+                  {init.status !== "active" && <StatusBadge status={init.status} />}
+                  <span className="tnum ml-auto text-sm text-neutral-500">
+                    {init.targetUsd != null ? `target ${money(init.targetUsd)}` : "no target set"}
+                  </span>
+                </div>
+                {init.description && <p className="mt-1 text-sm text-neutral-500">{init.description}</p>}
+                {denom != null && (
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800" title={`won ${money(init.wonUsd)} · open ${money(init.openUsd)} · target ${money(denom)}`}>
+                    <div className="flex h-full">
+                      <div className="bg-emerald" style={{ width: `${wonPct}%` }} />
+                      <div className="bg-accent/50" style={{ width: `${openPct}%` }} />
+                    </div>
+                  </div>
+                )}
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-500">
+                  <span className="tnum"><b className="text-emerald-700 dark:text-emerald-400">{money(init.wonUsd)}</b> won ({init.wonN})</span>
+                  <span className="tnum"><b className="text-blue-700 dark:text-blue-400">{money(init.openUsd)}</b> registered ({init.openN} open)</span>
+                  {init.lostN > 0 && <span className="tnum"><b className="text-rose-700 dark:text-rose-400">{money(init.lostUsd)}</b> lost ({init.lostN})</span>}
+                  <span>{init.motions} motion{init.motions === 1 ? "" : "s"} · {init.campaigns} campaign{init.campaigns === 1 ? "" : "s"}</span>
+                  <span className="ml-auto flex gap-2">
+                    {init.status === "active" && (
+                      <form action={setInitiativeStatusAction.bind(null, partner.id, init.id, "completed")}>
+                        <button className="text-neutral-400 underline-offset-2 hover:underline">mark complete</button>
+                      </form>
+                    )}
+                    {init.status !== "archived" ? (
+                      <form action={setInitiativeStatusAction.bind(null, partner.id, init.id, "archived")}>
+                        <button className="text-neutral-400 underline-offset-2 hover:underline">archive</button>
+                      </form>
+                    ) : (
+                      <form action={setInitiativeStatusAction.bind(null, partner.id, init.id, "active")}>
+                        <button className="text-neutral-400 underline-offset-2 hover:underline">restore</button>
+                      </form>
+                    )}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <form action={createInitiativeAction.bind(null, partner.id)} className="mt-4 grid gap-2 md:grid-cols-[1fr_140px_120px_auto]">
+          <input
+            name="name"
+            required
+            placeholder={`e.g. FY27 automation push — ${partner.name}`}
+            className="rounded-lg border border-neutral-200 bg-transparent px-3 py-1.5 text-sm dark:border-neutral-800"
+          />
+          <input
+            name="target"
+            inputMode="numeric"
+            placeholder="target $"
+            className="rounded-lg border border-neutral-200 bg-transparent px-3 py-1.5 text-sm dark:border-neutral-800"
+          />
+          <input
+            name="period"
+            placeholder="period (FY27)"
+            className="rounded-lg border border-neutral-200 bg-transparent px-3 py-1.5 text-sm dark:border-neutral-800"
+          />
+          <button className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white">Add initiative</button>
+          <input
+            name="description"
+            placeholder="what winning looks like (optional)"
+            className="rounded-lg border border-neutral-200 bg-transparent px-3 py-1.5 text-sm md:col-span-4 dark:border-neutral-800"
+          />
+        </form>
+      </Card>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
         {/* ── Trust ladder (read-only; Admin decides) ── */}

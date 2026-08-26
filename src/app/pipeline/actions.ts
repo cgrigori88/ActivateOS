@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { getPool } from "@/db/client";
-import { requireWrite } from "@/lib/auth/org";
+import { currentOrgId, requireWrite } from "@/lib/auth/org";
+import { assignInitiative } from "@/lib/partnerships/initiatives";
 import {
   advanceOpportunity,
   createOpportunityFromMotion,
@@ -133,4 +134,16 @@ export async function setStakeholderAction(
     db.release();
   }
   revalidatePath("/pipeline");
+}
+
+/** Attach an opportunity to an initiative (task #83) — or detach with "". */
+export async function assignInitiativeAction(opportunityId: string, formData: FormData): Promise<void> {
+  const pool = getPool();
+  await requireWrite(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  const initiativeId = String(formData.get("initiativeId") ?? "") || null;
+  await assignInitiative(pool, orgId, "opportunity", opportunityId, initiativeId);
+  revalidatePath("/pipeline");
+  revalidatePath("/partners");
 }
