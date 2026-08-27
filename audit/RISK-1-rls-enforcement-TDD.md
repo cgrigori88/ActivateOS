@@ -1,5 +1,74 @@
 # RISK-1 — RLS Enforcement: Technical Design Document
 
+**Status:** FOUNDATION BUILT + BLIND-VERIFIED (migration 0058); CUTOVER GATED.
+This is task #67, the security tier's second focused change. The DB-layer belt
+is now complete and proven in the local DB; it is **inert** (owner still
+connects, nothing FORCE'd) and safe to ship. The cutover — running the app as
+the non-owner role — is deliberately deferred as its own change because it
+needs app-layer plumbing (see "Remaining for cutover"). Do NOT attempt the
+cutover as a bare role flip; it will break the app.
+
+## What shipped in this pass (0058), and the evidence
+
+Built and verified, not narrated (raw log: `audit/RISK-1-blind-retest.log`):
+
+- `is_org_member(org)` is now **GUC-aware**: `... where user_id = auth.uid()`
+  OR `org = app_current_org()`, where `app_current_org()` reads the
+  transaction-local `app.org_id`. This lets trusted server code propagate the
+  caller's org without a Data API JWT, and keeps the existing `auth.uid()`
+  path working for the Data API.
+- A non-owner role `app_rw` (**NOLOGIN**, NOINHERIT, no BYPASSRLS) with
+  table/sequence/function grants.
+- A uniform `for all to app_rw using (is_org_member(org_id)) with check (...)`
+  tenant-isolation policy on **all 53 org-scoped tables** (data-driven, so no
+  table is silently left default-denying — the earlier 14-table draft left 38
+  tables uncovered, which the first blind re-test caught).
+
+Blind per-policy re-test (as `app_rw` via `SET ROLE`, so NOLOGIN is preserved),
+across tables from both the original and newly-covered sets — all pass:
+
+| Check | Result |
+| --- | --- |
+| Read own org (DEMO): evidence/campaigns/opps/partners/initiatives | 35 / 4 / 4 / 5 / 1 — exact |
+| Read as counterpart org: only its rows visible | partners 1, rest 0 |
+| No `app.org_id` set → default-deny | 0 rows everywhere |
+| Own-org INSERT (initiatives) | succeeds |
+| Cross-org INSERT | **blocked — WITH CHECK violation** |
+| Cross-org UPDATE (`where org_id = other`) | 0 rows affected |
+| **Blanket UPDATE, no WHERE** (a forgotten app-layer filter) | touches only own org's 5 rows; counterpart's row invisible |
+
+The last row is the point of the belt: even an app query that forgets its
+`org_id` filter cannot cross tenants once the cutover is done.
+
+Design note — why per-table `app_rw` policies instead of repointing the
+existing `auth.uid()` policies (as the original draft below proposed): the
+existing policies target the `authenticated` role for the Supabase Data API.
+Adding parallel `to app_rw` policies leaves that contract untouched and makes
+the app_rw path explicit, rather than broadening 40 existing policies to
+`public` and re-verifying the Data API. Tenant isolation is the belt's only
+job; role gating (viewer/writer/owner) stays in the app layer
+(`requireWrite`/`requireOwner`), so app_rw policies gate on membership alone.
+
+## Remaining for cutover (separate, gated change)
+
+1. **Resolve the caller's org from the authenticated web session**, not from a
+   DB query on `auth.uid()`. `currentOrgId()` currently does
+   `select org_id from org_members where user_id = auth.uid()`, which is null
+   off the JWT path — a chicken-and-egg that blocks a bare role flip.
+2. **`withTenant(db, orgId, fn)`** wrapper: `BEGIN; SET LOCAL app.org_id = …`
+   before any tenant query, fail closed if `orgId` is absent. Route tenant
+   reads/writes through it; keep the owner pool for migrations and the worker.
+3. Point `DATABASE_URL` at `app_rw`; optionally `FORCE` per table.
+4. Re-run the blind per-policy re-test on a real-auth session, then cut over.
+
+Rollback is trivial: point `DATABASE_URL` back at the owner role — RLS goes
+inert again (owner bypass) and the app-layer `org_id` scoping remains the
+control. 0058 is safe to leave in place regardless.
+
+---
+
+_Original design (pre-execution) retained below for the record._
+
 **Status:** design for sign-off — NOT executed. This is task #67, the security
 tier's second focused change. Do not attempt as a role flip; it will break the
 app. Requires the plumbing below first, then a blind per-policy re-test.
