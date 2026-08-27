@@ -76,18 +76,25 @@ export async function suggestCampaignsAction(): Promise<void> {
 
 /** Link (or unlink) a campaign to a S.M.A.R.T. goal so its touches roll up. */
 export async function setCampaignGoalAction(campaignId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
+  const pool = getPool();
+  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
   const goalId = String(formData.get("goalId") ?? "").trim() || null;
-  await getPool().query(`update campaigns set goal_id = $2 where id = $1`, [campaignId, goalId]);
+  // FLOW-1 fix: org-scoped so a foreign campaign id can't be retargeted.
+  await pool.query(`update campaigns set goal_id = $2 where id = $1 and org_id = $3`, [campaignId, goalId, orgId]);
   revalidatePath("/campaigns");
   revalidatePath("/goals");
 }
 
 /** Dismiss an AI-suggested campaign the seller doesn't want. */
 export async function dismissCampaignAction(campaignId: string): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const pool = getPool();
-  await pool.query(`update campaigns set dismissed_at = now() where id = $1`, [campaignId]);
+  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  // FLOW-1 fix: org-scoped.
+  await pool.query(`update campaigns set dismissed_at = now() where id = $1 and org_id = $2`, [campaignId, orgId]);
   revalidatePath("/campaigns");
 }
 

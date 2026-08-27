@@ -23,10 +23,14 @@ export async function linkListAction(campaignId: string, formData: FormData): Pr
 
 /** Link a motion so AI drafting has approved grounding (thesis, trigger, CTA, evidence). */
 export async function linkMotionAction(campaignId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
+  const pool = getPool();
+  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
   const motionId = String(formData.get("motionId") ?? "").trim();
   if (!motionId) return;
-  await getPool().query(`update campaigns set motion_id = $2 where id = $1`, [campaignId, motionId]);
+  // FLOW-1 fix: scope the write to the caller's org so a foreign campaign id can't be retargeted.
+  await pool.query(`update campaigns set motion_id = $2 where id = $1 and org_id = $3`, [campaignId, motionId, orgId]);
   revalidatePath(`/campaigns/${campaignId}`);
 }
 
@@ -36,8 +40,12 @@ export async function linkMotionAction(campaignId: string, formData: FormData): 
  * communication thread (messages are the record, the campaign was the vehicle).
  */
 export async function deleteCampaignAction(campaignId: string): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  await getPool().query(`delete from campaigns where id = $1`, [campaignId]);
+  const pool = getPool();
+  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  // FLOW-1 fix (highest severity — cross-tenant destructive delete): org-scoped.
+  await pool.query(`delete from campaigns where id = $1 and org_id = $2`, [campaignId, orgId]);
   revalidatePath("/campaigns");
   redirect("/campaigns");
 }
@@ -130,12 +138,16 @@ export async function approveTouchAction(touchId: string): Promise<void> {
 }
 
 export async function rejectTouchAction(touchId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  const reason = String(formData.get("reason") ?? "").trim() || null;
   const pool = getPool();
+  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  const reason = String(formData.get("reason") ?? "").trim() || null;
+  // FLOW-1 fix: campaign_touches has no org_id — scope via its parent campaign's org.
   await pool.query(
-    `update campaign_touches set status = 'rejected', rejected_reason = $2 where id = $1 and status <> 'sent'`,
-    [touchId, reason],
+    `update campaign_touches t set status = 'rejected', rejected_reason = $2
+     from campaigns c where c.id = t.campaign_id and t.id = $1 and t.status <> 'sent' and c.org_id = $3`,
+    [touchId, reason, orgId],
   );
   revalidatePath(`/campaigns/${await touchCampaign(touchId)}`);
 }

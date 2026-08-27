@@ -46,10 +46,13 @@ export async function createPopulationAction(formData: FormData): Promise<void> 
 }
 
 export async function setPopulationStatusAction(populationId: string, status: string): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  if (!["approved", "rejected", "pending"].includes(status)) throw new Error("invalid status");
   const pool = getPool();
-  await pool.query(`update account_populations set status = $2 where id = $1`, [populationId, status]);
+  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  if (!["approved", "rejected", "pending"].includes(status)) throw new Error("invalid status");
+  // FLOW-1 fix: org-scoped so a foreign list id can't be approved/rejected.
+  await pool.query(`update account_populations set status = $2 where id = $1 and org_id = $3`, [populationId, status, orgId]);
   revalidatePath("/mapping");
 }
 
@@ -58,12 +61,15 @@ export async function setPopulationStatusAction(populationId: string, status: st
  * matrix (the reviewer's decision). Empty selection = keep all detected fields.
  */
 export async function acceptPopulationAction(populationId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  const fields = formData.getAll("fields").map((f) => String(f)).filter(Boolean);
   const pool = getPool();
+  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  const fields = formData.getAll("fields").map((f) => String(f)).filter(Boolean);
+  // FLOW-1 fix: org-scoped.
   await pool.query(
-    `update account_populations set status = 'approved', selected_fields = $2 where id = $1`,
-    [populationId, fields.length ? fields : null],
+    `update account_populations set status = 'approved', selected_fields = $2 where id = $1 and org_id = $3`,
+    [populationId, fields.length ? fields : null, orgId],
   );
   revalidatePath("/mapping");
   redirect(`/mapping?view=review&notice=${encodeURIComponent(`Accepted list with ${fields.length || "all"} field(s) mapped.`)}`);

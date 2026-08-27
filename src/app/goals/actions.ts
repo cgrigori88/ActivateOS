@@ -28,15 +28,21 @@ export async function createGoalAction(formData: FormData): Promise<void> {
 }
 
 export async function setGoalStatusAction(goalId: string, status: string): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  await setGoalStatus(getPool(), goalId, status);
+  const pool = getPool();
+  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  await setGoalStatus(pool, orgId, goalId, status);
   revalidatePath("/goals");
 }
 
 export async function setGoalManualValueAction(goalId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
+  const pool = getPool();
+  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
   const value = Number(formData.get("value") ?? 0);
-  if (Number.isFinite(value)) await setGoalManualValue(getPool(), goalId, value);
+  if (Number.isFinite(value)) await setGoalManualValue(pool, orgId, goalId, value);
   revalidatePath("/goals");
 }
 
@@ -57,7 +63,10 @@ export async function upsertTargetAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteTargetAction(targetId: string): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  await deleteTarget(getPool(), targetId);
+  const pool = getPool();
+  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
+  const orgId = await soleOrgId();
+  if (!orgId) throw new Error("No organization in scope.");
+  await deleteTarget(pool, orgId, targetId);
   revalidatePath("/goals");
 }

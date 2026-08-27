@@ -140,6 +140,7 @@ export async function upsertTarget(
   }
 }
 
-export async function deleteTarget(db: Db, targetId: string): Promise<void> {
-  await db.query(`delete from revenue_targets where id = $1`, [targetId]);
+export async function deleteTarget(db: Db, orgId: string, targetId: string): Promise<void> {
+  // FLOW-2 fix: org-scoped so a foreign target id can't be deleted.
+  await db.query(`delete from revenue_targets where id = $1 and org_id = $2`, [targetId, orgId]);
 }

@@ -136,9 +136,13 @@ export async function draftAccountMotionAction(companyId: string): Promise<void>
 
 /** Link (or unlink) a motion to a S.M.A.R.T. goal so its value rolls up. */
 export async function setMotionGoalAction(motionId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
+  const pool = getPool();
+  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
   const goalId = String(formData.get("goalId") ?? "").trim() || null;
-  await getPool().query(`update revenue_motions set goal_id = $2 where id = $1`, [motionId, goalId]);
+  // FLOW-1 fix: org-scoped so a foreign motion id can't be retargeted.
+  await pool.query(`update revenue_motions set goal_id = $2 where id = $1 and org_id = $3`, [motionId, goalId, orgId]);
   revalidatePath("/motions");
   revalidatePath("/goals");
 }

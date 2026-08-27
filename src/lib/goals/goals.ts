@@ -172,10 +172,12 @@ export async function createGoal(
   return rows[0].id;
 }
 
-export async function setGoalStatus(db: Db, goalId: string, status: string): Promise<void> {
-  await db.query(`update goals set status = $2 where id = $1`, [goalId, status]);
+export async function setGoalStatus(db: Db, orgId: string, goalId: string, status: string): Promise<void> {
+  // FLOW-2 fix: org-scoped so a foreign goal id can't be mutated.
+  await db.query(`update goals set status = $2 where id = $1 and org_id = $3`, [goalId, status, orgId]);
 }
 
-export async function setGoalManualValue(db: Db, goalId: string, value: number): Promise<void> {
-  await db.query(`update goals set manual_value = $2 where id = $1`, [goalId, value]);
+export async function setGoalManualValue(db: Db, orgId: string, goalId: string, value: number): Promise<void> {
+  // FLOW-2 fix: org-scoped.
+  await db.query(`update goals set manual_value = $2 where id = $1 and org_id = $3`, [goalId, value, orgId]);
 }

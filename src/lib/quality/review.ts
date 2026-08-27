@@ -10,10 +10,14 @@ import { auditSampleRate, updateTrust } from "./trust";
  */
 export async function resolveReview(
   db: pg.PoolClient,
+  orgId: string,
   reviewId: string,
   verdict: "accurate" | "inaccurate" | "unsure",
   notes?: string,
 ): Promise<void> {
+  // FLOW-2 fix: the review_queue row must belong to the caller's org. Once
+  // this org-scoped update returns the evidence_id, the downstream evidence
+  // writes are bounded to that row and inherit the scoping.
   const { rows } = await db.query<{
     evidence_id: string;
     claim: string;
@@ -24,9 +28,9 @@ export async function resolveReview(
     `update review_queue rq
      set status = $2, notes = $3, resolved_at = now()
      from evidence e
-     where rq.id = $1 and e.id = rq.evidence_id
+     where rq.id = $1 and e.id = rq.evidence_id and rq.org_id = $4
      returning e.id as evidence_id, e.claim, e.raw_excerpt, e.source_type, e.status`,
-    [reviewId, verdict, notes ?? null],
+    [reviewId, verdict, notes ?? null, orgId],
   );
   if (rows.length === 0) throw new Error(`review ${reviewId} not found`);
   const item = rows[0];

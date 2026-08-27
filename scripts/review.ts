@@ -39,7 +39,16 @@ async function main() {
         console.error("usage: npm run review -- resolve <review-id> accurate|inaccurate|unsure [note]");
         process.exit(1);
       }
-      await resolveReview(db, id, verdict as "accurate" | "inaccurate" | "unsure", noteParts.join(" ") || undefined);
+      // Admin CLI: resolve the review's own org so the org-scoped write matches.
+      const { rows: orgRows } = await db.query<{ org_id: string }>(
+        `select org_id from review_queue where id = $1`,
+        [id],
+      );
+      if (!orgRows[0]) {
+        console.error(`review ${id} not found`);
+        process.exit(1);
+      }
+      await resolveReview(db, orgRows[0].org_id, id, verdict as "accurate" | "inaccurate" | "unsure", noteParts.join(" ") || undefined);
       const { rows } = await db.query(
         `select name, round(trust_score, 3) trust, round(audit_sample_rate, 3) rate
          from signal_sources order by name`,
