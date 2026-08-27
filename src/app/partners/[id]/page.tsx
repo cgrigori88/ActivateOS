@@ -5,9 +5,10 @@ import { currentOrgId } from "@/lib/auth/org";
 import { BackLink, Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { partnerRoom } from "@/lib/partners/hub";
 import { OVERLAP_LEVELS, LEVEL_LABEL, type RungState } from "@/lib/partnerships/overlap";
-import { createInitiativeAction, decideIntroAction, decideSkillShareAction, offerSkillShareAction, requestIntroAction, revokeSkillShareAction, savePlaybookAction, setInitiativeStatusAction } from "../actions";
+import { createInitiativeAction, decideEvidenceShareAction, decideIntroAction, decideSkillShareAction, offerEvidenceShareAction, offerSkillShareAction, requestIntroAction, revokeEvidenceShareAction, revokeSkillShareAction, savePlaybookAction, setInitiativeStatusAction } from "../actions";
 import { loadPartnerPlaybook } from "@/lib/playbooks/playbooks";
 import { listInitiatives } from "@/lib/partnerships/initiatives";
+import { listEvidenceShares, offerableEvidence, type EvidenceShareView } from "@/lib/partnerships/evidence-shares";
 import { listSkillShares, type SkillShareView } from "@/lib/skills/skills";
 
 export const dynamic = "force-dynamic";
@@ -67,6 +68,8 @@ export default async function PartnerRoomPage({
   // Skill sharing (task #85): both directions on this partnership, plus the
   // skills of ours that could still be offered.
   const skillShares: SkillShareView[] = room.partnership ? await listSkillShares(pool, orgId, room.partnership.id) : [];
+  const evidenceShares: EvidenceShareView[] = room.partnership?.status === "active" ? await listEvidenceShares(pool, orgId, room.partnership.id) : [];
+  const offerableClaims = room.partnership?.status === "active" ? await offerableEvidence(pool, orgId, room.partnership.id) : [];
   const { rows: shareableSkills } = room.partnership?.status === "active"
     ? await pool.query<{ id: string; name: string; kind: string }>(
         `select s.id, s.name, s.kind from skills s
@@ -519,6 +522,67 @@ export default async function PartnerRoomPage({
           </div>
         </form>
       </Card>
+
+      {/* ── Evidence exchange (slice G): consented claim sharing, both ways.
+          Only verified claims on the approved NAMED overlap are offerable —
+          you cannot leak an account the partner doesn't already share. ── */}
+      {partnership?.status === "active" && (
+        <Card tone="violet" className="mb-6">
+          <div className="mb-1 flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Evidence exchange</h2>
+            <span className="text-xs text-neutral-400">verified claims, shared live across the fence — provenance intact, revocable</span>
+          </div>
+          {evidenceShares.length === 0 && (
+            <p className="mb-3 text-sm text-neutral-500">Nothing shared in either direction yet.</p>
+          )}
+          <ul className="mb-3 space-y-2">
+            {evidenceShares.map((sh) => (
+              <li key={sh.id} className="flex items-start gap-2 text-sm">
+                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${sh.direction === "incoming" ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
+                  {sh.direction === "incoming" ? "from them" : "from us"}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="font-medium">{sh.accountName}</span>
+                  <span className="text-neutral-500"> — {sh.claim.length > 140 ? sh.claim.slice(0, 140) + "…" : sh.claim}</span>
+                  <span className="ml-1 text-[11px] text-neutral-400">({sh.sourceType}, {sh.observedAt})</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  {sh.status === "offered" && sh.direction === "incoming" ? (
+                    <>
+                      <form action={decideEvidenceShareAction.bind(null, partner.id, sh.id, true)}>
+                        <button className="rounded bg-accent px-2 py-0.5 text-xs font-medium text-white">Accept</button>
+                      </form>
+                      <form action={decideEvidenceShareAction.bind(null, partner.id, sh.id, false)}>
+                        <button className="text-xs text-neutral-400 underline-offset-2 hover:underline">decline</button>
+                      </form>
+                    </>
+                  ) : (
+                    <StatusBadge status={sh.status} />
+                  )}
+                  {sh.direction === "outgoing" && sh.status !== "declined" && (
+                    <form action={revokeEvidenceShareAction.bind(null, partner.id, sh.id)}>
+                      <button className="text-xs text-neutral-400 underline-offset-2 hover:underline">revoke</button>
+                    </form>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {offerableClaims.length > 0 ? (
+            <form action={offerEvidenceShareAction.bind(null, partner.id, partnership.id)} className="flex flex-wrap items-center gap-2">
+              <select name="evidenceId" className="max-w-[520px] flex-1 rounded-lg border border-neutral-200 bg-transparent px-2 py-1.5 text-sm dark:border-neutral-800">
+                {offerableClaims.map((c) => (
+                  <option key={c.id} value={c.id}>{c.accountName} — {c.claim.slice(0, 90)}</option>
+                ))}
+              </select>
+              <button className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white">Offer to {partner.name}</button>
+              <span className="text-[11px] text-neutral-400">they must accept before it appears in their account room</span>
+            </form>
+          ) : (
+            <p className="text-xs text-neutral-400">No offerable claims — evidence must be verified and on the approved named overlap.</p>
+          )}
+        </Card>
+      )}
 
       {/* ── Skill sharing (task #85): consent-gated, live-read, audited both sides ── */}
       {room.partnership?.status === "active" && (

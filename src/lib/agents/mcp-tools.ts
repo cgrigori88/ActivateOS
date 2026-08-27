@@ -9,6 +9,10 @@ import { upsertTouch } from "../comms/authoring";
 import { dealTimeline } from "../context/timeline";
 import { accountDivergences } from "../context/divergence";
 import { listSkills, sharedInSkills } from "../skills/skills";
+import { listInitiatives } from "../partnerships/initiatives";
+import { listEvidenceShares } from "../partnerships/evidence-shares";
+import { requestWarmIntro } from "../partnerships/warm-intros";
+import { settlementStatement } from "../partnerships/settlement";
 
 /**
  * BYO-bot tool surface (task #76). The tools a personal agent may call
@@ -223,6 +227,118 @@ export const MCP_TOOLS: McpToolDef[] = [
         status: "draft",
         note: "Draft only — a human approves it in the campaign room before anything can send.",
       };
+    },
+  },
+  {
+    name: "partner_context",
+    description:
+      "The partnership API (agent-to-agent surface): everything one active partnership has consented to, in one read — disclosure-ladder state, named-overlap accounts, joint pursuits with their symmetric ledgers, initiatives with live target-vs-actual rollups, evidence shared across the fence in both directions, and the settlement statement. Nothing here exceeds the rung both owners approved; the same payload is what the counterpart's agents see. Read-only.",
+    inputSchema: {
+      type: "object",
+      properties: { partner: { type: "string", description: "Partner name, fuzzy matched" } },
+      required: ["partner"],
+      additionalProperties: false,
+    },
+    async run(pool, orgId, args) {
+      const q = String(args.partner ?? "").trim();
+      if (!q) throw new Error("partner is required");
+      const { rows: pr } = await pool.query<{ id: string; name: string }>(
+        `select id, name from partners where org_id = $1 and name ilike $2 order by name limit 1`,
+        [orgId, `%${q}%`],
+      );
+      if (!pr[0]) return { found: false, message: `No partner matching "${q}".` };
+      const { rows: ps } = await pool.query<{ id: string; status: string; counterpart_org_id: string | null }>(
+        `select p.id, p.status, p.counterpart_org_id from partnerships p
+         where (p.initiator_org_id = $1 and p.initiator_partner_id = $2)
+            or (p.counterpart_org_id = $1 and p.counterpart_partner_id = $2)
+         order by (p.status = 'active') desc, p.created_at desc limit 1`,
+        [orgId, pr[0].id],
+      );
+      if (!ps[0] || ps[0].status !== "active") {
+        return { found: true, partner: pr[0].name, connected: false, message: "No active partnership — only your own side exists. The consent ladder starts from Admin." };
+      }
+      const partnershipId = ps[0].id;
+      const [ladder, pursuits, initiatives, shares, settlement] = await Promise.all([
+        overlapLadder(pool, orgId, partnershipId),
+        listJointPursuits(pool, orgId),
+        listInitiatives(pool, orgId, { partnerId: pr[0].id }),
+        listEvidenceShares(pool, orgId, partnershipId),
+        settlementStatement(pool, partnershipId),
+      ]);
+      const named = ladder?.rungs?.named?.state === "approved"
+        ? ((await pool.query<{ results: { accounts?: { name: string; industry: string | null }[] } }>(
+            `select results from overlap_probes where partnership_id = $1 and level = 'named' and status = 'approved' order by computed_at desc limit 1`,
+            [partnershipId],
+          )).rows[0]?.results?.accounts ?? [])
+        : null;
+      return {
+        found: true,
+        partner: pr[0].name,
+        connected: true,
+        ladder: ladder ? Object.fromEntries(Object.entries(ladder.rungs).map(([k, v]) => [k, v.state])) : null,
+        namedOverlap: named?.map((a) => ({ name: a.name, industry: a.industry })) ?? "not yet approved",
+        jointPursuits: pursuits
+          .filter((x) => x.partnershipId === partnershipId)
+          .map((x) => ({ account: x.accountName, status: x.status })),
+        initiatives: initiatives.map((i) => ({
+          name: i.name, period: i.periodLabel, targetUsd: i.targetUsd,
+          wonUsd: i.wonUsd, registeredUsd: i.openUsd, lostUsd: i.lostUsd,
+          motions: i.motions, campaigns: i.campaigns,
+        })),
+        evidenceShares: shares.map((sh) => ({ direction: sh.direction, status: sh.status, account: sh.accountName, claim: sh.claim })),
+        settlement: { settledStatements: settlement.settled.length, inFlight: settlement.inFlight.length },
+        note: "Consent-filtered by construction: this payload is identical in shape for both tenants, and no field exceeds the approved disclosure rung.",
+      };
+    },
+  },
+  {
+    name: "initiative_status",
+    description:
+      "All active initiatives (named revenue targets) with live rollups computed from the pipeline: target vs won vs registered vs lost, plus how many motions and campaigns are attached. Nothing is self-reported — the figures move only when linked deals move. Read-only.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    async run(pool, orgId) {
+      const initiatives = await listInitiatives(pool, orgId, {});
+      return {
+        initiatives: initiatives.map((i) => ({
+          name: i.name, period: i.periodLabel, status: i.status, targetUsd: i.targetUsd,
+          wonUsd: i.wonUsd, wonDeals: i.wonN, registeredUsd: i.openUsd, openDeals: i.openN,
+          lostUsd: i.lostUsd, motions: i.motions, campaigns: i.campaigns,
+        })),
+      };
+    },
+  },
+  {
+    name: "request_warm_intro",
+    description:
+      "Ask the partner for a warm introduction into one named-overlap account. This CREATES A REQUEST the partner must decide — accepting is itself the disclosure (they pick exactly one contact to reveal). Requires an active partnership with the named rung approved and the account on it. The consent fabric, not this tool, decides what is ultimately shared.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        partner: { type: "string", description: "Partner name, fuzzy matched" },
+        account: { type: "string", description: "Named-overlap account name, fuzzy matched" },
+        ask: { type: "string", description: "One-sentence context for why the intro helps" },
+      },
+      required: ["partner", "account"],
+      additionalProperties: false,
+    },
+    async run(pool, orgId, args) {
+      const pq = String(args.partner ?? "").trim();
+      const aq = String(args.account ?? "").trim();
+      const { rows: pr } = await pool.query<{ id: string }>(
+        `select id from partners where org_id = $1 and name ilike $2 limit 1`, [orgId, `%${pq}%`]);
+      if (!pr[0]) return { ok: false, message: `No partner matching "${pq}".` };
+      const { rows: ps } = await pool.query<{ id: string }>(
+        `select id from partnerships p
+         where p.status = 'active'
+           and ((p.initiator_org_id = $1 and p.initiator_partner_id = $2)
+             or (p.counterpart_org_id = $1 and p.counterpart_partner_id = $2))
+         limit 1`, [orgId, pr[0].id]);
+      if (!ps[0]) return { ok: false, message: "No active partnership with that partner." };
+      const { rows: co } = await pool.query<{ id: string }>(
+        `select id from companies where legal_name ilike $1 limit 1`, [`%${aq}%`]);
+      if (!co[0]) return { ok: false, message: `No account matching "${aq}".` };
+      await requestWarmIntro(pool, orgId, ps[0].id, co[0].id, String(args.ask ?? "").slice(0, 500));
+      return { ok: true, message: "Warm-intro request created — the partner decides, and their acceptance is the disclosure." };
     },
   },
   {

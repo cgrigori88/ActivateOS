@@ -314,7 +314,7 @@ export default async function AccountPage({
                 </span>
                 <span
                   className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                    ev.kind === "joint" || ev.kind === "intro"
+                    ev.kind === "joint" || ev.kind === "intro" || ev.kind === "shared_evidence"
                       ? "bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400"
                       : ev.kind === "renewal"
                         ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
@@ -325,7 +325,7 @@ export default async function AccountPage({
                             : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"
                   }`}
                 >
-                  {ev.kind}
+                  {ev.kind === "shared_evidence" ? "shared" : ev.kind}
                 </span>
                 <span className="min-w-0 flex-1">
                   {ev.href ? (

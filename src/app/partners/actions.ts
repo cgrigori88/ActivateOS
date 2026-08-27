@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getPool } from "@/db/client";
 import { currentOrgId, requireWrite } from "@/lib/auth/org";
+import { decideEvidenceShare, offerEvidenceShare, revokeEvidenceShare } from "@/lib/partnerships/evidence-shares";
 import { createInitiative, setInitiativeStatus } from "@/lib/partnerships/initiatives";
 import { decideWarmIntro, requestWarmIntro } from "@/lib/partnerships/warm-intros";
 import { savePartnerPlaybook } from "@/lib/playbooks/playbooks";
@@ -101,5 +102,26 @@ export async function setInitiativeStatusAction(
 ): Promise<void> {
   const { pool, orgId } = await writerOrg();
   await setInitiativeStatus(pool, orgId, initiativeId, status);
+  revalidatePath(`/partners/${partnerId}`);
+}
+
+/** Evidence exchange (slice G): offer a verified claim across the fence. */
+export async function offerEvidenceShareAction(partnerId: string, partnershipId: string, formData: FormData): Promise<void> {
+  const { pool, orgId } = await writerOrg();
+  const evidenceId = String(formData.get("evidenceId") ?? "");
+  if (!evidenceId) throw new Error("Pick the claim to offer.");
+  await offerEvidenceShare(pool, orgId, partnershipId, evidenceId);
+  revalidatePath(`/partners/${partnerId}`);
+}
+
+export async function decideEvidenceShareAction(partnerId: string, shareId: string, accept: boolean): Promise<void> {
+  const { pool, orgId } = await writerOrg();
+  await decideEvidenceShare(pool, orgId, shareId, accept);
+  revalidatePath(`/partners/${partnerId}`);
+}
+
+export async function revokeEvidenceShareAction(partnerId: string, shareId: string): Promise<void> {
+  const { pool, orgId } = await writerOrg();
+  await revokeEvidenceShare(pool, orgId, shareId);
   revalidatePath(`/partners/${partnerId}`);
 }

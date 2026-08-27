@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { sharedInEvidence } from "@/lib/partnerships/evidence-shares";
 
 type Db = Pool | PoolClient;
 
@@ -20,7 +21,7 @@ type Db = Pool | PoolClient;
 
 export interface TimelineEvent {
   at: string; // ISO timestamp
-  kind: "evidence" | "send" | "reply" | "motion" | "opportunity" | "joint" | "intro" | "renewal" | "meeting";
+  kind: "evidence" | "send" | "reply" | "motion" | "opportunity" | "joint" | "intro" | "renewal" | "meeting" | "shared_evidence";
   title: string;
   detail: string | null;
   /** Provenance: which system/source produced this event. */
@@ -263,6 +264,31 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
       href: "/pipeline",
     });
   }
+
+  // Claims shared IN by partners through the evidence exchange (slice G):
+
+  // read live from their record, provenance intact, consent-gated.
+
+  for (const sh of await sharedInEvidence(db, orgId, companyId)) {
+
+    events.push({
+
+      at: `${sh.observedAt}T00:00:00.000Z`,
+
+      kind: "shared_evidence",
+
+      title: sh.claim.slice(0, 200),
+
+      detail: `shared by ${sh.sharedBy}`,
+
+      source: sh.sourceType,
+
+      href: null,
+
+    });
+
+  }
+
 
   events.sort((a, b) => (a.at < b.at ? 1 : -1));
   return events.slice(0, limit);
