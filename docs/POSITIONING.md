@@ -59,6 +59,38 @@ a neutral, two-sided platform can close it.
   stalled, and the cross-company one no one else can run: the joint room is
   live but your pipeline is empty.
 
+## The AI-interface shift (why the timing is now)
+
+The market's biggest players now say the AI is the interface: frontier
+assistants get direct, governed access to enterprise systems over open
+protocols (MCP), and the CRM becomes something you talk to rather than
+click through. Salesforce + Anthropic's Claudeforce (Aug 2026) is the
+loudest statement of it — Claude calling CRM data, workflows, and
+governance rules through headless MCP servers.
+
+This shift is a tailwind, not a threat, and the positioning is
+*behind* it, never against it:
+
+- **Same protocol, day one.** PursuitOS already exposes its record over
+  MCP (per-org keys, reads mirror the operator's screens, writes are
+  drafts behind approval gates). Whatever assistant an enterprise
+  standardizes on — the same one their CRM vendor just certified —
+  plugs into PursuitOS the same way it plugs into the CRM.
+- **The interface still needs something worth saying.** A conversational
+  CRM can only repeat what someone typed into it. PursuitOS supplies
+  what the CRM structurally lacks: verified external telemetry with
+  provenance, the reconciliation between systems (does it tie out?),
+  outcome learning, and the consented cross-company half. `deal_context`
+  over MCP returns the whole deal — no single-tenant system can.
+- **One line for the objection.** "Their announcement makes your CRM
+  conversational. PursuitOS builds the verified, cross-company evidence
+  the conversation should be grounded in — and hands it to the same AI
+  over the same protocol."
+
+What gets commoditized by the shift: thin AI layers over CRM fields
+(summaries, field-drafted follow-ups). Ship nothing whose value is only
+that.
+
 ## Objection handling
 
 - *"Is this account mapping?"* — Mapping is our on-ramp, not our product.
