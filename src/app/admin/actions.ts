@@ -18,6 +18,7 @@ import {
 } from "@/lib/partnerships/partnerships";
 import { decideOverlapProbe, requestOverlapProbe, type OverlapLevel } from "@/lib/partnerships/overlap";
 import { addSuppression, removeSuppression, saveIcp } from "@/lib/icp/icp";
+import { clearOrgAnthropicKey, setOrgAnthropicKey } from "@/lib/ai/org-keys";
 
 function notice(msg: string): never {
   redirect(`/admin?notice=${encodeURIComponent(msg)}`);
@@ -322,4 +323,31 @@ export async function removeSuppressionAction(id: string): Promise<void> {
   revalidatePath("/admin");
   revalidatePath("/motions");
   notice("Suppression removed.");
+}
+
+/** BYO-model (slice C): store the tenant's own Anthropic key, encrypted. */
+export async function setOrgAiKeyAction(formData: FormData): Promise<void> {
+  const pool = getPool();
+  await requireOwner(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  const key = String(formData.get("apiKey") ?? "");
+  let errNotice: string | null = null;
+  try {
+    await setOrgAnthropicKey(pool, orgId, key);
+  } catch (err) {
+    errNotice = err instanceof Error ? err.message : "Could not save the key.";
+  }
+  revalidatePath("/admin");
+  if (errNotice) redirect(`/admin?notice=${encodeURIComponent(errNotice)}`);
+  redirect("/admin?notice=AI+key+saved+—+your+agents+now+run+on+your+own+contract.");
+}
+
+export async function clearOrgAiKeyAction(): Promise<void> {
+  const pool = getPool();
+  await requireOwner(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  await clearOrgAnthropicKey(pool, orgId);
+  revalidatePath("/admin");
 }

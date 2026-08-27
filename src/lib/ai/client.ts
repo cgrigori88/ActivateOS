@@ -22,7 +22,10 @@ let client: Anthropic | null = null;
  * ANTHROPIC_AUTH_TOKEN → an OAuth profile stored by `ant auth login`
  * (Claude-subscription auth). No key needs to be configured in this codebase.
  */
-export function getAnthropic(): Anthropic {
+export function getAnthropic(apiKey?: string | null): Anthropic {
+  // A tenant-supplied key (BYO-model, slice C) gets its own client: their
+  // data rides their AI contract. The cached default serves everyone else.
+  if (apiKey) return new Anthropic({ apiKey });
   if (!client) {
     try {
       client = new Anthropic();
@@ -69,8 +72,10 @@ export async function completeStructuredMeta<T extends z.ZodType>(opts: {
   user: string;
   schema: T;
   maxTokens?: number;
+  /** Tenant-supplied key (BYO-model): the call runs on their contract. */
+  apiKey?: string | null;
 }): Promise<{ output: z.infer<T>; meta: CallMeta }> {
-  const anthropic = getAnthropic();
+  const anthropic = getAnthropic(opts.apiKey);
   const started = Date.now();
   const response = await anthropic.messages.parse({
     model: MODELS[opts.tier],

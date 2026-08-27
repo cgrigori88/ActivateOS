@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type pg from "pg";
 import { z } from "zod";
 import { completeStructuredMeta } from "../ai/client";
+import { resolveOrgAnthropicKey } from "../ai/org-keys";
 import { computeMotionEconomics, type PlayEconomics } from "../motions/economics";
 import { loadPartnerPlaybook } from "../playbooks/playbooks";
 import { renderSkillsSection, skillsForContext } from "../skills/skills";
@@ -178,7 +179,9 @@ ${
 }
 ${renderSkillsSection(skills)}Design the Revenue Motion.`;
 
+  const orgApiKey = await resolveOrgAnthropicKey(db, args.orgId);
   const { output: draft, meta } = await completeStructuredMeta({
+    apiKey: orgApiKey,
     tier: MODEL_TIER,
     system,
     user,

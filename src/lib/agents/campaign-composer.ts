@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type pg from "pg";
 import { z } from "zod";
 import { completeStructuredMeta } from "../ai/client";
+import { resolveOrgAnthropicKey } from "../ai/org-keys";
 import { renderSkillsSection, skillsForContext } from "../skills/skills";
 
 /**
@@ -94,7 +95,9 @@ ${solutionProfile ? `## Solution profile\n${solutionProfile}` : ""}
 ${renderSkillsSection(skills)}
 Compose the campaign assets.`;
 
+  const orgApiKey = await resolveOrgAnthropicKey(db, motion.org_id);
   const { output: draft, meta } = await completeStructuredMeta({
+    apiKey: orgApiKey,
     tier: "frontier",
     system,
     user,

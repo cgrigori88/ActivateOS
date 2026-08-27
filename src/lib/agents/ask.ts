@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import { getAnthropic } from "@/lib/ai/client";
 import { MCP_TOOLS } from "@/lib/agents/mcp-tools";
+import { resolveOrgAnthropicKey } from "@/lib/ai/org-keys";
 
 /**
  * Ask-the-record: a conversational answer over the org's OWN MCP tool surface.
@@ -31,7 +32,7 @@ export interface AskResult {
 
 export async function askTheRecord(pool: Pool, orgId: string, question: string): Promise<AskResult> {
   const tools = MCP_TOOLS.filter((t) => t.name !== "draft_touch");
-  const anthropic = getAnthropic();
+  const anthropic = getAnthropic(await resolveOrgAnthropicKey(pool, orgId));
 
   const apiTools = tools.map((t) => ({
     name: t.name,

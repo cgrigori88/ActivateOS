@@ -27,6 +27,25 @@ export default async function AnalyticsPage({
   const evWhere = windowDays ? `where occurred_at >= now() - interval '${windowDays} days'` : "";
   const pool = getPool();
 
+  // Team view (slice C/D): per-seller rollup from pursuit assignments and the
+  // pipeline on those accounts — the leader lens over the same record.
+  const { rows: teamRows } = await pool.query<{
+    seller: string; territory: string | null; assignments: string; accounts: string[];
+    open_usd: string | null; won_usd: string | null;
+  }>(
+    `select s.name as seller, s.territory,
+            count(distinct pt.id) as assignments,
+            array_agg(distinct c.legal_name) as accounts,
+            sum(o.amount_usd) filter (where o.stage not in ('closed_won','closed_lost')) as open_usd,
+            sum(o.amount_usd) filter (where o.stage = 'closed_won') as won_usd
+     from sellers s
+     join pursuit_teams pt on pt.seller_id = s.id
+     join companies c on c.id = pt.company_id
+     left join opportunities o on o.company_id = pt.company_id
+     group by s.id, s.name, s.territory
+     order by s.name`,
+  );
+
   const [{ rows: companyRows }, { rows: outcomeRows }, { rows: drRows }, { rows: valueRows }, { rows: touchRows }, { rows: dailyRows }, { rows: segments }, { rows: surges }] =
     await Promise.all([
       // Per-account funnel position (+ raw email counts for the Sent bar).
@@ -181,6 +200,40 @@ export default async function AnalyticsPage({
             <Link href="/campaigns" className="text-blue-700 hover:underline dark:text-blue-400">Campaigns</Link> page —
             every send, open, and reply lands here.
           </p>
+        </Card>
+      )}
+
+      {/* Team (slice D): who owns what, and what the record says it's worth. */}
+      {teamRows.length > 0 && (
+        <Card className="mb-6">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Team</h2>
+            <span className="text-xs text-neutral-400">pursuit assignments and the live pipeline on them — the leader lens</span>
+          </div>
+          <div className="overflow-x-auto scroll-thin">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wide text-neutral-400">
+                  <th className="py-1 pr-3 font-semibold">Seller</th>
+                  <th className="py-1 pr-3 font-semibold">Territory</th>
+                  <th className="py-1 pr-3 font-semibold">Accounts</th>
+                  <th className="py-1 pr-3 text-right font-semibold">Open pipeline</th>
+                  <th className="py-1 text-right font-semibold">Won</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamRows.map((t) => (
+                  <tr key={t.seller} className="border-t border-neutral-100 dark:border-neutral-800">
+                    <td className="py-1.5 pr-3 font-medium">{t.seller}</td>
+                    <td className="py-1.5 pr-3 text-neutral-500">{t.territory ?? "—"}</td>
+                    <td className="py-1.5 pr-3 text-neutral-500">{t.accounts.slice(0, 3).join(", ")}{t.accounts.length > 3 ? ` +${t.accounts.length - 3}` : ""}</td>
+                    <td className="tnum py-1.5 pr-3 text-right">{t.open_usd ? `$${Math.round(Number(t.open_usd) / 1000)}k` : "—"}</td>
+                    <td className="tnum py-1.5 text-right text-green-700 dark:text-green-400">{t.won_usd ? `$${Math.round(Number(t.won_usd) / 1000)}k` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
 

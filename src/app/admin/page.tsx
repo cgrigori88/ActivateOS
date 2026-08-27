@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { currentOrgId, currentRole } from "@/lib/auth/org";
+import { byoModelAvailable, hasOrgAnthropicKey } from "@/lib/ai/org-keys";
 import { authConfigured } from "@/lib/auth/supabase";
 import {
   inviteMemberAction, setMemberRoleAction, removeMemberAction,
@@ -10,6 +11,8 @@ import {
   offerGrantAction, acceptGrantAction, declineGrantAction, revokeGrantAction, syncGrantAction,
   requestOverlapAction, decideOverlapAction,
   mintApiKeyAction, revokeApiKeyAction,
+  setOrgAiKeyAction,
+  clearOrgAiKeyAction,
   saveIcpAction, addSuppressionAction, removeSuppressionAction,
 } from "./actions";
 import { icpFit, listSuppressions, loadIcp, type IcpFit } from "@/lib/icp/icp";
@@ -59,6 +62,8 @@ export default async function AdminPage({
   }
 
   const orgId = await currentOrgId(pool);
+  const byoAvailable = byoModelAvailable();
+  const hasOwnKey = orgId ? await hasOrgAnthropicKey(pool, orgId) : false;
   const isGuest = orgId ? (await orgKind(pool, orgId)) === "guest" : false;
   // Absolute base for shareable /join links — the invite code doubles as a
   // guest-seat claim URL (B+2).
@@ -614,6 +619,44 @@ export default async function AdminPage({
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Agent access</h2>
       <Card className="mb-4">
         <AgentKeys keys={keyRows} endpoint={mcpEndpoint} mint={mintApiKeyAction} revoke={revokeApiKeyAction} />
+      </Card>
+
+      {/* ── Bring your own model (slice C): their data, their AI contract ── */}
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Bring your own model</h2>
+      <Card className="mb-4">
+        {!byoAvailable ? (
+          <p className="text-sm text-neutral-500">
+            Not available in this environment — the server needs <code className="font-mono text-xs">APP_ENCRYPTION_KEY</code> configured before tenant keys can be stored.
+          </p>
+        ) : (
+          <>
+            <p className="mb-3 text-sm text-neutral-600 dark:text-neutral-300">
+              Supply your own Anthropic API key and every drafting agent (motions, campaigns, Ask) runs on <b>your</b> AI contract —
+              your tenancy, your retention terms, your bill. The key is encrypted before storage, never shown again, and clearing it
+              reverts to the platform key instantly.
+            </p>
+            {hasOwnKey ? (
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">own key active</span>
+                <form action={clearOrgAiKeyAction}>
+                  <button className="text-sm text-neutral-400 underline-offset-2 hover:underline">clear — revert to platform key</button>
+                </form>
+              </div>
+            ) : (
+              <form action={setOrgAiKeyAction} className="flex flex-wrap gap-2">
+                <input
+                  name="apiKey"
+                  type="password"
+                  required
+                  placeholder="sk-ant-…"
+                  autoComplete="off"
+                  className="w-[340px] rounded-lg border border-neutral-200 bg-transparent px-3 py-1.5 font-mono text-sm dark:border-neutral-800"
+                />
+                <button className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white">Save key</button>
+              </form>
+            )}
+          </>
+        )}
       </Card>
 
       {/* ── Shared lists ── */}

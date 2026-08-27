@@ -170,6 +170,7 @@ const NAV: NavGroup[] = [
     label: "Platform",
     items: [
       { href: "/sources", label: "Intelligence", icon: icons.sources, also: ["/provider-health"] },
+      { href: "/trust", label: "Trust", icon: icons.review },
       {
         href: "/skills",
         label: "Skills",
