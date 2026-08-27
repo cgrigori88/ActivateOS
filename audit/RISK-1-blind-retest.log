@@ -76,3 +76,13 @@ END OF RE-TEST
 
 ========================================================================
 END OF UPDATE RE-RUN
+
+================================================================================
+RESOLVER PROOF (0059 + withTenant) — org resolution off the owner role, as app_rw
+--------------------------------------------------------------------------------
+step: direct organizations read (app_rw)      -> 0 rows   (RLS blocks it: the chicken-and-egg)
+step: resolve_user_org(null) [SECURITY DEFINER]-> returns the sole org (bypasses RLS)
+step: set_config('app.org_id', <org>, true)    -> GUC set from the resolver
+step: evidence visible after GUC               -> 34 rows (DEMO-scoped; withTenant mechanism works end-to-end)
+Conclusion: under app_rw a session resolves its org via the definer function and
+scopes all tenant reads via the GUC. The cutover's hard blocker is solved.

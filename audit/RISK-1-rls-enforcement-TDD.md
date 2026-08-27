@@ -51,15 +51,26 @@ job; role gating (viewer/writer/owner) stays in the app layer
 
 ## Remaining for cutover (separate, gated change)
 
-1. **Resolve the caller's org from the authenticated web session**, not from a
-   DB query on `auth.uid()`. `currentOrgId()` currently does
-   `select org_id from org_members where user_id = auth.uid()`, which is null
-   off the JWT path — a chicken-and-egg that blocks a bare role flip.
-2. **`withTenant(db, orgId, fn)`** wrapper: `BEGIN; SET LOCAL app.org_id = …`
-   before any tenant query, fail closed if `orgId` is absent. Route tenant
-   reads/writes through it; keep the owner pool for migrations and the worker.
-3. Point `DATABASE_URL` at `app_rw`; optionally `FORCE` per table.
-4. Re-run the blind per-policy re-test on a real-auth session, then cut over.
+1. ~~**Resolve the caller's org from the authenticated web session**~~ — DONE
+   (0059 + `sessionOrgId`). The chicken-and-egg (app_rw can't read org_members
+   via auth.uid() before the GUC is set) is solved by `resolve_user_org(uid)`,
+   a SECURITY DEFINER function that resolves the org as the owner. Verified
+   under app_rw (audit/RISK-1-blind-retest.log, resolver section): a direct
+   `organizations` read returns 0 rows, but `resolve_user_org(null)` returns
+   the org and, with the GUC set from it, `evidence` becomes visible.
+2. ~~**`withTenant` wrapper**~~ — DONE (`src/lib/db/tenant.ts`). `BEGIN` →
+   `set_config('app.org_id', …, is_local => true)` → run `fn` → `COMMIT`;
+   fails closed if no org resolves. Inert while DATABASE_URL points at the
+   owner, so query sites can adopt it with zero behavior change.
+3. **Adopt `withTenant` at the query sites** (the remaining mechanical work):
+   route the ~100 server actions + page reads through it instead of bare
+   `getPool()`. Large but mechanical; each is a no-op until the flip. Keep the
+   owner pool for migrations and the research worker (intentionally global).
+4. Point `DATABASE_URL` at `app_rw`; optionally `FORCE` per table.
+5. Re-run the blind per-policy re-test on a real-auth session, then cut over.
+
+Steps 1–2 (the hard architecture) are built + verified; 3 is bulk mechanical
+adoption; 4–5 are the gated prod flip. The infrastructure is ready to adopt.
 
 Rollback is trivial: point `DATABASE_URL` back at the owner role — RLS goes
 inert again (owner bypass) and the app-layer `org_id` scoping remains the

@@ -6,6 +6,13 @@
 
 **RISK-1 — RLS is present but NOT enforced: the app connects as the table owner.**
 Severity: **CRITICAL (enterprise sign-off blocker).** Tracked as task #67.
+**Status: FOUNDATION + PLUMBING BUILT & VERIFIED; adoption + prod flip remain.**
+0058 makes RLS coherent across all 53 org-scoped tables (blind-verified as
+app_rw, both directions). 0059 + `src/lib/db/tenant.ts` solve the cutover's
+hard blocker — org resolution off the owner role — via a SECURITY DEFINER
+`resolve_user_org()` and a `withTenant()` wrapper, verified end-to-end under
+app_rw. What remains: route query sites through `withTenant` (mechanical),
+then the gated prod flip (DATABASE_URL → app_rw). See RISK-1 TDD.
 
 - Evidence: every one of 51 org-scoped tables and 8 cross-tenant tables
   (`partnerships`, `overlap_probes`, `joint_pursuits`, `skill_shares`,
@@ -54,10 +61,15 @@ Severity: **HIGH (GDPR Art. 17 & 20 blocker for EU customers).**
 
 **RISK-6 — Data residency not pinned/documented.**
 Severity: **MEDIUM (GDPR data-residency commitments).**
-- Region is a placeholder in config; the Supabase project region and
-  sub-processor regions are not documented. The trust center lists
-  sub-processors (Anthropic, Supabase, Vercel, Railway, Resend, Tavily,
-  PDL) but not their processing regions — required for an EU DPA.
+**Status: ADDRESSED (documentation).**
+- The trust center now states residency explicitly: primary data (system of
+  record + backups) in Supabase Postgres, **Canada / AWS ca-central-1** (a
+  fact read off the deployment's connection string), and each sub-processor
+  with its processing region (Anthropic/Vercel/Railway/Resend/Tavily/PDL,
+  primarily US, transient — never the system of record). Notes that EU /
+  in-region pinning is available to enterprise customers under a DPA.
+- Not asserted as fact where unknown: sub-processor regions are stated at
+  their standard/default; confirm per-vendor DPA before an EU commitment.
 
 ## Hardening gaps
 

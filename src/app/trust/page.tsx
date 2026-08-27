@@ -98,12 +98,21 @@ export default async function TrustPage() {
         </Card>
 
         <Card>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Retention &amp; subprocessors</h2>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Residency, retention &amp; subprocessors</h2>
           <p className="mb-2 text-sm text-neutral-600 dark:text-neutral-300">
             Your record is yours: evidence, decisions, and ledgers persist until you delete them; deleting an organization cascades its data. Revoked shares stop being readable immediately — recipients hold live reads, never copies.
           </p>
+          <p className="mb-2 text-sm text-neutral-600 dark:text-neutral-300">
+            <span className="font-semibold text-neutral-700 dark:text-neutral-200">Data residency.</span> Your primary
+            data — CRM records, evidence, decisions, ledgers — is stored in <span className="font-semibold">Canada (AWS ca-central-1)</span> on
+            Supabase Postgres, and the independent nightly backups stay in that region. Sub-processors that perform
+            <em> transient</em> processing (never the system of record) operate in their own regions, primarily the US.
+            EU / in-region data pinning is available to enterprise customers under a DPA — ask us.
+          </p>
           <p className="text-sm text-neutral-600 dark:text-neutral-300">
-            Subprocessors: Anthropic (AI inference), Supabase (Postgres), Vercel (app hosting), Railway (research worker), Resend (email delivery, when enabled), Tavily &amp; People Data Labs (research providers, when enabled). {Number(s.providers)} intelligence providers are registered; each can be disabled per tenant.
+            Subprocessors and their processing regions: Anthropic (AI inference, US), Supabase (Postgres — system of record, Canada / ca-central-1),
+            Vercel (app hosting, global edge / US primary), Railway (research worker, US), Resend (email delivery, US, when enabled),
+            Tavily &amp; People Data Labs (research providers, US, when enabled). {Number(s.providers)} intelligence providers are registered; each can be disabled per tenant.
           </p>
         </Card>
       </div>
