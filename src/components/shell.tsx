@@ -120,7 +120,10 @@ const icons = {
    live as TABS inside Today, Campaigns and Intelligence — their routes
    survive, `also` keeps the rail item lit while you're on them. */
 const NAV: NavGroup[] = [
-  { label: null, items: [{ href: "/", label: "Today", icon: icons.today, also: ["/queue"] }] },
+  { label: null, items: [
+    { href: "/", label: "Today", icon: icons.today, also: ["/queue"] },
+    { href: "/ask", label: "Ask", icon: icons.insights },
+  ] },
   {
     label: "Decide",
     items: [

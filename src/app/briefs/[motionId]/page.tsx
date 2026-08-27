@@ -4,6 +4,8 @@ import { commsConfig } from "@/lib/comms/provider";
 import { resendConfigured } from "@/lib/comms/resend";
 import { threadAddress } from "@/lib/comms/alias";
 import { BackLink, Card, EvidenceLine, PageHeader, StatusBadge } from "@/components/ui";
+import { currentOrgId } from "@/lib/auth/org";
+import { CONFIDENCE_FORMULA, contextConfidence } from "@/lib/context/confidence";
 import { promoteMotionAction } from "@/app/pipeline/actions";
 import { generateDraftAction, sendDraftAction } from "./actions";
 
@@ -100,6 +102,10 @@ export default async function BriefPage({
   const cfg = commsConfig();
   const canSendDirect = resendConfigured();
 
+  // Confidence stamp: how trustworthy the record behind this brief is, at a glance.
+  const briefOrgId = await currentOrgId(pool);
+  const confidence = briefOrgId ? await contextConfidence(pool, briefOrgId, m.company_id) : null;
+
   return (
     <main>
       {/* Both nav links share the pos-backlink treatment so they sit on one
@@ -116,6 +122,11 @@ export default async function BriefPage({
         title={`Activation brief — ${m.legal_name}`}
         subtitle={`${m.slug} · ${m.industry ?? ""}${m.employee_count ? ` · ~${m.employee_count} employees` : ""}`}
       />
+      {confidence && (
+        <p className="-mt-3 mb-4 text-xs text-neutral-500" title={CONFIDENCE_FORMULA}>
+          Grounded in a record at <b className={confidence.score >= 70 ? "text-emerald-700 dark:text-emerald-400" : confidence.score >= 40 ? "text-amber-700 dark:text-amber-400" : "text-rose-700 dark:text-rose-400"}>context confidence {confidence.score}</b> — {confidence.verifiedN} verified claims across {confidence.sourceTypes} source type{confidence.sourceTypes === 1 ? "" : "s"}{confidence.freshDays != null ? `, newest ${confidence.freshDays === 0 ? "today" : `${confidence.freshDays}d ago`}` : ""}.
+        </p>
+      )}
 
       <Card className="mb-6">
         <div className="mb-2 flex items-center gap-2">

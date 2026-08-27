@@ -10,6 +10,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import { loadCompanyIntel } from "@/lib/intel/company-intel";
+import { CONFIDENCE_FORMULA, confidenceTone, contextConfidence } from "@/lib/context/confidence";
 import { currentOrgId } from "@/lib/auth/org";
 import { addMeetingNoteAction, setTeamStatusAction } from "./actions";
 import { draftAccountMotionAction } from "@/app/motions/actions";
@@ -195,6 +196,10 @@ export default async function AccountPage({
   // provider coverage — what we actually know and how well we know it.
   const intel = await loadCompanyIntel(pool, id);
 
+  // Context confidence (meets/beats batch): how much of this record is TRUE,
+  // current, and broadly sourced — formula shown verbatim in the title.
+  const confidence = digestOrgId ? await contextConfidence(pool, digestOrgId, id) : null;
+
   return (
     <main>
       <p className="mb-4 text-sm">
@@ -213,6 +218,27 @@ export default async function AccountPage({
           .filter(Boolean)
           .join(" · ")}
       />
+
+      {confidence && (
+        <div className="-mt-3 mb-4 flex flex-wrap items-center gap-2 text-xs" title={CONFIDENCE_FORMULA}>
+          <span
+            className={`rounded-full px-2.5 py-1 font-bold ${
+              confidenceTone(confidence.score) === "emerald"
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                : confidenceTone(confidence.score) === "amber"
+                  ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                  : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+            }`}
+          >
+            context confidence {confidence.score}
+          </span>
+          <span className="text-neutral-500">
+            {confidence.verifiedN} verified · {confidence.quarantinedN} in review · {confidence.sourceTypes} source type{confidence.sourceTypes === 1 ? "" : "s"}
+            {confidence.freshDays != null && <> · newest {confidence.freshDays === 0 ? "today" : `${confidence.freshDays}d ago`}</>}
+            {confidence.contradictions > 0 && <> · <span className="font-semibold text-rose-600 dark:text-rose-400">{confidence.contradictions} open contradiction{confidence.contradictions === 1 ? "" : "s"}</span></>}
+          </span>
+        </div>
+      )}
 
       {sp.notice && (
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">

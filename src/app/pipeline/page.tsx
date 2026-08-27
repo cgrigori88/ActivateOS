@@ -226,6 +226,10 @@ export default async function PipelinePage({
     deltas: { companyId: string; account: string; crm: number; live: number }[];
     weekAgo: { openUsd: number; takenOn: string } | null;
   } | null = null;
+  const calibration: {
+    takenOn: string; weightedUsd: number; openUsd: number;
+    wonUsd: number; wonN: number; lostUsd: number; lostN: number;
+  }[] = [];
   if (tieOrgId) {
     const { rows: crmByCompany } = await pool.query<{ company_id: string; legal_name: string; crm: string }>(
       `select s.company_id, c.legal_name, sum(s.amount_usd) as crm
@@ -268,6 +272,39 @@ export default async function PipelinePage({
         deltas,
         weekAgo: weekAgoRows[0] ? { openUsd: Number(weekAgoRows[0].open_usd), takenOn: weekAgoRows[0].taken_on } : null,
       };
+      // Forecast calibration (meets/beats batch): what the weighted pipeline
+      // said N days ago vs what actually closed since. The forecast is
+      // measured against reality, not just displayed.
+      const { rows: calRows } = await pool.query<{ taken_on: string; weighted_usd: string; open_usd: string }>(
+        `select distinct on (bucket) taken_on::text, weighted_usd, open_usd
+         from (
+           select *, case when taken_on <= (now() - interval '55 days')::date then 60
+                          when taken_on <= (now() - interval '25 days')::date then 30
+                     end as bucket
+           from pipeline_snapshots where org_id = $1
+         ) x where bucket is not null
+         order by bucket, taken_on desc`,
+        [tieOrgId],
+      );
+      for (const snap of calRows) {
+        const { rows: realized } = await pool.query<{ won_usd: string; won_n: string; lost_usd: string; lost_n: string }>(
+          `select coalesce(sum(amount_usd) filter (where stage = 'closed_won'), 0) as won_usd,
+                  count(*) filter (where stage = 'closed_won') as won_n,
+                  coalesce(sum(amount_usd) filter (where stage = 'closed_lost'), 0) as lost_usd,
+                  count(*) filter (where stage = 'closed_lost') as lost_n
+           from opportunities where org_id = $1 and closed_at >= $2::date`,
+          [tieOrgId, snap.taken_on],
+        );
+        calibration.push({
+          takenOn: snap.taken_on,
+          weightedUsd: Number(snap.weighted_usd),
+          openUsd: Number(snap.open_usd),
+          wonUsd: Number(realized[0].won_usd),
+          wonN: Number(realized[0].won_n),
+          lostUsd: Number(realized[0].lost_usd),
+          lostN: Number(realized[0].lost_n),
+        });
+      }
     }
     // Today's snapshot, idempotent — history accrues just by looking.
     await pool.query(
@@ -355,6 +392,35 @@ export default async function PipelinePage({
                 )}
                 <p className="mt-2 text-[11px] text-neutral-400">
                   Somebody&rsquo;s number is usually wrong — this names whose, with the receipts on each account&rsquo;s timeline.
+                </p>
+              </Card>
+            )}
+
+            {/* ── Forecast calibration: the forecast measured against reality ── */}
+            {calibration.length > 0 && (
+              <Card className="mb-5">
+                <div className="mb-1 flex items-baseline justify-between gap-3">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Was the forecast right?</h2>
+                  <span className="text-xs text-neutral-400">what the weighted pipeline said, vs what closed since</span>
+                </div>
+                <div className="space-y-1">
+                  {calibration.map((c) => {
+                    const daysAgo = Math.round((Date.now() - new Date(c.takenOn).getTime()) / 86_400_000);
+                    const hitRate = c.weightedUsd > 0 ? Math.round((c.wonUsd / c.weightedUsd) * 100) : null;
+                    return (
+                      <p key={c.takenOn} className="text-sm text-neutral-600 dark:text-neutral-300">
+                        <span className="font-medium">{daysAgo}d ago</span> ({c.takenOn}) the book held{" "}
+                        <span className="tnum">${Math.round(c.openUsd / 1000)}k</span> open,{" "}
+                        <span className="tnum">${Math.round(c.weightedUsd / 1000)}k</span> weighted. Since then:{" "}
+                        <span className="tnum font-semibold text-green-700 dark:text-green-400">${Math.round(c.wonUsd / 1000)}k won</span> ({c.wonN}),{" "}
+                        <span className="tnum font-semibold text-red-700 dark:text-red-400">${Math.round(c.lostUsd / 1000)}k lost</span> ({c.lostN})
+                        {hitRate != null && <> — <span className="tnum font-medium">{hitRate}%</span> of the weighted number has realized so far</>}.
+                      </p>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-[11px] text-neutral-400">
+                  Snapshots accrue daily just by looking at this page; every stage-weight opinion eventually meets an outcome here.
                 </p>
               </Card>
             )}
