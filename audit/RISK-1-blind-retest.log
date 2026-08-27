@@ -86,3 +86,18 @@ step: set_config('app.org_id', <org>, true)    -> GUC set from the resolver
 step: evidence visible after GUC               -> 34 rows (DEMO-scoped; withTenant mechanism works end-to-end)
 Conclusion: under app_rw a session resolves its org via the definer function and
 scopes all tenant reads via the GUC. The cutover's hard blocker is solved.
+
+================================================================================
+REFERENCE-ROOM CUTOVER PROOF — the Goals room, run as the real app_rw role
+--------------------------------------------------------------------------------
+Setup: local app_rw given a temporary LOGIN (reverted to NOLOGIN after), a
+second app instance started with DATABASE_URL pointing at app_rw.
+- /goals  (MIGRATED to withTenant): renders FULL data under app_rw — 2 active
+  goals, named goals + pace. Real DB-level isolation is active and correct.
+- /pipeline (NOT yet migrated): renders ALL ZEROS under app_rw ($0k, 0 opps,
+  "No opportunities yet") — its bare getPool() queries hit RLS default-deny.
+Conclusion: withTenant delivers real isolation under the non-owner role, and
+unmigrated rooms FAIL CLOSED (empty, never cross-tenant). The flip is safe to
+stage; every room must adopt withTenant before DATABASE_URL is pointed at app_rw.
+resolve_user_org semantics fixed: uid null -> sole org; identified-but-
+unprivileged uid -> NULL (no tenant), matching currentOrgId().

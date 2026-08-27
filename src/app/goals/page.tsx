@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { listGoals, METRICS, METRIC_LABEL, formatMetric, type Goal } from "@/lib/goals/goals";
 import { listTargets, type TargetRow } from "@/lib/goals/targets";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { createGoalAction, setGoalStatusAction, upsertTargetAction, deleteTargetAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -31,11 +30,18 @@ export default async function GoalsPage({
   searchParams: Promise<{ status?: string; due?: string }>;
 }) {
   const sp = await searchParams;
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  const all = orgId ? await listGoals(pool, orgId) : [];
-  const targets = orgId ? await listTargets(pool, orgId) : [];
-  const { rows: partnerRows } = await pool.query<{ id: string; name: string }>(`select id, name from partners order by name`);
+  // RISK-1 adoption (task #67): all reads run under withTenant, which pins the
+  // session to the caller's org. Inert on the owner connection; real isolation
+  // once DATABASE_URL points at app_rw.
+  const { all, targets, partnerRows } = await withTenant(async (db, orgId) => ({
+    all: await listGoals(db, orgId),
+    targets: await listTargets(db, orgId),
+    // org-scoped: the target-scope dropdown must not list other tenants' partners.
+    partnerRows: (await db.query<{ id: string; name: string }>(
+      `select id, name from partners where org_id = $1 order by name`,
+      [orgId],
+    )).rows,
+  }));
   const currentYear = new Date().getFullYear();
 
   const dueDays = ["7", "30", "90"].includes(sp.due ?? "") ? Number(sp.due) : null;

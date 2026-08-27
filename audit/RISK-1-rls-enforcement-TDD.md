@@ -62,15 +62,22 @@ job; role gating (viewer/writer/owner) stays in the app layer
    `set_config('app.org_id', …, is_local => true)` → run `fn` → `COMMIT`;
    fails closed if no org resolves. Inert while DATABASE_URL points at the
    owner, so query sites can adopt it with zero behavior change.
-3. **Adopt `withTenant` at the query sites** (the remaining mechanical work):
-   route the ~100 server actions + page reads through it instead of bare
-   `getPool()`. Large but mechanical; each is a no-op until the flip. Keep the
-   owner pool for migrations and the research worker (intentionally global).
+3. **Adopt `withTenant` at the query sites** (IN PROGRESS — ~55 files):
+   route each server action + page read through it instead of bare
+   `getPool()`. Each is a no-op until the flip. Keep the owner pool for
+   migrations and the research worker (intentionally global). NOT a blind
+   sweep — per-site judgment (the Goals pass already fixed a resolver
+   semantics bug and a latent cross-tenant partners read). The **Goals room**
+   (page + actions) is DONE and is the proven reference: run as the real
+   app_rw role it renders full data, while an unmigrated room (pipeline)
+   renders all zeros — proving withTenant isolates and unmigrated rooms fail
+   CLOSED. See audit/RISK-1-blind-retest.log (reference-room cutover proof).
 4. Point `DATABASE_URL` at `app_rw`; optionally `FORCE` per table.
 5. Re-run the blind per-policy re-test on a real-auth session, then cut over.
 
-Steps 1–2 (the hard architecture) are built + verified; 3 is bulk mechanical
-adoption; 4–5 are the gated prod flip. The infrastructure is ready to adopt.
+Steps 1–2 (the hard architecture) are built + verified; 3 is under way with a
+proven reference room; 4–5 are the gated prod flip. Do NOT flip until step 3
+covers every room — an unmigrated room shows empty (fails closed, never leaks).
 
 Rollback is trivial: point `DATABASE_URL` back at the owner role — RLS goes
 inert again (owner bypass) and the app-layer `org_id` scoping remains the

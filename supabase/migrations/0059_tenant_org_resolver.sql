@@ -15,13 +15,18 @@
 -- Additive and inert: nothing calls it until the app adopts withTenant() and
 -- DATABASE_URL is pointed at app_rw (the gated cutover). Safe to ship now.
 
+-- The sole-org fallback applies ONLY in Basic-Auth / demo mode (uid null). A
+-- signed-in user (uid present) with no membership resolves to NULL — no tenant,
+-- no data — matching currentOrgId() exactly. Falling back to the sole org for
+-- an identified-but-unprivileged user would hand them that org's data.
 create or replace function public.resolve_user_org(uid uuid) returns uuid
   language sql stable security definer set search_path to 'public'
   as $$
-    select coalesce(
-      (select org_id from org_members where user_id = uid order by created_at asc limit 1),
-      (select id from organizations order by created_at asc limit 1)
-    );
+    select case
+      when uid is null
+        then (select id from organizations order by created_at asc limit 1)
+      else (select org_id from org_members where user_id = uid order by created_at asc limit 1)
+    end;
   $$;
 
 -- app_rw may execute it (it runs as the owner regardless); PUBLIC keeps the
