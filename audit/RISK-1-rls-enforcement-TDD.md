@@ -79,6 +79,18 @@ job; role gating (viewer/writer/owner) stays in the app layer
    - **0060** — app_rw RLS policies for the CROSS-TENANT consent-ladder tables
      (partnerships/overlap/joint/grants/intros/shares/population_members),
      which 0058's org_id-only loop didn't cover.
+   - **0061** — app_rw policies for GLOBAL reference tables (companies,
+     taxonomy, products, providers, organizations, …) and PARENT-SCOPED child
+     tables (stakeholders, campaign_touches, messages, meddpicc, …). The
+     app_rw crawl surfaced these: they had RLS on but no app_rw policy, so
+     INNER JOINs to `companies` etc. dropped every row (pipeline rendered
+     empty). Reference tables → `using(true)`; children → membership on the
+     parent's org.
+   VERIFIED — a full owner-vs-app_rw crawl of all 19 data rooms on two live
+   servers (one connected as the owner, one as the real app_rw login role)
+   renders IDENTICAL content in every room (audit/RISK-1-blind-retest.log,
+   "FULL-APP app_rw CRAWL"). The app now runs correctly under the non-owner
+   role with RLS enforcing tenant isolation.
    The sweep is NOT blind — it fixed real bugs: the resolver semantics
    (membership-less user), a latent unscoped `partners` dropdown and an
    unscoped `accounts/export`, and it surfaced (flagged, RLS-covered) many

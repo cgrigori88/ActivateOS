@@ -101,3 +101,16 @@ unmigrated rooms FAIL CLOSED (empty, never cross-tenant). The flip is safe to
 stage; every room must adopt withTenant before DATABASE_URL is pointed at app_rw.
 resolve_user_org semantics fixed: uid null -> sole org; identified-but-
 unprivileged uid -> NULL (no tenant), matching currentOrgId().
+
+================================================================================
+FULL-APP app_rw CRAWL (after the withTenant sweep + 0060/0061 policies)
+--------------------------------------------------------------------------------
+Ran every room on two live servers — one connected as the OWNER, one as the
+real app_rw login role — and compared rendered <main> text length. RESULT: all
+19 rooms render IDENTICAL length under both (owner == app_rw), e.g. pipeline
+2530/2530 showing "2 open opportunities · $423k". The migrated app renders full
+tenant-scoped data under the non-owner role; RLS enforces the boundary.
+Root cause fixed by 0061: global reference tables (companies/taxonomy/…) and
+parent-scoped child tables (stakeholders/campaign_touches/messages/…) had RLS
+on but no app_rw policy, so INNER JOINs dropped every row until policied.
+(admin/page.tsx not in the crawl — documented remaining.)
