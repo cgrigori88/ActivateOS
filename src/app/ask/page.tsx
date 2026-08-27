@@ -87,7 +87,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
             <Card key={ex.id}>
               <p className="mb-1 text-sm font-semibold">{ex.question}</p>
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{ex.answer}</p>
-              <p className="mt-2 text-[11px] text-neutral-400">
+              <p className="mt-2 text-label text-neutral-400">
                 {new Date(ex.created_at).toISOString().slice(0, 16).replace("T", " ")} UTC
                 {ex.tool_calls.length > 0 && (
                   <> · grounded by {ex.tool_calls.map((c) => c.tool).join(", ")}</>

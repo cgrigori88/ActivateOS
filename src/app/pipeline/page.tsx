@@ -371,7 +371,7 @@ export default async function PipelinePage({
               <Card className="mb-5">
                 <div className="mb-1 flex items-baseline justify-between gap-2">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Does it tie out?</h2>
-                  <span className="text-[11px] text-neutral-400">CRM export vs live record, account by account</span>
+                  <span className="text-label text-neutral-400">CRM export vs live record, account by account</span>
                 </div>
                 <div className="mb-2 flex flex-wrap gap-x-6 gap-y-1 text-sm">
                   <span>Your CRM export says <span className="tnum font-semibold">${Math.round(tieOut.crmUsd / 1000)}k</span></span>
@@ -408,7 +408,7 @@ export default async function PipelinePage({
                     Every account with a CRM snapshot matches the live record.
                   </p>
                 )}
-                <p className="mt-2 text-[11px] text-neutral-400">
+                <p className="mt-2 text-label text-neutral-400">
                   Somebody&rsquo;s number is usually wrong — this names whose, with the receipts on each account&rsquo;s timeline.
                 </p>
               </Card>
@@ -434,7 +434,7 @@ export default async function PipelinePage({
                     <ul className="space-y-2">
                       {writebacks.map((w) => (
                         <li key={w.id} className="flex items-start gap-2 text-sm">
-                          <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${w.field === "presence" ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"}`}>
+                          <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-micro font-bold uppercase ${w.field === "presence" ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "bg-blue-100 text-accent dark:bg-blue-950 dark:text-blue-300"}`}>
                             {w.field}
                           </span>
                           <span className="min-w-0 flex-1">
@@ -460,14 +460,14 @@ export default async function PipelinePage({
                     </ul>
                     <div className="mt-3 flex items-center gap-3">
                       <form action={draftWritebacksAction}>
-                        <button className="text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">re-draft from current tie-out</button>
+                        <button className="text-xs font-medium text-accent hover:underline dark:text-blue-400">re-draft from current tie-out</button>
                       </form>
                       {approvedWb > 0 && (
                         <a href="/api/writebacks" className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white">
                           Export {approvedWb} approved correction{approvedWb === 1 ? "" : "s"} (CSV)
                         </a>
                       )}
-                      <span className="text-[11px] text-neutral-400">CSV today; the live CRM push adapter drains this same queue when connected.</span>
+                      <span className="text-label text-neutral-400">CSV today; the live CRM push adapter drains this same queue when connected.</span>
                     </div>
                   </>
                 )}
@@ -490,14 +490,14 @@ export default async function PipelinePage({
                         <span className="font-medium">{daysAgo}d ago</span> ({c.takenOn}) the book held{" "}
                         <span className="tnum">${Math.round(c.openUsd / 1000)}k</span> open,{" "}
                         <span className="tnum">${Math.round(c.weightedUsd / 1000)}k</span> weighted. Since then:{" "}
-                        <span className="tnum font-semibold text-green-700 dark:text-green-400">${Math.round(c.wonUsd / 1000)}k won</span> ({c.wonN}),{" "}
+                        <span className="tnum font-semibold text-positive dark:text-green-400">${Math.round(c.wonUsd / 1000)}k won</span> ({c.wonN}),{" "}
                         <span className="tnum font-semibold text-red-700 dark:text-red-400">${Math.round(c.lostUsd / 1000)}k lost</span> ({c.lostN})
                         {hitRate != null && <> — <span className="tnum font-medium">{hitRate}%</span> of the weighted number has realized so far</>}.
                       </p>
                     );
                   })}
                 </div>
-                <p className="mt-2 text-[11px] text-neutral-400">
+                <p className="mt-2 text-label text-neutral-400">
                   Snapshots accrue daily just by looking at this page; every stage-weight opinion eventually meets an outcome here.
                 </p>
               </Card>
@@ -518,7 +518,7 @@ export default async function PipelinePage({
                         {r.legal_name}
                       </Link>
                       <span
-                        className={`tnum rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                        className={`tnum rounded-full px-2 py-0.5 text-label font-bold ${
                           r.daysOut <= 30
                             ? "bg-rose/12 text-rose dark:text-rose-300"
                             : "bg-amber/14 text-amber dark:text-amber-300"
@@ -526,7 +526,7 @@ export default async function PipelinePage({
                       >
                         in {r.daysOut}d
                       </span>
-                      <span className="text-[11px] text-neutral-400">{r.renewal} · from “{r.list_name}”</span>
+                      <span className="text-label text-neutral-400">{r.renewal} · from “{r.list_name}”</span>
                       <span className="ml-auto flex items-center gap-2 text-[11.5px]">
                         {r.partners.length > 0 && (
                           <span className="text-violet dark:text-violet-300">{r.partners.join(", ")}</span>
@@ -555,10 +555,10 @@ export default async function PipelinePage({
               const chip = (label: string, count: number, active: boolean, href: string, tone = "neutral") => {
                 const tones: Record<string, string> = {
                   neutral: "text-neutral-600 dark:text-neutral-300",
-                  green: "text-green-700 dark:text-green-400",
+                  green: "text-positive dark:text-green-400",
                   amber: "text-amber-700 dark:text-amber-400",
                   red: "text-red-700 dark:text-red-400",
-                  blue: "text-blue-700 dark:text-blue-400",
+                  blue: "text-accent dark:text-blue-400",
                 };
                 return (
                   <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${active ? "border-accent bg-accent text-white" : "border-neutral-200 hover:border-neutral-400 dark:border-neutral-800 dark:hover:border-neutral-600"}`}>
@@ -588,7 +588,7 @@ export default async function PipelinePage({
               <Card className="mb-5">
                 <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">AI learned signal · qualification vs outcome</h2>
                 <p className="text-sm text-neutral-600 dark:text-neutral-300">
-                  Closed-won deals qualified at <span className="font-semibold text-green-700 dark:text-green-400">{wonQual ?? "—"}</span> MEDDPICC health on average;
+                  Closed-won deals qualified at <span className="font-semibold text-positive dark:text-green-400">{wonQual ?? "—"}</span> MEDDPICC health on average;
                   closed-lost at <span className="font-semibold text-red-700 dark:text-red-400">{lostQual ?? "—"}</span>.
                   {wonQual != null && lostQual != null && wonQual > lostQual && (
                     <> The <span className="font-medium">+{wonQual - lostQual}</span> gap is the pattern the model banks at each close — stronger qualification, higher conversion.</>
@@ -625,14 +625,14 @@ export default async function PipelinePage({
                 <Card className="mb-5">
                   <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Pipeline &amp; revenue roll-up</h2>
-                    <span className="text-[11px] text-neutral-400">open pipeline · base (direct) vs joint (co-sell)</span>
+                    <span className="text-label text-neutral-400">open pipeline · base (direct) vs joint (co-sell)</span>
                   </div>
                   {/* Base vs joint split bar */}
                   <div className="mb-1 flex h-5 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
-                    <div className="flex items-center justify-center bg-neutral-400 text-[10px] font-medium text-white dark:bg-neutral-600" style={{ width: `${totalOpen ? (baseOpen / totalOpen) * 100 : 0}%` }} title={`Base $${Math.round(baseOpen / 1000)}k`} />
-                    <div className="flex items-center justify-center bg-teal-500 text-[10px] font-medium text-white" style={{ width: `${totalOpen ? (jointOpen / totalOpen) * 100 : 0}%` }} title={`Joint $${Math.round(jointOpen / 1000)}k`} />
+                    <div className="flex items-center justify-center bg-neutral-400 text-micro font-medium text-white dark:bg-neutral-600" style={{ width: `${totalOpen ? (baseOpen / totalOpen) * 100 : 0}%` }} title={`Base $${Math.round(baseOpen / 1000)}k`} />
+                    <div className="flex items-center justify-center bg-teal-500 text-micro font-medium text-white" style={{ width: `${totalOpen ? (jointOpen / totalOpen) * 100 : 0}%` }} title={`Joint $${Math.round(jointOpen / 1000)}k`} />
                   </div>
-                  <div className="mb-4 flex gap-4 text-[11px] text-neutral-500">
+                  <div className="mb-4 flex gap-4 text-label text-neutral-500">
                     <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-neutral-400 dark:bg-neutral-600" /> base ${Math.round(baseOpen / 1000)}k</span>
                     <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-teal-500" /> joint / co-sell ${Math.round(jointOpen / 1000)}k</span>
                     <span className="ml-auto">co-sell lift {totalOpen ? Math.round((jointOpen / totalOpen) * 100) : 0}%</span>
@@ -725,7 +725,7 @@ export default async function PipelinePage({
                   <tr key={o.id}>
                     <td>
                       <Link href={`/accounts/${o.company_id}`} className="font-medium hover:underline">{o.name}</Link>
-                      <div className="text-[11px] text-neutral-400">{o.legal_name}</div>
+                      <div className="text-label text-neutral-400">{o.legal_name}</div>
                     </td>
                     <td className="text-xs text-neutral-500">{o.partner_name ?? "—"}</td>
                     <td className="text-xs uppercase tracking-wide text-neutral-500">{o.stage.replace(/_/g, " ")}</td>
@@ -736,13 +736,13 @@ export default async function PipelinePage({
                     <td className="tnum text-right">
                       {(() => {
                         const s = scoreOf(o.id);
-                        const tone = s >= 70 ? "text-green-700 dark:text-green-400" : s >= 40 ? "text-amber-700 dark:text-amber-400" : "text-red-700 dark:text-red-400";
+                        const tone = s >= 70 ? "text-positive dark:text-green-400" : s >= 40 ? "text-amber-700 dark:text-amber-400" : "text-red-700 dark:text-red-400";
                         return <span className={tone}>{s}</span>;
                       })()}
                     </td>
                     <td className="text-xs">
                       {quote.delivered ? (
-                        <span className="text-green-700 dark:text-green-400" title={quote.note ?? undefined}>✓ sent{quote.at ? ` ${quote.at}` : ""}</span>
+                        <span className="text-positive dark:text-green-400" title={quote.note ?? undefined}>✓ sent{quote.at ? ` ${quote.at}` : ""}</span>
                       ) : (
                         <span className="text-neutral-400">—</span>
                       )}
@@ -752,16 +752,16 @@ export default async function PipelinePage({
                       {reg ? (
                         <div className="flex items-center gap-2">
                           <StatusBadge status={reg.status === "approved" ? "approved" : reg.status === "rejected" ? "rejected" : reg.status === "submitted" ? "running" : "skipped"} />
-                          <span className="text-[11px] text-neutral-400">
+                          <span className="text-label text-neutral-400">
                             {reg.vendor ?? "vendor"}{reg.protected_until ? ` · until ${reg.protected_until}` : ""}
                           </span>
                           {reg.status === "submitted" && (
                             <span className="flex gap-1">
                               <form action={setRegistrationStatusAction.bind(null, reg.id, "approved")}>
-                                <button className="text-[11px] font-medium text-green-700 hover:underline dark:text-green-400">approve</button>
+                                <button className="text-label font-medium text-positive hover:underline dark:text-green-400">approve</button>
                               </form>
                               <form action={setRegistrationStatusAction.bind(null, reg.id, "rejected")}>
-                                <button className="text-[11px] font-medium text-red-700 hover:underline dark:text-red-400">reject</button>
+                                <button className="text-label font-medium text-red-700 hover:underline dark:text-red-400">reject</button>
                               </form>
                             </span>
                           )}
@@ -770,9 +770,9 @@ export default async function PipelinePage({
                         <span className="text-xs text-neutral-400">—</span>
                       ) : (
                         <form action={registerDealAction.bind(null, o.id)} className="flex items-center gap-1">
-                          <input name="vendor" placeholder="vendor" className="w-20 rounded border border-neutral-300 bg-transparent px-1.5 py-0.5 text-[11px] dark:border-neutral-700" />
-                          <input name="product" placeholder="product" className="w-24 rounded border border-neutral-300 bg-transparent px-1.5 py-0.5 text-[11px] dark:border-neutral-700" />
-                          <button className="rounded bg-blue-700 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-blue-800">Register</button>
+                          <input name="vendor" placeholder="vendor" className="w-20 rounded border border-neutral-300 bg-transparent px-1.5 py-0.5 text-label dark:border-neutral-700" />
+                          <input name="product" placeholder="product" className="w-24 rounded border border-neutral-300 bg-transparent px-1.5 py-0.5 text-label dark:border-neutral-700" />
+                          <button className="rounded bg-blue-700 px-2 py-0.5 text-label font-medium text-white hover:bg-blue-800">Register</button>
                         </form>
                       )}
                     </td>
@@ -800,13 +800,13 @@ export default async function PipelinePage({
                 <Link href={`/accounts/${o.company_id}`} className="font-semibold hover:underline">
                   {o.name}
                 </Link>
-                <span className={`text-xs font-medium uppercase tracking-wide ${won ? "text-green-700 dark:text-green-400" : lost ? "text-red-700 dark:text-red-400" : "text-neutral-500"}`}>
+                <span className={`text-xs font-medium uppercase tracking-wide ${won ? "text-positive dark:text-green-400" : lost ? "text-red-700 dark:text-red-400" : "text-neutral-500"}`}>
                   {o.stage.replace(/_/g, " ")}
                 </span>
                 {mo && (
                   <span
                     title={mo.reasons.join(" · ") || "observed behavior over the last 14 days"}
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    className={`rounded-full px-2 py-0.5 text-micro font-bold ${
                       mo.verdict === "advancing"
                         ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                         : mo.verdict === "at_risk"
@@ -833,11 +833,11 @@ export default async function PipelinePage({
                   <span className="text-xs text-neutral-400">· close {new Date(o.expected_close_date).toISOString().slice(0, 10)}</span>
                 )}
                 {quote.delivered ? (
-                  <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-950 dark:text-green-300" title={quote.note ?? "detected in email conversation"}>
+                  <span className="rounded bg-green-100 px-1.5 py-0.5 text-micro font-medium text-positive dark:bg-green-950 dark:text-green-300" title={quote.note ?? "detected in email conversation"}>
                     quote sent{quote.at ? ` · ${quote.at}` : ""}
                   </span>
                 ) : (
-                  <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 dark:bg-neutral-800" title="no priced document detected in the conversation yet">no quote</span>
+                  <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-micro font-medium text-neutral-500 dark:bg-neutral-800" title="no priced document detected in the conversation yet">no quote</span>
                 )}
                 {initiativeOpts.length > 0 && (
                   <form action={assignInitiativeAction.bind(null, o.id)} className="flex items-center gap-1" title="initiative this deal rolls up into — the target moves the moment you link it">
@@ -851,13 +851,13 @@ export default async function PipelinePage({
                         <option key={i.id} value={i.id}>{i.name}</option>
                       ))}
                     </select>
-                    <button className="text-[10px] font-medium text-neutral-400 underline-offset-2 hover:underline">set</button>
+                    <button className="text-micro font-medium text-neutral-400 underline-offset-2 hover:underline">set</button>
                   </form>
                 )}
                 {o.motion_id && (
                   <Link
                     href={`/briefs/${o.motion_id}`}
-                    className="ml-auto text-xs font-medium text-blue-700 hover:underline dark:text-blue-400"
+                    className="ml-auto text-xs font-medium text-accent hover:underline dark:text-blue-400"
                   >
                     Brief →
                   </Link>
@@ -873,19 +873,19 @@ export default async function PipelinePage({
                   return (
                     <div key={s} className="flex-1" title={s.replace(/_/g, " ")}>
                       <div className={`h-1.5 rounded-full ${tone}`} />
-                      <div className={`mt-0.5 hidden text-[9px] uppercase tracking-wide sm:block ${isCurrent ? "font-semibold text-blue-700 dark:text-blue-400" : "text-neutral-400"}`}>{s.replace(/_/g, " ")}</div>
+                      <div className={`mt-0.5 hidden text-[9px] uppercase tracking-wide sm:block ${isCurrent ? "font-semibold text-accent dark:text-blue-400" : "text-neutral-400"}`}>{s.replace(/_/g, " ")}</div>
                     </div>
                   );
                 })}
               </div>
-              {lost && <p className="mb-2 text-[11px] font-medium text-red-700 dark:text-red-400">Closed lost — stages shown for the record.</p>}
+              {lost && <p className="mb-2 text-label font-medium text-red-700 dark:text-red-400">Closed lost — stages shown for the record.</p>}
               {(won || lost) && autopsies.has(o.id) && (
                 <details className="mb-2">
-                  <summary className="cursor-pointer text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">Autopsy — what the record says happened</summary>
+                  <summary className="cursor-pointer text-xs font-medium text-accent hover:underline dark:text-blue-400">Autopsy — what the record says happened</summary>
                   <ul className="mt-1.5 space-y-0.5 text-sm text-neutral-600 dark:text-neutral-300">
                     {autopsies.get(o.id)!.lines.map((l, i) => <li key={i}>{l}</li>)}
                   </ul>
-                  <p className="mt-1 text-[11px] text-neutral-400">Assembled from the record at read time — duration, path, contact, and grounding sources. No opinions, no AI.</p>
+                  <p className="mt-1 text-label text-neutral-400">Assembled from the record at read time — duration, path, contact, and grounding sources. No opinions, no AI.</p>
                 </details>
               )}
 
@@ -928,7 +928,7 @@ export default async function PipelinePage({
                       </select>
                       <button
                         type="submit"
-                        className="text-xs font-medium text-blue-700 hover:underline dark:text-blue-400"
+                        className="text-xs font-medium text-accent hover:underline dark:text-blue-400"
                       >
                         Save
                       </button>
@@ -942,40 +942,40 @@ export default async function PipelinePage({
                 const m = meddpicc.get(o.id)!;
                 const score = meddpiccScore(m);
                 const gaps = meddpiccGaps(m);
-                const scoreTone = score >= 70 ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" : score >= 40 ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
+                const scoreTone = score >= 70 ? "bg-green-100 text-positive dark:bg-green-950 dark:text-green-300" : score >= 40 ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
                 return (
                   <details className="mt-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
                     <summary className="flex cursor-pointer items-center gap-2 text-xs font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100">
                       <span className="uppercase tracking-wide">MEDDPICC</span>
-                      <span className={`tnum rounded px-1.5 py-0.5 text-[10px] font-semibold ${scoreTone}`}>{score}</span>
-                      <span className="text-[11px] font-normal text-neutral-400">
+                      <span className={`tnum rounded px-1.5 py-0.5 text-micro font-semibold ${scoreTone}`}>{score}</span>
+                      <span className="text-label font-normal text-neutral-400">
                         {gaps.length === 0 ? "fully qualified" : `${gaps.length} to firm up`}
                       </span>
                     </summary>
                     <div className="mt-2">
                       <form action={assessMeddpiccAction.bind(null, o.id)} className="mb-2 flex items-center gap-2">
-                        <button className="rounded-md px-2.5 py-1 text-[11px] font-medium text-blue-700 ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
+                        <button className="rounded-md px-2.5 py-1 text-label font-medium text-accent ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
                           AI assess from evidence
                         </button>
-                        <span className="text-[10px] text-neutral-400">drafts every element you haven&rsquo;t set from stakeholders &amp; verified signals — your call to keep</span>
+                        <span className="text-micro text-neutral-400">drafts every element you haven&rsquo;t set from stakeholders &amp; verified signals — your call to keep</span>
                       </form>
                       <div className="grid gap-1.5 sm:grid-cols-2">
                         {ELEMENTS.map((e) => {
                           const st = m[e.key];
                           return (
                             <form key={e.key} action={setMeddpiccAction.bind(null, o.id, e.key)} className="flex items-center gap-1.5 rounded-md border border-neutral-200 px-2 py-1.5 dark:border-neutral-800" title={e.hint}>
-                              <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-neutral-100 text-[10px] font-bold text-neutral-500 dark:bg-neutral-800">{e.letter}</span>
+                              <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-neutral-100 text-micro font-bold text-neutral-500 dark:bg-neutral-800">{e.letter}</span>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1">
-                                  <span className="truncate text-[11px] font-medium">{e.label}</span>
-                                  {st.source === "ai_assist" && <span className="rounded bg-blue-100 px-1 text-[8px] font-bold uppercase text-blue-700 dark:bg-blue-900 dark:text-blue-300" title="AI-drafted, unconfirmed">AI</span>}
+                                  <span className="truncate text-label font-medium">{e.label}</span>
+                                  {st.source === "ai_assist" && <span className="rounded bg-blue-100 px-1 text-[8px] font-bold uppercase text-accent dark:bg-blue-900 dark:text-blue-300" title="AI-drafted, unconfirmed">AI</span>}
                                 </div>
-                                <input name="notes" defaultValue={st.notes ?? ""} placeholder="notes" className="mt-0.5 w-full rounded border border-transparent bg-transparent text-[11px] text-neutral-500 hover:border-neutral-200 focus:border-neutral-300 focus:outline-none dark:hover:border-neutral-700" />
+                                <input name="notes" defaultValue={st.notes ?? ""} placeholder="notes" className="mt-0.5 w-full rounded border border-transparent bg-transparent text-label text-neutral-500 hover:border-neutral-200 focus:border-neutral-300 focus:outline-none dark:hover:border-neutral-700" />
                               </div>
-                              <select name="status" defaultValue={st.status} className={`rounded px-1 py-0.5 text-[10px] font-medium ${STATUS_TONE[st.status]}`}>
+                              <select name="status" defaultValue={st.status} className={`rounded px-1 py-0.5 text-micro font-medium ${STATUS_TONE[st.status]}`}>
                                 {MEDDPICC_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
                               </select>
-                              <button className="text-[10px] font-medium text-blue-700 hover:underline dark:text-blue-400">save</button>
+                              <button className="text-micro font-medium text-accent hover:underline dark:text-blue-400">save</button>
                             </form>
                           );
                         })}

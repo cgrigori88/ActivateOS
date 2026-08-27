@@ -46,7 +46,7 @@ export const STATUS_TONE: Record<Status, string> = {
   unknown: "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400",
   gap: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
   weak: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  strong: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
+  strong: "bg-green-100 text-positive dark:bg-green-950 dark:text-green-300",
 };
 
 export interface ElementState {

@@ -81,7 +81,7 @@ export function AgentKeys({
                   <td className="text-xs text-neutral-500">{k.lastUsedAt ?? "never"}</td>
                   <td className="text-right">
                     <form action={revoke.bind(null, k.id)}>
-                      <button className="text-[11px] font-medium text-red-700 hover:underline dark:text-red-400">revoke</button>
+                      <button className="text-label font-medium text-red-700 hover:underline dark:text-red-400">revoke</button>
                     </form>
                   </td>
                 </tr>

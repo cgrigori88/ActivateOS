@@ -58,7 +58,7 @@ export default async function IntakeReviewPage({ params }: { params: Promise<{ b
         subtitle={`${batch.filename ?? "upload"} — ${batch.rowCount.toLocaleString()} rows, ${batch.headers.length} columns${batch.hasHeaderRow ? "" : " (no header row detected — columns are positional)"}. Confirm where each column lands${batch.kind === "crm" ? "" : " and which fields are surfaced"}.`}
       />
       <p className="mb-4 -mt-2 text-xs text-neutral-500">
-        <Link href="/intake" className="text-blue-700 hover:underline dark:text-blue-400">← Intake</Link>
+        <Link href="/intake" className="text-accent hover:underline dark:text-blue-400">← Intake</Link>
         {" · "}Detection is deterministic and runs entirely inside your tenant — nothing in this file is sent to any
         third party, and the staged rows are deleted the moment you import or discard.
       </p>

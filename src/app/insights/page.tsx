@@ -205,7 +205,7 @@ export default async function InsightsPage({
                 Reset to {wscope ? "org default" : "declared v1"}
               </button>
             </div>
-            <p className="mt-2 text-[11px] text-neutral-400">
+            <p className="mt-2 text-label text-neutral-400">
               {wscope
                 ? `Overrides apply only to deals attributed to this partner; unset stages inherit the org default (${STAGES.map((s) => `${Math.round(defaultCurve[s] * 100)}%`).join(" / ")}).`
                 : "The org default applies to every deal without a partner-specific override."}{" "}
@@ -252,12 +252,12 @@ export default async function InsightsPage({
               <li key={a.sourceType} className="flex items-center justify-between gap-3">
                 <span className="font-mono text-xs text-neutral-500">{a.sourceType}</span>
                 <span className="tnum text-neutral-600 dark:text-neutral-300">
-                  behind <b className="text-green-700 dark:text-green-400">{a.wonDeals} won</b> · <b className="text-red-700 dark:text-red-400">{a.lostDeals} lost</b>
+                  behind <b className="text-positive dark:text-green-400">{a.wonDeals} won</b> · <b className="text-red-700 dark:text-red-400">{a.lostDeals} lost</b>
                 </span>
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-[11px] text-neutral-400">
+          <p className="mt-2 text-label text-neutral-400">
             Counts deals whose account carried verified claims from each source. With volume this becomes source predictive value — which telemetry actually forecasts wins.
           </p>
         </Card>
@@ -285,15 +285,15 @@ export default async function InsightsPage({
                     <span
                       className={
                         isOn
-                          ? "rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                          : "rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"
+                          ? "rounded-full bg-emerald-50 px-2 py-0.5 text-label font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                          : "rounded-full bg-neutral-100 px-2 py-0.5 text-label font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"
                       }
                     >
                       {isOn ? "on" : "off"}
                     </span>
                   </div>
                   <p className="mt-0.5 text-sm text-neutral-500">{t.description}</p>
-                  <p className="mt-0.5 text-[11px] text-neutral-400">Shows up in: {t.surfaces.join(" · ")}</p>
+                  <p className="mt-0.5 text-label text-neutral-400">Shows up in: {t.surfaces.join(" · ")}</p>
                 </div>
                 <form action={setTriggerEnabledAction} className="shrink-0 pt-0.5">
                   <input type="hidden" name="trigger" value={t.key} />

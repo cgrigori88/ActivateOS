@@ -100,7 +100,7 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
                     : "border-neutral-200 dark:border-neutral-800"
                 }`}
               >
-                <p className="mb-1 text-[11px] text-neutral-400">
+                <p className="mb-1 text-label text-neutral-400">
                   <span className={`font-semibold uppercase tracking-wide ${e.side === "broker" ? "text-violet-700 dark:text-violet-400" : "text-neutral-500"}`}>
                     {e.side === "broker" ? "broker" : e.side === "us" ? `${pursuit.my_name} (you)` : pursuit.other_name}
                   </span>
@@ -129,15 +129,15 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
             <p className="mb-2 text-xs text-neutral-500">The other side&apos;s complete surface for this account — nothing beyond this list crosses the boundary.</p>
             <ul className="space-y-1.5 text-sm">
               <li className="flex items-start gap-2">
-                <span className="mt-0.5 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">overlap</span>
+                <span className="mt-0.5 rounded-full bg-violet-50 px-2 py-0.5 text-micro font-semibold uppercase text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">overlap</span>
                 <span>That you hold this account as: {myCats.map((c) => c.replace(/_/g, " ")).join(", ") || "—"} (named rung, both owners approved)</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="mt-0.5 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">ledger</span>
+                <span className="mt-0.5 rounded-full bg-violet-50 px-2 py-0.5 text-micro font-semibold uppercase text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">ledger</span>
                 <span>Every entry in this room&apos;s shared ledger, verbatim</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="mt-0.5 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-neutral-500 dark:bg-neutral-800">not</span>
+                <span className="mt-0.5 rounded-full bg-neutral-100 px-2 py-0.5 text-micro font-semibold uppercase text-neutral-500 dark:bg-neutral-800">not</span>
                 <span className="text-neutral-500">Your evidence, contacts, pipeline, campaigns, scores — none of it, unless separately shared as a field-scoped list grant</span>
               </li>
             </ul>

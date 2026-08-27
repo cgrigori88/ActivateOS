@@ -78,11 +78,11 @@ export default async function PartnersPage({
               <div className="mb-1 flex items-baseline justify-between gap-2">
                 <h2 className="truncate font-semibold">{p.name}</h2>
                 {p.partnershipStatus === "active" ? (
-                  <span className="shrink-0 rounded-full bg-violet/12 px-2.5 py-0.5 text-[11px] font-bold text-violet dark:text-violet-300">
+                  <span className="shrink-0 rounded-full bg-violet/12 px-2.5 py-0.5 text-label font-bold text-violet dark:text-violet-300">
                     connected
                   </span>
                 ) : (
-                  <span className="shrink-0 rounded-full bg-neutral-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-neutral-500">
+                  <span className="shrink-0 rounded-full bg-neutral-500/10 px-2.5 py-0.5 text-label font-semibold text-neutral-500">
                     {p.partnershipStatus ?? "not connected"}
                   </span>
                 )}
@@ -104,7 +104,7 @@ export default async function PartnersPage({
                   <div className="mt-1 text-[10.5px] font-semibold text-neutral-500">settled</div>
                 </div>
               </div>
-              <p className="mt-3 text-[11px] text-neutral-400">
+              <p className="mt-3 text-label text-neutral-400">
                 {p.bookLists} list{p.bookLists === 1 ? "" : "s"} · {p.motionsActive} active motion
                 {p.motionsActive === 1 ? "" : "s"} · {p.motionsWon} won
               </p>

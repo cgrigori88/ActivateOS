@@ -149,7 +149,7 @@ export function OverlapWorkbench({
           </form>
           <form action={generateMotions}>
             <input type="hidden" name="companyIds" value={ids} />
-            <button className="rounded-md border border-blue-300 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-900">
+            <button className="rounded-md border border-blue-300 px-3 py-1.5 text-sm font-medium text-accent hover:bg-blue-100 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-900">
               Draft motions (AI)
             </button>
           </form>
@@ -192,7 +192,7 @@ export function OverlapWorkbench({
             })}
           </tbody>
         </table>
-        <p className="border-t border-neutral-100 px-3 py-2 text-[11px] text-neutral-500 dark:border-neutral-800">
+        <p className="border-t border-neutral-100 px-3 py-2 text-label text-neutral-500 dark:border-neutral-800">
           ● on the partner&apos;s list · ◆ the partner claims it (their customer / open opp) · ⚠ 2+ partners claim it — resolve who leads via deal registration
         </p>
       </div>
@@ -233,7 +233,7 @@ function FragmentRow({
               </span>
             )}
           </span>
-          {r.domain && <div className="text-[11px] text-neutral-400">{r.domain}</div>}
+          {r.domain && <div className="text-label text-neutral-400">{r.domain}</div>}
         </td>
         {partners.map((p) => {
           const m = r.marks[p.id];
@@ -259,13 +259,13 @@ function FragmentRow({
         </td>
         <td className="text-xs">
           {r.play ? (
-            <button type="button" onClick={onExpand} className="text-left font-medium text-blue-700 hover:underline dark:text-blue-400">
+            <button type="button" onClick={onExpand} className="text-left font-medium text-accent hover:underline dark:text-blue-400">
               {r.play.name}
             </button>
           ) : (
             <span className="text-neutral-400">score to suggest</span>
           )}
-          {r.hasMotion && <span className="ml-1 text-[10px] text-neutral-400">· has motion</span>}
+          {r.hasMotion && <span className="ml-1 text-micro text-neutral-400">· has motion</span>}
         </td>
         <td className="text-right">
           {r.score == null ? <span className="text-neutral-400">—</span> : (
@@ -286,7 +286,7 @@ function FragmentRow({
             <div className="grid gap-4 lg:grid-cols-3">
               {/* Why this propensity */}
               <div>
-                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Why {r.score != null ? `propensity ${r.score.toFixed(0)}` : "unscored"}</p>
+                <p className="mb-1 text-micro font-semibold uppercase tracking-wide text-neutral-400">Why {r.score != null ? `propensity ${r.score.toFixed(0)}` : "unscored"}</p>
                 {r.why.drivers.length > 0 ? (
                   <ul className="space-y-1">
                     {r.why.drivers.map((d) => (
@@ -303,7 +303,7 @@ function FragmentRow({
                   <p className="text-xs text-neutral-400">No score yet — run scoring to see drivers.</p>
                 )}
                 {r.why.delta != null && r.why.delta !== 0 && (
-                  <p className={`mt-1 text-[11px] font-medium ${r.why.delta > 0 ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>
+                  <p className={`mt-1 text-label font-medium ${r.why.delta > 0 ? "text-positive dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>
                     {r.why.delta > 0 ? "+" : ""}{r.why.delta} since last scoring
                   </p>
                 )}
@@ -316,11 +316,11 @@ function FragmentRow({
 
               {/* The actual play */}
               <div>
-                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Suggested play</p>
+                <p className="mb-1 text-micro font-semibold uppercase tracking-wide text-neutral-400">Suggested play</p>
                 {r.play ? (
                   <>
                     <p className="text-sm font-medium">{r.play.name}</p>
-                    <p className="text-[11px] text-neutral-400">solution: {r.play.solution}</p>
+                    <p className="text-label text-neutral-400">solution: {r.play.solution}</p>
                     {r.play.objective && <p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-300">{r.play.objective}</p>}
                     {r.play.offer && <p className="mt-1 text-xs text-neutral-500"><span className="font-medium">CTA:</span> {r.play.offer}</p>}
                   </>
@@ -331,7 +331,7 @@ function FragmentRow({
 
               {/* Which partner lists it sits on */}
               <div>
-                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Partner coverage</p>
+                <p className="mb-1 text-micro font-semibold uppercase tracking-wide text-neutral-400">Partner coverage</p>
                 <ul className="space-y-1">
                   {partners.filter((p) => r.marks[p.id]?.onList).map((p) => {
                     const m = r.marks[p.id];
@@ -344,7 +344,7 @@ function FragmentRow({
                   })}
                 </ul>
                 {r.conflict && (
-                  <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                  <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-label text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                     ⚠ <span className="font-semibold">Channel conflict:</span> {claimantSummary(r, partners).full} both
                     claim this account — the same deal could be worked twice, or partners could undercut each other in
                     front of the customer. Decide who leads and lock it with a deal registration on the opportunity.

@@ -149,9 +149,9 @@ export default async function AnalyticsPage({
   const cohort = Math.max(1, sentSet.size);
   const conv = (a: Set<string>, b: Set<string>) => (a.size > 0 ? Math.round((b.size / a.size) * 100) : null);
   const figures: { label: string; value: number | null; tone: string }[] = [
-    { label: "sent → opened", value: conv(sentSet, openedSet), tone: "text-blue-700 dark:text-blue-400" },
+    { label: "sent → opened", value: conv(sentSet, openedSet), tone: "text-accent dark:text-blue-400" },
     { label: "opened → replied", value: conv(openedSet, repliedSet), tone: "text-teal-700 dark:text-teal-400" },
-    { label: "replied → positive", value: conv(repliedSet, positiveSet), tone: "text-green-700 dark:text-green-400" },
+    { label: "replied → positive", value: conv(repliedSet, positiveSet), tone: "text-positive dark:text-green-400" },
     { label: "positive → meeting", value: conv(positiveSet, meetingSet), tone: "text-amber-700 dark:text-amber-400" },
     { label: "meeting → deal reg", value: conv(meetingSet, drSet), tone: "text-violet-700 dark:text-violet-400" },
   ];
@@ -197,7 +197,7 @@ export default async function AnalyticsPage({
         <Card className="mb-6">
           <p className="text-sm text-neutral-500">
             No outreach activity yet. Compose and send a sequence on the{" "}
-            <Link href="/campaigns" className="text-blue-700 hover:underline dark:text-blue-400">Campaigns</Link> page —
+            <Link href="/campaigns" className="text-accent hover:underline dark:text-blue-400">Campaigns</Link> page —
             every send, open, and reply lands here.
           </p>
         </Card>
@@ -213,7 +213,7 @@ export default async function AnalyticsPage({
           <div className="overflow-x-auto scroll-thin">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wide text-neutral-400">
+                <tr className="text-left text-label uppercase tracking-wide text-neutral-400">
                   <th className="py-1 pr-3 font-semibold">Seller</th>
                   <th className="py-1 pr-3 font-semibold">Territory</th>
                   <th className="py-1 pr-3 font-semibold">Accounts</th>
@@ -228,7 +228,7 @@ export default async function AnalyticsPage({
                     <td className="py-1.5 pr-3 text-neutral-500">{t.territory ?? "—"}</td>
                     <td className="py-1.5 pr-3 text-neutral-500">{t.accounts.slice(0, 3).join(", ")}{t.accounts.length > 3 ? ` +${t.accounts.length - 3}` : ""}</td>
                     <td className="tnum py-1.5 pr-3 text-right">{t.open_usd ? `$${Math.round(Number(t.open_usd) / 1000)}k` : "—"}</td>
-                    <td className="tnum py-1.5 text-right text-green-700 dark:text-green-400">{t.won_usd ? `$${Math.round(Number(t.won_usd) / 1000)}k` : "—"}</td>
+                    <td className="tnum py-1.5 text-right text-positive dark:text-green-400">{t.won_usd ? `$${Math.round(Number(t.won_usd) / 1000)}k` : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -260,7 +260,7 @@ export default async function AnalyticsPage({
               );
             })}
           </div>
-          <p className="mt-3 text-[11px] text-neutral-400">
+          <p className="mt-3 text-label text-neutral-400">
             Each surge lifts the account&apos;s momentum feature in propensity — engagement is scored, not just logged.
           </p>
         </Card>
@@ -270,7 +270,7 @@ export default async function AnalyticsPage({
       <Card className="mb-6">
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Outreach funnel</h2>
-          <span className="text-[11px] text-neutral-400">bar = % of contacted accounts · right = associated pipeline $</span>
+          <span className="text-label text-neutral-400">bar = % of contacted accounts · right = associated pipeline $</span>
         </div>
         <div className="space-y-1.5">
           {stages.map((s) => {
@@ -283,16 +283,16 @@ export default async function AnalyticsPage({
                 <span className="w-16 shrink-0 text-right text-xs text-neutral-500">{s.label}</span>
                 <div className="relative h-6 flex-1 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
                   <div className="flex h-full items-center rounded" style={{ width: `${w}%`, backgroundColor: s.fill }} title={`${s.label}: ${label}`}>
-                    {inBar && <span className="truncate px-2 text-[11px] font-medium text-white">{label}</span>}
+                    {inBar && <span className="truncate px-2 text-label font-medium text-white">{label}</span>}
                   </div>
                   {!inBar && (
-                    <span className="absolute top-1/2 -translate-y-1/2 text-[11px] font-medium text-neutral-600 dark:text-neutral-300" style={{ left: `calc(${w}% + 8px)` }}>
+                    <span className="absolute top-1/2 -translate-y-1/2 text-label font-medium text-neutral-600 dark:text-neutral-300" style={{ left: `calc(${w}% + 8px)` }}>
                       {label}
                     </span>
                   )}
                 </div>
                 <span className="tnum w-16 shrink-0 text-right text-xs font-medium">{money(usd(s.set))}</span>
-                <span className="tnum w-10 shrink-0 text-right text-[11px] text-neutral-400">{Math.round((n / cohort) * 100)}%</span>
+                <span className="tnum w-10 shrink-0 text-right text-label text-neutral-400">{Math.round((n / cohort) * 100)}%</span>
               </div>
             );
           })}
@@ -301,8 +301,8 @@ export default async function AnalyticsPage({
         <div className="mt-5 grid grid-cols-2 gap-3 border-t border-neutral-100 pt-4 sm:grid-cols-3 lg:grid-cols-5 dark:border-neutral-800">
           {figures.map((f) => (
             <div key={f.label} className="text-center">
-              <div className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${f.tone}`}>{f.value == null ? "—" : `${f.value}%`}</div>
-              <div className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">{f.label}</div>
+              <div className={`pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em] ${f.tone}`}>{f.value == null ? "—" : `${f.value}%`}</div>
+              <div className="text-micro font-medium uppercase tracking-wide text-neutral-400">{f.label}</div>
             </div>
           ))}
         </div>
@@ -313,7 +313,7 @@ export default async function AnalyticsPage({
         <Card>
           <div className="mb-4 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Multi-touch cadence</h2>
-            <span className="flex gap-3 text-[11px] text-neutral-500">
+            <span className="flex gap-3 text-label text-neutral-500">
               <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-blue-600" /> Sent</span>
               <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-green-600" /> Responded</span>
             </span>
@@ -329,17 +329,17 @@ export default async function AnalyticsPage({
                   <div key={t.no} className="flex h-full flex-1 flex-col items-center justify-end">
                     <div className="flex w-full max-w-[7rem] flex-1 items-end justify-center gap-1">
                       <div className="flex w-1/2 flex-col items-center justify-end self-stretch">
-                        {t.sent > 0 && <span className="tnum mb-0.5 text-[10px] text-neutral-500">{t.sent}</span>}
+                        {t.sent > 0 && <span className="tnum mb-0.5 text-micro text-neutral-500">{t.sent}</span>}
                         <div className="w-full rounded-t bg-blue-600" style={{ height: `${(t.sent / touchMax) * 100}%`, minHeight: t.sent > 0 ? 3 : 0 }} title={`Touch ${t.no}: ${t.sent} sent`} />
                       </div>
                       <div className="flex w-1/2 flex-col items-center justify-end self-stretch">
-                        {t.responded > 0 && <span className="tnum mb-0.5 text-[10px] text-neutral-500">{t.responded}</span>}
+                        {t.responded > 0 && <span className="tnum mb-0.5 text-micro text-neutral-500">{t.responded}</span>}
                         <div className="w-full rounded-t bg-green-600" style={{ height: `${(t.responded / touchMax) * 100}%`, minHeight: t.responded > 0 ? 3 : 0 }} title={`Touch ${t.no}: ${t.responded} responded`} />
                       </div>
                     </div>
                     <div className="mt-1.5 text-center">
-                      <div className="text-[11px] font-medium text-neutral-600 dark:text-neutral-300">Touch {t.no}</div>
-                      <div className="tnum text-[10px] text-neutral-400">{rate == null ? "—" : `${rate}%`}</div>
+                      <div className="text-label font-medium text-neutral-600 dark:text-neutral-300">Touch {t.no}</div>
+                      <div className="tnum text-micro text-neutral-400">{rate == null ? "—" : `${rate}%`}</div>
                     </div>
                   </div>
                 );
@@ -352,7 +352,7 @@ export default async function AnalyticsPage({
         <Card>
           <div className="mb-1 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Activity trend</h2>
-            <span className="text-[11px] text-neutral-400">{days[0]?.d} → {days[days.length - 1]?.d}</span>
+            <span className="text-label text-neutral-400">{days[0]?.d} → {days[days.length - 1]?.d}</span>
           </div>
           <p className="mb-2 text-xs text-neutral-500">Daily sends · opens · replies — hover a point for the day&apos;s exact counts.</p>
           <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Daily sends, opens and replies over the last 28 days">
@@ -405,7 +405,7 @@ export default async function AnalyticsPage({
               ) : null,
             )}
           </svg>
-          <div className="mt-2 flex gap-4 text-[11px] text-neutral-500">
+          <div className="mt-2 flex gap-4 text-label text-neutral-500">
             {SERIES.map((s) => (
               <span key={s.key} className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: s.stroke }} /> {s.label}</span>
             ))}
@@ -449,7 +449,7 @@ export default async function AnalyticsPage({
             </table>
           </div>
         )}
-        <p className="mt-3 text-[11px] text-neutral-400">
+        <p className="mt-3 text-label text-neutral-400">
           If higher bands don&apos;t convert better, propensity needs recalibration — this table is the feedback signal.
         </p>
       </Card>

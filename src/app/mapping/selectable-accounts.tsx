@@ -95,7 +95,7 @@ export function SelectableAccounts({
           </form>
           <form action={generateMotions}>
             <input type="hidden" name="companyIds" value={ids} />
-            <button className="rounded-md border border-blue-300 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-900">
+            <button className="rounded-md border border-blue-300 px-3 py-1.5 text-sm font-medium text-accent hover:bg-blue-100 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-900">
               Generate motions (AI)
             </button>
           </form>
@@ -122,7 +122,7 @@ export function SelectableAccounts({
                 <td><input type="checkbox" checked={sel.has(a.companyId)} onChange={() => toggle(a.companyId)} className="h-4 w-4" /></td>
                 <td>
                   <Link href={`/accounts/${a.companyId}`} className="font-medium hover:underline">{a.name}</Link>
-                  {a.industry && <div className="text-[11px] text-neutral-400">{a.industry}</div>}
+                  {a.industry && <div className="text-label text-neutral-400">{a.industry}</div>}
                 </td>
                 <td className="text-right">
                   {a.score == null ? <span className="text-neutral-400">—</span> : (
@@ -134,7 +134,7 @@ export function SelectableAccounts({
                   {a.partnerCount >= 2 && <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300">×{a.partnerCount}</span>}
                 </td>
                 <td className="text-xs text-neutral-500">{a.motion}</td>
-                <td className="text-right text-[11px] text-neutral-400">{a.hasMotion ? "has motion" : ""}</td>
+                <td className="text-right text-label text-neutral-400">{a.hasMotion ? "has motion" : ""}</td>
               </tr>
             ))}
           </tbody>

@@ -1,6 +1,42 @@
 # Visual Refactoring Blueprint — PursuitOS (Phase 2)
 
-**Date:** 2026-08-27 · **/architect Phase 2** · Analysis only, no code changed.
+**Date:** 2026-08-27 · **/architect Phase 2** · Analysis, then execution (see below).
+
+## Execution status (design pass)
+
+Shipped and verified live (Chromium, light + dark + mobile, 8 core rooms;
+tsc + next build clean; zero residual drift for migrated tokens):
+
+- **DRIFT-2 — Button primitive.** `Button` + `buttonClass()` added to
+  `ui.tsx` (variants primary/accent/danger/ghost/subtle; sizes sm/md; one
+  owner of geometry + token color). The Admin Privacy card is migrated as
+  the in-situ proof (primary/ghost/danger). Remaining rooms' ad-hoc buttons
+  already share the same class strings, so they render consistently; a
+  room-by-room swap to `<Button>` is a mechanical follow-up, not a
+  correctness gap.
+- **DRIFT-3 — named type scale.** `--text-micro/label/body/title/display/hero`
+  added to `@theme`; ~278 arbitrary `text-[Npx]` swapped to the tokens. Each
+  is 1:1 with the value it replaced — pure alias, verified identical in the
+  built CSS. One-off sizes (9/19/34px) left arbitrary by design.
+- **DRIFT-1 — split color concepts.** The two highest-drift TEXT pairs
+  unified to tokens: `text-blue-700 → text-accent` (68) and
+  `text-green-700 → text-positive` (36). Note: `text-positive` (#15803d),
+  NOT `text-emerald` (#059669) — emerald fails AA (~4.0:1) as text on white;
+  positive is the contrast-safe success token and is identical to green-700,
+  so zero visual change. Background fills (`bg-blue-700`/`bg-green-700`) are
+  left for the button migration (they become the `accent`/status variants).
+- **DRIFT-4 — token-duplicating hex.** The one real case
+  (`hover:bg-[#047857]` on the login CTA) → `hover:brightness-95`. The dark
+  decorative gradients (`#0b1220`/`#04070f`) and the root error boundary are
+  intentional exceptions, kept.
+
+Follow-ups (scoped, mechanical, non-blocking): room-by-room `<Button>`
+adoption; unify the full green tinted-surface recipes (banner/grid/notice)
+once an emerald surface recipe is designed; migrate `bg-blue-700` fills.
+
+---
+
+**Original analysis (pre-execution) follows.**
 
 ## Token system (what exists)
 

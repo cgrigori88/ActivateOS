@@ -184,13 +184,13 @@ export default async function TodayPage() {
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
               Where your systems disagree
             </h2>
-            <span className="text-[11px] text-neutral-400">each row names both records in conflict</span>
+            <span className="text-label text-neutral-400">each row names both records in conflict</span>
           </div>
           <ul className="space-y-2">
             {divergences.map((d, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
                 <span
-                  className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold uppercase tracking-wide ${
                     d.kind === "joint_vs_pipeline"
                       ? "bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400"
                       : "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"

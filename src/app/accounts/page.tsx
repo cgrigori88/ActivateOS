@@ -235,7 +235,7 @@ export default async function AccountsPage({
                 ☰ Columns
               </summary>
               <div className="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-                <p className="px-1.5 pb-1 text-[10px] uppercase tracking-wide text-neutral-400">Show columns</p>
+                <p className="px-1.5 pb-1 text-micro uppercase tracking-wide text-neutral-400">Show columns</p>
                 {COLUMNS.map((c) => {
                   const on = show(c.key);
                   return (
@@ -335,7 +335,7 @@ export default async function AccountsPage({
                       ) : (
                         <span className="flex flex-wrap gap-1">
                           {ps.map((p) => (
-                            <Link key={p} href={`/accounts${buildQS(params, { partner: p })}`} className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300">{p}</Link>
+                            <Link key={p} href={`/accounts${buildQS(params, { partner: p })}`} className="rounded bg-neutral-100 px-1.5 py-0.5 text-micro font-medium text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300">{p}</Link>
                           ))}
                         </span>
                       )}
@@ -345,14 +345,14 @@ export default async function AccountsPage({
                   {show("pipeline") && <td className="tnum text-right text-neutral-600 dark:text-neutral-300">{o.pipeline ? `$${Math.round(o.pipeline / 1000)}k` : <span className="text-neutral-300 dark:text-neutral-600">—</span>}</td>}
                   {show("dims") && <td>{dims ? <DimensionBars values={DIM_ORDER.map((d) => dims.get(d) ?? 0)} /> : <span className="text-neutral-300">—</span>}</td>}
                   {show("delta") && (
-                    <td className={`tnum text-xs font-medium ${delta > 0 ? "text-green-700 dark:text-green-400" : delta < 0 ? "text-red-700 dark:text-red-400" : "text-neutral-400"}`}>
+                    <td className={`tnum text-xs font-medium ${delta > 0 ? "text-positive dark:text-green-400" : delta < 0 ? "text-red-700 dark:text-red-400" : "text-neutral-400"}`}>
                       {delta == null ? "—" : delta > 0 ? `+${delta}` : `${delta}`}
                     </td>
                   )}
                   {show("routed") && (
                     <td className="text-neutral-600 dark:text-neutral-400">
                       {r.partner_name ?? <span className="text-neutral-300 dark:text-neutral-600">unrouted</span>}
-                      {r.team_status === "accepted" && <span className="ml-1 text-[10px] font-semibold uppercase text-green-700 dark:text-green-400">✓</span>}
+                      {r.team_status === "accepted" && <span className="ml-1 text-micro font-semibold uppercase text-positive dark:text-green-400">✓</span>}
                     </td>
                   )}
                   {show("evidence") && <td className="tnum text-right text-neutral-500">{r.evidence_count}</td>}

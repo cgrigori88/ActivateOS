@@ -261,7 +261,7 @@ export default async function MotionsPage({
             )}
           </form>
         </div>
-        <p className="mt-3 text-[11px] text-neutral-400">
+        <p className="mt-3 text-label text-neutral-400">
           Drafts run in batches of 10, highest propensity first — rerun for the next batch. Accounts already carrying
           a draft, approved, or active motion are skipped, so drafting a whole list is always safe.
         </p>
@@ -313,8 +313,8 @@ export default async function MotionsPage({
                       <span className="text-neutral-400"> — {m.slug}</span>
                       {m.industry && <span className="ml-1 text-xs text-neutral-400">· {m.industry}</span>}
                       <span className="ml-2 text-xs text-neutral-400">({m.confidence} confidence)</span>
-                      <Link href={`/briefs/${m.id}`} className="ml-2 text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">Brief →</Link>
-                      {m.outcome && <span className={`ml-2 text-xs font-semibold uppercase ${m.outcome === "won" ? "text-green-700 dark:text-green-400" : "text-neutral-500"}`}>{m.outcome.replace(/_/g, " ")}</span>}
+                      <Link href={`/briefs/${m.id}`} className="ml-2 text-xs font-medium text-accent hover:underline dark:text-blue-400">Brief →</Link>
+                      {m.outcome && <span className={`ml-2 text-xs font-semibold uppercase ${m.outcome === "won" ? "text-positive dark:text-green-400" : "text-neutral-500"}`}>{m.outcome.replace(/_/g, " ")}</span>}
                     </p>
                     {(m.estimated_value_usd != null || m.partner_name) && (
                       <p className="mb-1 text-xs text-neutral-500">
@@ -335,8 +335,8 @@ export default async function MotionsPage({
                           <option value="">— none —</option>
                           {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
-                        <button className="font-medium text-blue-700 hover:underline dark:text-blue-400">set</button>
-                        {m.goal_name && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">{m.goal_name}</span>}
+                        <button className="font-medium text-accent hover:underline dark:text-blue-400">set</button>
+                        {m.goal_name && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-micro font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">{m.goal_name}</span>}
                       </form>
                     )}
                     {initiativeOpts.length > 0 && (
@@ -346,11 +346,11 @@ export default async function MotionsPage({
                           <option value="">— none —</option>
                           {initiativeOpts.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                         </select>
-                        <button className="font-medium text-blue-700 hover:underline dark:text-blue-400">set</button>
+                        <button className="font-medium text-accent hover:underline dark:text-blue-400">set</button>
                       </form>
                     )}
                     <details className="mb-1">
-                      <summary className="cursor-pointer text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">Thesis &amp; trigger</summary>
+                      <summary className="cursor-pointer text-xs font-medium text-accent hover:underline dark:text-blue-400">Thesis &amp; trigger</summary>
                       <p className="mb-2 mt-2 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{m.thesis}</p>
                       <p className="text-sm text-neutral-500"><span className="font-medium">Trigger:</span> {m.trigger_summary}<br /><span className="font-medium">CTA:</span> {m.cta}</p>
                       {m.operator_notes && (

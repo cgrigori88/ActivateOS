@@ -197,7 +197,7 @@ export default async function BriefPage({
           <p className="text-sm text-neutral-400">
             No cited evidence on this motion yet — citations attach when the AI designer grounds a
             motion in verified evidence, or as research on{" "}
-            <Link href={`/accounts/${m.company_id}`} className="text-blue-700 hover:underline dark:text-blue-400">
+            <Link href={`/accounts/${m.company_id}`} className="text-accent hover:underline dark:text-blue-400">
               the account
             </Link>{" "}
             verifies new claims.
@@ -213,7 +213,7 @@ export default async function BriefPage({
           <p className="text-sm text-neutral-400">
             No cadence yet — dated pursuit steps are generated when the motion is activated with a
             pursuit plan, and they land in the{" "}
-            <Link href="/queue" className="text-blue-700 hover:underline dark:text-blue-400">
+            <Link href="/queue" className="text-accent hover:underline dark:text-blue-400">
               action queue
             </Link>{" "}
             as they come due.
@@ -372,11 +372,11 @@ export default async function BriefPage({
               >
                 Generate outreach draft
               </button>
-              <p className="mt-2 text-[11px] text-neutral-400">
+              <p className="mt-2 text-label text-neutral-400">
                 A single 1:1 email for this motion&apos;s conversation — review, then send via
                 PursuitOS or package for the partner seller; replies are captured here. For
                 one-to-many sequenced sends, use a{" "}
-                <Link href="/campaigns" className="text-blue-700 hover:underline dark:text-blue-400">
+                <Link href="/campaigns" className="text-accent hover:underline dark:text-blue-400">
                   campaign
                 </Link>
                 .

@@ -154,13 +154,13 @@ export default async function SkillsPage({
                         <button className="rounded-md bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800">
                           Save changes
                         </button>
-                        <span className="text-[11px] text-neutral-400">
+                        <span className="text-label text-neutral-400">
                           {s.createdBy ? `by ${s.createdBy} · ` : ""}updated {s.updatedAt}
                         </span>
                       </div>
                     </form>
                     <form action={setSkillStatusAction.bind(null, s.id, "archived")} className="mt-1.5">
-                      <button className="text-[11px] font-medium text-neutral-500 hover:underline">
+                      <button className="text-label font-medium text-neutral-500 hover:underline">
                         Archive — agents stop reading it immediately
                       </button>
                     </form>
@@ -180,9 +180,9 @@ export default async function SkillsPage({
               {archived.map((s) => (
                 <li key={s.id} className="flex items-center gap-2 text-sm text-neutral-500">
                   <span className="min-w-0 flex-1 truncate">{s.name}</span>
-                  <span className="text-[11px]">{s.uses} uses</span>
+                  <span className="text-label">{s.uses} uses</span>
                   <form action={setSkillStatusAction.bind(null, s.id, "active")}>
-                    <button className="text-[11px] font-medium text-accent hover:underline">restore</button>
+                    <button className="text-label font-medium text-accent hover:underline">restore</button>
                   </form>
                 </li>
               ))}
@@ -278,7 +278,7 @@ export default async function SkillsPage({
               </label>
             )}
           </div>
-          <p className="text-[11px] text-neutral-400">
+          <p className="text-label text-neutral-400">
             {SKILL_KINDS.map((k) => `${k.label}: ${k.hint}`).join(" ")}
           </p>
           <label className="block text-sm">

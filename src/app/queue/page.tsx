@@ -215,7 +215,7 @@ export default async function QueuePage({
                               {i.dueAt ? `${overdue ? "overdue · " : ""}${i.dueAt.toISOString().slice(0, 10)}` : "no date"}
                             </span>
                             <span className="text-neutral-400"> · </span>
-                            <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${i.kind === "conversation" ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
+                            <span className={`rounded px-1.5 py-0.5 text-micro font-medium ${i.kind === "conversation" ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
                               {i.kind === "conversation" ? "conversation" : "cadence"}
                             </span>
                             {i.meta && <span className="ml-1 text-xs text-neutral-400">{i.meta}</span>}
@@ -274,7 +274,7 @@ export default async function QueuePage({
           <ul className="space-y-1.5">
             {recent.map((r, i) => (
               <li key={i} className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
-                <span className={r.status === "done" ? "text-green-700 dark:text-green-400" : "text-neutral-400"}>{r.status}</span>
+                <span className={r.status === "done" ? "text-positive dark:text-green-400" : "text-neutral-400"}>{r.status}</span>
                 <span>{r.legal_name} — {r.action}</span>
                 <span className="ml-auto shrink-0 text-xs text-neutral-400">{new Date(r.completed_at).toISOString().slice(0, 10)}</span>
               </li>

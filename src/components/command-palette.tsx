@@ -146,20 +146,20 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             className="w-full bg-transparent py-3.5 pl-11 pr-14 text-[14.5px] outline-none placeholder:text-neutral-400"
             aria-label="Search"
           />
-          <kbd className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md border border-neutral-300/70 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400 dark:border-white/15">
+          <kbd className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md border border-neutral-300/70 px-1.5 py-0.5 font-mono text-micro text-neutral-400 dark:border-white/15">
             esc
           </kbd>
         </div>
         <div ref={listRef} className="max-h-[46vh] overflow-y-auto p-2 scroll-thin">
           {flat.length === 0 && (
-            <p className="px-3 py-6 text-center text-[13px] text-neutral-400">
+            <p className="px-3 py-6 text-center text-body text-neutral-400">
               Nothing matches “{q}” — accounts, campaigns, motions, partners and joint pursuits are searchable.
             </p>
           )}
           {flat.map((hit, i) => (
             <div key={`${hit.href}-${hit.group}-${i}`}>
               {headerFor(i) && (
-                <p className="mb-0.5 mt-2 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-neutral-400 first:mt-1">
+                <p className="mb-0.5 mt-2 px-3 text-micro font-bold uppercase tracking-[0.12em] text-neutral-400 first:mt-1">
                   {headerFor(i)}
                 </p>
               )}
@@ -180,7 +180,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                     {hit.sub}
                   </span>
                 )}
-                {i === sel && <span className="ml-auto shrink-0 font-mono text-[10px] text-white/70">↵</span>}
+                {i === sel && <span className="ml-auto shrink-0 font-mono text-micro text-white/70">↵</span>}
               </button>
             </div>
           ))}

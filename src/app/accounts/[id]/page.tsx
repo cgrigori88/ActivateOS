@@ -252,16 +252,16 @@ export default async function AccountPage({
         {openMotion ? (
           <Link
             href={`/briefs/${openMotion.id}`}
-            className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300/80 px-4 py-1.5 text-[13px] font-semibold transition-colors duration-[140ms] hover:bg-neutral-900/[0.04] dark:border-white/15 dark:hover:bg-white/10"
+            className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300/80 px-4 py-1.5 text-body font-semibold transition-colors duration-[140ms] hover:bg-neutral-900/[0.04] dark:border-white/15 dark:hover:bg-white/10"
           >
             Open motion ({openMotion.status}) — read the brief <span aria-hidden>→</span>
           </Link>
         ) : (
           <form action={draftAccountMotionAction.bind(null, id)}>
-            <button className="inline-flex items-center gap-1.5 rounded-full bg-blue-700 px-4 py-1.5 text-[13px] font-bold text-white transition-colors duration-[140ms] hover:bg-blue-800">
+            <button className="inline-flex items-center gap-1.5 rounded-full bg-blue-700 px-4 py-1.5 text-body font-bold text-white transition-colors duration-[140ms] hover:bg-blue-800">
               Draft a motion (AI)
             </button>
-            <span className="ml-2 text-[11px] text-neutral-400">grounded in this account&apos;s evidence — lands as a draft for your approval</span>
+            <span className="ml-2 text-label text-neutral-400">grounded in this account&apos;s evidence — lands as a draft for your approval</span>
           </form>
         )}
       </div>
@@ -274,18 +274,18 @@ export default async function AccountPage({
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
               What&apos;s new on this account
             </h2>
-            <span className="text-[11px] text-neutral-400">
+            <span className="text-label text-neutral-400">
               digest through {new Date(digest.period_end).toISOString().slice(0, 10)} ·{" "}
-              <Link href="/routines" className="text-blue-700 hover:underline dark:text-blue-400">Routines</Link>
+              <Link href="/routines" className="text-accent hover:underline dark:text-blue-400">Routines</Link>
             </span>
           </div>
           <ul className="space-y-1.5">
             {(digest.items as { type: string; text: string; at: string }[]).map((it, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
-                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                  it.type === "evidence" ? "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
+                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold uppercase tracking-wide ${
+                  it.type === "evidence" ? "bg-blue-50 text-accent dark:bg-blue-950/50 dark:text-blue-400"
                   : it.type === "renewal" ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
-                  : it.type === "engagement" || it.type === "meeting" ? "bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400"
+                  : it.type === "engagement" || it.type === "meeting" ? "bg-green-50 text-positive dark:bg-green-950/50 dark:text-green-400"
                   : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"
                 }`}>{it.type}</span>
                 <span className="min-w-0 flex-1">{it.text}</span>
@@ -302,26 +302,26 @@ export default async function AccountPage({
         <Card className="mb-6">
           <div className="mb-2 flex items-baseline justify-between gap-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Deal timeline</h2>
-            <span className="text-[11px] text-neutral-400">
+            <span className="text-label text-neutral-400">
               every system, one record — each event names its source
             </span>
           </div>
           <ul className="space-y-1.5">
             {timeline.map((ev, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
-                <span className="tnum mt-0.5 w-[76px] shrink-0 font-mono text-[11px] text-neutral-400">
+                <span className="tnum mt-0.5 w-[76px] shrink-0 font-mono text-label text-neutral-400">
                   {ev.at.slice(0, 10)}
                 </span>
                 <span
-                  className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold uppercase tracking-wide ${
                     ev.kind === "joint" || ev.kind === "intro" || ev.kind === "shared_evidence"
                       ? "bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400"
                       : ev.kind === "renewal"
                         ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
                         : ev.kind === "reply" || ev.kind === "opportunity" || ev.kind === "meeting"
-                          ? "bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400"
+                          ? "bg-green-50 text-positive dark:bg-green-950/50 dark:text-green-400"
                           : ev.kind === "send" || ev.kind === "motion"
-                            ? "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
+                            ? "bg-blue-50 text-accent dark:bg-blue-950/50 dark:text-blue-400"
                             : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"
                   }`}
                 >
@@ -348,7 +348,7 @@ export default async function AccountPage({
       <Card className="mb-6">
         <div className="mb-2 flex items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Meetings</h2>
-          <span className="text-[11px] text-neutral-400">
+          <span className="text-label text-neutral-400">
             each note lands as first-party evidence and counts as engagement
           </span>
         </div>
@@ -361,7 +361,7 @@ export default async function AccountPage({
           <ul className="mb-3 space-y-2">
             {meetings.map((m) => (
               <li key={m.id} className="rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
-                <p className="mb-1 text-[11px] text-neutral-400">
+                <p className="mb-1 text-label text-neutral-400">
                   <span className="font-semibold text-neutral-600 dark:text-neutral-300">{m.metAt}</span>
                   {m.title && <> · {m.title}</>}
                   {m.attendees && <> · with {m.attendees}</>}
@@ -404,7 +404,7 @@ export default async function AccountPage({
             <span className="text-sm text-neutral-500">{scores[0].slug}</span>
             {scores[0].positive_points != null && (
               <span className="ml-auto text-sm text-neutral-500">
-                <span className="text-green-700 dark:text-green-400">
+                <span className="text-positive dark:text-green-400">
                   +{Number(scores[0].positive_points).toFixed(0)}
                 </span>{" "}
                 /{" "}
@@ -424,7 +424,7 @@ export default async function AccountPage({
                   className="rounded-lg bg-neutral-50 px-2 py-1.5 text-center dark:bg-neutral-950"
                 >
                   <div className="tnum text-base font-semibold">{Number(d.value).toFixed(0)}</div>
-                  <div className="text-[10px] leading-tight text-neutral-500">
+                  <div className="text-micro leading-tight text-neutral-500">
                     {d.dimension.replace(/_/g, " ")}
                   </div>
                 </div>
@@ -451,7 +451,7 @@ export default async function AccountPage({
                 <span
                   className={
                     Number(f.contribution) >= 0
-                      ? "text-green-700 dark:text-green-400"
+                      ? "text-positive dark:text-green-400"
                       : "text-red-700 dark:text-red-400"
                   }
                 >
@@ -531,7 +531,7 @@ export default async function AccountPage({
                 <StatusBadge status={e.status} />
                 <span className="flex-1 leading-relaxed text-neutral-700 dark:text-neutral-300">
                   {e.stance === "refutes" && (
-                    <span className="mr-1 rounded bg-red-50 px-1 text-[10px] font-semibold uppercase text-red-700 dark:bg-red-950 dark:text-red-300">
+                    <span className="mr-1 rounded bg-red-50 px-1 text-micro font-semibold uppercase text-red-700 dark:bg-red-950 dark:text-red-300">
                       refutes
                     </span>
                   )}
@@ -573,7 +573,7 @@ export default async function AccountPage({
                       {f.partner_type?.replace(/_/g, " ")}
                     </span>
                     {isRouted && (
-                      <span className="ml-auto text-xs font-semibold uppercase text-green-700 dark:text-green-400">
+                      <span className="ml-auto text-xs font-semibold uppercase text-positive dark:text-green-400">
                         {team?.status === "accepted" ? "Accepted" : "Routed"}
                       </span>
                     )}

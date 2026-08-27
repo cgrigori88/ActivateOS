@@ -167,20 +167,20 @@ export default async function ReviewPage({
             <Card key={g.companyId ?? g.name} className="p-0">
               <details open={grouped.length <= 3}>
                 <summary className="flex cursor-pointer items-center gap-2 px-4 py-3">
-                  {byPartner && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">partner</span>}
+                  {byPartner && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">partner</span>}
                   <span className="font-semibold">{g.name}</span>
-                  {g.companyId && <Link href={`/accounts/${g.companyId}`} className="text-xs text-blue-700 hover:underline dark:text-blue-400">account →</Link>}
+                  {g.companyId && <Link href={`/accounts/${g.companyId}`} className="text-xs text-accent hover:underline dark:text-blue-400">account →</Link>}
                   <span className="tnum text-xs text-neutral-400">{g.items.length} to review</span>
                   <span className="ml-auto flex gap-1">
                     {[...new Set(g.items.map((i) => i.reason))].map((r) => (
-                      <span key={r} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${REASON_TONE[r]}`}>{REASON_LABELS[r] ?? r}</span>
+                      <span key={r} className={`rounded px-1.5 py-0.5 text-micro font-medium ${REASON_TONE[r]}`}>{REASON_LABELS[r] ?? r}</span>
                     ))}
                   </span>
                 </summary>
                 <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
                   {g.items.map((item) => (
                     <div key={item.id} className="px-4 py-3">
-                      <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+                      <div className="mb-1 flex flex-wrap items-center gap-2 text-label text-neutral-400">
                         {byPartner && item.company_id && <Link href={`/accounts/${item.company_id}`} className="font-medium text-neutral-600 hover:underline dark:text-neutral-300">{item.legal_name}</Link>}
                         <span className={`rounded px-1.5 py-0.5 font-medium ${REASON_TONE[item.reason]}`}>{REASON_LABELS[item.reason] ?? item.reason}</span>
                         <span>{item.source_type}</span>
@@ -191,7 +191,7 @@ export default async function ReviewPage({
                       <p className="mb-1 text-sm font-medium leading-snug">{item.claim}</p>
                       {item.raw_excerpt && item.raw_excerpt !== item.claim && (
                         <details className="mb-2">
-                          <summary className="cursor-pointer text-xs text-blue-700 hover:underline dark:text-blue-400">Show source excerpt</summary>
+                          <summary className="cursor-pointer text-xs text-accent hover:underline dark:text-blue-400">Show source excerpt</summary>
                           <blockquote className="mt-1 border-l-2 border-neutral-300 pl-3 text-sm text-neutral-600 dark:border-neutral-700 dark:text-neutral-400">
                             {String(item.raw_excerpt).slice(0, 800)}
                           </blockquote>

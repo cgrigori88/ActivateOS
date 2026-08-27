@@ -140,8 +140,8 @@ export function MappingReview({
                 <tr key={i} className={c.target ? "" : "opacity-50"}>
                   <td className="font-medium">
                     {h}
-                    {conf >= 0.9 && <span className="ml-1.5 text-[10px] font-semibold text-green-700 dark:text-green-400">auto</span>}
-                    {conf > 0 && conf < 0.9 && <span className="ml-1.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">check</span>}
+                    {conf >= 0.9 && <span className="ml-1.5 text-micro font-semibold text-positive dark:text-green-400">auto</span>}
+                    {conf > 0 && conf < 0.9 && <span className="ml-1.5 text-micro font-semibold text-amber-600 dark:text-amber-400">check</span>}
                   </td>
                   <td className="text-xs text-neutral-500">
                     {p?.type ?? "text"} · {Math.round((p?.fillRate ?? 0) * 100)}% filled
@@ -220,9 +220,9 @@ export function MappingReview({
                   {keptCols.map((c) => (
                     <th key={c.i}>
                       {labelFor(c.target)}
-                      {c.custom && <span className="ml-1 text-[10px] font-normal text-violet-600 dark:text-violet-400">custom</span>}
+                      {c.custom && <span className="ml-1 text-micro font-normal text-violet-600 dark:text-violet-400">custom</span>}
                       {c.target !== "company" && !c.surfaced && (
-                        <span className="ml-1 text-[10px] font-normal text-neutral-400">hidden</span>
+                        <span className="ml-1 text-micro font-normal text-neutral-400">hidden</span>
                       )}
                     </th>
                   ))}
@@ -322,7 +322,7 @@ export function MappingReview({
         <button formAction={discard} formNoValidate className="text-sm font-medium text-red-700 hover:underline dark:text-red-400">
           Discard upload
         </button>
-        <span className="text-[11px] text-neutral-400">
+        <span className="text-label text-neutral-400">
           {kind === "crm"
             ? "Snapshots carry provenance; divergences from the live record surface on Today. Staged rows are deleted on sync or discard."
             : kind === "enrichment"

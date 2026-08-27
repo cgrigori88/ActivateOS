@@ -1,7 +1,70 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 /** Shared primitives implementing the design tokens (docs/DESIGN.md §3). */
+
+/**
+ * Canonical button class (design-pass DRIFT-2 fix). Before this, 160+ buttons
+ * each hand-wrote padding/height/text-size/color, so no two primary buttons
+ * matched — the root of the "broken button row heights / uneven padding"
+ * drift. One place now owns the geometry and the token-backed color per
+ * variant; every button that uses it is the same height for a given size.
+ *
+ *  - primary  the dominant dark-ink CTA (Add member, Save, Generate…)
+ *  - accent   the brand-blue CTA reserved for the primary next step
+ *  - danger   destructive fills (Suppress, Erase) on the negative token
+ *  - ghost    outlined/secondary (Decline, Cancel)
+ *  - subtle   text-only inline action (remove / revoke / edit links)
+ *
+ * Sizes: md (default, matches the px-4 py-1.5 text-sm CTA) and sm (px-3 py-1
+ * text-xs, for table-row and toolbar actions). `subtle` ignores size padding.
+ */
+export type ButtonVariant = "primary" | "accent" | "danger" | "ghost" | "subtle";
+export type ButtonSize = "sm" | "md";
+
+const BTN_BASE =
+  "inline-flex items-center justify-center gap-1.5 font-medium transition-colors duration-[var(--dur-react)] " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-1 " +
+  "focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50";
+
+const BTN_VARIANT: Record<ButtonVariant, string> = {
+  primary:
+    "rounded-md bg-neutral-900 text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200",
+  accent: "rounded-md bg-accent text-white hover:bg-accent-strong",
+  danger: "rounded-md bg-rose text-white hover:brightness-110",
+  ghost:
+    "rounded-md text-neutral-700 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 " +
+    "dark:text-neutral-200 dark:ring-neutral-700 dark:hover:bg-neutral-900",
+  subtle: "font-medium text-accent hover:underline dark:text-blue-300",
+};
+
+const BTN_SIZE: Record<ButtonSize, string> = {
+  sm: "px-3 py-1 text-xs",
+  md: "px-4 py-1.5 text-sm",
+};
+
+/** The class string for a button/CTA, so `<Link>` CTAs can match `<button>`. */
+export function buttonClass(variant: ButtonVariant = "primary", size: ButtonSize = "md"): string {
+  if (variant === "subtle") return `${BTN_BASE} ${BTN_VARIANT.subtle}`;
+  return `${BTN_BASE} ${BTN_SIZE[size]} ${BTN_VARIANT[variant]}`;
+}
+
+export function Button({
+  variant = "primary",
+  size = "md",
+  className = "",
+  children,
+  ...props
+}: {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+} & ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button className={`${buttonClass(variant, size)} ${className}`} {...props}>
+      {children}
+    </button>
+  );
+}
 
 /**
  * Tones give a grid of cards a shape you can read before you read it. Colour
@@ -77,7 +140,7 @@ export function Bento({
   const inner = (
     <>
       <div
-        className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${
+        className={`pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em] ${
           empty ? "text-neutral-300 dark:text-neutral-700" : ""
         }`}
       >
@@ -85,7 +148,7 @@ export function Bento({
       </div>
       <div className="mt-1.5 text-[11.5px] font-semibold text-neutral-500">{label}</div>
       {sub.length > 0 && (
-        <div className="mt-1 text-[11px] text-neutral-400 dark:text-neutral-500">{sub.join(" · ")}</div>
+        <div className="mt-1 text-label text-neutral-400 dark:text-neutral-500">{sub.join(" · ")}</div>
       )}
     </>
   );
@@ -145,7 +208,7 @@ export function NextStep({ message, href, cta }: { message: string; href: string
       <span className="text-sm text-green-800 dark:text-green-300">{message}</span>
       <Link
         href={href}
-        className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[13px] font-bold text-white shadow-[var(--shadow-float)] transition-colors duration-[140ms] hover:bg-blue-800"
+        className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-body font-bold text-white shadow-[var(--shadow-float)] transition-colors duration-[140ms] hover:bg-blue-800"
       >
         {cta}
         <span aria-hidden>→</span>
@@ -159,7 +222,7 @@ export function PageHeader({ title, subtitle }: { title: string; subtitle?: stri
     <header className="mb-7">
       <h1 className="text-[30px] font-extrabold leading-[1.1] tracking-[-0.03em]">{title}</h1>
       {subtitle && (
-        <p className="mt-2 max-w-[78ch] text-[15px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+        <p className="mt-2 max-w-[78ch] text-title leading-relaxed text-neutral-500 dark:text-neutral-400">
           {subtitle}
         </p>
       )}
@@ -268,7 +331,7 @@ export function StatChip({
   const inner = (
     <>
       <div
-        className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${
+        className={`pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em] ${
           empty ? "text-neutral-300 dark:text-neutral-700" : ""
         }`}
       >
@@ -331,7 +394,7 @@ export function CountChip({
   const inner = (
     <>
       <div
-        className={`pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em] ${
+        className={`pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em] ${
           active
             ? "text-white"
             : empty
@@ -480,7 +543,7 @@ export function EvidenceLine({
   return (
     <li className="border-l-2 border-neutral-200 py-1 pl-3 dark:border-neutral-700">
       <span className="block text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{claim}</span>
-      <span className="mt-0.5 block font-mono text-[11px] text-neutral-400 dark:text-neutral-500">{meta}</span>
+      <span className="mt-0.5 block font-mono text-label text-neutral-400 dark:text-neutral-500">{meta}</span>
     </li>
   );
 }

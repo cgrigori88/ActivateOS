@@ -55,7 +55,7 @@ export default async function UpcomingPage() {
       <div className="mb-4 flex flex-wrap items-stretch gap-3">
         <Bento label="scheduled" value={rows.length} subs={["queued sends with a date"]} />
         <Bento label="due now" value={dueCount} subs={[dueCount > 0 ? "waiting on you (or the armed worker)" : "all future-dated"]} />
-        <span className={`ml-auto self-start rounded px-2 py-0.5 text-[11px] font-medium ${autosend ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
+        <span className={`ml-auto self-start rounded px-2 py-0.5 text-label font-medium ${autosend ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
           worker auto-send: {autosend ? "armed" : "off (manual)"}
         </span>
       </div>
@@ -64,7 +64,7 @@ export default async function UpcomingPage() {
         <Card>
           <p className="text-sm text-neutral-500">
             Nothing scheduled. Launch a sequence on the{" "}
-            <Link href="/campaigns" className="text-blue-700 hover:underline dark:text-blue-400">Campaigns</Link> page to
+            <Link href="/campaigns" className="text-accent hover:underline dark:text-blue-400">Campaigns</Link> page to
             populate the plan.
           </p>
         </Card>
@@ -117,7 +117,7 @@ export default async function UpcomingPage() {
                           </button>
                         </form>
                         <form action={sendScheduledAction.bind(null, r.id)}>
-                          <button className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-blue-950">
+                          <button className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-accent hover:bg-blue-50 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-blue-950">
                             Send now
                           </button>
                         </form>
