@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { BackLink, Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { partnerRoom } from "@/lib/partners/hub";
 import { OVERLAP_LEVELS, LEVEL_LABEL, type RungState } from "@/lib/partnerships/overlap";
@@ -56,31 +55,32 @@ export default async function PartnerRoomPage({
 }) {
   const { id } = await params;
   const sp = (await searchParams) ?? {};
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) return <main>No organization.</main>;
 
-  const room = await partnerRoom(pool, orgId, id);
-  if (!room) notFound();
-  const playbook = await loadPartnerPlaybook(pool, orgId, id);
-  const initiatives = await listInitiatives(pool, orgId, { partnerId: id });
-
-  // Skill sharing (task #85): both directions on this partnership, plus the
-  // skills of ours that could still be offered.
-  const skillShares: SkillShareView[] = room.partnership ? await listSkillShares(pool, orgId, room.partnership.id) : [];
-  const evidenceShares: EvidenceShareView[] = room.partnership?.status === "active" ? await listEvidenceShares(pool, orgId, room.partnership.id) : [];
-  const offerableClaims = room.partnership?.status === "active" ? await offerableEvidence(pool, orgId, room.partnership.id) : [];
-  const { rows: shareableSkills } = room.partnership?.status === "active"
-    ? await pool.query<{ id: string; name: string; kind: string }>(
-        `select s.id, s.name, s.kind from skills s
+  const { room, playbook, initiatives, skillShares, evidenceShares, offerableClaims, shareableSkills } = await withTenant(async (db, orgId) => {
+    const room = await partnerRoom(db, orgId, id);
+    if (!room) notFound();
+    return {
+      room,
+      playbook: await loadPartnerPlaybook(db, orgId, id),
+      initiatives: await listInitiatives(db, orgId, { partnerId: id }),
+      // Skill sharing (task #85): both directions on this partnership, plus the
+      // skills of ours that could still be offered.
+      skillShares: (room.partnership ? await listSkillShares(db, orgId, room.partnership.id) : []) as SkillShareView[],
+      evidenceShares: (room.partnership?.status === "active" ? await listEvidenceShares(db, orgId, room.partnership.id) : []) as EvidenceShareView[],
+      offerableClaims: room.partnership?.status === "active" ? await offerableEvidence(db, orgId, room.partnership.id) : [],
+      shareableSkills: room.partnership?.status === "active"
+        ? (await db.query<{ id: string; name: string; kind: string }>(
+            `select s.id, s.name, s.kind from skills s
          where s.org_id = $1 and s.status = 'active'
            and (s.scope_type = 'org' or (s.scope_type = 'partner' and s.scope_id = $2))
            and not exists (select 1 from skill_shares sh
                            where sh.skill_id = s.id and sh.partnership_id = $3 and sh.status in ('offered', 'accepted'))
          order by s.name`,
-        [orgId, id, room.partnership.id],
-      )
-    : { rows: [] };
+            [orgId, id, room.partnership.id],
+          )).rows
+        : [],
+    };
+  });
   const { partner, hub, book, partnership, ladder, grants, pursuits, settlement, scorecard, intros, introEligible, contactOptions } = room;
   const awaitingIntros = intros.filter((w) => w.awaitingYou);
   const otherIntros = intros.filter((w) => !w.awaitingYou);

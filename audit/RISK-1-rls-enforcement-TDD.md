@@ -62,17 +62,35 @@ job; role gating (viewer/writer/owner) stays in the app layer
    `set_config('app.org_id', …, is_local => true)` → run `fn` → `COMMIT`;
    fails closed if no org resolves. Inert while DATABASE_URL points at the
    owner, so query sites can adopt it with zero behavior change.
-3. **Adopt `withTenant` at the query sites** (IN PROGRESS — ~55 files):
-   route each server action + page read through it instead of bare
-   `getPool()`. Each is a no-op until the flip. Keep the owner pool for
-   migrations and the research worker (intentionally global). NOT a blind
-   sweep — per-site judgment (the Goals pass already fixed a resolver
-   semantics bug and a latent cross-tenant partners read). The **Goals room**
-   (page + actions) is DONE and is the proven reference: run as the real
-   app_rw role it renders full data, while an unmigrated room (pipeline)
-   renders all zeros — proving withTenant isolates and unmigrated rooms fail
-   CLOSED. See audit/RISK-1-blind-retest.log (reference-room cutover proof).
-4. Point `DATABASE_URL` at `app_rw`; optionally `FORCE` per table.
+3. **Adopt `withTenant` at the query sites** — SWEEP DONE for the tenant data
+   path (proven reference: Goals renders full data as app_rw while an
+   unmigrated room renders zeros — audit/RISK-1-blind-retest.log). Migrated:
+   all data-room pages (25) and server actions (18), the session API routes
+   (palette, writebacks, privacy/export, accounts/export), and the app shell
+   (layout badges + role). Supporting pieces added:
+   - `withTenantOrg(orgId, fn)` — explicit-org variant for the MCP surface
+     (org from the API key, not the session).
+   - `getOwnerPool()` — the OWNER-POOL SET: paths that can't run as app_rw
+     (provisioning/bootstrap login + guest join; member management + any
+     `auth.users` read; the research worker; inbound webhooks; the research
+     trigger). Inert until DATABASE_URL_OWNER is set at cutover.
+   - `runTx(db, fn)` — lets lib functions that managed their own transaction
+     accept either a Pool (own txn) or a withTenant client (caller's txn).
+   - **0060** — app_rw RLS policies for the CROSS-TENANT consent-ladder tables
+     (partnerships/overlap/joint/grants/intros/shares/population_members),
+     which 0058's org_id-only loop didn't cover.
+   The sweep is NOT blind — it fixed real bugs: the resolver semantics
+   (membership-less user), a latent unscoped `partners` dropdown and an
+   unscoped `accounts/export`, and it surfaced (flagged, RLS-covered) many
+   pre-existing unscoped list reads (Today/analytics/etc.) — see the flagged
+   list in the sweep commit.
+   REMAINING before cutover: (a) migrate `admin/page.tsx` (owner-only; mixes
+   auth.users + cross-tenant + platform-observability reads); (b) a SECURITY
+   DEFINER `resolve_api_key(hash)` so the MCP key lookup works off the owner
+   role; (c) optionally add app-layer `org_id` filters to the flagged list
+   reads (RLS already closes them at cutover — defense in depth).
+4. Point `DATABASE_URL` at `app_rw` and `DATABASE_URL_OWNER` at the owner role;
+   optionally `FORCE` per table.
 5. Re-run the blind per-policy re-test on a real-auth session, then cut over.
 
 Steps 1–2 (the hard architecture) are built + verified; 3 is under way with a

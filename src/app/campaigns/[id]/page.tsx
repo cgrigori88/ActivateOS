@@ -1,13 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getPool } from "@/db/client";
 import { Bento, Card, NextStep, PageHeader, StatusBadge } from "@/components/ui";
 import { ListPicker } from "./list-picker";
 import { CcPicker, type CcContact } from "./cc-picker";
 import { QuerySelect } from "@/components/query-select";
 import { TZ_OPTIONS, formatInTz } from "@/lib/comms/tz";
 import { campaignAccounts, linkedLists, attachableLists, mergeAccountData, renderAngle } from "@/lib/campaigns/lists";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import {
   approveTouchAction,
   rejectTouchAction,
@@ -99,27 +98,27 @@ export default async function CampaignDetailPage({
   const { id } = await params;
   const sp = await searchParams;
   const notice = sp.notice;
-  const pool = getPool();
-  const tenantOrgId = await currentOrgId(pool);
 
-  const { rows: caRows } = await pool.query<{
-    id: string;
-    name: string;
-    status: string;
-    objective: string | null;
-    audience: string | null;
-    org_id: string | null;
-    company_id: string;
-    legal_name: string;
-    primary_domain: string | null;
-    motion_id: string;
-    initiative_id: string | null;
-    wordmark: string | null;
-    recipient_email: string | null;
-    launched_at: Date | null;
-    send_tz: string | null;
-  }>(
-    `select ca.id, ca.name, ca.status, ca.objective, ca.audience,
+  const { ca, initiativeOpts, playPartners, accounts, lists, attachable, previewId, previewAccount, previewVars, linkableMotions, touches, contacts, eng } =
+    await withTenant(async (db, orgId) => {
+      const { rows: caRows } = await db.query<{
+        id: string;
+        name: string;
+        status: string;
+        objective: string | null;
+        audience: string | null;
+        org_id: string | null;
+        company_id: string;
+        legal_name: string;
+        primary_domain: string | null;
+        motion_id: string;
+        initiative_id: string | null;
+        wordmark: string | null;
+        recipient_email: string | null;
+        launched_at: Date | null;
+        send_tz: string | null;
+      }>(
+        `select ca.id, ca.name, ca.status, ca.objective, ca.audience,
             coalesce(ca.org_id, $2::uuid) as org_id,
             c.id as company_id, c.legal_name, c.primary_domain, m.id as motion_id,
             ca.initiative_id,
@@ -129,71 +128,74 @@ export default async function CampaignDetailPage({
      join companies c on c.id = coalesce(ca.company_id, m.company_id)
      left join brand_profiles bp on bp.id = ca.brand_id
      where ca.id = $1`,
-    [id, tenantOrgId],
-  );
-  if (caRows.length === 0) notFound();
-  const ca = caRows[0];
-  const initiativeOpts = ca.org_id ? await initiativeOptions(pool, ca.org_id) : [];
+        [id, orgId],
+      );
+      if (caRows.length === 0) notFound();
+      const ca = caRows[0];
+      const initiativeOpts = ca.org_id ? await initiativeOptions(db, ca.org_id) : [];
 
-  // Multi-vendor: the partners running this play, each in a role.
-  const { rows: playPartners } = await pool.query<{ name: string; partner_type: string | null; role: string }>(
-    `select p.name, p.partner_type, cp.role
+      // Multi-vendor: the partners running this play, each in a role.
+      const { rows: playPartners } = await db.query<{ name: string; partner_type: string | null; role: string }>(
+        `select p.name, p.partner_type, cp.role
      from campaign_partners cp join partners p on p.id = cp.partner_id
      where cp.campaign_id = $1 order by (cp.role = 'lead') desc, p.name`,
-    [id],
-  );
+        [id],
+      );
 
-  // Reach: the accounts that roll into this campaign, its linked lists, and
-  // lists it could attach (top-fit ones surfaced as suggestions).
-  const accounts = await campaignAccounts(pool, id);
-  const lists = await linkedLists(pool, id);
-  const attachable = ca.org_id ? await attachableLists(pool, id, ca.org_id) : [];
-  const suggestions = attachable.filter((l) => l.suggested);
+      // Reach: the accounts that roll into this campaign, its linked lists, and
+      // lists it could attach (top-fit ones surfaced as suggestions).
+      const accounts = await campaignAccounts(db, id);
+      const lists = await linkedLists(db, id);
+      const attachable = ca.org_id ? await attachableLists(db, id, ca.org_id) : [];
 
-  // Per-recipient preview: resolve the account-angle layer against one account's
-  // real data so the two layers (shared paragraphs + account angle) are visible.
-  const previewId = sp.preview && accounts.some((a) => a.companyId === sp.preview) ? sp.preview : accounts[0]?.companyId;
-  const previewAccount = accounts.find((a) => a.companyId === previewId) ?? null;
-  const previewVars = previewId ? await mergeAccountData(pool, previewId) : null;
+      // Per-recipient preview: resolve the account-angle layer against one account's
+      // real data so the two layers (shared paragraphs + account angle) are visible.
+      const previewId = sp.preview && accounts.some((a) => a.companyId === sp.preview) ? sp.preview : accounts[0]?.companyId;
+      const previewAccount = accounts.find((a) => a.companyId === previewId) ?? null;
+      const previewVars = previewId ? await mergeAccountData(db, previewId) : null;
 
-  // Motions on this account that could ground AI drafting (link-a-motion flow).
-  const { rows: linkableMotions } = ca.motion_id || !ca.company_id
-    ? { rows: [] as { id: string; label: string }[] }
-    : await pool.query<{ id: string; label: string }>(
-        `select m.id, coalesce(n.slug, 'motion') || ' — ' || coalesce(m.cta, m.thesis, 'no CTA') as label
+      // Motions on this account that could ground AI drafting (link-a-motion flow).
+      const { rows: linkableMotions } = ca.motion_id || !ca.company_id
+        ? { rows: [] as { id: string; label: string }[] }
+        : await db.query<{ id: string; label: string }>(
+            `select m.id, coalesce(n.slug, 'motion') || ' — ' || coalesce(m.cta, m.thesis, 'no CTA') as label
          from revenue_motions m
          left join taxonomy_nodes n on n.id = m.taxonomy_node_id
          where m.company_id = $1 and m.status in ('approved', 'active')
          order by m.created_at desc`,
+            [ca.company_id],
+          );
+
+      const { rows: touches } = await db.query<Touch>(
+        `select id, touch_no, name, subject, preheader, headline, status, html_body,
+            body, custom_html, account_angle, highlights, cta_label, cta_url, send_offset_days, scheduled_at, rejected_reason, sent_at, cc_emails
+     from campaign_touches where campaign_id = $1 order by touch_no`,
+        [id],
+      );
+
+      const { rows: contacts } = await db.query<{ email: string; name: string | null; title: string | null }>(
+        `select email, name, title from contacts where company_id = $1 order by name nulls last limit 25`,
         [ca.company_id],
       );
 
-  const { rows: touches } = await pool.query<Touch>(
-    `select id, touch_no, name, subject, preheader, headline, status, html_body,
-            body, custom_html, account_angle, highlights, cta_label, cta_url, send_offset_days, scheduled_at, rejected_reason, sent_at, cc_emails
-     from campaign_touches where campaign_id = $1 order by touch_no`,
-    [id],
-  );
-
-  const { rows: contacts } = await pool.query<{ email: string; name: string | null; title: string | null }>(
-    `select email, name, title from contacts where company_id = $1 order by name nulls last limit 25`,
-    [ca.company_id],
-  );
-
-  const { rows: eng } = await pool.query<{
-    engagement_score: string;
-    touches_sent: number;
-    opens: number;
-    clicks: number;
-    replies: number;
-    positive_replies: number;
-    last_engaged_at: Date | null;
-  }>(
-    `select engagement_score, touches_sent, opens, clicks, replies, positive_replies, last_engaged_at
+      const { rows: eng } = await db.query<{
+        engagement_score: string;
+        touches_sent: number;
+        opens: number;
+        clicks: number;
+        replies: number;
+        positive_replies: number;
+        last_engaged_at: Date | null;
+      }>(
+        `select engagement_score, touches_sent, opens, clicks, replies, positive_replies, last_engaged_at
      from engagement_scores where company_id = $1 and contact_id is null
      order by computed_at desc limit 1`,
-    [ca.company_id],
-  );
+        [ca.company_id],
+      );
+
+      return { ca, initiativeOpts, playPartners, accounts, lists, attachable, previewId, previewAccount, previewVars, linkableMotions, touches, contacts, eng };
+    });
+  const suggestions = attachable.filter((l) => l.suggested);
   const e = eng[0];
 
   const launched = Boolean(ca.launched_at);

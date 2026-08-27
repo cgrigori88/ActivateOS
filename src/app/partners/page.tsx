@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
 import { Bento, Card, NextStep, PageHeader } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { listPartnerRooms } from "@/lib/partners/hub";
+import { withTenant } from "@/lib/db/tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -22,11 +21,7 @@ export default async function PartnersPage({
   searchParams?: Promise<{ welcome?: string }>;
 }) {
   const sp = (await searchParams) ?? {};
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) return <main>No organization.</main>;
-
-  const partners = await listPartnerRooms(pool, orgId);
+  const partners = await withTenant((db, orgId) => listPartnerRooms(db, orgId));
   const connected = partners.filter((p) => p.partnershipStatus === "active");
   const openPursuits = partners.reduce((s, p) => s + p.openPursuits, 0);
   const settledTotal = partners.reduce((s, p) => s + p.settledUsd, 0);

@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getPool } from "@/db/client";
+import { getOwnerPool } from "@/db/client";
 import { authConfigured, supabaseAdmin, supabaseServer } from "@/lib/auth/supabase";
 import { clientIp, rateLimited } from "@/lib/security/rate-limit";
 
@@ -44,7 +44,12 @@ export async function createOwnerAction(formData: FormData): Promise<void> {
   if (!email || password.length < 12) fail("Owner account needs an email and a password of 12+ characters.");
   await throttleAuthAttempt("owner");
 
-  const pool = getPool();
+  // RISK-1: bootstrap path — this runs BEFORE any membership exists (it reads
+  // org_members to check emptiness, then inserts the first owner). It cannot be
+  // scoped with withTenant (there is no caller-org yet) and must run on the
+  // owner connection. At the app_rw cutover, provisioning paths like this keep
+  // a dedicated owner pool — see the RISK-1 runbook's "owner-pool set".
+  const pool = getOwnerPool();
   const { rows: existing } = await pool.query<{ n: string }>(`select count(*)::text as n from org_members`);
   if (Number(existing[0].n) > 0) fail("An owner already exists — sign in instead, or ask them to invite you.");
 

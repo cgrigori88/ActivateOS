@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import {
   BAND_LABELS,
   BandBadge,
@@ -79,7 +79,6 @@ export default async function AccountsPage({
   const params = await searchParams;
   const { band, q, industry, partner } = params;
   const sort = params.sort ?? "-score";
-  const pool = getPool();
 
   const activeCols = params.cols
     ? params.cols.split(",").filter((k) => COL_KEYS.includes(k))
@@ -92,8 +91,9 @@ export default async function AccountsPage({
     return COL_KEYS.filter((x) => set.has(x)).join(",");
   };
 
-  const { rows: all } = await pool.query(
-    `select latest.*, pt.partner_name, pt.team_status,
+  const { all, partnerRows, oppRows, dimRows } = await withTenant(async (db) => {
+    const { rows: all } = await db.query(
+      `select latest.*, pt.partner_name, pt.team_status,
             c.refresh_tier, c.next_refresh_at, c.country, c.state,
             (select count(*) from evidence e
               where e.company_id = latest.company_id and e.status = 'verified') as evidence_count
@@ -112,17 +112,16 @@ export default async function AccountsPage({
        from pursuit_teams t join partners pa on pa.id = t.partner_id
        where t.company_id = latest.company_id and t.status in ('recommended','accepted')
        order by t.created_at desc limit 1) pt on true`,
-  );
+    );
 
-  const companyIds = all.map((r) => r.company_id);
+    const companyIds = all.map((r) => r.company_id);
 
-  // Partners each account is associated with — from approved partner lists AND
-  // pursuit routing. An account can carry several (multi-partner / multi-vendor
-  // plays are real), so we keep the full set, not a single "routed" flag.
-  const partnersByCompany = new Map<string, string[]>();
-  if (companyIds.length) {
-    const { rows } = await pool.query<{ company_id: string; partners: string[] }>(
-      `select company_id, array_agg(distinct name order by name) as partners from (
+    // Partners each account is associated with — from approved partner lists AND
+    // pursuit routing. An account can carry several (multi-partner / multi-vendor
+    // plays are real), so we keep the full set, not a single "routed" flag.
+    const partnerRows = companyIds.length
+      ? (await db.query<{ company_id: string; partners: string[] }>(
+          `select company_id, array_agg(distinct name order by name) as partners from (
          select pm.company_id, p.name
          from population_members pm
          join account_populations ap on ap.id = pm.population_id and ap.partner_id is not null and ap.status = 'approved'
@@ -133,30 +132,37 @@ export default async function AccountsPage({
          from pursuit_teams t join partners pa on pa.id = t.partner_id
          where t.company_id = any($1) and t.status in ('recommended','accepted')
        ) x group by company_id`,
-      [companyIds],
-    );
-    for (const r of rows) partnersByCompany.set(r.company_id, r.partners);
-  }
-  const partnersOf = (id: string) => partnersByCompany.get(id) ?? [];
+          [companyIds],
+        )).rows
+      : [];
 
-  // Open-opportunity rollup per account (count + pipeline $).
-  const oppsByCompany = new Map<string, { open: number; pipeline: number }>();
-  if (companyIds.length) {
-    const { rows } = await pool.query<{ company_id: string; open: string; pipeline: string }>(
-      `select company_id,
+    // Open-opportunity rollup per account (count + pipeline $).
+    const oppRows = companyIds.length
+      ? (await db.query<{ company_id: string; open: string; pipeline: string }>(
+          `select company_id,
               count(*) filter (where stage not like 'closed%') as open,
               coalesce(sum(amount_usd) filter (where stage not like 'closed%'), 0) as pipeline
        from opportunities where company_id = any($1) group by company_id`,
-      [companyIds],
+          [companyIds],
+        )).rows
+      : [];
+
+    const { rows: dimRows } = await db.query(
+      `select score_id, dimension, value from propensity_dimensions where score_id = any($1)`,
+      [all.map((r) => r.score_id)],
     );
-    for (const r of rows) oppsByCompany.set(r.company_id, { open: Number(r.open), pipeline: Number(r.pipeline) });
-  }
+
+    return { all, partnerRows, oppRows, dimRows };
+  });
+
+  const partnersByCompany = new Map<string, string[]>();
+  for (const r of partnerRows) partnersByCompany.set(r.company_id, r.partners);
+  const partnersOf = (id: string) => partnersByCompany.get(id) ?? [];
+
+  const oppsByCompany = new Map<string, { open: number; pipeline: number }>();
+  for (const r of oppRows) oppsByCompany.set(r.company_id, { open: Number(r.open), pipeline: Number(r.pipeline) });
   const oppsOf = (id: string) => oppsByCompany.get(id) ?? { open: 0, pipeline: 0 };
 
-  const { rows: dimRows } = await pool.query(
-    `select score_id, dimension, value from propensity_dimensions where score_id = any($1)`,
-    [all.map((r) => r.score_id)],
-  );
   const dimsByScore = new Map<string, Map<string, number>>();
   for (const d of dimRows) {
     const m = dimsByScore.get(d.score_id) ?? new Map();

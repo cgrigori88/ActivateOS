@@ -1,8 +1,7 @@
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
 import { Card, PageHeader } from "@/components/ui";
 import { ROUTINE_CATALOG, listRoutines } from "@/lib/routines/routines";
 import { resendConfigured } from "@/lib/comms/resend";
+import { withTenant } from "@/lib/db/tenant";
 import { runRoutineNowAction, saveRoutineConfigAction, toggleRoutineAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -18,23 +17,23 @@ const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 const input = "rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
 
 export default async function RoutinesPage() {
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) return <main>No organization.</main>;
-
-  const routines = await listRoutines(pool, orgId);
-  const { rows: runs } = await pool.query<{
-    routine_id: string;
-    ran_at: Date;
-    status: string;
-    summary: Record<string, unknown>;
-    output: string | null;
-  }>(
-    `select rr.routine_id, rr.ran_at, rr.status, rr.summary, rr.output
+  const { routines, runs } = await withTenant(async (db, orgId) => ({
+    routines: await listRoutines(db, orgId),
+    runs: (
+      await db.query<{
+        routine_id: string;
+        ran_at: Date;
+        status: string;
+        summary: Record<string, unknown>;
+        output: string | null;
+      }>(
+        `select rr.routine_id, rr.ran_at, rr.status, rr.summary, rr.output
      from routine_runs rr join routines r on r.id = rr.routine_id
      where r.org_id = $1 order by rr.ran_at desc limit 20`,
-    [orgId],
-  );
+        [orgId],
+      )
+    ).rows,
+  }));
   const canEmail = resendConfigured();
 
   return (

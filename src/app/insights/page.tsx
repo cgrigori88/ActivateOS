@@ -1,5 +1,4 @@
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { calibrateStages, editIntensity } from "@/lib/insights/calibration";
 import { computeFunnel } from "@/lib/insights/funnel";
 import { STAGES, type Stage } from "@/lib/opportunities/lifecycle";
@@ -24,38 +23,46 @@ export default async function InsightsPage({
   searchParams: Promise<{ wscope?: string }>;
 }) {
   const sp = await searchParams;
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  const triggersOn = await enabledTriggers(pool, orgId);
+  const { triggersOn, partnerRows, stageWeights, events, closed, edits, replies, attribution } =
+    await withTenant(async (db, orgId) => {
+      const triggersOn = await enabledTriggers(db, orgId);
 
-  // Editable stage weights (0036): the calibration card is also the editor.
-  const { rows: partnerRows } = await pool.query<{ id: string; name: string }>(
-    `select id, name from partners where org_id = $1 order by name`,
-    [orgId],
-  );
-  const stageWeights = await loadStageWeights(pool, orgId);
+      // Editable stage weights (0036): the calibration card is also the editor.
+      const { rows: partnerRows } = await db.query<{ id: string; name: string }>(
+        `select id, name from partners where org_id = $1 order by name`,
+        [orgId],
+      );
+      const stageWeights = await loadStageWeights(db, orgId);
+
+      const [{ rows: events }, { rows: closed }, { rows: edits }, { rows: replies }] =
+        await Promise.all([
+          db.query(`select event_type, motion_id from outcome_events`),
+          db.query(
+            `select o.id, o.stage = 'closed_won' as won,
+                    coalesce(array_agg(t.to_stage) filter (where t.to_stage not in ('closed_won','closed_lost')), '{}') as stages
+             from opportunities o
+             left join opportunity_stage_transitions t on t.opportunity_id = o.id
+             where o.stage in ('closed_won','closed_lost')
+             group by o.id`,
+          ),
+          db.query(`select edit_distance, length(ai_original) as draft_length from message_edits`),
+          db.query(
+            `select raw_output->>'response_type' as response_type, count(*) as n
+             from agent_runs where workflow = 'conversation'
+             group by 1 order by 2 desc`,
+          ),
+        ]);
+
+      // Source→outcome attribution (slice E): which evidence sources sat behind
+      // won vs lost deals. Early-sample honesty is part of the feature.
+      const attribution = await sourceOutcomeAttribution(db, orgId);
+
+      return { triggersOn, partnerRows, stageWeights, events, closed, edits, replies, attribution };
+    });
+
   const wscope = partnerRows.some((p) => p.id === sp.wscope) ? sp.wscope! : "";
   const scopeCurve = stageWeights.curveFor(wscope || null);
   const defaultCurve = stageWeights.curveFor(null);
-
-  const [{ rows: events }, { rows: closed }, { rows: edits }, { rows: replies }] =
-    await Promise.all([
-      pool.query(`select event_type, motion_id from outcome_events`),
-      pool.query(
-        `select o.id, o.stage = 'closed_won' as won,
-                coalesce(array_agg(t.to_stage) filter (where t.to_stage not in ('closed_won','closed_lost')), '{}') as stages
-         from opportunities o
-         left join opportunity_stage_transitions t on t.opportunity_id = o.id
-         where o.stage in ('closed_won','closed_lost')
-         group by o.id`,
-      ),
-      pool.query(`select edit_distance, length(ai_original) as draft_length from message_edits`),
-      pool.query(
-        `select raw_output->>'response_type' as response_type, count(*) as n
-         from agent_runs where workflow = 'conversation'
-         group by 1 order by 2 desc`,
-      ),
-    ]);
 
   const funnel = computeFunnel(events);
   const maxCount = Math.max(1, ...funnel.map((s) => s.count));
@@ -69,12 +76,6 @@ export default async function InsightsPage({
   const closedN = closed.length;
   const wonN = closed.filter((o) => o.won).length;
   const winRate = closedN > 0 ? Math.round((wonN / closedN) * 100) : null;
-
-  // Source→outcome attribution (slice E): which evidence sources sat behind
-
-  // won vs lost deals. Early-sample honesty is part of the feature.
-
-  const attribution = orgId ? await sourceOutcomeAttribution(pool, orgId) : [];
 
   const attributionDeals = attribution.reduce((s_, a) => Math.max(s_, a.wonDeals + a.lostDeals), 0);
 

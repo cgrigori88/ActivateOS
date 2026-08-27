@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPool } from "@/db/client";
+import { getOwnerPool } from "@/db/client";
 import { runPendingResearchLocked } from "@/lib/intel/research-runner";
 import { secretEquals } from "@/lib/security/compare";
 import { clientIp, rateLimited } from "@/lib/security/rate-limit";
@@ -44,7 +44,7 @@ function refuse(req: Request): NextResponse {
 /** GET: queue status (pending/running counts + recent finished jobs). */
 export async function GET(req: Request): Promise<NextResponse> {
   if (!authorized(req)) return refuse(req);
-  const pool = getPool();
+  const pool = getOwnerPool();
   const { rows: counts } = await pool.query<{ status: string; n: string }>(
     `select status, count(*) as n from research_jobs group by status`,
   );
@@ -67,7 +67,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 10) || 10, 1), 100);
   const orgId = url.searchParams.get("orgId") ?? undefined;
 
-  const pool = getPool();
+  const pool = getOwnerPool();
   const db = await pool.connect();
   try {
     const result = await runPendingResearchLocked(db, { limit, orgId });

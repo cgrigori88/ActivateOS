@@ -229,30 +229,22 @@ async function eraseWithin(db: PoolClient, orgId: string, email: string): Promis
 }
 
 /**
- * Public entry: check out a client, run the erasure atomically, audit it with
- * the email HASH (never the email), commit — or roll back on any error.
+ * Public entry: runs the erasure and audits it with the email HASH (never the
+ * email). The transaction is owned by the caller (withTenant) — RISK-1: the
+ * whole thing runs inside the caller's tenant-pinned transaction, so it also
+ * scopes under RLS at the app_rw cutover.
  */
-export async function eraseDataSubject(pool: Pool, orgId: string, rawEmail: string): Promise<ErasureResult> {
+export async function eraseDataSubject(db: PoolClient, orgId: string, rawEmail: string): Promise<ErasureResult> {
   const email = normalizeEmail(rawEmail);
-  const db = await pool.connect();
-  try {
-    await db.query("begin");
-    const result = await eraseWithin(db, orgId, email);
-    // The fact of erasure is itself a record we may keep; store only the hash.
-    await audit(db, orgId, "privacy.subject_erased", {
-      email_sha256: emailHash(email),
-      contacts: result.contacts,
-      sellers: result.sellers,
-      messages_authored: result.messagesAuthored,
-      messages_recipient: result.messagesRecipient,
-      meeting_notes: result.meetingNotes,
-    });
-    await db.query("commit");
-    return result;
-  } catch (err) {
-    await db.query("rollback");
-    throw err;
-  } finally {
-    db.release();
-  }
+  const result = await eraseWithin(db, orgId, email);
+  // The fact of erasure is itself a record we may keep; store only the hash.
+  await audit(db, orgId, "privacy.subject_erased", {
+    email_sha256: emailHash(email),
+    contacts: result.contacts,
+    sellers: result.sellers,
+    messages_authored: result.messagesAuthored,
+    messages_recipient: result.messagesRecipient,
+    meeting_notes: result.meetingNotes,
+  });
+  return result;
 }

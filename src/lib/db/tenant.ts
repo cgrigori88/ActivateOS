@@ -45,10 +45,41 @@ export async function sessionOrgId(db: PoolClient): Promise<string | null> {
 }
 
 /**
- * Run `fn` inside a transaction whose session is pinned to the caller's org.
- * The GUC is set with set_config(..., is_local => true) so it lives only for
- * this transaction and cannot leak to the next checkout of the pooled client.
- * Fails closed: no resolvable org → no query runs.
+ * Run `fn` inside a transaction pinned to an EXPLICIT org — for paths where the
+ * org is already known and not derived from the web session: the MCP surface
+ * (org comes from the API key) and the inbound-email webhook (org from the
+ * thread). The GUC is set is_local so it cannot leak to the next checkout.
+ */
+export async function withTenantOrg<T>(
+  orgId: string,
+  fn: (db: PoolClient) => Promise<T>,
+): Promise<T> {
+  if (!orgId) throw new Error("withTenantOrg requires an org id.");
+  const db = await getPool().connect();
+  try {
+    await db.query("begin");
+    await db.query(`select set_config('app.org_id', $1, true)`, [orgId]);
+    const result = await fn(db);
+    await db.query("commit");
+    return result;
+  } catch (err) {
+    try {
+      await db.query("rollback");
+    } catch {
+      /* connection already broken; release below */
+    }
+    throw err;
+  } finally {
+    db.release();
+  }
+}
+
+/**
+ * Run `fn` inside a transaction whose session is pinned to the caller's org
+ * (resolved from the authenticated web session). The GUC is set with
+ * set_config(..., is_local => true) so it lives only for this transaction and
+ * cannot leak to the next checkout of the pooled client. Fails closed: no
+ * resolvable org → no query runs.
  */
 export async function withTenant<T>(
   fn: (db: PoolClient, orgId: string) => Promise<T>,

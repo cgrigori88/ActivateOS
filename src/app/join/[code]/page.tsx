@@ -1,4 +1,4 @@
-import { getPool } from "@/db/client";
+import { getOwnerPool } from "@/db/client";
 import { HeroMesh } from "@/components/hero-mesh";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { inviteInfo } from "@/lib/partnerships/guest";
@@ -23,7 +23,7 @@ export default async function JoinPage({
 }) {
   const { code } = await params;
   const sp = await searchParams;
-  const pool = getPool();
+  const pool = getOwnerPool();
   const invite = await inviteInfo(pool, code);
   const configured = authConfigured();
 

@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import { Card, PageHeader, StatusBadge } from "@/components/ui";
-import { currentOrgId } from "@/lib/auth/org";
 import { analyzeUploadAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -36,11 +35,9 @@ export default async function IntakePage({
   searchParams?: Promise<{ notice?: string }>;
 }) {
   const sp = (await searchParams) ?? {};
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-
-  const { rows: partners } = await pool.query<PartnerRow>(
-    `select p.id, p.name, p.partner_type,
+  const { partners, runs } = await withTenant(async (db, orgId) => ({
+    partners: (await db.query<PartnerRow>(
+      `select p.id, p.name, p.partner_type,
        coalesce((select count(distinct pa.company_id) from partner_accounts pa where pa.partner_id = p.id), 0) as accounts,
        coalesce((select count(*) from import_batches b where b.partner_id = p.id), 0) as batches,
        coalesce((select sum(b.row_count) from import_batches b where b.partner_id = p.id), 0) as rows_total,
@@ -51,25 +48,25 @@ export default async function IntakePage({
        and (exists (select 1 from import_batches b where b.partner_id = p.id)
         or exists (select 1 from partner_accounts pa where pa.partner_id = p.id))
      order by last_import desc nulls last`,
-    [orgId],
-  );
-
-  const { rows: runs } = await pool.query<{
-    id: string;
-    filename: string | null;
-    kind: string;
-    status: string;
-    row_count: number;
-    matched_count: number;
-    created_at: Date;
-    partner: string | null;
-  }>(
-    `select b.id, b.filename, b.kind, b.status, b.row_count, b.matched_count, b.created_at, p.name as partner
+      [orgId],
+    )).rows,
+    runs: (await db.query<{
+      id: string;
+      filename: string | null;
+      kind: string;
+      status: string;
+      row_count: number;
+      matched_count: number;
+      created_at: Date;
+      partner: string | null;
+    }>(
+      `select b.id, b.filename, b.kind, b.status, b.row_count, b.matched_count, b.created_at, p.name as partner
      from import_batches b left join partners p on p.id = b.partner_id
      where b.org_id = $1
      order by b.created_at desc limit 25`,
-    [orgId],
-  );
+      [orgId],
+    )).rows,
+  }));
 
   return (
     <main>

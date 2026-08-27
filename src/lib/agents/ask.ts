@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { getAnthropic } from "@/lib/ai/client";
 import { MCP_TOOLS } from "@/lib/agents/mcp-tools";
 import { resolveOrgAnthropicKey } from "@/lib/ai/org-keys";
@@ -30,7 +30,7 @@ export interface AskResult {
   model: string;
 }
 
-export async function askTheRecord(pool: Pool, orgId: string, question: string): Promise<AskResult> {
+export async function askTheRecord(pool: Pool | PoolClient, orgId: string, question: string): Promise<AskResult> {
   const tools = MCP_TOOLS.filter((t) => t.name !== "draft_touch");
   const anthropic = getAnthropic(await resolveOrgAnthropicKey(pool, orgId));
 

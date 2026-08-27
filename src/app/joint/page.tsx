@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { Card, NextStep, PageHeader } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { listPartnerships } from "@/lib/partnerships/partnerships";
@@ -30,31 +29,30 @@ export default async function JointPage({
   searchParams?: Promise<{ accepted?: string }>;
 }) {
   const sp = (await searchParams) ?? {};
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) return <main>No organization.</main>;
+  const { pursuits, statements, proposable } = await withTenant(async (db, orgId) => {
+    const pursuits = await listJointPursuits(db, orgId);
+    const partnerships = (await listPartnerships(db, orgId)).filter((p) => p.status === "active");
 
-  const pursuits = await listJointPursuits(pool, orgId);
-  const partnerships = (await listPartnerships(pool, orgId)).filter((p) => p.status === "active");
+    // Settlement statements — one per partnership that has any opened room.
+    const pursued = new Set(pursuits.filter((x) => x.status === "active" || x.status === "closed").map((x) => x.partnershipId));
+    const statements: (SettlementStatement & { otherOrgName: string | null })[] = [];
+    for (const p of partnerships) {
+      if (!pursued.has(p.id)) continue;
+      const s = await settlementStatement(db, p.id);
+      if (s.settled.length + s.inFlight.length + Object.values(s.lostCount).reduce((a, b) => a + b, 0) === 0) continue;
+      statements.push({ ...s, otherOrgName: p.otherOrgName ?? p.myLensName });
+    }
 
-  // Settlement statements — one per partnership that has any opened room.
-  const pursued = new Set(pursuits.filter((x) => x.status === "active" || x.status === "closed").map((x) => x.partnershipId));
-  const statements: (SettlementStatement & { otherOrgName: string | null })[] = [];
-  for (const p of partnerships) {
-    if (!pursued.has(p.id)) continue;
-    const s = await settlementStatement(pool, p.id);
-    if (s.settled.length + s.inFlight.length + Object.values(s.lostCount).reduce((a, b) => a + b, 0) === 0) continue;
-    statements.push({ ...s, otherOrgName: p.otherOrgName ?? p.myLensName });
-  }
-
-  // Proposable accounts per partnership: named overlap minus existing pursuits.
-  const taken = new Set(pursuits.filter((x) => x.status !== "declined").map((x) => `${x.partnershipId}:${x.companyId}`));
-  const proposable: { partnershipId: string; otherOrgName: string | null; accounts: { company_id: string; name: string }[] }[] = [];
-  for (const p of partnerships) {
-    const named = await namedOverlapAccounts(pool, p.id);
-    const open = named.filter((a) => !taken.has(`${p.id}:${a.company_id}`));
-    if (open.length > 0) proposable.push({ partnershipId: p.id, otherOrgName: p.otherOrgName ?? p.myLensName, accounts: open });
-  }
+    // Proposable accounts per partnership: named overlap minus existing pursuits.
+    const taken = new Set(pursuits.filter((x) => x.status !== "declined").map((x) => `${x.partnershipId}:${x.companyId}`));
+    const proposable: { partnershipId: string; otherOrgName: string | null; accounts: { company_id: string; name: string }[] }[] = [];
+    for (const p of partnerships) {
+      const named = await namedOverlapAccounts(db, p.id);
+      const open = named.filter((a) => !taken.has(`${p.id}:${a.company_id}`));
+      if (open.length > 0) proposable.push({ partnershipId: p.id, otherOrgName: p.otherOrgName ?? p.myLensName, accounts: open });
+    }
+    return { pursuits, statements, proposable };
+  });
 
   return (
     <main>

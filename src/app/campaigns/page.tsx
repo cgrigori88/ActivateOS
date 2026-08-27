@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
-import { currentOrgId } from "@/lib/auth/org";
 import {
   generateSequenceAction,
   createBlankCampaignAction,
@@ -58,10 +57,10 @@ export default async function CampaignsPage({
 }) {
   const sp = await searchParams;
   const notice = sp.notice;
-  const pool = getPool();
 
-  const { rows: campaigns } = await pool.query<CampaignRow>(
-    `select ca.id, ca.name, ca.status, ca.objective, ca.created_at, ca.source,
+  const { campaigns, goals, motions, accounts } = await withTenant(async (db, orgId) => {
+    const { rows: campaigns } = await db.query<CampaignRow>(
+      `select ca.id, ca.name, ca.status, ca.objective, ca.created_at, ca.source,
             c.id as company_id, c.legal_name, pa.name as partner_name, n.slug as solution,
             ca.goal_id, g.name as goal_name,
             (select count(*) from campaign_touches t where t.campaign_id = ca.id) as touches,
@@ -86,9 +85,23 @@ export default async function CampaignsPage({
      left join goals g on g.id = ca.goal_id
      where ca.dismissed_at is null
      order by ca.created_at desc`,
-  );
-  const orgId = await currentOrgId(pool);
-  const goals = orgId ? await goalOptions(pool, orgId) : [];
+    );
+    const goals = await goalOptions(db, orgId);
+
+    const { rows: motions } = await db.query<MotionOption>(
+      `select m.id, c.legal_name, m.primary_persona
+     from revenue_motions m
+     join companies c on c.id = m.company_id
+     where m.status in ('approved','active')
+     order by m.created_at desc limit 50`,
+    );
+
+    const { rows: accounts } = await db.query<{ id: string; legal_name: string }>(
+      `select id, legal_name from companies order by legal_name asc limit 300`,
+    );
+
+    return { campaigns, goals, motions, accounts };
+  });
 
   const suggestions = campaigns.filter((c) => c.source === "ai_suggested" && c.status === "draft");
   let rest = campaigns.filter((c) => !(c.source === "ai_suggested" && c.status === "draft"));
@@ -110,18 +123,6 @@ export default async function CampaignsPage({
   const statusOptions = [...new Set(campaigns.map((c) => c.status))];
   const partnerOptions = [...new Set(campaigns.map((c) => c.partner_name).filter(Boolean) as string[])];
   const solutionOptions = [...new Set(campaigns.map((c) => c.solution).filter(Boolean) as string[])];
-
-  const { rows: motions } = await pool.query<MotionOption>(
-    `select m.id, c.legal_name, m.primary_persona
-     from revenue_motions m
-     join companies c on c.id = m.company_id
-     where m.status in ('approved','active')
-     order by m.created_at desc limit 50`,
-  );
-
-  const { rows: accounts } = await pool.query<{ id: string; legal_name: string }>(
-    `select id, legal_name from companies order by legal_name asc limit 300`,
-  );
 
   return (
     <main>

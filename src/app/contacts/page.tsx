@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { captureContactsFromPopulations } from "@/lib/contacts/capture";
-import { currentOrgId } from "@/lib/auth/org";
 
 export const dynamic = "force-dynamic";
 
@@ -95,76 +94,76 @@ export default async function ContactsPage({
   searchParams: Promise<{ type?: string; partner?: string; level?: string; eng?: string; group?: string; q?: string }>;
 }) {
   const sp = await searchParams;
-  const pool = getPool();
 
-  // Keep the partner-rep side of the taxonomy in sync with current mappings.
-  const orgId = await currentOrgId(pool);
-  if (orgId) {
+  const { typed, metaRows, discovered } = await withTenant(async (db, orgId) => {
+    // Keep the partner-rep side of the taxonomy in sync with current mappings.
     try {
-      await captureContactsFromPopulations(pool, orgId);
+      await captureContactsFromPopulations(db, orgId);
     } catch {
       /* non-fatal: taxonomy still renders from whatever is stored */
     }
-  }
 
-  // Typed contacts (reachable end users + captured partner reps).
-  const { rows: typed } = await pool.query<{
-    id: string;
-    name: string | null;
-    title: string | null;
-    email: string | null;
-    phone: string | null;
-    contact_type: string;
-    company_id: string | null;
-    legal_name: string | null;
-    primary_domain: string | null;
-    partner_name: string | null;
-    location: string | null;
-    attributes: Record<string, unknown> | null;
-    engagement_status: string;
-    engagement_score: string | null;
-  }>(
-    `select c.id, c.name, c.title, c.email, c.phone, c.contact_type,
-            c.company_id, co.legal_name, co.primary_domain,
-            p.name as partner_name, c.location, c.attributes, c.engagement_status,
-            (select es.engagement_score from engagement_scores es
-              where es.contact_id = c.id order by es.computed_at desc limit 1) as engagement_score
-     from contacts c
-     left join companies co on co.id = c.company_id
-     left join partners p on p.id = c.partner_id`,
-  );
+    // Typed contacts (reachable end users + captured partner reps).
+    const { rows: typed } = await db.query<{
+      id: string;
+      name: string | null;
+      title: string | null;
+      email: string | null;
+      phone: string | null;
+      contact_type: string;
+      company_id: string | null;
+      legal_name: string | null;
+      primary_domain: string | null;
+      partner_name: string | null;
+      location: string | null;
+      attributes: Record<string, unknown> | null;
+      engagement_status: string;
+      engagement_score: string | null;
+    }>(
+      `select c.id, c.name, c.title, c.email, c.phone, c.contact_type,
+              c.company_id, co.legal_name, co.primary_domain,
+              p.name as partner_name, c.location, c.attributes, c.engagement_status,
+              (select es.engagement_score from engagement_scores es
+                where es.contact_id = c.id order by es.computed_at desc limit 1) as engagement_score
+       from contacts c
+       left join companies co on co.id = c.company_id
+       left join partners p on p.id = c.partner_id`,
+    );
 
-  // Per-account context: HQ location (for end users) + the brand/solution in
-  // play at the account (its top-fit product line). Keyed by company.
-  const { rows: metaRows } = await pool.query<{ company_id: string; location: string | null; brand: string | null }>(
-    `select c.id as company_id,
-            nullif(concat_ws(', ', c.state, c.country), '') as location,
-            (select n.name from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
-              where p.company_id = c.id order by p.score desc nulls last, p.computed_at desc limit 1) as brand
-     from companies c`,
-  );
+    // Per-account context: HQ location (for end users) + the brand/solution in
+    // play at the account (its top-fit product line). Keyed by company.
+    const { rows: metaRows } = await db.query<{ company_id: string; location: string | null; brand: string | null }>(
+      `select c.id as company_id,
+              nullif(concat_ws(', ', c.state, c.country), '') as location,
+              (select n.name from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
+                where p.company_id = c.id order by p.score desc nulls last, p.computed_at desc limit 1) as brand
+       from companies c`,
+    );
+
+    // Discovered committee — latest PDL people observation per company (end users).
+    const { rows: discovered } = await db.query<{
+      company_id: string;
+      legal_name: string;
+      primary_domain: string | null;
+      full_name: string | null;
+      job_title: string | null;
+    }>(
+      `with latest as (
+         select distinct on (company_id) company_id, raw_payload
+         from raw_observations
+         where provider_id = 'pdl_people' and raw_payload ? 'people'
+         order by company_id, observed_at desc
+       )
+       select c.id as company_id, c.legal_name, c.primary_domain,
+              p->>'fullName' as full_name, p->>'jobTitle' as job_title
+       from latest l
+       join companies c on c.id = l.company_id
+       cross join lateral jsonb_array_elements(l.raw_payload->'people') as p`,
+    );
+
+    return { typed, metaRows, discovered };
+  });
   const companyMeta = new Map(metaRows.map((r) => [r.company_id, { location: r.location, brand: r.brand }]));
-
-  // Discovered committee — latest PDL people observation per company (end users).
-  const { rows: discovered } = await pool.query<{
-    company_id: string;
-    legal_name: string;
-    primary_domain: string | null;
-    full_name: string | null;
-    job_title: string | null;
-  }>(
-    `with latest as (
-       select distinct on (company_id) company_id, raw_payload
-       from raw_observations
-       where provider_id = 'pdl_people' and raw_payload ? 'people'
-       order by company_id, observed_at desc
-     )
-     select c.id as company_id, c.legal_name, c.primary_domain,
-            p->>'fullName' as full_name, p->>'jobTitle' as job_title
-     from latest l
-     join companies c on c.id = l.company_id
-     cross join lateral jsonb_array_elements(l.raw_payload->'people') as p`,
-  );
 
   const rows: Row[] = [];
   // typed

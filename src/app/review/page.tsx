@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
+import { withTenant } from "@/lib/db/tenant";
 import { resolveReviewAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -47,10 +47,10 @@ export default async function ReviewPage({
 }) {
   const sp = await searchParams;
   const byPartner = sp.group === "partner";
-  const pool = getPool();
 
-  const { rows: all } = await pool.query<Item>(
-    `select rq.id, rq.reason, rq.created_at,
+  const { all, sources, companyPartners } = await withTenant(async (db) => {
+    const { rows: all } = await db.query<Item>(
+      `select rq.id, rq.reason, rq.created_at,
             e.claim, e.raw_excerpt, e.source_type, e.status, e.computed_confidence, e.observed_at,
             c.id as company_id, c.legal_name
      from review_queue rq
@@ -59,26 +59,28 @@ export default async function ReviewPage({
      where rq.status = 'pending'
      order by (rq.reason = 'contradiction') desc, (rq.reason = 'checker_disagreement') desc, rq.created_at
      limit 300`,
-  );
-  const { rows: sources } = await pool.query<{ name: string; trust: string; rate: string }>(
-    `select name, round(trust_score, 2) as trust, round(audit_sample_rate * 100) as rate
+    );
+    const { rows: sources } = await db.query<{ name: string; trust: string; rate: string }>(
+      `select name, round(trust_score, 2) as trust, round(audit_sample_rate * 100) as rate
      from signal_sources order by trust_score desc`,
-  );
+    );
 
-  // Which partners map each affected account (an account can be on several).
-  const companyIds = [...new Set(all.map((i) => i.company_id).filter(Boolean) as string[])];
-  const companyPartners = new Map<string, string[]>();
-  if (companyIds.length) {
-    const { rows: pm } = await pool.query<{ company_id: string; partner_name: string }>(
-      `select distinct pm.company_id, p.name as partner_name
+    // Which partners map each affected account (an account can be on several).
+    const companyIds = [...new Set(all.map((i) => i.company_id).filter(Boolean) as string[])];
+    const companyPartners = new Map<string, string[]>();
+    if (companyIds.length) {
+      const { rows: pm } = await db.query<{ company_id: string; partner_name: string }>(
+        `select distinct pm.company_id, p.name as partner_name
        from population_members pm
        join account_populations ap on ap.id = pm.population_id and ap.partner_id is not null and ap.status = 'approved'
        join partners p on p.id = ap.partner_id
        where pm.company_id = any($1)`,
-      [companyIds],
-    );
-    for (const r of pm) companyPartners.set(r.company_id, [...(companyPartners.get(r.company_id) ?? []), r.partner_name]);
-  }
+        [companyIds],
+      );
+      for (const r of pm) companyPartners.set(r.company_id, [...(companyPartners.get(r.company_id) ?? []), r.partner_name]);
+    }
+    return { all, sources, companyPartners };
+  });
   const partnerOptions = [...new Set([...companyPartners.values()].flat())].sort();
 
   const sourceOptions = [...new Set(all.map((i) => i.source_type))];

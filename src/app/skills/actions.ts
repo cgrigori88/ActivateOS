@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getPool } from "@/db/client";
-import { currentOrgId, requireWrite } from "@/lib/auth/org";
+import { requireWrite } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { currentActor } from "@/lib/partnerships/partnerships";
 import { createSkill, setSkillStatus, updateSkillBody, type SkillKind, type SkillScope } from "@/lib/skills/skills";
 
@@ -13,19 +13,10 @@ import { createSkill, setSkillStatus, updateSkillBody, type SkillKind, type Skil
  * it faces a customer.
  */
 
-async function writerOrg(): Promise<{ pool: ReturnType<typeof getPool>; orgId: string }> {
-  const pool = getPool();
-  await requireWrite(pool);
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
-  return { pool, orgId };
-}
-
 const KINDS: SkillKind[] = ["positioning", "process", "style", "rules"];
 const SCOPES: SkillScope[] = ["org", "partner", "list"];
 
 export async function createSkillAction(formData: FormData): Promise<void> {
-  const { pool, orgId } = await writerOrg();
   const kind = String(formData.get("kind") ?? "");
   const scopeType = String(formData.get("scopeType") ?? "org");
   if (!KINDS.includes(kind as SkillKind)) throw new Error("Pick what kind of skill this is.");
@@ -36,15 +27,20 @@ export async function createSkillAction(formData: FormData): Promise<void> {
       : scopeType === "list"
         ? String(formData.get("listId") ?? "") || null
         : null;
+  const name = String(formData.get("name") ?? "");
+  const body = String(formData.get("body") ?? "");
   let notice: string;
   try {
-    await createSkill(pool, orgId, {
-      name: String(formData.get("name") ?? ""),
-      kind: kind as SkillKind,
-      scopeType: scopeType as SkillScope,
-      scopeId,
-      body: String(formData.get("body") ?? ""),
-      createdBy: await currentActor(),
+    await withTenant(async (db, orgId) => {
+      await requireWrite(db);
+      await createSkill(db, orgId, {
+        name,
+        kind: kind as SkillKind,
+        scopeType: scopeType as SkillScope,
+        scopeId,
+        body,
+        createdBy: await currentActor(),
+      });
     });
     notice = "Skill added — agents on its surfaces read it from the next run.";
   } catch (err) {
@@ -55,13 +51,18 @@ export async function createSkillAction(formData: FormData): Promise<void> {
 }
 
 export async function updateSkillBodyAction(skillId: string, formData: FormData): Promise<void> {
-  const { pool, orgId } = await writerOrg();
-  await updateSkillBody(pool, orgId, skillId, String(formData.get("body") ?? ""));
+  const body = String(formData.get("body") ?? "");
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);
+    await updateSkillBody(db, orgId, skillId, body);
+  });
   revalidatePath("/skills");
 }
 
 export async function setSkillStatusAction(skillId: string, status: "active" | "archived"): Promise<void> {
-  const { pool, orgId } = await writerOrg();
-  await setSkillStatus(pool, orgId, skillId, status);
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);
+    await setSkillStatus(db, orgId, skillId, status);
+  });
   revalidatePath("/skills");
 }

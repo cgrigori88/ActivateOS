@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
 import { BandBadge, Bento, Card, PageHeader } from "@/components/ui";
 import {
   CATEGORIES,
@@ -23,7 +22,7 @@ import { OverlapWorkbench, type OverlapRow } from "./overlap-workbench";
 import { alignedFieldKeys, populationFields } from "@/lib/mapping/populations";
 import { createPopulationAction, setPopulationStatusAction, targetFromCellAction, acceptPopulationAction } from "./actions";
 import { ViewSelect, PartnerSelect } from "./view-select";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 
 export const dynamic = "force-dynamic";
 // AI drafting actions invoked from this segment can run tens of seconds —
@@ -84,7 +83,7 @@ export default async function MappingPage({
   const view: View = (["matrix", "recommend", "review", "overlap"].includes(rawView ?? "") ? rawView : "matrix") as View;
 
   const pendingCount = Number(
-    (await getPool().query<{ n: string }>(`select count(*)::text n from account_populations where status = 'pending'`)).rows[0]?.n ?? 0,
+    (await withTenant((db) => db.query<{ n: string }>(`select count(*)::text n from account_populations where status = 'pending'`))).rows[0]?.n ?? 0,
   );
 
   // ── Pending review — vet a pushed partner list before it maps ────────────
@@ -153,13 +152,10 @@ export default async function MappingPage({
   // Same populations data as the matrix — a co-sell overlap is an account in
   // both an org and a partner list — enriched with the real suggested play,
   // propensity drivers, and explicit channel conflict.
-  const pool = getPool();
-  const db = await pool.connect();
-  let rows: OverlapRow[] = [];
-  let partnerList: { id: string; name: string; type: string | null }[] = [];
-  try {
-    const orgId = await soleOrgId(db);
-    if (orgId) {
+  const { rows, partnerList } = await withTenant(async (db, orgId) => {
+    let rows: OverlapRow[] = [];
+    let partnerList: { id: string; name: string; type: string | null }[] = [];
+    {
       const coverage = await partnerCoverage(db, orgId);
       const companyIds = coverage.map((a) => a.companyId);
 
@@ -267,9 +263,8 @@ export default async function MappingPage({
       for (const a of coverage) for (const p of a.partners) pmap.set(p.id, p);
       partnerList = [...pmap.values()].sort((a, b) => a.name.localeCompare(b.name));
     }
-  } finally {
-    db.release();
-  }
+    return { rows, partnerList };
+  });
 
   return (
     <main>
@@ -309,11 +304,6 @@ export default async function MappingPage({
 
 // ── Account-mapping matrix components (Phase 10) ─────────────────────────────
 
-async function soleOrgId(db: import("pg").PoolClient): Promise<string | null> {
-  // Tenant context: signed-in user's org, or the sole org in Basic-Auth mode.
-  return currentOrgId(db);
-}
-
 const CAT_TONE: Record<string, string> = {
   customer: "bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300",
   open_opportunity: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950 dark:text-amber-300",
@@ -326,12 +316,7 @@ function catTone(c: string): string {
 
 
 async function ReviewSection({ openId }: { openId?: string }) {
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
-    const orgId = await soleOrgId(db);
-    if (!orgId) return <Card><p className="text-sm text-neutral-500">No organization yet.</p></Card>;
-
+  return withTenant(async (db, orgId) => {
     const { rows: pending } = await db.query<{ id: string; name: string; category: Category; partner_name: string | null; members: number; created_at: Date }>(
       `select ap.id, ap.name, ap.category, p.name as partner_name,
               (select count(*) from population_members m where m.population_id = ap.id)::int as members, ap.created_at
@@ -389,9 +374,7 @@ async function ReviewSection({ openId }: { openId?: string }) {
         {dialog && <ReviewDialog {...dialog} />}
       </div>
     );
-  } finally {
-    db.release();
-  }
+  });
 }
 
 function ReviewDialog({
@@ -498,12 +481,7 @@ function ReviewDialog({
 }
 
 async function RecommendSection() {
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
-    const orgId = await soleOrgId(db);
-    if (!orgId) return <Card><p className="text-sm text-neutral-500">No organization yet.</p></Card>;
-
+  return withTenant(async (db, orgId) => {
     const accounts = await crossPartnerOpportunities(db, orgId);
     if (accounts.length === 0) {
       return (
@@ -615,9 +593,7 @@ async function RecommendSection() {
         </p>
       </>
     );
-  } finally {
-    db.release();
-  }
+  });
 }
 
 /** Subtle propensity heatmap — blue with alpha, legible on light and dark. */
@@ -628,12 +604,7 @@ function cellShade(avg: number | null): string | undefined {
 }
 
 async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: string; hideEmpty?: boolean; mr?: string; mc?: string }) {
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
-    const orgId = await soleOrgId(db);
-    if (!orgId) return <Card><p className="text-sm text-neutral-500">No organization yet.</p></Card>;
-
+  return withTenant(async (db, orgId) => {
     const partners = await partnersWithPopulations(db, orgId);
     if (partners.length === 0) {
       return (
@@ -815,17 +786,13 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
         )}
       </>
     );
-  } finally {
-    db.release();
-  }
+  });
 }
 
 const BASE_COLS = ["industry", "employees", "propensity"];
 
 async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colId: string; cols?: string; partnerId?: string }) {
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  return withTenant(async (db) => {
     const { row, col, accounts } = await intersection(db, { rowPopId: rowId, colPopId: colId });
     const fields = await availableFields(db, { rowPopId: rowId, colPopId: colId });
     // Honor the fields chosen at review time (selected_fields); if none set on
@@ -930,18 +897,11 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
         </div>
       </div>
     );
-  } finally {
-    db.release();
-  }
+  });
 }
 
 async function PopulationManager() {
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
-    const orgId = await soleOrgId(db);
-    if (!orgId) return null;
-
+  return withTenant(async (db, orgId) => {
     const { rows: partners } = await db.query<{ id: string; name: string }>(
       `select id, name from partners where org_id = $1 order by name`,
       [orgId],
@@ -1007,7 +967,5 @@ async function PopulationManager() {
         </p>
       </Card>
     );
-  } finally {
-    db.release();
-  }
+  });
 }

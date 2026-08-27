@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { PageHeader } from "@/components/ui";
 import { loadStagedBatch } from "@/lib/ingest/staged";
 import { guessCategory } from "@/lib/ingest/detect";
@@ -18,23 +17,13 @@ export default async function IntakeReviewPage({ params }: { params: Promise<{ b
   const { batchId } = await params;
   if (!/^[0-9a-f-]{36}$/.test(batchId)) notFound();
 
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) notFound();
-
-  const db = await pool.connect();
-  let batch;
-  let partners: { id: string; name: string; type: string | null }[] = [];
-  try {
-    batch = await loadStagedBatch(db, { orgId, batchId });
-    const { rows } = await db.query<{ id: string; name: string; type: string | null }>(
+  const { batch, partners } = await withTenant(async (db, orgId) => ({
+    batch: await loadStagedBatch(db, { orgId, batchId }),
+    partners: (await db.query<{ id: string; name: string; type: string | null }>(
       `select id, name, partner_type as type from partners where org_id = $1 order by name`,
       [orgId],
-    );
-    partners = rows;
-  } finally {
-    db.release();
-  }
+    )).rows,
+  }));
   if (!batch) notFound();
 
   const defaultName = (batch.filename ?? "Imported list").replace(/\.csv$/i, "").replace(/[_-]+/g, " ").trim() || "Imported list";

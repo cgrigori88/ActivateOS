@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
+import { withTenant } from "@/lib/db/tenant";
 import { sendScheduledAction, unscheduleAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -26,9 +26,10 @@ interface Row {
 }
 
 export default async function UpcomingPage() {
-  const pool = getPool();
-  const { rows } = await pool.query<Row>(
-    `select t.id, t.touch_no, t.name, t.subject, t.scheduled_at,
+  const { rows } = await withTenant(
+    async (db) =>
+      await db.query<Row>(
+        `select t.id, t.touch_no, t.name, t.subject, t.scheduled_at,
             ca.recipient_email, ca.id as campaign_id, ca.name as campaign_name,
             c.id as company_id, c.legal_name
      from campaign_touches t
@@ -37,6 +38,7 @@ export default async function UpcomingPage() {
      join companies c on c.id = coalesce(ca.company_id, m.company_id)
      where t.status = 'scheduled'
      order by t.scheduled_at asc nulls last`,
+      ),
   );
 
   const now = Date.now();

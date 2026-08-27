@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import { Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 
@@ -25,99 +25,103 @@ export default async function AnalyticsPage({
   const sp = await searchParams;
   const windowDays = ["30", "90"].includes(sp.window ?? "") ? Number(sp.window) : null;
   const evWhere = windowDays ? `where occurred_at >= now() - interval '${windowDays} days'` : "";
-  const pool = getPool();
 
-  // Team view (slice C/D): per-seller rollup from pursuit assignments and the
-  // pipeline on those accounts — the leader lens over the same record.
-  const { rows: teamRows } = await pool.query<{
-    seller: string; territory: string | null; assignments: string; accounts: string[];
-    open_usd: string | null; won_usd: string | null;
-  }>(
-    `select s.name as seller, s.territory,
-            count(distinct pt.id) as assignments,
-            array_agg(distinct c.legal_name) as accounts,
-            sum(o.amount_usd) filter (where o.stage not in ('closed_won','closed_lost')) as open_usd,
-            sum(o.amount_usd) filter (where o.stage = 'closed_won') as won_usd
-     from sellers s
-     join pursuit_teams pt on pt.seller_id = s.id
-     join companies c on c.id = pt.company_id
-     left join opportunities o on o.company_id = pt.company_id
-     group by s.id, s.name, s.territory
-     order by s.name`,
-  );
+  const { teamRows, companyRows, outcomeRows, drRows, valueRows, touchRows, dailyRows, segments, surges } =
+    await withTenant(async (db) => {
+      // Team view (slice C/D): per-seller rollup from pursuit assignments and the
+      // pipeline on those accounts — the leader lens over the same record.
+      const { rows: teamRows } = await db.query<{
+        seller: string; territory: string | null; assignments: string; accounts: string[];
+        open_usd: string | null; won_usd: string | null;
+      }>(
+        `select s.name as seller, s.territory,
+                count(distinct pt.id) as assignments,
+                array_agg(distinct c.legal_name) as accounts,
+                sum(o.amount_usd) filter (where o.stage not in ('closed_won','closed_lost')) as open_usd,
+                sum(o.amount_usd) filter (where o.stage = 'closed_won') as won_usd
+         from sellers s
+         join pursuit_teams pt on pt.seller_id = s.id
+         join companies c on c.id = pt.company_id
+         left join opportunities o on o.company_id = pt.company_id
+         group by s.id, s.name, s.territory
+         order by s.name`,
+      );
 
-  const [{ rows: companyRows }, { rows: outcomeRows }, { rows: drRows }, { rows: valueRows }, { rows: touchRows }, { rows: dailyRows }, { rows: segments }, { rows: surges }] =
-    await Promise.all([
-      // Per-account funnel position (+ raw email counts for the Sent bar).
-      pool.query<{ company_id: string; sent_ct: string; opened_ct: string; replied_ct: string }>(
-        `select t.company_id,
-                count(*) filter (where e.event_type = 'SENT') as sent_ct,
-                count(*) filter (where e.event_type = 'OPENED') as opened_ct,
-                count(*) filter (where e.event_type = 'REPLIED') as replied_ct
-         from email_events e
-         join messages m on m.id = e.message_id
-         join communication_threads t on t.id = m.thread_id
-         ${windowDays ? `where e.occurred_at >= now() - interval '${windowDays} days'` : ""}
-         group by t.company_id`,
-      ),
-      pool.query<{ company_id: string; event_type: string }>(
-        `select distinct company_id, event_type from outcome_events
-         where event_type in ('POSITIVE_RESPONSE','NEGATIVE_RESPONSE','MEETING_BOOKED')
-         ${windowDays ? `and occurred_at >= now() - interval '${windowDays} days'` : ""}`,
-      ),
-      pool.query<{ company_id: string }>(
-        `select distinct company_id from deal_registrations
-         where status in ('submitted','approved')
-         ${windowDays ? `and created_at >= now() - interval '${windowDays} days'` : ""}`,
-      ),
-      // Associated pipeline per account (open + won — what the cohort is worth).
-      pool.query<{ company_id: string; v: string }>(
-        `select company_id, sum(amount_usd) as v from opportunities
-         where stage <> 'closed_lost' and amount_usd is not null group by company_id`,
-      ),
-      // Sent vs responded, by touch — a touch "responded" if its message got a reply.
-      pool.query<{ touch_no: number; sent: string; responded: string }>(
-        `select t.touch_no,
-                count(distinct t.id) filter (where t.status = 'sent') as sent,
-                count(distinct t.id) filter (where e.id is not null) as responded
-         from campaign_touches t
-         left join email_events e on e.message_id = t.message_id and e.event_type = 'REPLIED'
-         group by t.touch_no order by t.touch_no`,
-      ),
-      // Daily activity, fixed 28-day window.
-      pool.query<{ d: string; sent: string; opened: string; replied: string }>(
-        `select date_trunc('day', occurred_at)::date::text as d,
-                count(*) filter (where event_type = 'SENT') as sent,
-                count(*) filter (where event_type = 'OPENED') as opened,
-                count(*) filter (where event_type = 'REPLIED') as replied
-         from email_events
-         where occurred_at >= now() - interval '28 days'
-         group by 1 order by 1`,
-      ),
-      pool.query<{ band: string; sent: string; opened: string; replied: string }>(
-        `with latest as (
-           select distinct on (company_id) company_id, band
-           from propensity_scores order by company_id, computed_at desc
-         )
-         select coalesce(l.band, 'unscored') as band,
-                count(*) filter (where e.event_type = 'SENT') as sent,
-                count(*) filter (where e.event_type = 'OPENED') as opened,
-                count(*) filter (where e.event_type = 'REPLIED') as replied
-         from email_events e
-         join messages m on m.id = e.message_id
-         join communication_threads t on t.id = m.thread_id
-         left join latest l on l.company_id = t.company_id
-         ${windowDays ? `where e.occurred_at >= now() - interval '${windowDays} days'` : ""}
-         group by 1`,
-      ),
-      pool.query<{ company_id: string; legal_name: string; payload: { clicks?: number; replies?: number; positive?: number } | null; occurred_at: Date }>(
-        `select ie.company_id, c.legal_name, ie.payload, ie.occurred_at
-         from interaction_events ie
-         join companies c on c.id = ie.company_id
-         where ie.type = 'ENGAGEMENT_SURGE'
-         order by ie.occurred_at desc limit 12`,
-      ),
-    ]);
+      const [{ rows: companyRows }, { rows: outcomeRows }, { rows: drRows }, { rows: valueRows }, { rows: touchRows }, { rows: dailyRows }, { rows: segments }, { rows: surges }] =
+        await Promise.all([
+          // Per-account funnel position (+ raw email counts for the Sent bar).
+          db.query<{ company_id: string; sent_ct: string; opened_ct: string; replied_ct: string }>(
+            `select t.company_id,
+                    count(*) filter (where e.event_type = 'SENT') as sent_ct,
+                    count(*) filter (where e.event_type = 'OPENED') as opened_ct,
+                    count(*) filter (where e.event_type = 'REPLIED') as replied_ct
+             from email_events e
+             join messages m on m.id = e.message_id
+             join communication_threads t on t.id = m.thread_id
+             ${windowDays ? `where e.occurred_at >= now() - interval '${windowDays} days'` : ""}
+             group by t.company_id`,
+          ),
+          db.query<{ company_id: string; event_type: string }>(
+            `select distinct company_id, event_type from outcome_events
+             where event_type in ('POSITIVE_RESPONSE','NEGATIVE_RESPONSE','MEETING_BOOKED')
+             ${windowDays ? `and occurred_at >= now() - interval '${windowDays} days'` : ""}`,
+          ),
+          db.query<{ company_id: string }>(
+            `select distinct company_id from deal_registrations
+             where status in ('submitted','approved')
+             ${windowDays ? `and created_at >= now() - interval '${windowDays} days'` : ""}`,
+          ),
+          // Associated pipeline per account (open + won — what the cohort is worth).
+          db.query<{ company_id: string; v: string }>(
+            `select company_id, sum(amount_usd) as v from opportunities
+             where stage <> 'closed_lost' and amount_usd is not null group by company_id`,
+          ),
+          // Sent vs responded, by touch — a touch "responded" if its message got a reply.
+          db.query<{ touch_no: number; sent: string; responded: string }>(
+            `select t.touch_no,
+                    count(distinct t.id) filter (where t.status = 'sent') as sent,
+                    count(distinct t.id) filter (where e.id is not null) as responded
+             from campaign_touches t
+             left join email_events e on e.message_id = t.message_id and e.event_type = 'REPLIED'
+             group by t.touch_no order by t.touch_no`,
+          ),
+          // Daily activity, fixed 28-day window.
+          db.query<{ d: string; sent: string; opened: string; replied: string }>(
+            `select date_trunc('day', occurred_at)::date::text as d,
+                    count(*) filter (where event_type = 'SENT') as sent,
+                    count(*) filter (where event_type = 'OPENED') as opened,
+                    count(*) filter (where event_type = 'REPLIED') as replied
+             from email_events
+             where occurred_at >= now() - interval '28 days'
+             group by 1 order by 1`,
+          ),
+          db.query<{ band: string; sent: string; opened: string; replied: string }>(
+            `with latest as (
+               select distinct on (company_id) company_id, band
+               from propensity_scores order by company_id, computed_at desc
+             )
+             select coalesce(l.band, 'unscored') as band,
+                    count(*) filter (where e.event_type = 'SENT') as sent,
+                    count(*) filter (where e.event_type = 'OPENED') as opened,
+                    count(*) filter (where e.event_type = 'REPLIED') as replied
+             from email_events e
+             join messages m on m.id = e.message_id
+             join communication_threads t on t.id = m.thread_id
+             left join latest l on l.company_id = t.company_id
+             ${windowDays ? `where e.occurred_at >= now() - interval '${windowDays} days'` : ""}
+             group by 1`,
+          ),
+          db.query<{ company_id: string; legal_name: string; payload: { clicks?: number; replies?: number; positive?: number } | null; occurred_at: Date }>(
+            `select ie.company_id, c.legal_name, ie.payload, ie.occurred_at
+             from interaction_events ie
+             join companies c on c.id = ie.company_id
+             where ie.type = 'ENGAGEMENT_SURGE'
+             order by ie.occurred_at desc limit 12`,
+          ),
+        ]);
+
+      return { teamRows, companyRows, outcomeRows, drRows, valueRows, touchRows, dailyRows, segments, surges };
+    });
 
   // ── Account-level funnel cohorts ──────────────────────────────────────────
   const emailsSent = companyRows.reduce((s, r) => s + Number(r.sent_ct), 0);

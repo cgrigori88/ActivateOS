@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
+import { runTx } from "@/db/client";
 import { loadStageWeights } from "../opportunities/stage-weights";
 import { weightedPipelineValue, type Stage } from "../opportunities/lifecycle";
 import { listJointPursuits, pursuitEvents } from "../partnerships/joint";
@@ -32,7 +33,7 @@ export function mintKey(): { plaintext: string; hash: string } {
   return { plaintext, hash: createHash("sha256").update(plaintext).digest("hex") };
 }
 
-export async function resolveKey(pool: Pool, bearer: string | null): Promise<{ orgId: string; keyId: string } | null> {
+export async function resolveKey(pool: Pool | PoolClient, bearer: string | null): Promise<{ orgId: string; keyId: string } | null> {
   if (!bearer || !bearer.startsWith("pos_")) return null;
   const hash = createHash("sha256").update(bearer).digest("hex");
   const { rows } = await pool.query<{ id: string; org_id: string }>(
@@ -50,7 +51,7 @@ export interface McpToolDef {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  run(pool: Pool, orgId: string, args: Record<string, unknown>): Promise<unknown>;
+  run(pool: Pool | PoolClient, orgId: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
 export const MCP_TOOLS: McpToolDef[] = [
@@ -199,9 +200,8 @@ export const MCP_TOOLS: McpToolDef[] = [
         [`%${q}%`],
       );
       if (!rows[0]) return { created: false, message: `No campaign matching "${q}".` };
-      const db = await pool.connect();
-      try {
-        await upsertTouch(db, {
+      await runTx(pool, (db) =>
+        upsertTouch(db, {
           campaignId: rows[0].id,
           fields: {
             name: String(args.name ?? "Agent draft"),
@@ -217,10 +217,8 @@ export const MCP_TOOLS: McpToolDef[] = [
             customHtml: "",
             ccEmails: [],
           },
-        });
-      } finally {
-        db.release();
-      }
+        }),
+      );
       return {
         created: true,
         campaign: rows[0].name,

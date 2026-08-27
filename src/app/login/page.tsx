@@ -1,4 +1,4 @@
-import { getPool } from "@/db/client";
+import { getOwnerPool } from "@/db/client";
 import { HeroMesh } from "@/components/hero-mesh";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { changePasswordAction, createOwnerAction, signInAction, signOutAction } from "./actions";
@@ -28,7 +28,7 @@ export default async function LoginPage({
   let hasMembers = true;
   let signedInAs: string | null = null;
   if (configured) {
-    const { rows } = await getPool().query<{ n: string }>(`select count(*)::text as n from org_members`);
+    const { rows } = await getOwnerPool().query<{ n: string }>(`select count(*)::text as n from org_members`);
     hasMembers = Number(rows[0].n) > 0;
     const supabase = await supabaseServer();
     const { data } = await supabase.auth.getUser();

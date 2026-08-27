@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import {
   BandBadge,
   Card,
@@ -11,7 +11,6 @@ import {
 } from "@/components/ui";
 import { loadCompanyIntel } from "@/lib/intel/company-intel";
 import { CONFIDENCE_FORMULA, confidenceTone, contextConfidence } from "@/lib/context/confidence";
-import { currentOrgId } from "@/lib/auth/org";
 import { addMeetingNoteAction, setTeamStatusAction } from "./actions";
 import { draftAccountMotionAction } from "@/app/motions/actions";
 import { dealTimeline, type TimelineEvent } from "@/lib/context/timeline";
@@ -31,30 +30,29 @@ export default async function AccountPage({
 }) {
   const { id } = await params;
   const sp = (await searchParams) ?? {};
-  const pool = getPool();
 
-  const { rows: companies } = await pool.query(
+  const data = await withTenant(async (db, orgId) => {
+  const { rows: companies } = await db.query(
     `select legal_name, primary_domain, industry, employee_count, country from companies where id = $1`,
     [id],
   );
   if (companies.length === 0) {
-    return <main>Unknown account.</main>;
+    return null;
   }
   const company = companies[0];
 
   // Latest account digest for this company (Routines, task #73).
-  const digestOrgId = await currentOrgId(pool);
-  const { rows: digests } = await pool.query<{ items: unknown; period_end: Date }>(
+  const { rows: digests } = await db.query<{ items: unknown; period_end: Date }>(
     `select d.items, d.period_end from account_digests d
      where d.company_id = $1 and d.org_id = $2
      order by d.created_at desc limit 1`,
-    [id, digestOrgId],
+    [id, orgId],
   );
   const digest = digests[0] ?? null;
 
   // Draft-a-motion affordance (task #83): one open motion per account — if
   // one exists the button becomes the road to it instead of a duplicate.
-  const { rows: openMotions } = await pool.query<{ id: string; status: string }>(
+  const { rows: openMotions } = await db.query<{ id: string; status: string }>(
     `select id, status from revenue_motions
      where company_id = $1 and status in ('draft', 'approved', 'active')
      order by created_at desc limit 1`,
@@ -65,10 +63,10 @@ export default async function AccountPage({
   // The account flight recorder (task #83): every system's events fused into
   // one record, each with provenance; the partner half consent-filtered by
   // construction.
-  const timeline: TimelineEvent[] = digestOrgId ? await dealTimeline(pool, digestOrgId, id, 40) : [];
-  const meetings = digestOrgId ? await listMeetingNotes(pool, digestOrgId, id) : [];
+  const timeline: TimelineEvent[] = await dealTimeline(db, orgId, id, 40);
+  const meetings = await listMeetingNotes(db, orgId, id);
 
-  const { rows: scores } = await pool.query(
+  const { rows: scores } = await db.query(
     `select p.id, p.score, p.band, n.slug, p.computed_at,
             p.prev_score, p.positive_points, p.negative_points, p.changes
      from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
@@ -78,7 +76,7 @@ export default async function AccountPage({
 
   let dimensions: { dimension: string; value: string }[] = [];
   if (scores.length > 0) {
-    const result = await pool.query(
+    const result = await db.query(
       `select dimension, value from propensity_dimensions where score_id = $1
        order by dimension`,
       [scores[0].id],
@@ -89,7 +87,7 @@ export default async function AccountPage({
   let features: { feature: string; contribution: string; evidence_ids: string[] }[] = [];
   let evidence = new Map<string, { claim: string; source_type: string; computed_confidence: string }>();
   if (scores.length > 0) {
-    const result = await pool.query(
+    const result = await db.query(
       `select feature, contribution, evidence_ids from score_features
        where score_id = $1 order by contribution desc`,
       [scores[0].id],
@@ -97,7 +95,7 @@ export default async function AccountPage({
     features = result.rows;
     const allIds = [...new Set(features.flatMap((f) => f.evidence_ids))];
     if (allIds.length > 0) {
-      const ev = await pool.query(
+      const ev = await db.query(
         `select id, claim, source_type, computed_confidence from evidence where id = any($1)`,
         [allIds],
       );
@@ -113,7 +111,7 @@ export default async function AccountPage({
     reason: string | null;
   } | null = null;
   {
-    const result = await pool.query(
+    const result = await db.query(
       `select t.id, t.partner_id, s.name as seller, t.status, t.reason
        from pursuit_teams t
        left join sellers s on s.id = t.seller_id
@@ -136,7 +134,7 @@ export default async function AccountPage({
   }[] = [];
   let fitFeatures = new Map<string, { feature: string; contribution: string; detail: string | null }[]>();
   if (scores.length > 0) {
-    const result = await pool.query(
+    const result = await db.query(
       `select distinct on (f.partner_id)
               f.id as fit_id, f.partner_id, pa.name as partner, pa.partner_type,
               f.score, f.band, best.name as seller, best.strength as seller_strength
@@ -154,7 +152,7 @@ export default async function AccountPage({
     );
     partnerFits = result.rows.sort((a, b) => Number(b.score) - Number(a.score));
     if (partnerFits.length > 0) {
-      const features = await pool.query(
+      const features = await db.query(
         `select fit_id, feature, contribution, detail from partner_fit_features
          where fit_id = any($1) order by contribution desc`,
         [partnerFits.map((f) => f.fit_id)],
@@ -168,7 +166,7 @@ export default async function AccountPage({
     }
   }
 
-  const { rows: motions } = await pool.query(
+  const { rows: motions } = await db.query(
     `select m.id, m.status, m.thesis, m.trigger_summary, m.primary_persona, m.secondary_persona,
             m.cta, m.confidence
      from revenue_motions m where m.company_id = $1 order by m.created_at desc limit 1`,
@@ -177,7 +175,7 @@ export default async function AccountPage({
 
   let assets: { asset_type: string; title: string; content: string }[] = [];
   if (motions.length > 0) {
-    const result = await pool.query(
+    const result = await db.query(
       `select a.asset_type, a.title, a.content
        from campaign_assets a join campaigns cp on cp.id = a.campaign_id
        where cp.motion_id = $1 order by a.created_at`,
@@ -186,7 +184,7 @@ export default async function AccountPage({
     assets = result.rows;
   }
 
-  const { rows: events } = await pool.query(
+  const { rows: events } = await db.query(
     `select event_type, occurred_at from outcome_events where company_id = $1
      order by occurred_at desc limit 10`,
     [id],
@@ -194,11 +192,54 @@ export default async function AccountPage({
 
   // Intelligence surface (§43): evidence provenance, data completeness, and
   // provider coverage — what we actually know and how well we know it.
-  const intel = await loadCompanyIntel(pool, id);
+  const intel = await loadCompanyIntel(db, id);
 
   // Context confidence (meets/beats batch): how much of this record is TRUE,
   // current, and broadly sourced — formula shown verbatim in the title.
-  const confidence = digestOrgId ? await contextConfidence(pool, digestOrgId, id) : null;
+  const confidence = await contextConfidence(db, orgId, id);
+
+  return {
+    company,
+    digest,
+    openMotion,
+    timeline,
+    meetings,
+    scores,
+    dimensions,
+    features,
+    evidence,
+    team,
+    partnerFits,
+    fitFeatures,
+    motions,
+    assets,
+    events,
+    intel,
+    confidence,
+  };
+  });
+  if (!data) {
+    return <main>Unknown account.</main>;
+  }
+  const {
+    company,
+    digest,
+    openMotion,
+    timeline,
+    meetings,
+    scores,
+    dimensions,
+    features,
+    evidence,
+    team,
+    partnerFits,
+    fitFeatures,
+    motions,
+    assets,
+    events,
+    intel,
+    confidence,
+  } = data;
 
   return (
     <main>

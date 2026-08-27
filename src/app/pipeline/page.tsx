@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { loadStageWeights } from "@/lib/opportunities/stage-weights";
 import { enabledTriggers } from "@/lib/triggers/catalog";
 import {
@@ -22,7 +21,7 @@ import {
   type Status,
 } from "@/lib/opportunities/meddpicc";
 import { quoteSignals } from "@/lib/opportunities/quotes";
-import { dealMomentum, MOMENTUM_LABEL, type Momentum } from "@/lib/opportunities/momentum";
+import { dealMomentum, MOMENTUM_LABEL } from "@/lib/opportunities/momentum";
 import {
   advanceOpportunityAction,
   assignInitiativeAction,
@@ -65,8 +64,17 @@ export default async function PipelinePage({
   const sp = await searchParams;
   const view = sp.view === "review" ? "review" : "board";
   const timeframe = ["7", "30", "90"].includes(sp.timeframe ?? "") ? Number(sp.timeframe) : null;
-  const pool = getPool();
-  const { rows: allOpps } = await pool.query(
+
+  // RISK-1 adoption (task #67): all reads run under withTenant, which pins the
+  // session to the caller's org. Inert on the owner connection; real isolation
+  // once DATABASE_URL points at app_rw.
+  const {
+    opps, open, total, weighted, regRows, tieOut, writebacks, approvedWb,
+    calibration, renewals, scoreOf, quoteOf, probOf, qualOf, partnerOptions,
+    visible, stakeholdersByOpp, regByOpp, meddpicc, momentum, initiativeOpts,
+    autopsies,
+  } = await withTenant(async (db, orgId) => {
+  const { rows: allOpps } = await db.query(
     `select o.id, o.name, o.stage, o.amount_usd, o.next_step, o.expected_close_date, o.updated_at,
             o.company_id, c.legal_name, n.slug, o.motion_id, o.initiative_id,
             pa.name as partner_name, m.partner_id
@@ -81,12 +89,9 @@ export default async function PipelinePage({
   // Renewal radar (B+3): every account on an approved list whose renewal_date
   // sits inside 120 days — the co-sell clock. Engagement quiet = decay risk;
   // partners on the account = who to attach before it runs out.
-  const orgIdForRadar = await currentOrgId(pool);
-  const radarOn = orgIdForRadar
-    ? (await enabledTriggers(pool, orgIdForRadar)).has("renewal_window")
-    : false;
-  const { rows: renewalRows } = orgIdForRadar && radarOn
-    ? await pool.query<{ company_id: string; legal_name: string; renewal: string; list_name: string }>(
+  const radarOn = (await enabledTriggers(db, orgId)).has("renewal_window");
+  const { rows: renewalRows } = radarOn
+    ? await db.query<{ company_id: string; legal_name: string; renewal: string; list_name: string }>(
         `select distinct on (pm.company_id)
                 pm.company_id, c.legal_name,
                 pm.attributes->>'renewal_date' as renewal, ap.name as list_name
@@ -98,27 +103,27 @@ export default async function PipelinePage({
            and (pm.attributes->>'renewal_date')::date
                between now()::date and (now() + interval '120 days')::date
          order by pm.company_id, (pm.attributes->>'renewal_date')::date asc`,
-        [orgIdForRadar],
+        [orgId],
       )
     : { rows: [] };
   const renewalIds = renewalRows.map((r) => r.company_id);
   const engagementByCompany = new Map<string, number>();
   const partnersByRenewal = new Map<string, string[]>();
   if (renewalIds.length) {
-    const { rows: eng } = await pool.query<{ company_id: string; score: string }>(
+    const { rows: eng } = await db.query<{ company_id: string; score: string }>(
       `select company_id, max(engagement_score) as score
        from engagement_scores where company_id = any($1) group by company_id`,
       [renewalIds],
     );
     for (const e of eng) engagementByCompany.set(e.company_id, Number(e.score));
-    const { rows: pns } = await pool.query<{ company_id: string; partners: string[] }>(
+    const { rows: pns } = await db.query<{ company_id: string; partners: string[] }>(
       `select pm.company_id, array_agg(distinct p.name order by p.name) as partners
        from population_members pm
        join account_populations ap on ap.id = pm.population_id
          and ap.org_id = $2 and ap.partner_id is not null and ap.status = 'approved'
        join partners p on p.id = ap.partner_id
        where pm.company_id = any($1) group by pm.company_id`,
-      [renewalIds, orgIdForRadar],
+      [renewalIds, orgId],
     );
     for (const r of pns) partnersByRenewal.set(r.company_id, r.partners);
   }
@@ -141,7 +146,7 @@ export default async function PipelinePage({
     ? allOpps.filter((o) => o.expected_close_date && new Date(o.expected_close_date).getTime() <= horizon)
     : allOpps;
 
-  const { rows: stakeholderRows } = await pool.query(
+  const { rows: stakeholderRows } = await db.query(
     `select s.opportunity_id, s.contact_id, s.role, s.sentiment, ct.name, ct.email
      from stakeholders s join contacts ct on ct.id = s.contact_id
      where s.opportunity_id = any($1)`,
@@ -154,7 +159,7 @@ export default async function PipelinePage({
     stakeholdersByOpp.set(s.opportunity_id, list);
   }
 
-  const { rows: regRows } = await pool.query<DealReg>(
+  const { rows: regRows } = await db.query<DealReg>(
     `select id, opportunity_id, vendor, product, status, protected_until
      from deal_registrations where opportunity_id = any($1)
      order by created_at desc`,
@@ -163,48 +168,44 @@ export default async function PipelinePage({
   const regByOpp = new Map<string, DealReg>();
   for (const r of regRows) if (r.opportunity_id && !regByOpp.has(r.opportunity_id)) regByOpp.set(r.opportunity_id, r);
 
-  const meddpicc = await meddpiccFor(pool, opps.map((o) => o.id));
+  const meddpicc = await meddpiccFor(db, opps.map((o) => o.id));
   const scoreOf = (id: string) => {
     const m = meddpicc.get(id);
     return m ? meddpiccScore(m) : 0;
   };
 
   // Initiatives (task #83): the named targets an opportunity can roll into.
-  const initiativeOpts = orgIdForRadar ? await initiativeOptions(pool, orgIdForRadar) : [];
+  const initiativeOpts = await initiativeOptions(db, orgId);
 
   // CRM writeback queue (slice A): corrections the tie-out proposes back.
-  const writebacks = orgIdForRadar ? await listWritebacks(pool, orgIdForRadar) : [];
+  const writebacks = await listWritebacks(db, orgId);
   const approvedWb = writebacks.filter((w) => w.status === "approved").length;
 
   // Win/loss autopsies (slice E): the deterministic post-mortem on every
   // closed deal — what happened, assembled from the record, no opinions.
   const autopsies = new Map<string, Autopsy>();
-  if (orgIdForRadar) {
-    for (const o of opps.filter((x) => x.stage.startsWith("closed")).slice(0, 12)) {
-      const a = await opportunityAutopsy(pool, orgIdForRadar, o.id);
-      if (a) autopsies.set(o.id, a);
-    }
+  for (const o of opps.filter((x) => x.stage.startsWith("closed")).slice(0, 12)) {
+    const a = await opportunityAutopsy(db, orgId, o.id);
+    if (a) autopsies.set(o.id, a);
   }
 
   // Quote-delivered signal, read from each opportunity's email conversation.
-  const quotes = await quoteSignals(pool, opps.map((o) => o.id));
+  const quotes = await quoteSignals(db, opps.map((o) => o.id));
   const quoteOf = (id: string) => quotes.get(id) ?? { delivered: false, note: null, at: null };
 
   // Deal momentum (task #88): observed behavior beside the declared stage —
   // deterministic, cross-company aware (joint-room activity counts).
-  const momentum = orgIdForRadar
-    ? await dealMomentum(
-        pool,
-        orgIdForRadar,
-        opps.map((o) => ({
-          id: o.id,
-          companyId: o.company_id,
-          stage: o.stage,
-          updatedAt: o.updated_at,
-          quote: quoteOf(o.id),
-        })),
-      )
-    : new Map<string, Momentum>();
+  const momentum = await dealMomentum(
+    db,
+    orgId,
+    opps.map((o) => ({
+      id: o.id,
+      companyId: o.company_id,
+      stage: o.stage,
+      updatedAt: o.updated_at,
+      quote: quoteOf(o.id),
+    })),
+  );
 
   // Atomic filters (apply to both board and review; bentos/chart stay on the
   // full timeframe set so the totals don't move as you slice).
@@ -221,7 +222,7 @@ export default async function PipelinePage({
   const open = opps.filter((o) => !o.stage.startsWith("closed"));
   // Stage weights: the org's editable curve (Insights → calibration card),
   // with per-partner overrides applied to deals attributed to that partner.
-  const stageWeights = await loadStageWeights(pool, await currentOrgId(pool));
+  const stageWeights = await loadStageWeights(db, orgId);
   const probOf = (o: { partner_id: string | null; stage: string }) =>
     stageWeights.weightFor(o.partner_id ?? null, o.stage as Stage);
   const weighted = weightedPipelineValue(
@@ -236,7 +237,7 @@ export default async function PipelinePage({
   // ── Tie-out (task #87): does the number tie out — across systems? ──
   // The CRM's latest word per opportunity vs the live record, per account,
   // plus a daily snapshot so number drift has history instead of hearsay.
-  const tieOrgId = orgIdForRadar;
+  const tieOrgId = orgId;
   let tieOut: {
     crmUsd: number;
     liveUsd: number;
@@ -249,7 +250,7 @@ export default async function PipelinePage({
     wonUsd: number; wonN: number; lostUsd: number; lostN: number;
   }[] = [];
   if (tieOrgId) {
-    const { rows: crmByCompany } = await pool.query<{ company_id: string; legal_name: string; crm: string }>(
+    const { rows: crmByCompany } = await db.query<{ company_id: string; legal_name: string; crm: string }>(
       `select s.company_id, c.legal_name, sum(s.amount_usd) as crm
        from (select distinct on (company_id, lower(opportunity_name)) company_id, opportunity_name, amount_usd, stage
              from crm_snapshots where org_id = $1
@@ -277,7 +278,7 @@ export default async function PipelinePage({
         .filter((d) => Math.abs(d.crm - d.live) >= 1)
         .sort((a, b) => Math.abs(b.crm - b.live) - Math.abs(a.crm - a.live))
         .slice(0, 5);
-      const { rows: weekAgoRows } = await pool.query<{ open_usd: string; taken_on: string }>(
+      const { rows: weekAgoRows } = await db.query<{ open_usd: string; taken_on: string }>(
         `select open_usd, taken_on::text from pipeline_snapshots
          where org_id = $1 and taken_on <= (now() - interval '6 days')::date
          order by taken_on desc limit 1`,
@@ -293,7 +294,7 @@ export default async function PipelinePage({
       // Forecast calibration (meets/beats batch): what the weighted pipeline
       // said N days ago vs what actually closed since. The forecast is
       // measured against reality, not just displayed.
-      const { rows: calRows } = await pool.query<{ taken_on: string; weighted_usd: string; open_usd: string }>(
+      const { rows: calRows } = await db.query<{ taken_on: string; weighted_usd: string; open_usd: string }>(
         `select distinct on (bucket) taken_on::text, weighted_usd, open_usd
          from (
            select *, case when taken_on <= (now() - interval '55 days')::date then 60
@@ -305,7 +306,7 @@ export default async function PipelinePage({
         [tieOrgId],
       );
       for (const snap of calRows) {
-        const { rows: realized } = await pool.query<{ won_usd: string; won_n: string; lost_usd: string; lost_n: string }>(
+        const { rows: realized } = await db.query<{ won_usd: string; won_n: string; lost_usd: string; lost_n: string }>(
           `select coalesce(sum(amount_usd) filter (where stage = 'closed_won'), 0) as won_usd,
                   count(*) filter (where stage = 'closed_won') as won_n,
                   coalesce(sum(amount_usd) filter (where stage = 'closed_lost'), 0) as lost_usd,
@@ -325,7 +326,7 @@ export default async function PipelinePage({
       }
     }
     // Today's snapshot, idempotent — history accrues just by looking.
-    await pool.query(
+    await db.query(
       `insert into pipeline_snapshots (org_id, taken_on, open_count, open_usd, weighted_usd, crm_usd)
        values ($1, now()::date, $2, $3, $4, $5)
        on conflict (org_id, taken_on) do update
@@ -334,6 +335,14 @@ export default async function PipelinePage({
       [tieOrgId, open.length, total, weighted, tieOut?.crmUsd ?? null],
     );
   }
+
+  return {
+    opps, open, total, weighted, regRows, tieOut, writebacks, approvedWb,
+    calibration, renewals, scoreOf, quoteOf, probOf, qualOf, partnerOptions,
+    visible, stakeholdersByOpp, regByOpp, meddpicc, momentum, initiativeOpts,
+    autopsies,
+  };
+  });
 
   return (
     <main>

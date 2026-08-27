@@ -1,4 +1,5 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
+import { runTx } from "@/db/client";
 import { partnerHub, type PartnerHubData } from "@/lib/mapping/partner-hub";
 import { overlapLadder, type OverlapLadder } from "@/lib/partnerships/overlap";
 import { listJointPursuits, namedOverlapAccounts, type PursuitView } from "@/lib/partnerships/joint";
@@ -32,7 +33,7 @@ export interface PartnerIndexRow {
   motionsWon: number;
 }
 
-export async function listPartnerRooms(db: Pool, orgId: string): Promise<PartnerIndexRow[]> {
+export async function listPartnerRooms(db: Pool | PoolClient, orgId: string): Promise<PartnerIndexRow[]> {
   const { rows } = await db.query<{
     id: string; name: string; partner_type: string | null; industries: string[] | null;
     book_lists: string; book_accounts: string;
@@ -140,7 +141,7 @@ export interface PartnerRoomData {
   contactOptions: Record<string, { id: string; label: string }[]>;
 }
 
-export async function partnerRoom(db: Pool, orgId: string, partnerId: string): Promise<PartnerRoomData | null> {
+export async function partnerRoom(db: Pool | PoolClient, orgId: string, partnerId: string): Promise<PartnerRoomData | null> {
   const { rows: pRows } = await db.query<{
     id: string; name: string; partner_type: string | null;
     industries: string[] | null; countries: string[] | null;
@@ -158,13 +159,7 @@ export async function partnerRoom(db: Pool, orgId: string, partnerId: string): P
   };
 
   // partnerHub wants one checked-out client (sequential on purpose).
-  const client = await db.connect();
-  let hub: PartnerHubData;
-  try {
-    hub = await partnerHub(client, { orgId, partnerId });
-  } finally {
-    client.release();
-  }
+  const hub = await runTx(db, (client) => partnerHub(client, { orgId, partnerId }));
 
   const { rows: book } = await db.query<{ id: string; name: string; category: string; status: string; members: string }>(
     `select ap.id, ap.name, ap.category, ap.status,

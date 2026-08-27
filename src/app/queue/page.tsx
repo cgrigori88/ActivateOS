@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { QuerySelect } from "@/components/query-select";
+import { withTenant } from "@/lib/db/tenant";
 import { resolveActionAction, resolveCommActionAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -43,10 +43,11 @@ export default async function QueuePage({
 }) {
   const sp = await searchParams;
   const groupKey = ["due", "account", "partner"].includes(sp.group ?? "") ? sp.group! : "due";
-  const pool = getPool();
 
-  const { rows: cadence } = await pool.query(
-    `select a.id, a.step, a.action, a.due_at,
+  const { cadence, comms, recent } = await withTenant(async (db) => ({
+    cadence: (
+      await db.query(
+        `select a.id, a.step, a.action, a.due_at,
             m.id as motion_id, c.id as company_id, c.legal_name,
             pa.name as partner_name, s.name as seller_name
      from motion_actions a
@@ -56,9 +57,11 @@ export default async function QueuePage({
      left join sellers s on s.id = m.partner_seller_id
      where a.status = 'pending' and m.status = 'active'
      order by a.due_at, a.step`,
-  );
-  const { rows: comms } = await pool.query(
-    `select ca.id, ca.title, ca.detail, ca.due_at, ca.confidence, ca.motion_id,
+      )
+    ).rows,
+    comms: (
+      await db.query(
+        `select ca.id, ca.title, ca.detail, ca.due_at, ca.confidence, ca.motion_id,
             t.company_id, c.legal_name, s.name as owner_name
      from communication_actions ca
      join communication_threads t on t.id = ca.thread_id
@@ -66,15 +69,19 @@ export default async function QueuePage({
      left join sellers s on s.id = ca.owner_seller_id
      where ca.status = 'pending'
      order by ca.due_at nulls last`,
-  );
-  const { rows: recent } = await pool.query(
-    `select a.action, a.status, a.completed_at, c.legal_name
+      )
+    ).rows,
+    recent: (
+      await db.query(
+        `select a.action, a.status, a.completed_at, c.legal_name
      from motion_actions a
      join revenue_motions m on m.id = a.motion_id
      join companies c on c.id = m.company_id
      where a.status in ('done','skipped')
      order by a.completed_at desc limit 8`,
-  );
+      )
+    ).rows,
+  }));
 
   const items: Item[] = [
     ...cadence.map((a) => ({

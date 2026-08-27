@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getPool } from "@/db/client";
-import { currentOrgId, requireWrite } from "@/lib/auth/org";
+import { requireWrite } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { assignInitiative } from "@/lib/partnerships/initiatives";
 import { launchCampaign, sendTouchNow } from "@/lib/comms/sequence";
 import { deleteTouch, upsertTouch, type TouchFields } from "@/lib/comms/authoring";
@@ -12,25 +12,25 @@ import { linkPopulation, unlinkPopulation } from "@/lib/campaigns/lists";
 
 /** Attach target lists (one or many) so their accounts roll into the campaign. */
 export async function linkListAction(campaignId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const ids = formData.getAll("populationId").map((v) => String(v).trim()).filter(Boolean);
   if (ids.length === 0) return;
-  const pool = getPool();
-  for (const populationId of ids) await linkPopulation(pool, campaignId, populationId, "web");
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    for (const populationId of ids) await linkPopulation(db, campaignId, populationId, "web");
+  });
   revalidatePath(`/campaigns/${campaignId}`);
   revalidatePath("/campaigns");
 }
 
 /** Link a motion so AI drafting has approved grounding (thesis, trigger, CTA, evidence). */
 export async function linkMotionAction(campaignId: string, formData: FormData): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
   const motionId = String(formData.get("motionId") ?? "").trim();
   if (!motionId) return;
-  // FLOW-1 fix: scope the write to the caller's org so a foreign campaign id can't be retargeted.
-  await pool.query(`update campaigns set motion_id = $2 where id = $1 and org_id = $3`, [campaignId, motionId, orgId]);
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    // FLOW-1 fix: scope the write to the caller's org so a foreign campaign id can't be retargeted.
+    await db.query(`update campaigns set motion_id = $2 where id = $1 and org_id = $3`, [campaignId, motionId, orgId]);
+  });
   revalidatePath(`/campaigns/${campaignId}`);
 }
 
@@ -40,21 +40,21 @@ export async function linkMotionAction(campaignId: string, formData: FormData): 
  * communication thread (messages are the record, the campaign was the vehicle).
  */
 export async function deleteCampaignAction(campaignId: string): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
-  // FLOW-1 fix (highest severity — cross-tenant destructive delete): org-scoped.
-  await pool.query(`delete from campaigns where id = $1 and org_id = $2`, [campaignId, orgId]);
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    // FLOW-1 fix (highest severity — cross-tenant destructive delete): org-scoped.
+    await db.query(`delete from campaigns where id = $1 and org_id = $2`, [campaignId, orgId]);
+  });
   revalidatePath("/campaigns");
   redirect("/campaigns");
 }
 
 /** Remove a target list from the campaign (accounts stop rolling in). */
 export async function unlinkListAction(campaignId: string, populationId: string): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  const pool = getPool();
-  await unlinkPopulation(pool, campaignId, populationId);
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    await unlinkPopulation(db, campaignId, populationId);
+  });
   revalidatePath(`/campaigns/${campaignId}`);
   revalidatePath("/campaigns");
 }
@@ -92,18 +92,16 @@ function touchFieldsFrom(formData: FormData): TouchFields {
 
 /** Let AI draft touches into this campaign (needs a linked motion for grounding). */
 export async function aiDraftTouchesAction(campaignId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const touchCount = Number(formData.get("touchCount") ?? 3) || 3;
   const senderName = String(formData.get("senderName") ?? "").trim() || undefined;
-  const pool = getPool();
-  const db = await pool.connect();
   let notice: string | null = null;
   try {
-    await appendAiTouches(db, { campaignId, touchCount, senderName });
+    await withTenant(async (db) => {
+      await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+      await appendAiTouches(db, { campaignId, touchCount, senderName });
+    });
   } catch (err) {
     notice = err instanceof Error ? err.message : String(err);
-  } finally {
-    db.release();
   }
   revalidatePath(`/campaigns/${campaignId}`);
   if (notice) redirect(`/campaigns/${campaignId}?notice=${encodeURIComponent(notice)}`);
@@ -116,56 +114,53 @@ export async function aiDraftTouchesAction(campaignId: string, formData: FormDat
  */
 
 async function touchCampaign(touchId: string): Promise<string> {
-  const pool = getPool();
-  const { rows } = await pool.query<{ campaign_id: string }>(
-    `select campaign_id from campaign_touches where id = $1`,
-    [touchId],
-  );
-  if (rows.length === 0) throw new Error("touch not found");
-  return rows[0].campaign_id;
+  return withTenant(async (db) => {
+    const { rows } = await db.query<{ campaign_id: string }>(
+      `select campaign_id from campaign_touches where id = $1`,
+      [touchId],
+    );
+    if (rows.length === 0) throw new Error("touch not found");
+    return rows[0].campaign_id;
+  });
 }
 
 export async function approveTouchAction(touchId: string): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  const pool = getPool();
-  await pool.query(
-    `update campaign_touches
-       set status = 'approved', approved_by = 'web', approved_at = now(), rejected_reason = null
-     where id = $1 and status in ('draft','rejected')`,
-    [touchId],
-  );
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    await db.query(
+      `update campaign_touches
+         set status = 'approved', approved_by = 'web', approved_at = now(), rejected_reason = null
+       where id = $1 and status in ('draft','rejected')`,
+      [touchId],
+    );
+  });
   revalidatePath(`/campaigns/${await touchCampaign(touchId)}`);
 }
 
 export async function rejectTouchAction(touchId: string, formData: FormData): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
   const reason = String(formData.get("reason") ?? "").trim() || null;
-  // FLOW-1 fix: campaign_touches has no org_id — scope via its parent campaign's org.
-  await pool.query(
-    `update campaign_touches t set status = 'rejected', rejected_reason = $2
-     from campaigns c where c.id = t.campaign_id and t.id = $1 and t.status <> 'sent' and c.org_id = $3`,
-    [touchId, reason, orgId],
-  );
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    // FLOW-1 fix: campaign_touches has no org_id — scope via its parent campaign's org.
+    await db.query(
+      `update campaign_touches t set status = 'rejected', rejected_reason = $2
+       from campaigns c where c.id = t.campaign_id and t.id = $1 and t.status <> 'sent' and c.org_id = $3`,
+      [touchId, reason, orgId],
+    );
+  });
   revalidatePath(`/campaigns/${await touchCampaign(touchId)}`);
 }
 
 /** Add a hand-authored touch to a campaign. */
 export async function addTouchAction(campaignId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const fields = touchFieldsFrom(formData);
   if (!fields.subject || (!fields.body && !fields.customHtml)) {
     throw new Error("a subject and either a body or custom HTML are required");
   }
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await upsertTouch(db, { campaignId, fields });
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath(`/campaigns/${campaignId}`);
   // Keep the composer open (and in view) so the next touch can be written
   // immediately — sequences are authored several touches at a time.
@@ -174,32 +169,24 @@ export async function addTouchAction(campaignId: string, formData: FormData): Pr
 
 /** Edit an existing (unsent) touch — re-renders its HTML. */
 export async function editTouchAction(touchId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  const campaignId = await touchCampaign(touchId);
   const fields = touchFieldsFrom(formData);
   if (!fields.subject || (!fields.body && !fields.customHtml)) {
     throw new Error("a subject and either a body or custom HTML are required");
   }
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  const campaignId = await touchCampaign(touchId);
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await upsertTouch(db, { campaignId, touchId, fields });
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath(`/campaigns/${campaignId}`);
 }
 
 export async function deleteTouchAction(touchId: string): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const campaignId = await touchCampaign(touchId);
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await deleteTouch(db, touchId);
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath(`/campaigns/${campaignId}`);
 }
 
@@ -218,22 +205,18 @@ function scheduleArgsFrom(formData: FormData) {
 }
 
 export async function scheduleSequenceAction(campaignId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const args = scheduleArgsFrom(formData);
   if (!args.recipientEmail) throw new Error("a recipient is required to schedule");
 
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await db.query(
       `update campaign_touches set status = 'approved', approved_by = 'web', approved_at = now()
        where campaign_id = $1 and status = 'draft'`,
       [campaignId],
     );
     await launchCampaign(db, { campaignId, ...args });
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath(`/campaigns/${campaignId}`);
   // Next-step pull (#79): a launched sequence lives on the dated send plan now.
   redirect(`/campaigns/${campaignId}?launched=1`);
@@ -241,16 +224,12 @@ export async function scheduleSequenceAction(campaignId: string, formData: FormD
 
 /** Arm the sequence using only the touches already approved. */
 export async function launchCampaignAction(campaignId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const args = scheduleArgsFrom(formData);
   if (!args.recipientEmail) throw new Error("a recipient is required to launch");
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await launchCampaign(db, { campaignId, ...args });
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath(`/campaigns/${campaignId}`);
   // Next-step pull (#79): a launched sequence lives on the dated send plan now.
   redirect(`/campaigns/${campaignId}?launched=1`);
@@ -258,26 +237,21 @@ export async function launchCampaignAction(campaignId: string, formData: FormDat
 
 /** Send a single touch now (pre-launch to a chosen recipient, or a due scheduled touch). */
 export async function sendTouchAction(touchId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const override = String(formData.get("to") ?? "").trim().toLowerCase() || null;
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await sendTouchNow(db, { touchId, overrideTo: override });
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath(`/campaigns/${await touchCampaign(touchId)}`);
 }
 
 /** Attach this campaign to an initiative (task #83 follow-up) — or detach with "". */
 export async function setCampaignInitiativeAction(campaignId: string, formData: FormData): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
   const initiativeId = String(formData.get("initiativeId") ?? "").trim() || null;
-  await assignInitiative(pool, orgId, "campaign", campaignId, initiativeId);
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);
+    await assignInitiative(db, orgId, "campaign", campaignId, initiativeId);
+  });
   revalidatePath(`/campaigns/${campaignId}`);
   revalidatePath("/partners");
 }

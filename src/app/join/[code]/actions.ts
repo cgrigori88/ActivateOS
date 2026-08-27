@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getPool } from "@/db/client";
+import { getOwnerPool } from "@/db/client";
 import { authConfigured, supabaseAdmin, supabaseServer } from "@/lib/auth/supabase";
 import { inviteInfo, createGuestOrg } from "@/lib/partnerships/guest";
 import { redeemPartnershipInvite } from "@/lib/partnerships/partnerships";
@@ -18,6 +18,13 @@ import { clientIp, rateLimited } from "@/lib/security/rate-limit";
  * flow) instead of open self-signup: an account can only come into existence
  * through a LIVE invite code, so the sign-up surface is exactly as public as
  * the codes an owner chooses to share.
+ *
+ * RISK-1: these are PROVISIONING paths — they mint brand-new tenants, insert
+ * the first membership, and redeem cross-tenant invites, all BEFORE (or across)
+ * any caller-org boundary. They cannot use withTenant (there is no single org
+ * to scope to) and must run on the owner connection. At the app_rw cutover,
+ * provisioning stays on a dedicated owner pool — see the RISK-1 runbook's
+ * "owner-pool set" (bootstrap/login, guest join, the research worker, webhooks).
  */
 
 function fail(code: string, message: string): never {
@@ -43,7 +50,7 @@ export async function claimGuestSeatAction(code: string, formData: FormData): Pr
   if (password.length < 12) fail(code, "The password needs 12+ characters.");
   if (!workspace) fail(code, "Name your workspace — usually your company's name.");
 
-  const pool = getPool();
+  const pool = getOwnerPool();
   if (!(await inviteInfo(pool, code))) fail(code, "This invite link isn't valid anymore.");
 
   // 1. The account — first, so "email already exists" costs nothing.
@@ -84,7 +91,7 @@ export async function claimWorkspaceAction(code: string, formData: FormData): Pr
   const { data } = await supabase.auth.getUser();
   if (!data.user) fail(code, "Sign in first, then reopen this link.");
 
-  const pool = getPool();
+  const pool = getOwnerPool();
   const { rows: member } = await pool.query(`select 1 from org_members where user_id = $1`, [data.user.id]);
   if (member.length > 0) fail(code, "You already have a workspace — use the connect option instead.");
   if (!(await inviteInfo(pool, code))) fail(code, "This invite link isn't valid anymore.");
@@ -108,7 +115,7 @@ export async function claimWorkspaceAction(code: string, formData: FormData): Pr
  */
 export async function connectExistingAction(code: string): Promise<void> {
   await throttle(code);
-  const pool = getPool();
+  const pool = getOwnerPool();
 
   let orgId: string | null = null;
   if (authConfigured()) {

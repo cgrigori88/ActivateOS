@@ -1,5 +1,4 @@
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { byoModelAvailable, hasOrgAnthropicKey } from "@/lib/ai/org-keys";
 
@@ -13,27 +12,26 @@ export const dynamic = "force-dynamic";
  */
 
 export default async function TrustPage() {
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) return <main>No organization.</main>;
-
-  const { rows: stats } = await pool.query<{
-    audit_n: string; agent_runs: string; evidence_n: string; verified_n: string; providers: string; keys: string;
-  }>(
-    `select (select count(*) from audit_log where org_id = $1) as audit_n,
+  // RISK-1: org stats read under withTenant (pins app.org_id).
+  const { stats, models, ownKey } = await withTenant(async (db, orgId) => ({
+    stats: (await db.query<{
+      audit_n: string; agent_runs: string; evidence_n: string; verified_n: string; providers: string; keys: string;
+    }>(
+      `select (select count(*) from audit_log where org_id = $1) as audit_n,
             (select count(*) from agent_runs where org_id = $1) as agent_runs,
             (select count(*) from evidence where org_id = $1 or org_id is null) as evidence_n,
             (select count(*) from evidence where (org_id = $1 or org_id is null) and status = 'verified') as verified_n,
             (select count(*) from providers) as providers,
             (select count(*) from api_keys where org_id = $1 and revoked_at is null) as keys`,
-    [orgId],
-  );
+      [orgId],
+    )).rows,
+    models: (await db.query<{ model: string; n: string }>(
+      `select model, count(*) as n from agent_runs where org_id = $1 group by model order by count(*) desc limit 5`,
+      [orgId],
+    )).rows,
+    ownKey: await hasOrgAnthropicKey(db, orgId),
+  }));
   const s = stats[0];
-  const { rows: models } = await pool.query<{ model: string; n: string }>(
-    `select model, count(*) as n from agent_runs where org_id = $1 group by model order by count(*) desc limit 5`,
-    [orgId],
-  );
-  const ownKey = await hasOrgAnthropicKey(pool, orgId);
 
   return (
     <main>

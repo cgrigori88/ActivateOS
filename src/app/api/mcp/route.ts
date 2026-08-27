@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/db/client";
 import { rateLimited } from "@/lib/security/rate-limit";
 import { MCP_TOOLS, resolveKey } from "@/lib/agents/mcp-tools";
+import { withTenantOrg } from "@/lib/db/tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,11 @@ async function handleMessage(msg: RpcRequest, orgId: string): Promise<Record<str
       const tool = MCP_TOOLS.find((t) => t.name === name);
       if (!tool) return rpcError(id, -32602, `Unknown tool: ${name}`);
       try {
-        const result = await tool.run(getPool(), orgId, (msg.params?.arguments as Record<string, unknown>) ?? {});
+        // RISK-1: scope the tool's queries to the key's org via the GUC (org
+        // comes from the API key, not a web session — hence withTenantOrg).
+        const result = await withTenantOrg(orgId, (db) =>
+          tool.run(db, orgId, (msg.params?.arguments as Record<string, unknown>) ?? {}),
+        );
         return rpcResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], isError: false });
       } catch (err) {
         return rpcResult(id, {
@@ -81,6 +86,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
+  // RISK-1 cutover note: resolveKey reads api_keys (an org-scoped table) to find
+  // the key's org BEFORE any org is known — the same chicken-and-egg solved for
+  // users by resolve_user_org(). Before DATABASE_URL points at app_rw, this
+  // lookup needs a SECURITY DEFINER key resolver (or a dedicated owner auth
+  // connection); on the owner connection today it works unchanged.
   const key = await resolveKey(getPool(), bearer);
   if (!key) {
     return NextResponse.json(rpcError(null, -32000, "Invalid or revoked API key"), {

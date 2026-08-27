@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import { Bento, Card, MiniBar, NextStep, PageHeader, StatusBadge } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
-import { currentOrgId } from "@/lib/auth/org";
 import {
   abandonMotionAction, editMotionAction,
   activateMotionAction,
@@ -76,9 +75,9 @@ export default async function MotionsPage({
   const groupKey = GROUPS[sp.group ?? "status"] ? (sp.group ?? "status") : "status";
   const group = GROUPS[groupKey];
 
-  const pool = getPool();
-  const { rows: all } = await pool.query<MotionRow>(
-    `select m.id, m.status, m.thesis, m.trigger_summary, m.cta, m.confidence, m.operator_notes,
+  const { all, goals, initiativeOpts, draftLists, draftCandidates } = await withTenant(async (db, orgId) => ({
+    all: (await db.query<MotionRow>(
+      `select m.id, m.status, m.thesis, m.trigger_summary, m.cta, m.confidence, m.operator_notes,
             m.company_id, c.legal_name, n.slug, c.industry, m.outcome,
             m.estimated_value_usd, m.effort, p.score as propensity, pa.name as partner_name,
             m.goal_id, g.name as goal_name, m.initiative_id
@@ -89,16 +88,13 @@ export default async function MotionsPage({
      left join partners pa on pa.id = m.partner_id
      left join goals g on g.id = m.goal_id
      order by m.created_at desc limit 500`,
-  );
-  const orgId = await currentOrgId(pool);
-  const goals = orgId ? await goalOptions(pool, orgId) : [];
-  const initiativeOpts = orgId ? await initiativeOptions(pool, orgId) : [];
-
-  // Composer targets (task #83): approved lists with how many members are
-  // still motion-less, and the top unmotioned accounts by propensity.
-  const { rows: draftLists } = orgId
-    ? await pool.query<{ id: string; name: string; partner_name: string | null; members: string; ready: string }>(
-        `select ap.id, ap.name, p.name as partner_name,
+    )).rows,
+    goals: await goalOptions(db, orgId),
+    initiativeOpts: await initiativeOptions(db, orgId),
+    // Composer targets (task #83): approved lists with how many members are
+    // still motion-less, and the top unmotioned accounts by propensity.
+    draftLists: (await db.query<{ id: string; name: string; partner_name: string | null; members: string; ready: string }>(
+      `select ap.id, ap.name, p.name as partner_name,
                 (select count(*) from population_members pm where pm.population_id = ap.id) as members,
                 (select count(*) from population_members pm where pm.population_id = ap.id
                    and not exists (select 1 from revenue_motions m
@@ -108,11 +104,10 @@ export default async function MotionsPage({
          left join partners p on p.id = ap.partner_id
          where ap.org_id = $1 and ap.status = 'approved'
          order by ap.name`,
-        [orgId],
-      )
-    : { rows: [] };
-  const { rows: draftCandidates } = await pool.query<{ company_id: string; legal_name: string; score: string }>(
-    `select company_id, legal_name, score from (
+      [orgId],
+    )).rows,
+    draftCandidates: (await db.query<{ company_id: string; legal_name: string; score: string }>(
+      `select company_id, legal_name, score from (
        select distinct on (p.company_id) p.company_id, c.legal_name, p.score
        from propensity_scores p join companies c on c.id = p.company_id
        where not exists (select 1 from revenue_motions m
@@ -127,8 +122,9 @@ export default async function MotionsPage({
              or (sl.kind = 'name' and c.normalized_name = sl.value))))
        order by p.company_id, p.computed_at desc
      ) x order by x.score desc limit 18`,
-    [orgId],
-  );
+      [orgId],
+    )).rows,
+  }));
   const draftedN = sp.drafted !== undefined ? Number(sp.drafted) : null;
 
   const justApproved = sp.approved ? all.find((m) => m.id === sp.approved && m.status === "approved") : undefined;

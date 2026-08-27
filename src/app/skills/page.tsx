@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
 import { Card, PageHeader } from "@/components/ui";
 import { SKILL_KINDS, listSkills, sharedInSkills, type SkillKind } from "@/lib/skills/skills";
 import { editIntensity } from "@/lib/insights/calibration";
+import { withTenant } from "@/lib/db/tenant";
 import { createSkillAction, setSkillStatusAction, updateSkillBodyAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -30,49 +29,53 @@ export default async function SkillsPage({
   searchParams?: Promise<{ notice?: string; kind?: string }>;
 }) {
   const sp = (await searchParams) ?? {};
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) return <main>No organization.</main>;
 
-  const skills = await listSkills(pool, orgId);
-  const active = skills.filter((s) => s.status === "active");
-  const archived = skills.filter((s) => s.status === "archived");
-  const shared = await sharedInSkills(pool, orgId);
-
-  // "Turn your edits into a skill" (task #85): the edit-intensity signal we
-  // already collect, pointed at skill creation. Heavy rewriting of AI drafts
-  // with no style skill on file = the team has a voice the machine hasn't
-  // been told about.
-  const { rows: edits } = await pool.query<{ edit_distance: string; draft_length: string }>(
-    `select edit_distance, length(ai_original) as draft_length from message_edits`,
-  );
-  const intensity = editIntensity(
-    edits.map((e) => ({ editDistance: Number(e.edit_distance), draftLength: Number(e.draft_length) })),
-  );
-  const suggestStyle =
-    intensity != null && intensity >= 0.25 && !active.some((s) => s.kind === "style");
-
-  const { rows: partners } = await pool.query<{ id: string; name: string }>(
-    `select id, name from partners where org_id = $1 order by name`,
-    [orgId],
-  );
-  const { rows: lists } = await pool.query<{ id: string; name: string }>(
-    `select id, name from account_populations where org_id = $1 and status = 'approved' order by name`,
-    [orgId],
-  );
-
-  // The typed grounding that predates the library — surfaced here so the
-  // library really is ONE place to see everything the agents follow.
-  const { rows: alsoRows } = await pool.query<{ playbooks: string; joint: string; plays: string; brand: string }>(
-    `select
+  const { skills, shared, edits, partners, lists, also } = await withTenant(async (db, orgId) => ({
+    skills: await listSkills(db, orgId),
+    shared: await sharedInSkills(db, orgId),
+    // "Turn your edits into a skill" (task #85): the edit-intensity signal we
+    // already collect, pointed at skill creation. Heavy rewriting of AI drafts
+    // with no style skill on file = the team has a voice the machine hasn't
+    // been told about.
+    edits: (
+      await db.query<{ edit_distance: string; draft_length: string }>(
+        `select edit_distance, length(ai_original) as draft_length from message_edits`,
+      )
+    ).rows,
+    partners: (
+      await db.query<{ id: string; name: string }>(
+        `select id, name from partners where org_id = $1 order by name`,
+        [orgId],
+      )
+    ).rows,
+    lists: (
+      await db.query<{ id: string; name: string }>(
+        `select id, name from account_populations where org_id = $1 and status = 'approved' order by name`,
+        [orgId],
+      )
+    ).rows,
+    // The typed grounding that predates the library — surfaced here so the
+    // library really is ONE place to see everything the agents follow.
+    also: (
+      await db.query<{ playbooks: string; joint: string; plays: string; brand: string }>(
+        `select
        (select count(*) from partner_playbooks where org_id = $1)::text as playbooks,
        (select count(*) from joint_playbooks jp join partnerships p on p.id = jp.partnership_id
          where p.initiator_org_id = $1 or p.counterpart_org_id = $1)::text as joint,
        (select count(*) from play_templates where status = 'active')::text as plays,
        (select count(*) from brand_profiles where org_id = $1)::text as brand`,
-    [orgId],
+        [orgId],
+      )
+    ).rows[0],
+  }));
+  const active = skills.filter((s) => s.status === "active");
+  const archived = skills.filter((s) => s.status === "archived");
+
+  const intensity = editIntensity(
+    edits.map((e) => ({ editDistance: Number(e.edit_distance), draftLength: Number(e.draft_length) })),
   );
-  const also = alsoRows[0];
+  const suggestStyle =
+    intensity != null && intensity >= 0.25 && !active.some((s) => s.kind === "style");
 
   const kindLabel = (k: SkillKind) => SKILL_KINDS.find((x) => x.kind === k)!;
 
