@@ -26,6 +26,8 @@ import { dealMomentum, MOMENTUM_LABEL, type Momentum } from "@/lib/opportunities
 import {
   advanceOpportunityAction,
   assignInitiativeAction,
+  decideWritebackAction,
+  draftWritebacksAction,
   registerDealAction,
   setRegistrationStatusAction,
   setStakeholderAction,
@@ -33,6 +35,8 @@ import {
   assessMeddpiccAction,
 } from "./actions";
 import { initiativeOptions } from "@/lib/partnerships/initiatives";
+import { listWritebacks } from "@/lib/opportunities/writeback";
+import { opportunityAutopsy, type Autopsy } from "@/lib/opportunities/autopsy";
 
 const MEDDPICC_STATUSES: Status[] = ["unknown", "gap", "weak", "strong"];
 
@@ -167,6 +171,20 @@ export default async function PipelinePage({
 
   // Initiatives (task #83): the named targets an opportunity can roll into.
   const initiativeOpts = orgIdForRadar ? await initiativeOptions(pool, orgIdForRadar) : [];
+
+  // CRM writeback queue (slice A): corrections the tie-out proposes back.
+  const writebacks = orgIdForRadar ? await listWritebacks(pool, orgIdForRadar) : [];
+  const approvedWb = writebacks.filter((w) => w.status === "approved").length;
+
+  // Win/loss autopsies (slice E): the deterministic post-mortem on every
+  // closed deal — what happened, assembled from the record, no opinions.
+  const autopsies = new Map<string, Autopsy>();
+  if (orgIdForRadar) {
+    for (const o of opps.filter((x) => x.stage.startsWith("closed")).slice(0, 12)) {
+      const a = await opportunityAutopsy(pool, orgIdForRadar, o.id);
+      if (a) autopsies.set(o.id, a);
+    }
+  }
 
   // Quote-delivered signal, read from each opportunity's email conversation.
   const quotes = await quoteSignals(pool, opps.map((o) => o.id));
@@ -393,6 +411,66 @@ export default async function PipelinePage({
                 <p className="mt-2 text-[11px] text-neutral-400">
                   Somebody&rsquo;s number is usually wrong — this names whose, with the receipts on each account&rsquo;s timeline.
                 </p>
+              </Card>
+            )}
+
+            {/* ── CRM writeback queue (slice A): drift detected → repair proposed,
+                approved by a human, exported to the CRM. Detection alone just
+                moves the stitching problem downstream; this closes it. ── */}
+            {tieOut && (tieOut.deltas.length > 0 || writebacks.length > 0) && (
+              <Card className="mb-5">
+                <div className="mb-1 flex items-baseline justify-between gap-3">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Fix the CRM</h2>
+                  <span className="text-xs text-neutral-400">corrections proposed from the tie-out — nothing touches the CRM without approval</span>
+                </div>
+                {writebacks.length === 0 ? (
+                  <form action={draftWritebacksAction}>
+                    <button className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white">
+                      Draft corrections from the tie-out
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <ul className="space-y-2">
+                      {writebacks.map((w) => (
+                        <li key={w.id} className="flex items-start gap-2 text-sm">
+                          <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${w.field === "presence" ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"}`}>
+                            {w.field}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <Link href={`/accounts/${w.companyId}`} className="font-medium hover:underline">{w.accountName}</Link>
+                            <span className="text-neutral-500"> — {w.rationale}</span>
+                          </span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            {w.status === "proposed" ? (
+                              <>
+                                <form action={decideWritebackAction.bind(null, w.id, "approved")}>
+                                  <button className="rounded bg-accent px-2 py-0.5 text-xs font-medium text-white">Approve</button>
+                                </form>
+                                <form action={decideWritebackAction.bind(null, w.id, "dismissed")}>
+                                  <button className="text-xs text-neutral-400 underline-offset-2 hover:underline">dismiss</button>
+                                </form>
+                              </>
+                            ) : (
+                              <StatusBadge status={w.status} />
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-3 flex items-center gap-3">
+                      <form action={draftWritebacksAction}>
+                        <button className="text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">re-draft from current tie-out</button>
+                      </form>
+                      {approvedWb > 0 && (
+                        <a href="/api/writebacks" className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white">
+                          Export {approvedWb} approved correction{approvedWb === 1 ? "" : "s"} (CSV)
+                        </a>
+                      )}
+                      <span className="text-[11px] text-neutral-400">CSV today; the live CRM push adapter drains this same queue when connected.</span>
+                    </div>
+                  </>
+                )}
               </Card>
             )}
 
@@ -801,6 +879,15 @@ export default async function PipelinePage({
                 })}
               </div>
               {lost && <p className="mb-2 text-[11px] font-medium text-red-700 dark:text-red-400">Closed lost — stages shown for the record.</p>}
+              {(won || lost) && autopsies.has(o.id) && (
+                <details className="mb-2">
+                  <summary className="cursor-pointer text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">Autopsy — what the record says happened</summary>
+                  <ul className="mt-1.5 space-y-0.5 text-sm text-neutral-600 dark:text-neutral-300">
+                    {autopsies.get(o.id)!.lines.map((l, i) => <li key={i}>{l}</li>)}
+                  </ul>
+                  <p className="mt-1 text-[11px] text-neutral-400">Assembled from the record at read time — duration, path, contact, and grounding sources. No opinions, no AI.</p>
+                </details>
+              )}
 
               {gaps.length > 0 && (
                 <p className="mb-2 text-xs font-medium text-amber-700 dark:text-amber-400">

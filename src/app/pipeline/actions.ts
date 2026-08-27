@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getPool } from "@/db/client";
 import { currentOrgId, requireWrite } from "@/lib/auth/org";
 import { assignInitiative } from "@/lib/partnerships/initiatives";
+import { decideWriteback, draftWritebacks } from "@/lib/opportunities/writeback";
 import {
   advanceOpportunity,
   createOpportunityFromMotion,
@@ -146,4 +147,23 @@ export async function assignInitiativeAction(opportunityId: string, formData: Fo
   await assignInitiative(pool, orgId, "opportunity", opportunityId, initiativeId);
   revalidatePath("/pipeline");
   revalidatePath("/partners");
+}
+
+/** Draft CRM correction proposals from the current tie-out (slice A). */
+export async function draftWritebacksAction(): Promise<void> {
+  const pool = getPool();
+  await requireWrite(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  await draftWritebacks(pool, orgId);
+  revalidatePath("/pipeline");
+}
+
+export async function decideWritebackAction(id: string, status: "approved" | "dismissed"): Promise<void> {
+  const pool = getPool();
+  await requireWrite(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
+  await decideWriteback(pool, orgId, id, status);
+  revalidatePath("/pipeline");
 }

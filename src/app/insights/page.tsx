@@ -5,6 +5,7 @@ import { computeFunnel } from "@/lib/insights/funnel";
 import { STAGES, type Stage } from "@/lib/opportunities/lifecycle";
 import { loadStageWeights } from "@/lib/opportunities/stage-weights";
 import { Bento, Card, PageHeader } from "@/components/ui";
+import { sourceOutcomeAttribution } from "@/lib/opportunities/autopsy";
 import { QuerySelect } from "@/components/query-select";
 import { saveStageWeightsAction, setTriggerEnabledAction } from "./actions";
 import { TRIGGER_CATALOG, enabledTriggers } from "@/lib/triggers/catalog";
@@ -68,6 +69,15 @@ export default async function InsightsPage({
   const closedN = closed.length;
   const wonN = closed.filter((o) => o.won).length;
   const winRate = closedN > 0 ? Math.round((wonN / closedN) * 100) : null;
+
+  // Source→outcome attribution (slice E): which evidence sources sat behind
+
+  // won vs lost deals. Early-sample honesty is part of the feature.
+
+  const attribution = orgId ? await sourceOutcomeAttribution(pool, orgId) : [];
+
+  const attributionDeals = attribution.reduce((s_, a) => Math.max(s_, a.wonDeals + a.lostDeals), 0);
+
 
   return (
     <main>
@@ -229,6 +239,29 @@ export default async function InsightsPage({
           {intensity != null && <span className="text-xs"> (0 = sent as drafted, 1 = rewritten)</span>}
         </p>
       </Card>
+
+      {/* Source→outcome attribution (slice E) — the learning loop's first visible dividend. */}
+      {attribution.length > 0 && (
+        <Card className="mb-6">
+          <div className="mb-1 flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">What sat behind the outcomes</h2>
+            <span className="text-xs text-neutral-400">early sample — {attributionDeals} closed deal{attributionDeals === 1 ? "" : "s"}; patterns firm up with volume</span>
+          </div>
+          <ul className="space-y-1 text-sm">
+            {attribution.map((a) => (
+              <li key={a.sourceType} className="flex items-center justify-between gap-3">
+                <span className="font-mono text-xs text-neutral-500">{a.sourceType}</span>
+                <span className="tnum text-neutral-600 dark:text-neutral-300">
+                  behind <b className="text-green-700 dark:text-green-400">{a.wonDeals} won</b> · <b className="text-red-700 dark:text-red-400">{a.lostDeals} lost</b>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[11px] text-neutral-400">
+            Counts deals whose account carried verified claims from each source. With volume this becomes source predictive value — which telemetry actually forecasts wins.
+          </p>
+        </Card>
+      )}
 
       {/* Attention triggers (task #83): the named catalog of deterministic
           "this deserves attention" rules, each with an org-level switch. */}
