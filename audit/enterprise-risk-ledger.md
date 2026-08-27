@@ -30,13 +30,27 @@ Severity: **CRITICAL (enterprise sign-off blocker).** Tracked as task #67.
 
 **RISK-2 — No right-to-be-forgotten or data-export mechanism.**
 Severity: **HIGH (GDPR Art. 17 & 20 blocker for EU customers).**
-- No per-data-subject erasure endpoint and no subject-data export exist
-  (`grep` for erasure/export/gdpr → none). Org-level delete cascades
-  (60 of 61 FKs are `ON DELETE CASCADE`), but a data subject cannot be
-  deleted or exported individually on request.
-- PII inventory: `contacts` (name, email, phone, title), `sellers`
+**Status: ADDRESSED** (owner-only data-subject surface on Admin + blind-verified).
+- Built: `src/lib/privacy/data-subject.ts` (find / export / erase),
+  `GET /api/privacy/export` (portable JSON, Art. 15/20), and an Admin
+  "Privacy & data-subject rights" card with preview → typed-`ERASE` confirm.
+  Erasure is anonymize-in-place in one transaction (contacts/sellers are
+  FK-referenced by opportunities, motions, teams, engagement — nulling the
+  identifiers removes the PII while preserving the non-personal business
+  record), tenant-scoped, audited as `privacy.subject_erased` with a SHA-256
+  of the email (never the address).
+- Verified (`audit/RISK-2-erasure-verify.log`): seed → erase → residual PII
+  in-org = 0 across contacts/sellers/messages(authored+recipient)/meeting_notes;
+  a same-email decoy in another org was untouched (tenant scoping).
+- Scope, stated honestly: covers the CRM personal data the tenant controls.
+  It does NOT erase Supabase `auth.users` / `org_members` (a member's own
+  platform login — that is account closure, handled by removing the member),
+  and free-text *name* mentions inside message/note bodies are not scrubbed —
+  only the email identifier is redacted (deterministic literal redaction;
+  arbitrary name-in-prose scrubbing is unreliable and out of scope).
+- Original PII inventory: `contacts` (name, email, phone, title), `sellers`
   (name, email), `org_members`, `messages` (from/to/cc emails),
-  `meeting_notes`. All identifiable personal data.
+  `meeting_notes`.
 
 **RISK-6 — Data residency not pinned/documented.**
 Severity: **MEDIUM (GDPR data-residency commitments).**

@@ -1,0 +1,61 @@
+RISK-2 GDPR data-subject erasure/export — blind verification (seed → erase → verify → rollback)
+Result: PREVIEW found 1/1/1/1/1; after erase all identifiers removed; RESIDUAL PII in DEMO = 0;
+same-email DECOY in COUNTERPART org untouched (tenant scoping). Free-text NAME mentions in notes
+are out of scope by design — only the email identifier is redacted (documented in the module).
+Raw transcript below.
+================================================================================
+Pager usage is off.
+BEGIN
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+INSERT 0 1
+  step   | contacts | sellers | msg_from | msg_rcpt | notes 
+---------+----------+---------+----------+----------+-------
+ PREVIEW |        1 |       1 |        1 |        1 |     1
+(1 row)
+
+UPDATE 1
+UPDATE 1
+UPDATE 1
+UPDATE 1
+UPDATE 1
+     check     |                email                 | name 
+---------------+--------------------------------------+------
+ contact_after | erased-abc123def456@redacted.invalid | 
+(1 row)
+
+    check     |   name   | email 
+--------------+----------+-------
+ seller_after | [erased] | 
+(1 row)
+
+    check     |              from_email              | text_body 
+--------------+--------------------------------------+-----------
+ msg_authored | erased-abc123def456@redacted.invalid | 
+(1 row)
+
+     check     |   to_emails   | cc_emails 
+---------------+---------------+-----------
+ msg_recipient | {other@x.com} | {}
+(1 row)
+
+   check    |        attendees         |                    body                     
+------------+--------------------------+---------------------------------------------
+ note_after | Jane Doe <[erased]>, Bob | Met with [erased] about renewal. Follow up.
+(1 row)
+
+           check            | residual 
+----------------------------+----------
+ RESIDUAL_PII_DEMO_expect_0 |        0
+(1 row)
+
+          check           | count 
+--------------------------+-------
+ DECOY_CP_intact_expect_1 |     1
+(1 row)
+
+ROLLBACK

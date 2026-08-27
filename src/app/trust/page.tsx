@@ -93,6 +93,7 @@ export default async function TrustPage() {
             <li>Strict Content-Security-Policy with per-request nonces; rate limiting on the edge; independent nightly database backups.</li>
             <li>Agent access (MCP) uses per-org bearer keys — reads mirror your screens, the only write creates drafts behind your gates, revocation is instant.</li>
             <li>Sharing anything (a list, a skill, a claim, an intro) is offer → accept, audited on both ledgers, revocable — consent is mechanics, not paperwork.</li>
+            <li>GDPR data-subject rights are built in: an owner can export a person&apos;s data as portable JSON (Art. 15/20) and erase it (Art. 17) — anonymized in one transaction, scoped to your tenant, logged with a one-way hash of the email, never the address.</li>
           </ul>
         </Card>
 

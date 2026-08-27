@@ -19,6 +19,7 @@ import {
 import { decideOverlapProbe, requestOverlapProbe, type OverlapLevel } from "@/lib/partnerships/overlap";
 import { addSuppression, removeSuppression, saveIcp } from "@/lib/icp/icp";
 import { clearOrgAnthropicKey, setOrgAnthropicKey } from "@/lib/ai/org-keys";
+import { eraseDataSubject, findDataSubject } from "@/lib/privacy/data-subject";
 
 function notice(msg: string): never {
   redirect(`/admin?notice=${encodeURIComponent(msg)}`);
@@ -350,4 +351,51 @@ export async function clearOrgAiKeyAction(): Promise<void> {
   if (!orgId) throw new Error("No organization in scope.");
   await clearOrgAnthropicKey(pool, orgId);
   revalidatePath("/admin");
+}
+
+// ── Privacy: GDPR data-subject rights (RISK-2) — owner-only ───────────────────
+
+/**
+ * Preview what an erasure would remove, per table, without changing anything.
+ * The owner runs this first; the counts land in the notice bar so the erase
+ * that follows is an informed, deliberate act.
+ */
+export async function previewDataSubjectAction(formData: FormData): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const email = String(formData.get("email") ?? "");
+  let summary: Awaited<ReturnType<typeof findDataSubject>> | null = null;
+  const failed = await attempt(async () => {
+    summary = await findDataSubject(pool, orgId, email);
+  }, "Couldn't look up that data subject.");
+  if (failed) notice(failed);
+  const s = summary!;
+  if (s.total === 0) notice(`No personal data found for ${s.email} in this workspace.`);
+  notice(
+    `${s.email}: ${s.contacts} contact(s), ${s.sellers} seller(s), ${s.messagesAuthored} authored message(s), ` +
+    `${s.messagesRecipient} message(s) as recipient, ${s.meetingNotes} meeting note(s). ` +
+    `Export first if the subject requested a copy; then type ERASE to remove.`,
+  );
+}
+
+/**
+ * Irreversible erasure (Art. 17). Guarded by a typed confirmation so it can't
+ * fire on a stray click. Anonymizes in one transaction and reports exactly
+ * what changed; the audit entry stores only a hash of the email.
+ */
+export async function eraseDataSubjectAction(formData: FormData): Promise<void> {
+  const { pool, orgId } = await ownerOrg();
+  const email = String(formData.get("email") ?? "");
+  const confirm = String(formData.get("confirm") ?? "").trim();
+  if (confirm !== "ERASE") notice('Type ERASE in the confirmation box to erase — nothing was changed.');
+  let result: Awaited<ReturnType<typeof eraseDataSubject>> | null = null;
+  const failed = await attempt(async () => {
+    result = await eraseDataSubject(pool, orgId, email);
+  }, "Couldn't complete the erasure.");
+  if (failed) notice(failed);
+  const r = result!;
+  revalidatePath("/admin");
+  notice(
+    `Erased ${r.email}: ${r.contacts} contact(s), ${r.sellers} seller(s), ${r.messagesAuthored} authored message(s), ` +
+    `${r.messagesRecipient} recipient reference(s), ${r.meetingNotes} meeting note(s) redacted. This is irreversible.`,
+  );
 }

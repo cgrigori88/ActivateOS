@@ -14,6 +14,7 @@ import {
   setOrgAiKeyAction,
   clearOrgAiKeyAction,
   saveIcpAction, addSuppressionAction, removeSuppressionAction,
+  previewDataSubjectAction, eraseDataSubjectAction,
 } from "./actions";
 import { icpFit, listSuppressions, loadIcp, type IcpFit } from "@/lib/icp/icp";
 import { AgentKeys, type KeyRow } from "./agent-keys";
@@ -744,6 +745,58 @@ export default async function AdminPage({
           Field scoping limits which member attributes travel with the list. Their copy materializes only on accept;
           &quot;source changed&quot; flags a copy that has drifted from the list behind it, and sync re-copies it
           (still field-scoped). Revoking flips the copy off on their side immediately.
+        </p>
+      </Card>
+
+      {/* ── Privacy: GDPR data-subject rights (RISK-2) ── */}
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Privacy &amp; data-subject rights</h2>
+      <Card className="mb-4">
+        <p className="mb-4 max-w-[92ch] text-sm text-neutral-600 dark:text-neutral-300">
+          Serve a person&apos;s GDPR request against the personal data this workspace holds about them — CRM
+          contacts, partner/vendor sellers, email correspondence, and meeting notes. Scoped to your organization;
+          you can only reach subjects in your own tenant. Platform-account requests (a member&apos;s own login) are
+          handled by removing the member above.
+        </p>
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Access & portability (Art. 15/20) */}
+          <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Export a copy · Art. 15/20</h3>
+            <p className="mb-2 text-xs text-neutral-500">
+              Download everything held about the subject as portable JSON. Read-only — nothing changes.
+            </p>
+            <form method="get" action="/api/privacy/export" className="flex flex-wrap items-end gap-2">
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Subject email</span>
+                <input name="email" type="email" required placeholder="person@company.com" className={`${input} w-64`} />
+              </label>
+              <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">Export JSON</button>
+            </form>
+          </div>
+
+          {/* Erasure (Art. 17) */}
+          <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Erase · Art. 17</h3>
+            <p className="mb-2 text-xs text-neutral-500">
+              Preview first to see the count. Erasure anonymizes in place (contacts and sellers keep their business
+              record; identifiers are removed) and is <b>irreversible</b>. Type <code className="font-mono">ERASE</code> to confirm.
+            </p>
+            <form className="flex flex-wrap items-end gap-2">
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Subject email</span>
+                <input name="email" type="email" required placeholder="person@company.com" className={`${input} w-64`} />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-neutral-500">Confirm</span>
+                <input name="confirm" placeholder="ERASE" autoComplete="off" className={`${input} w-28`} />
+              </label>
+              <button formAction={previewDataSubjectAction} className="rounded-md px-3 py-1.5 text-sm font-medium text-neutral-700 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-200 dark:ring-neutral-700 dark:hover:bg-neutral-900">Preview</button>
+              <button formAction={eraseDataSubjectAction} className="rounded-md bg-red-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-800">Erase permanently</button>
+            </form>
+          </div>
+        </div>
+        <p className="mt-3 border-t border-neutral-100 pt-2 text-[11px] text-neutral-400 dark:border-neutral-800">
+          Every erasure lands in the audit log below as <code className="font-mono">privacy.subject_erased</code> with a
+          one-way hash of the email (never the address itself) and the per-table counts.
         </p>
       </Card>
 
