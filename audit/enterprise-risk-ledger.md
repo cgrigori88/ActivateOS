@@ -62,11 +62,21 @@ Severity: **MEDIUM (GDPR data-residency commitments).**
 ## Hardening gaps
 
 **RISK-3 — DB connection template uses `sslmode=no-verify`.**
-Severity: **MEDIUM.** The `.env.example` DATABASE_URL disables TLS
-certificate verification; `src/db/client.ts` sets no explicit `ssl`
-option, so it inherits the connection string. If prod carries the same,
-the DB link is MITM-exposed. **Action: confirm prod uses `verify-full`
-(or `verify-ca`); if not, fix and rotate.**
+Severity: **MEDIUM.** **Status: PARTIALLY ADDRESSED (code + template);
+prod confirmation + rotation still required.**
+- Code: `src/db/client.ts` now supports verify-full turnkey via a pinned CA
+  (`DATABASE_CA_CERT` inline or `DATABASE_CA_PATH`). When set, the pool uses
+  `ssl: { ca, rejectUnauthorized: true }`, overriding the connection string.
+  Deliberately opt-in: with neither env set, behavior is unchanged, so this
+  ships with zero outage risk.
+- Template: `.env.example` now defaults to `sslmode=verify-full` and documents
+  the CA vars (local dev can use `sslmode=disable`).
+- STILL NEEDS THE OWNER (can't be done safely from here, needs prod):
+  (1) confirm the prod `DATABASE_URL` sslmode; (2) download Supabase's CA
+  (Dashboard → Settings → Database → SSL) and set `DATABASE_CA_PATH`/`_CERT`
+  on Vercel + Railway, then set the string to `verify-full`; (3) rotate the DB
+  password (it has been transiting under no-verify). Verify with one real
+  connection after cutover before removing the fallback.
 
 **RISK-4 — One non-cascade FK on the erasure path.**
 Severity: **LOW.** `joint_playbooks.updated_by_org → organizations`
