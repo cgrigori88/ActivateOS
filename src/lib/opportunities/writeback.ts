@@ -131,7 +131,13 @@ export async function exportApprovedWritebacks(db: Db, orgId: string): Promise<s
      where w.org_id = $1 and w.status = 'approved' order by w.created_at`,
     [orgId],
   );
-  const esc = (v: string | null) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  // Formula-injection guard: spreadsheet apps execute cells starting with
+  // = + - @ — account names arrive from CSV imports, so prefix them inert.
+  const esc = (v: string | null) => {
+    let s = String(v ?? "");
+    if (/^[=+\-@]/.test(s)) s = `'${s}`;
+    return `"${s.replace(/"/g, '""')}"`;
+  };
   const lines = [
     "account,opportunity,field,crm_value,corrected_value,rationale",
     ...rows.map((r) =>

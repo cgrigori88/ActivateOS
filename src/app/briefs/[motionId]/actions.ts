@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getPool } from "@/db/client";
+import { currentOrgId, requireWrite } from "@/lib/auth/org";
 import { generateOutreachDraft } from "@/lib/agents/email-generator";
 import { ensureThread, sendOutbound } from "@/lib/comms/send";
 
@@ -13,14 +14,20 @@ import { ensureThread, sendOutbound } from "@/lib/comms/send";
 
 async function motionContext(motionId: string) {
   const pool = getPool();
+  // Security-audit fix: these actions spend AI budget and write drafts, so
+  // they carry the same write gate as every other mutating action — and the
+  // motion must belong to the caller's org, never resolved from the row.
+  await requireWrite(pool);
+  const orgId = await currentOrgId(pool);
+  if (!orgId) throw new Error("No organization in scope.");
   const db = await pool.connect();
   try {
     const { rows } = await db.query(
       `select m.org_id, m.company_id, m.partner_seller_id, s.name as seller_name
        from revenue_motions m
        left join sellers s on s.id = m.partner_seller_id
-       where m.id = $1`,
-      [motionId],
+       where m.id = $1 and m.org_id = $2`,
+      [motionId, orgId],
     );
     if (rows.length === 0) throw new Error("motion not found");
     return rows[0];
