@@ -86,11 +86,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? null;
-  // RISK-1 cutover note: resolveKey reads api_keys (an org-scoped table) to find
-  // the key's org BEFORE any org is known — the same chicken-and-egg solved for
-  // users by resolve_user_org(). Before DATABASE_URL points at app_rw, this
-  // lookup needs a SECURITY DEFINER key resolver (or a dedicated owner auth
-  // connection); on the owner connection today it works unchanged.
+  // RISK-1: resolveKey finds the key's org BEFORE any org is known — the same
+  // chicken-and-egg solved for users by resolve_user_org(). It now calls the
+  // SECURITY DEFINER resolve_api_key() (migration 0062), so it works under
+  // app_rw (which cannot read api_keys itself) as well as on the owner pool.
   const key = await resolveKey(getPool(), bearer);
   if (!key) {
     return NextResponse.json(rpcError(null, -32000, "Invalid or revoked API key"), {

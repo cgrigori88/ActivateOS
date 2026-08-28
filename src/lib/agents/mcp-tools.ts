@@ -36,13 +36,16 @@ export function mintKey(): { plaintext: string; hash: string } {
 export async function resolveKey(pool: Pool | PoolClient, bearer: string | null): Promise<{ orgId: string; keyId: string } | null> {
   if (!bearer || !bearer.startsWith("pos_")) return null;
   const hash = createHash("sha256").update(bearer).digest("hex");
-  const { rows } = await pool.query<{ id: string; org_id: string }>(
-    `select id, org_id from api_keys where key_hash = $1 and revoked_at is null`,
+  // RISK-1: resolve_api_key() (migration 0062) is SECURITY DEFINER — it looks up
+  // the key's org and stamps last_used_at in owner context, so this works before
+  // any tenant scope is set and under app_rw (which cannot read api_keys itself).
+  // On the owner connection it runs as the same owner: unchanged behavior.
+  const { rows } = await pool.query<{ org_id: string; key_id: string }>(
+    `select org_id, key_id from public.resolve_api_key($1)`,
     [hash],
   );
   if (!rows[0]) return null;
-  await pool.query(`update api_keys set last_used_at = now() where id = $1`, [rows[0].id]);
-  return { orgId: rows[0].org_id, keyId: rows[0].id };
+  return { orgId: rows[0].org_id, keyId: rows[0].key_id };
 }
 
 // ── Tools ───────────────────────────────────────────────────────────────────

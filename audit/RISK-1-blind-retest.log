@@ -114,3 +114,27 @@ Root cause fixed by 0061: global reference tables (companies/taxonomy/…) and
 parent-scoped child tables (stakeholders/campaign_touches/messages/…) had RLS
 on but no app_rw policy, so INNER JOINs dropped every row until policied.
 (admin/page.tsx not in the crawl — documented remaining.)
+
+================================================================================
+0062 resolve_api_key FOCUSED BLIND TEST (MCP key path)
+--------------------------------------------------------------------------------
+Reproduced the exact 0058 RLS mechanism in a minimal fixture (app_current_org,
+GUC-aware is_org_member, app_rw role + `for all to app_rw using(is_org_member
+(org_id))` policy on api_keys) with two orgs, one key each, plus one revoked
+key. Ran as the non-owner role with NO app.org_id set — the pre-tenant
+bootstrap state the MCP route's resolveKey() runs in. Results (all as expected):
+
+  1. direct `select from api_keys` under app_rw, no GUC ......... 0 rows (RLS blocks)
+  2. resolve_api_key('hashA') ............................ org 1111… (definer bypass)
+  3. resolve_api_key('hashB') ............................ org 2222…
+  4. resolve_api_key('nope')  ............................ 0 rows
+  5. resolve_api_key('hashRevoked') ..................... 0 rows (revoked excluded)
+  6. last_used_at stamped for hashA/hashB, NOT the revoked key (touched t/t/f)
+
+Conclusion: the SECURITY DEFINER resolver lets the app_rw connection learn a
+key's org before any tenant scope exists — the api_keys analogue of
+resolve_user_org() — without granting app_rw any direct read of api_keys. The
+MCP surface will authenticate correctly after the DATABASE_URL→app_rw flip; on
+the owner pool today it runs as the same owner, so behavior is unchanged.
+(admin/page.tsx also migrated to withTenant + owner-pool split; verified by tsc
+and the established withTenant pattern already proven across the room sweep.)

@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { getPool } from "@/db/client";
+import { getOwnerPool } from "@/db/client";
 import { Bento, Button, Card, PageHeader } from "@/components/ui";
-import { currentOrgId, currentRole } from "@/lib/auth/org";
+import { currentRole } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { byoModelAvailable, hasOrgAnthropicKey } from "@/lib/ai/org-keys";
 import { authConfigured } from "@/lib/auth/supabase";
 import {
@@ -50,8 +51,14 @@ export default async function AdminPage({
   searchParams: Promise<{ notice?: string; next?: string }>;
 }) {
   const sp = await searchParams;
-  const pool = getPool();
-  const role = await currentRole(pool);
+  // RISK-1: role gate + the members table (which joins auth.users) run on the
+  // OWNER pool — app_rw cannot read the `auth` schema. Everything else is
+  // org-scoped DATA and runs inside a single withTenant transaction, so under
+  // app_rw every read is RLS-pinned to this org. (This also closes a latent
+  // leak: the AI-operations reads below were previously unscoped and, on the
+  // owner pool, surfaced every tenant's runs to any owner.)
+  const ownerPool = getOwnerPool();
+  const role = await currentRole(ownerPool);
 
   if (role !== "owner") {
     return (
@@ -62,18 +69,122 @@ export default async function AdminPage({
     );
   }
 
-  const orgId = await currentOrgId(pool);
   const byoAvailable = byoModelAvailable();
-  const hasOwnKey = orgId ? await hasOrgAnthropicKey(pool, orgId) : false;
-  const isGuest = orgId ? (await orgKind(pool, orgId)) === "guest" : false;
   // Absolute base for shareable /join links — the invite code doubles as a
   // guest-seat claim URL (B+2).
   const hdrs = await headers();
   const joinBase = `https://${hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "pursuitos.io"}`;
 
-  // ── Access ────────────────────────────────────────────────────────────────
+  // ── Tenant-scoped reads (one transaction, RLS-pinned under app_rw) ──────────
+  const t = await withTenant(async (db, orgId) => {
+    const hasOwnKey = await hasOrgAnthropicKey(db, orgId);
+    const isGuest = (await orgKind(db, orgId)) === "guest";
+
+    // Partnerships + ledger
+    const [partnerships, grants, ledger, { rows: myPartners }, { rows: myLists }] = await Promise.all([
+      listPartnerships(db, orgId),
+      listGrantViews(db, orgId),
+      auditEntries(db, orgId, 25),
+      db.query<{ id: string; name: string }>(
+        `select id, name from partners where org_id = $1 order by name asc`,
+        [orgId],
+      ),
+      db.query<{ id: string; name: string }>(
+        `select id, name from account_populations
+         where org_id = $1 and status = 'approved' and created_by is distinct from 'partner share'
+         order by name asc`,
+        [orgId],
+      ),
+    ]);
+    const activePartnerships = partnerships.filter((p) => p.status === "active");
+
+    // Blind overlap ladders — one per active partnership; sequential on the
+    // shared pool client semantics (small N, no parallel query hazards).
+    const ladders: (OverlapLadder & { otherOrgName: string | null })[] = [];
+    let myBookSize = 0;
+    if (activePartnerships.length > 0) {
+      myBookSize = await bookSize(db, orgId);
+      for (const p of activePartnerships) {
+        const ladder = await overlapLadder(db, orgId, p.id);
+        ladders.push({ ...ladder, otherOrgName: p.otherOrgName ?? p.myLensName });
+      }
+    }
+
+    // Targeting (task #83): the ICP profile + suppression list, and a fit map
+    // for every account in approved named-overlap results.
+    const icp = await loadIcp(db, orgId);
+    const suppressions = await listSuppressions(db, orgId);
+    const fitById = new Map<string, IcpFit>();
+    if (icp) {
+      const namedIds = new Set<string>();
+      for (const l of ladders) {
+        const rung = l.rungs.named;
+        if (rung.state === "approved") {
+          for (const a of (rung.results as NamedResults).accounts) namedIds.add(a.company_id);
+        }
+      }
+      if (namedIds.size > 0) {
+        const { rows } = await db.query<{ id: string; industry: string | null; employee_count: number | null; country: string | null }>(
+          `select id, industry, employee_count, country from companies where id = any($1)`,
+          [[...namedIds]],
+        );
+        for (const c of rows) {
+          fitById.set(c.id, icpFit(icp, { industry: c.industry, employeeCount: c.employee_count, country: c.country }));
+        }
+      }
+    }
+
+    // Agent API keys (task #76) — the BYO-bot surface.
+    const { rows: apiKeys } = await db.query<{ id: string; name: string; created_at: Date; last_used_at: Date | null }>(
+      `select id, name, created_at, last_used_at from api_keys
+       where org_id = $1 and revoked_at is null order by created_at desc`,
+      [orgId],
+    );
+
+    // ── AI operations (now org-scoped by RLS) ────────────────────────────────
+    const [{ rows: agents }, { rows: recentRuns }, { rows: providerErrors }, { rows: queues }] = await Promise.all([
+      db.query<{ workflow: string; n: string; cost: string | null; ms: string | null; overridden: string }>(
+        `select workflow, count(*) as n, round(sum(cost_usd)::numeric, 3) as cost,
+                round(avg(latency_ms))::int as ms,
+                count(*) filter (where human_decision in ('edited','rejected')) as overridden
+         from agent_runs group by workflow order by n desc`,
+      ),
+      db.query<{ workflow: string; model: string; cost_usd: string | null; latency_ms: number | null; human_decision: string | null; created_at: Date }>(
+        `select workflow, model, cost_usd, latency_ms, human_decision, created_at
+         from agent_runs order by created_at desc limit 10`,
+      ),
+      db.query<{ provider_id: string; error: string | null; status: string; finished_at: Date | null }>(
+        `select provider_id, error, status, finished_at from provider_runs
+         where status = 'failed' or error is not null
+         order by finished_at desc nulls last limit 8`,
+      ),
+      db.query<{ research_pending: string; research_running: string; review_pending: string; touches_scheduled: string }>(
+        `select
+           (select count(*) from research_jobs where status = 'pending') as research_pending,
+           (select count(*) from research_jobs where status = 'running') as research_running,
+           (select count(*) from review_queue where status = 'pending') as review_pending,
+           (select count(*) from campaign_touches where status = 'scheduled') as touches_scheduled`,
+      ),
+    ]);
+
+    return {
+      orgId, hasOwnKey, isGuest,
+      partnerships, grants, ledger, myPartners, myLists, activePartnerships,
+      ladders, myBookSize, icp, suppressions, fitById, apiKeys,
+      agents, recentRuns, providerErrors, queues,
+    };
+  });
+
+  const {
+    orgId, hasOwnKey, isGuest,
+    partnerships, grants, ledger, myPartners, myLists, activePartnerships,
+    ladders, myBookSize, icp, suppressions, fitById, apiKeys,
+    agents, recentRuns, providerErrors, queues,
+  } = t;
+
+  // ── Access: members join auth.users → OWNER pool ────────────────────────────
   const { rows: members } = orgId
-    ? await pool.query<{ user_id: string; email: string | null; role: string; created_at: Date; last_sign_in_at: Date | null }>(
+    ? await ownerPool.query<{ user_id: string; email: string | null; role: string; created_at: Date; last_sign_in_at: Date | null }>(
         `select m.user_id, u.email, m.role, m.created_at, u.last_sign_in_at
          from org_members m join auth.users u on u.id = m.user_id
          where m.org_id = $1 order by m.created_at asc`,
@@ -81,70 +192,6 @@ export default async function AdminPage({
       )
     : { rows: [] };
 
-  // ── Partnerships + ledger ─────────────────────────────────────────────────
-  const [partnerships, grants, ledger, { rows: myPartners }, { rows: myLists }] = orgId
-    ? await Promise.all([
-        listPartnerships(pool, orgId),
-        listGrantViews(pool, orgId),
-        auditEntries(pool, orgId, 25),
-        pool.query<{ id: string; name: string }>(
-          `select id, name from partners where org_id = $1 order by name asc`,
-          [orgId],
-        ),
-        pool.query<{ id: string; name: string }>(
-          `select id, name from account_populations
-           where org_id = $1 and status = 'approved' and created_by is distinct from 'partner share'
-           order by name asc`,
-          [orgId],
-        ),
-      ])
-    : [[], [], [], { rows: [] }, { rows: [] }];
-  const activePartnerships = partnerships.filter((p) => p.status === "active");
-
-  // Blind overlap ladders — one per active partnership; sequential on the
-  // shared pool client semantics (small N, no parallel query hazards).
-  const ladders: (OverlapLadder & { otherOrgName: string | null })[] = [];
-  let myBookSize = 0;
-  if (orgId && activePartnerships.length > 0) {
-    myBookSize = await bookSize(pool, orgId);
-    for (const p of activePartnerships) {
-      const ladder = await overlapLadder(pool, orgId, p.id);
-      ladders.push({ ...ladder, otherOrgName: p.otherOrgName ?? p.myLensName });
-    }
-  }
-
-  // Targeting (task #83): the ICP profile + suppression list, and a fit map
-  // for every account in approved named-overlap results.
-  const icp = orgId ? await loadIcp(pool, orgId) : null;
-  const suppressions = orgId ? await listSuppressions(pool, orgId) : [];
-  const fitById = new Map<string, IcpFit>();
-  if (icp) {
-    const namedIds = new Set<string>();
-    for (const l of ladders) {
-      const rung = l.rungs.named;
-      if (rung.state === "approved") {
-        for (const a of (rung.results as NamedResults).accounts) namedIds.add(a.company_id);
-      }
-    }
-    if (namedIds.size > 0) {
-      const { rows } = await pool.query<{ id: string; industry: string | null; employee_count: number | null; country: string | null }>(
-        `select id, industry, employee_count, country from companies where id = any($1)`,
-        [[...namedIds]],
-      );
-      for (const c of rows) {
-        fitById.set(c.id, icpFit(icp, { industry: c.industry, employeeCount: c.employee_count, country: c.country }));
-      }
-    }
-  }
-
-  // Agent API keys (task #76) — the BYO-bot surface.
-  const { rows: apiKeys } = orgId
-    ? await pool.query<{ id: string; name: string; created_at: Date; last_used_at: Date | null }>(
-        `select id, name, created_at, last_used_at from api_keys
-         where org_id = $1 and revoked_at is null order by created_at desc`,
-        [orgId],
-      )
-    : { rows: [] };
   const keyRows: KeyRow[] = apiKeys.map((k) => ({
     id: k.id,
     name: k.name,
@@ -153,31 +200,6 @@ export default async function AdminPage({
   }));
   const mcpEndpoint = `${process.env.APP_URL ?? "https://pursuitos.io"}/api/mcp`;
 
-  // ── AI operations ─────────────────────────────────────────────────────────
-  const [{ rows: agents }, { rows: recentRuns }, { rows: providerErrors }, { rows: queues }] = await Promise.all([
-    pool.query<{ workflow: string; n: string; cost: string | null; ms: string | null; overridden: string }>(
-      `select workflow, count(*) as n, round(sum(cost_usd)::numeric, 3) as cost,
-              round(avg(latency_ms))::int as ms,
-              count(*) filter (where human_decision in ('edited','rejected')) as overridden
-       from agent_runs group by workflow order by n desc`,
-    ),
-    pool.query<{ workflow: string; model: string; cost_usd: string | null; latency_ms: number | null; human_decision: string | null; created_at: Date }>(
-      `select workflow, model, cost_usd, latency_ms, human_decision, created_at
-       from agent_runs order by created_at desc limit 10`,
-    ),
-    pool.query<{ provider_id: string; error: string | null; status: string; finished_at: Date | null }>(
-      `select provider_id, error, status, finished_at from provider_runs
-       where status = 'failed' or error is not null
-       order by finished_at desc nulls last limit 8`,
-    ),
-    pool.query<{ research_pending: string; research_running: string; review_pending: string; touches_scheduled: string }>(
-      `select
-         (select count(*) from research_jobs where status = 'pending') as research_pending,
-         (select count(*) from research_jobs where status = 'running') as research_running,
-         (select count(*) from review_queue where status = 'pending') as review_pending,
-         (select count(*) from campaign_touches where status = 'scheduled') as touches_scheduled`,
-    ),
-  ]);
   const qd = queues[0];
   const totalRuns = agents.reduce((s, a) => s + Number(a.n), 0);
   const totalCost = agents.reduce((s, a) => s + Number(a.cost ?? 0), 0);

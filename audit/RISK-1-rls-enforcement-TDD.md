@@ -96,11 +96,21 @@ job; role gating (viewer/writer/owner) stays in the app layer
    unscoped `accounts/export`, and it surfaced (flagged, RLS-covered) many
    pre-existing unscoped list reads (Today/analytics/etc.) — see the flagged
    list in the sweep commit.
-   REMAINING before cutover: (a) migrate `admin/page.tsx` (owner-only; mixes
-   auth.users + cross-tenant + platform-observability reads); (b) a SECURITY
-   DEFINER `resolve_api_key(hash)` so the MCP key lookup works off the owner
-   role; (c) optionally add app-layer `org_id` filters to the flagged list
-   reads (RLS already closes them at cutover — defense in depth).
+   DONE since: (a) `admin/page.tsx` migrated — role gate + the `auth.users`
+   join run on `getOwnerPool()`; every org-data + AI-operations read moved into
+   a single `withTenant` transaction (which also CLOSED a latent leak: the
+   AI-operations reads were previously unscoped and, on the owner pool,
+   surfaced every tenant's agent/provider runs to any owner). (b) SECURITY
+   DEFINER `resolve_api_key(hash)` shipped as migration 0062; `resolveKey()`
+   now calls it, so the MCP key lookup resolves the org (and stamps
+   last_used_at) in owner context — works under app_rw, unchanged on the owner
+   pool. Blind-tested against the 0058 RLS mechanism: under app_rw with no GUC a
+   direct api_keys read returns 0 rows, while resolve_api_key returns the right
+   org, excludes revoked keys, and stamps last_used_at (see
+   audit/RISK-1-blind-retest.log, "0062 resolve_api_key focused blind test").
+   REMAINING before cutover: (c) optionally add app-layer `org_id` filters to
+   the flagged list reads (RLS already closes them at cutover — defense in
+   depth).
 4. Point `DATABASE_URL` at `app_rw` and `DATABASE_URL_OWNER` at the owner role;
    optionally `FORCE` per table.
 5. Re-run the blind per-policy re-test on a real-auth session, then cut over.
