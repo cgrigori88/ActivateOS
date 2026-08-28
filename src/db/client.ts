@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import tls from "node:tls";
 import pg from "pg";
 
 let pool: pg.Pool | null = null;
@@ -21,9 +22,18 @@ let pool: pg.Pool | null = null;
 function sslOption(): pg.PoolConfig["ssl"] {
   const inline = process.env.DATABASE_CA_CERT?.trim();
   const path = process.env.DATABASE_CA_PATH?.trim();
-  const ca = inline ? inline : path ? readFileSync(path, "utf8") : null;
-  if (!ca) return undefined; // no CA configured → leave SSL to the connection string
-  return { ca, rejectUnauthorized: true };
+  // Normalize \n-escaped PEMs (some env stores flatten newlines) so the cert parses.
+  const pinned = inline ? inline.replace(/\\n/g, "\n") : path ? readFileSync(path, "utf8") : null;
+  if (!pinned) return undefined; // no CA configured → leave SSL to the connection string
+  // Trust the pinned CA IN ADDITION to Node's built-in roots — not instead of.
+  // Serverless connects through the Supabase POOLER, which presents a
+  // publicly-trusted cert that chains to a SYSTEM root; a DIRECT connection
+  // presents a cert signed by Supabase's PRIVATE root (the downloaded
+  // prod-ca-2021). Trusting only the pinned CA breaks the pooler path
+  // (SELF_SIGNED_CERT_IN_CHAIN); trusting only system roots breaks the direct
+  // path. rejectUnauthorized stays true, so this is real verification against a
+  // known trust set — no MITM opening, just a superset of accepted issuers.
+  return { ca: [...tls.rootCertificates, pinned], rejectUnauthorized: true };
 }
 
 /**
