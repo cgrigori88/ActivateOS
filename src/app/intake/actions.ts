@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getPool } from "@/db/client";
-import { currentOrgId, requireWrite } from "@/lib/auth/org";
+import { requireWrite } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import {
   analyzeCsvToBatch,
   commitCrmBatch,
@@ -25,11 +25,6 @@ import { CATEGORIES } from "@/lib/mapping/populations";
  */
 
 export async function analyzeUploadAction(formData: FormData): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool); // viewers are read-only (multi-tenant slice 3)
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
-
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) throw new Error("Choose a CSV file first.");
   if (file.size > MAX_CSV_BYTES) {
@@ -40,9 +35,9 @@ export async function analyzeUploadAction(formData: FormData): Promise<void> {
   const kindRaw = String(formData.get("kind") ?? "book");
   const kind = kindRaw === "crm" ? ("crm" as const) : kindRaw === "enrichment" ? ("enrichment" as const) : ("book" as const);
   const sourceLabel = kind === "enrichment" ? String(formData.get("sourceLabel") ?? "").trim() : "";
-  const db = await pool.connect();
-  let batchId: string;
-  try {
+
+  const batchId = await withTenant(async (db, orgId) => {
+    await requireWrite(db); // viewers are read-only (multi-tenant slice 3)
     const result = await analyzeCsvToBatch(db, {
       orgId,
       csv,
@@ -51,24 +46,16 @@ export async function analyzeUploadAction(formData: FormData): Promise<void> {
       kind,
       sourceLabel: sourceLabel || undefined,
     });
-    batchId = result.batchId;
-  } finally {
-    db.release();
-  }
+    return result.batchId;
+  });
   revalidatePath("/intake");
   redirect(`/intake/${batchId}`);
 }
 
 export async function commitImportAction(batchId: string, formData: FormData): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
+  const { populationId, imported } = await withTenant(async (db, orgId) => {
+    await requireWrite(db);
 
-  const db = await pool.connect();
-  let populationId: string;
-  let imported = 0;
-  try {
     const batch = await loadStagedBatch(db, { orgId, batchId });
     if (!batch) throw new Error("Import not found or already handled.");
 
@@ -125,11 +112,8 @@ export async function commitImportAction(batchId: string, formData: FormData): P
       surfaced,
       population: { name, category, partnerId },
     });
-    populationId = result.populationId;
-    imported = result.imported;
-  } finally {
-    db.release();
-  }
+    return { populationId: result.populationId, imported: result.imported };
+  });
 
   revalidatePath("/intake");
   revalidatePath("/mapping");
@@ -147,15 +131,9 @@ export async function commitImportAction(batchId: string, formData: FormData): P
  * disagreements surface on Today as crm_vs_platform divergences.
  */
 export async function commitCrmAction(batchId: string, formData: FormData): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
+  const { snapshots, oppsCreated } = await withTenant(async (db, orgId) => {
+    await requireWrite(db);
 
-  const db = await pool.connect();
-  let snapshots = 0;
-  let oppsCreated = 0;
-  try {
     const batch = await loadStagedBatch(db, { orgId, batchId });
     if (!batch) throw new Error("Import not found or already handled.");
     const rawTargets: Record<string, string> = {};
@@ -165,11 +143,8 @@ export async function commitCrmAction(batchId: string, formData: FormData): Prom
     }
     const targets = sanitizeTargets(rawTargets, batch.headers);
     const result = await commitCrmBatch(db, { orgId, batchId, targets });
-    snapshots = result.snapshots;
-    oppsCreated = result.oppsCreated;
-  } finally {
-    db.release();
-  }
+    return { snapshots: result.snapshots, oppsCreated: result.oppsCreated };
+  });
 
   revalidatePath("/intake");
   revalidatePath("/pipeline");
@@ -182,15 +157,9 @@ export async function commitCrmAction(batchId: string, formData: FormData): Prom
 }
 
 export async function commitEnrichmentAction(batchId: string, formData: FormData): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
+  const { evidenceAdded, filled } = await withTenant(async (db, orgId) => {
+    await requireWrite(db);
 
-  const db = await pool.connect();
-  let evidenceAdded = 0;
-  let filled = 0;
-  try {
     const batch = await loadStagedBatch(db, { orgId, batchId });
     if (!batch) throw new Error("Import not found or already handled.");
     const rawTargets: Record<string, string> = {};
@@ -200,11 +169,8 @@ export async function commitEnrichmentAction(batchId: string, formData: FormData
     }
     const targets = sanitizeTargets(rawTargets, batch.headers);
     const result = await commitEnrichmentBatch(db, { orgId, batchId, targets });
-    evidenceAdded = result.evidenceAdded;
-    filled = result.firmographicsFilled;
-  } finally {
-    db.release();
-  }
+    return { evidenceAdded: result.evidenceAdded, filled: result.firmographicsFilled };
+  });
 
   revalidatePath("/intake");
   revalidatePath("/accounts");
@@ -216,16 +182,10 @@ export async function commitEnrichmentAction(batchId: string, formData: FormData
 }
 
 export async function discardImportAction(batchId: string): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
-  const db = await pool.connect();
-  try {
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);
     await discardImportBatch(db, { orgId, batchId });
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath("/intake");
   redirect("/intake");
 }

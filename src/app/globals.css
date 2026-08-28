@@ -88,6 +88,19 @@
   --radius-card: 18px;
   --radius-panel: 22px;
 
+  /* Named type scale (design-pass DRIFT-3 fix). Codifies the sizes the app
+     already uses most so surfaces stop reinventing arbitrary text-[Npx].
+     These are 1:1 with the values they replace — pure aliases, no visual
+     change. One-off sizes (9/19/34px) stay arbitrary by design; codifying
+     them would be premature. text-{name} resolves to font-size because none
+     of these names is a color. */
+  --text-micro: 10px;   /* dense meta / dot labels */
+  --text-label: 11px;   /* the dominant micro-label */
+  --text-body: 13px;    /* compact body copy in cards/rows */
+  --text-title: 15px;   /* section subheads / lead paragraphs */
+  --text-display: 26px; /* bento figures */
+  --text-hero: 32px;    /* hero figures */
+
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-jbmono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }

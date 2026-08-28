@@ -39,7 +39,7 @@ export function QuerySelect({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="min-h-[34px] rounded-full border border-neutral-300/70 bg-white/70 px-3 pr-7 text-[13px] font-medium backdrop-blur transition-colors duration-[140ms] hover:border-neutral-400 focus:border-accent focus:outline-none dark:border-white/15 dark:bg-white/[0.06] dark:hover:border-white/30"
+        className="min-h-[34px] rounded-full border border-neutral-300/70 bg-white/70 px-3 pr-7 text-body font-medium backdrop-blur transition-colors duration-[140ms] hover:border-neutral-400 focus:border-accent focus:outline-none dark:border-white/15 dark:bg-white/[0.06] dark:hover:border-white/30"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>

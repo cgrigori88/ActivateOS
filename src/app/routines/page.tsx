@@ -1,8 +1,7 @@
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
 import { Card, PageHeader } from "@/components/ui";
 import { ROUTINE_CATALOG, listRoutines } from "@/lib/routines/routines";
 import { resendConfigured } from "@/lib/comms/resend";
+import { withTenant } from "@/lib/db/tenant";
 import { runRoutineNowAction, saveRoutineConfigAction, toggleRoutineAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -18,23 +17,23 @@ const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 const input = "rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
 
 export default async function RoutinesPage() {
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) return <main>No organization.</main>;
-
-  const routines = await listRoutines(pool, orgId);
-  const { rows: runs } = await pool.query<{
-    routine_id: string;
-    ran_at: Date;
-    status: string;
-    summary: Record<string, unknown>;
-    output: string | null;
-  }>(
-    `select rr.routine_id, rr.ran_at, rr.status, rr.summary, rr.output
+  const { routines, runs } = await withTenant(async (db, orgId) => ({
+    routines: await listRoutines(db, orgId),
+    runs: (
+      await db.query<{
+        routine_id: string;
+        ran_at: Date;
+        status: string;
+        summary: Record<string, unknown>;
+        output: string | null;
+      }>(
+        `select rr.routine_id, rr.ran_at, rr.status, rr.summary, rr.output
      from routine_runs rr join routines r on r.id = rr.routine_id
      where r.org_id = $1 order by rr.ran_at desc limit 20`,
-    [orgId],
-  );
+        [orgId],
+      )
+    ).rows,
+  }));
   const canEmail = resendConfigured();
 
   return (
@@ -52,10 +51,10 @@ export default async function RoutinesPage() {
             <Card key={cat.kind}>
               <div className="mb-1 flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold">{cat.label}</span>
-                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">
+                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-micro font-semibold uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">
                   {cat.cadence}
                 </span>
-                <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-800 ring-1 ring-inset ring-green-200 dark:bg-green-950/40 dark:text-green-300 dark:ring-green-900">
+                <span className="rounded-full bg-green-50 px-2 py-0.5 text-micro font-medium text-green-800 ring-1 ring-inset ring-green-200 dark:bg-green-950/40 dark:text-green-300 dark:ring-green-900">
                   {cat.guardrail}
                 </span>
                 <form action={toggleRoutineAction.bind(null, r.id)} className="ml-auto">
@@ -94,7 +93,7 @@ export default async function RoutinesPage() {
                     <input name="recipient" type="email" defaultValue={r.config.recipient ?? ""} placeholder="you@company.com" className={`${input} w-64`} />
                   </label>
                 )}
-                <button className="rounded-md px-3 py-1.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
+                <button className="rounded-md px-3 py-1.5 text-xs font-medium text-accent ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
                   Save
                 </button>
               </form>
@@ -102,7 +101,7 @@ export default async function RoutinesPage() {
                 <form action={runRoutineNowAction.bind(null, r.id)}>
                   <button className="rounded-md bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800">Run now</button>
                 </form>
-                <span className="text-[11px] text-neutral-400">
+                <span className="text-label text-neutral-400">
                   {r.last_run_at ? `last ran ${new Date(r.last_run_at).toISOString().slice(0, 16).replace("T", " ")} UTC` : "never ran"}
                 </span>
               </div>
@@ -112,7 +111,7 @@ export default async function RoutinesPage() {
                   {myRuns.map((run, i) => (
                     <details key={i} className="rounded-lg border border-neutral-200 px-3 py-2 dark:border-neutral-800" open={i === 0 && cat.kind === "morning_brief"}>
                       <summary className="cursor-pointer text-xs text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
-                        <span className={run.status === "ok" ? "font-medium text-green-700 dark:text-green-400" : "font-medium text-red-700 dark:text-red-400"}>
+                        <span className={run.status === "ok" ? "font-medium text-positive dark:text-green-400" : "font-medium text-red-700 dark:text-red-400"}>
                           {run.status}
                         </span>{" "}
                         · {new Date(run.ran_at).toISOString().slice(0, 16).replace("T", " ")} UTC

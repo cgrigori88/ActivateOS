@@ -1,4 +1,4 @@
-import { getPool } from "@/db/client";
+import { getOwnerPool } from "@/db/client";
 import { HeroMesh } from "@/components/hero-mesh";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { inviteInfo } from "@/lib/partnerships/guest";
@@ -23,7 +23,7 @@ export default async function JoinPage({
 }) {
   const { code } = await params;
   const sp = await searchParams;
-  const pool = getPool();
+  const pool = getOwnerPool();
   const invite = await inviteInfo(pool, code);
   const configured = authConfigured();
 
@@ -46,7 +46,7 @@ export default async function JoinPage({
   }
 
   const field =
-    "w-full rounded-input border border-neutral-300/80 bg-white/70 px-3.5 py-2.5 text-[15px] backdrop-blur transition-colors duration-[140ms] placeholder:text-neutral-400 hover:border-neutral-400 focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/15 dark:border-white/15 dark:bg-white/[0.06] dark:hover:border-white/30";
+    "w-full rounded-input border border-neutral-300/80 bg-white/70 px-3.5 py-2.5 text-title backdrop-blur transition-colors duration-[140ms] placeholder:text-neutral-400 hover:border-neutral-400 focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/15 dark:border-white/15 dark:bg-white/[0.06] dark:hover:border-white/30";
   const label = "mb-1.5 block text-[12.5px] font-semibold text-neutral-600 dark:text-neutral-300";
   const primary =
     "inline-flex min-h-[44px] w-full items-center justify-center rounded-full bg-accent px-5 text-[14.5px] font-bold text-white transition-colors duration-[140ms] hover:bg-accent-strong";
@@ -72,20 +72,20 @@ export default async function JoinPage({
 
           {!invite ? (
             <>
-              <h1 className="text-[32px] font-extrabold leading-[1.1] tracking-[-0.03em]">
+              <h1 className="text-hero font-extrabold leading-[1.1] tracking-[-0.03em]">
                 This invite link isn&apos;t valid anymore
               </h1>
-              <p className="mt-3 text-[15px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+              <p className="mt-3 text-title leading-relaxed text-neutral-500 dark:text-neutral-400">
                 It may have been redeemed already, or revoked by the organization that issued it. Ask your partner
                 contact for a fresh link.
               </p>
             </>
           ) : (
             <>
-              <h1 className="text-[32px] font-extrabold leading-[1.1] tracking-[-0.03em]">
+              <h1 className="text-hero font-extrabold leading-[1.1] tracking-[-0.03em]">
                 {invite.inviterOrgName} invited you to co-sell
               </h1>
-              <p className="mt-3 text-[15px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+              <p className="mt-3 text-title leading-relaxed text-neutral-500 dark:text-neutral-400">
                 This seat is free. You get your own private workspace: bring your book, learn how much it overlaps
                 with theirs — one consented rung at a time — open joint pursuit rooms, and read the same settlement
                 ledger they do. Nothing of yours is visible to them until you approve it, and either side can sever
@@ -154,7 +154,7 @@ export default async function JoinPage({
           <HeroMesh className="absolute inset-0 h-full w-full" />
           <div className="absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-[#04070f] via-[#04070f]/70 to-transparent" />
           <div className="absolute inset-x-0 bottom-0 p-10">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-300/70">Co-sell, consented</p>
+            <p className="text-label font-bold uppercase tracking-[0.14em] text-blue-300/70">Co-sell, consented</p>
             <p className="mt-3 max-w-[22ch] text-[34px] font-extrabold leading-[1.08] tracking-[-0.03em] text-white">
               The space between companies.
             </p>

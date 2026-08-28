@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import { Bento, Card, MiniBar, NextStep, PageHeader, StatusBadge } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
-import { currentOrgId } from "@/lib/auth/org";
 import {
   abandonMotionAction, editMotionAction,
   activateMotionAction,
@@ -76,9 +75,9 @@ export default async function MotionsPage({
   const groupKey = GROUPS[sp.group ?? "status"] ? (sp.group ?? "status") : "status";
   const group = GROUPS[groupKey];
 
-  const pool = getPool();
-  const { rows: all } = await pool.query<MotionRow>(
-    `select m.id, m.status, m.thesis, m.trigger_summary, m.cta, m.confidence, m.operator_notes,
+  const { all, goals, initiativeOpts, draftLists, draftCandidates } = await withTenant(async (db, orgId) => ({
+    all: (await db.query<MotionRow>(
+      `select m.id, m.status, m.thesis, m.trigger_summary, m.cta, m.confidence, m.operator_notes,
             m.company_id, c.legal_name, n.slug, c.industry, m.outcome,
             m.estimated_value_usd, m.effort, p.score as propensity, pa.name as partner_name,
             m.goal_id, g.name as goal_name, m.initiative_id
@@ -89,16 +88,13 @@ export default async function MotionsPage({
      left join partners pa on pa.id = m.partner_id
      left join goals g on g.id = m.goal_id
      order by m.created_at desc limit 500`,
-  );
-  const orgId = await currentOrgId(pool);
-  const goals = orgId ? await goalOptions(pool, orgId) : [];
-  const initiativeOpts = orgId ? await initiativeOptions(pool, orgId) : [];
-
-  // Composer targets (task #83): approved lists with how many members are
-  // still motion-less, and the top unmotioned accounts by propensity.
-  const { rows: draftLists } = orgId
-    ? await pool.query<{ id: string; name: string; partner_name: string | null; members: string; ready: string }>(
-        `select ap.id, ap.name, p.name as partner_name,
+    )).rows,
+    goals: await goalOptions(db, orgId),
+    initiativeOpts: await initiativeOptions(db, orgId),
+    // Composer targets (task #83): approved lists with how many members are
+    // still motion-less, and the top unmotioned accounts by propensity.
+    draftLists: (await db.query<{ id: string; name: string; partner_name: string | null; members: string; ready: string }>(
+      `select ap.id, ap.name, p.name as partner_name,
                 (select count(*) from population_members pm where pm.population_id = ap.id) as members,
                 (select count(*) from population_members pm where pm.population_id = ap.id
                    and not exists (select 1 from revenue_motions m
@@ -108,11 +104,10 @@ export default async function MotionsPage({
          left join partners p on p.id = ap.partner_id
          where ap.org_id = $1 and ap.status = 'approved'
          order by ap.name`,
-        [orgId],
-      )
-    : { rows: [] };
-  const { rows: draftCandidates } = await pool.query<{ company_id: string; legal_name: string; score: string }>(
-    `select company_id, legal_name, score from (
+      [orgId],
+    )).rows,
+    draftCandidates: (await db.query<{ company_id: string; legal_name: string; score: string }>(
+      `select company_id, legal_name, score from (
        select distinct on (p.company_id) p.company_id, c.legal_name, p.score
        from propensity_scores p join companies c on c.id = p.company_id
        where not exists (select 1 from revenue_motions m
@@ -127,8 +122,9 @@ export default async function MotionsPage({
              or (sl.kind = 'name' and c.normalized_name = sl.value))))
        order by p.company_id, p.computed_at desc
      ) x order by x.score desc limit 18`,
-    [orgId],
-  );
+      [orgId],
+    )).rows,
+  }));
   const draftedN = sp.drafted !== undefined ? Number(sp.drafted) : null;
 
   const justApproved = sp.approved ? all.find((m) => m.id === sp.approved && m.status === "approved") : undefined;
@@ -261,7 +257,7 @@ export default async function MotionsPage({
             )}
           </form>
         </div>
-        <p className="mt-3 text-[11px] text-neutral-400">
+        <p className="mt-3 text-label text-neutral-400">
           Drafts run in batches of 10, highest propensity first — rerun for the next batch. Accounts already carrying
           a draft, approved, or active motion are skipped, so drafting a whole list is always safe.
         </p>
@@ -313,8 +309,8 @@ export default async function MotionsPage({
                       <span className="text-neutral-400"> — {m.slug}</span>
                       {m.industry && <span className="ml-1 text-xs text-neutral-400">· {m.industry}</span>}
                       <span className="ml-2 text-xs text-neutral-400">({m.confidence} confidence)</span>
-                      <Link href={`/briefs/${m.id}`} className="ml-2 text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">Brief →</Link>
-                      {m.outcome && <span className={`ml-2 text-xs font-semibold uppercase ${m.outcome === "won" ? "text-green-700 dark:text-green-400" : "text-neutral-500"}`}>{m.outcome.replace(/_/g, " ")}</span>}
+                      <Link href={`/briefs/${m.id}`} className="ml-2 text-xs font-medium text-accent hover:underline dark:text-blue-400">Brief →</Link>
+                      {m.outcome && <span className={`ml-2 text-xs font-semibold uppercase ${m.outcome === "won" ? "text-positive dark:text-green-400" : "text-neutral-500"}`}>{m.outcome.replace(/_/g, " ")}</span>}
                     </p>
                     {(m.estimated_value_usd != null || m.partner_name) && (
                       <p className="mb-1 text-xs text-neutral-500">
@@ -335,8 +331,8 @@ export default async function MotionsPage({
                           <option value="">— none —</option>
                           {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
-                        <button className="font-medium text-blue-700 hover:underline dark:text-blue-400">set</button>
-                        {m.goal_name && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">{m.goal_name}</span>}
+                        <button className="font-medium text-accent hover:underline dark:text-blue-400">set</button>
+                        {m.goal_name && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-micro font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">{m.goal_name}</span>}
                       </form>
                     )}
                     {initiativeOpts.length > 0 && (
@@ -346,11 +342,11 @@ export default async function MotionsPage({
                           <option value="">— none —</option>
                           {initiativeOpts.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                         </select>
-                        <button className="font-medium text-blue-700 hover:underline dark:text-blue-400">set</button>
+                        <button className="font-medium text-accent hover:underline dark:text-blue-400">set</button>
                       </form>
                     )}
                     <details className="mb-1">
-                      <summary className="cursor-pointer text-xs font-medium text-blue-700 hover:underline dark:text-blue-400">Thesis &amp; trigger</summary>
+                      <summary className="cursor-pointer text-xs font-medium text-accent hover:underline dark:text-blue-400">Thesis &amp; trigger</summary>
                       <p className="mb-2 mt-2 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{m.thesis}</p>
                       <p className="text-sm text-neutral-500"><span className="font-medium">Trigger:</span> {m.trigger_summary}<br /><span className="font-medium">CTA:</span> {m.cta}</p>
                       {m.operator_notes && (

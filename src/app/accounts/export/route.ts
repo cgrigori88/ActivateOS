@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +9,13 @@ export async function GET(req: Request): Promise<NextResponse> {
   const band = url.searchParams.get("band");
   const q = url.searchParams.get("q")?.toLowerCase();
 
-  const pool = getPool();
-  const { rows } = await pool.query(
-    `select latest.legal_name, latest.industry, latest.slug, latest.score, latest.band,
+  // RISK-1: scope to the caller's org. This export previously ran unscoped —
+  // any authenticated user could export every tenant's accounts. Now the
+  // propensity_scores source is filtered by org_id (app-layer), and withTenant
+  // pins the session so RLS enforces the same boundary at cutover.
+  const { rows } = await withTenant(async (db, orgId) =>
+    db.query(
+      `select latest.legal_name, latest.industry, latest.slug, latest.score, latest.band,
             pt.partner_name, c.refresh_tier, c.next_refresh_at,
             (select count(*) from evidence e
               where e.company_id = latest.company_id and e.status = 'verified') as verified_evidence
@@ -21,6 +25,7 @@ export async function GET(req: Request): Promise<NextResponse> {
        from propensity_scores p
        join companies c2 on c2.id = p.company_id
        join taxonomy_nodes n on n.id = p.taxonomy_node_id
+       where p.org_id = $1
        order by p.company_id, p.computed_at desc
      ) latest
      join companies c on c.id = latest.company_id
@@ -30,6 +35,8 @@ export async function GET(req: Request): Promise<NextResponse> {
        where t.company_id = latest.company_id and t.status in ('recommended','accepted')
        order by t.created_at desc limit 1) pt on true
      order by latest.score desc`,
+      [orgId],
+    ),
   );
 
   let filtered = rows;

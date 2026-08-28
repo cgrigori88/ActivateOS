@@ -1,17 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getPool } from "@/db/client";
 import { createGoal, setGoalStatus, setGoalManualValue, type Metric } from "@/lib/goals/goals";
 import { upsertTarget, deleteTarget, type TargetMetric } from "@/lib/goals/targets";
-import { currentOrgId, requireWrite } from "@/lib/auth/org";
+import { requireWrite } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 
-async function soleOrgId(): Promise<string | null> {
-  return currentOrgId(getPool());
-}
+// RISK-1 adoption (task #67): every DB touch runs inside withTenant, which
+// resolves the caller's org and pins the session to it (app.org_id) for the
+// transaction. Inert while the app connects as the owner; becomes real
+// tenant isolation the moment DATABASE_URL points at app_rw. requireWrite runs
+// INSIDE the tenant tx so its org_members lookup is visible under the GUC.
+// revalidatePath stays OUTSIDE (it must run after the commit).
 
 export async function createGoalAction(formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const name = String(formData.get("name") ?? "").trim();
   const metric = String(formData.get("metric") ?? "pipeline_usd") as Metric;
   const target = Number(formData.get("target") ?? 0);
@@ -22,33 +24,33 @@ export async function createGoalAction(formData: FormData): Promise<void> {
   const description = String(formData.get("description") ?? "").trim() || null;
   if (!name || !Number.isFinite(target) || target <= 0) throw new Error("a name and a positive target are required");
 
-  const orgId = await soleOrgId();
-  await createGoal(getPool(), { orgId, name, description, metric, target, baseline, unit, dueDate, owner });
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    await createGoal(db, { orgId, name, description, metric, target, baseline, unit, dueDate, owner });
+  });
   revalidatePath("/goals");
 }
 
 export async function setGoalStatusAction(goalId: string, status: string): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
-  await setGoalStatus(pool, orgId, goalId, status);
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    await setGoalStatus(db, orgId, goalId, status);
+  });
   revalidatePath("/goals");
 }
 
 export async function setGoalManualValueAction(goalId: string, formData: FormData): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
   const value = Number(formData.get("value") ?? 0);
-  if (Number.isFinite(value)) await setGoalManualValue(pool, orgId, goalId, value);
+  if (!Number.isFinite(value)) return;
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    await setGoalManualValue(db, orgId, goalId, value);
+  });
   revalidatePath("/goals");
 }
 
 /** Set (or update) a per-period pipeline/revenue target — overall or per partner. */
 export async function upsertTargetAction(formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const periodYear = Number(formData.get("periodYear") ?? 0);
   const metric = String(formData.get("metric") ?? "pipeline") as TargetMetric;
   const partnerId = String(formData.get("partnerId") ?? "").trim() || null;
@@ -56,17 +58,17 @@ export async function upsertTargetAction(formData: FormData): Promise<void> {
   if (!Number.isInteger(periodYear) || periodYear < 2000 || !Number.isFinite(targetUsd) || targetUsd <= 0) {
     throw new Error("a valid year and a positive target are required");
   }
-  const orgId = await soleOrgId();
-  if (!orgId) throw new Error("no organization");
-  await upsertTarget(getPool(), { orgId, partnerId, periodYear, metric, targetUsd });
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    await upsertTarget(db, { orgId, partnerId, periodYear, metric, targetUsd });
+  });
   revalidatePath("/goals");
 }
 
 export async function deleteTargetAction(targetId: string): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
-  const orgId = await soleOrgId();
-  if (!orgId) throw new Error("No organization in scope.");
-  await deleteTarget(pool, orgId, targetId);
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    await deleteTarget(db, orgId, targetId);
+  });
   revalidatePath("/goals");
 }

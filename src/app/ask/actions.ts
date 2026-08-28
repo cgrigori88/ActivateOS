@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getPool } from "@/db/client";
-import { currentOrgId, requireWrite } from "@/lib/auth/org";
+import { requireWrite } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { askTheRecord } from "@/lib/agents/ask";
 
 /**
@@ -11,16 +11,15 @@ import { askTheRecord } from "@/lib/agents/ask";
  * (and never a redirect inside a catch — the errNotice pattern).
  */
 export async function askAction(formData: FormData): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool); // asking spends AI budget — viewers read past answers only
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
   const question = String(formData.get("question") ?? "").trim();
   if (!question) redirect("/ask?notice=Type+a+question+first.");
 
   let errNotice: string | null = null;
   try {
-    await askTheRecord(pool, orgId, question);
+    await withTenant(async (db, orgId) => {
+      await requireWrite(db); // asking spends AI budget — viewers read past answers only
+      await askTheRecord(db, orgId, question);
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "The ask surface hit an error.";
     errNotice = /credential|api key|auth/i.test(msg)

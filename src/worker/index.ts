@@ -2,7 +2,7 @@ import http from "node:http";
 import { mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
-import { getPool } from "../db/client";
+import { getOwnerPool } from "../db/client";
 import { dumpDatabase } from "../lib/backup/dump";
 import { secretEquals } from "../lib/security/compare";
 import { rateLimited } from "../lib/security/rate-limit";
@@ -44,7 +44,7 @@ function log(msg: string, extra?: unknown): void {
 // ── Pipeline actions (shared by HTTP + scheduler) ────────────────────────────
 
 async function runScreen(limit = SWEEP_LIMIT) {
-  const pool = getPool();
+  const pool = getOwnerPool();
   const db = await pool.connect();
   try {
     return await runScreeningSweepAllOrgs(db, { limit });
@@ -54,7 +54,7 @@ async function runScreen(limit = SWEEP_LIMIT) {
 }
 
 async function runResearch(limit = RESEARCH_LIMIT) {
-  const pool = getPool();
+  const pool = getOwnerPool();
   const db = await pool.connect();
   try {
     return await runPendingResearchLocked(db, { limit });
@@ -64,7 +64,7 @@ async function runResearch(limit = RESEARCH_LIMIT) {
 }
 
 async function runOutreach() {
-  const pool = getPool();
+  const pool = getOwnerPool();
   const db = await pool.connect();
   try {
     return await drainScheduledTouches(db);
@@ -74,7 +74,7 @@ async function runOutreach() {
 }
 
 async function runSuggest(limit: number) {
-  const pool = getPool();
+  const pool = getOwnerPool();
   const db = await pool.connect();
   try {
     return await suggestCampaigns(db, { limit });
@@ -84,7 +84,7 @@ async function runSuggest(limit: number) {
 }
 
 async function queueStatus() {
-  const pool = getPool();
+  const pool = getOwnerPool();
   const { rows } = await pool.query<{ status: string; n: string }>(
     `select status, count(*) as n from research_jobs group by status`,
   );
@@ -102,7 +102,7 @@ async function runBackup() {
   const dir = process.env.BACKUP_DIR;
   if (!dir) return { skipped: "BACKUP_DIR not set" };
   const keep = Math.max(1, Number(process.env.BACKUP_KEEP ?? 14));
-  const pool = getPool();
+  const pool = getOwnerPool();
   const db = await pool.connect();
   try {
     const dump = await dumpDatabase(db);
@@ -127,7 +127,7 @@ async function runImport(
   csv: string,
   meta: { orgName: string; partnerName?: string; partnerType?: string; filename?: string; uploadedBy?: string },
 ) {
-  const pool = getPool();
+  const pool = getOwnerPool();
   const db = await pool.connect();
   try {
     return await importAccountsCsv(db, { ...meta, csv });
@@ -143,7 +143,7 @@ async function runImport(
  */
 function screenOrgInBackground(orgId: string, limit = 50): void {
   void (async () => {
-    const pool = getPool();
+    const pool = getOwnerPool();
     const db = await pool.connect();
     try {
       const r = await runScreeningSweepLocked(db, orgId, { limit });
@@ -292,7 +292,7 @@ function startScheduler(): void {
     // Routines (task #73): each enabled routine fires at its configured hour;
     // the library enforces once-per-day and weekly cadences itself.
     try {
-      const pool = getPool();
+      const pool = getOwnerPool();
       const r = await runDueRoutines(pool);
       if (r.ran.length > 0) log("cron: routines", r);
     } catch (err) {

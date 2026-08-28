@@ -1,5 +1,4 @@
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { byoModelAvailable, hasOrgAnthropicKey } from "@/lib/ai/org-keys";
 
@@ -13,27 +12,26 @@ export const dynamic = "force-dynamic";
  */
 
 export default async function TrustPage() {
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) return <main>No organization.</main>;
-
-  const { rows: stats } = await pool.query<{
-    audit_n: string; agent_runs: string; evidence_n: string; verified_n: string; providers: string; keys: string;
-  }>(
-    `select (select count(*) from audit_log where org_id = $1) as audit_n,
+  // RISK-1: org stats read under withTenant (pins app.org_id).
+  const { stats, models, ownKey } = await withTenant(async (db, orgId) => ({
+    stats: (await db.query<{
+      audit_n: string; agent_runs: string; evidence_n: string; verified_n: string; providers: string; keys: string;
+    }>(
+      `select (select count(*) from audit_log where org_id = $1) as audit_n,
             (select count(*) from agent_runs where org_id = $1) as agent_runs,
             (select count(*) from evidence where org_id = $1 or org_id is null) as evidence_n,
             (select count(*) from evidence where (org_id = $1 or org_id is null) and status = 'verified') as verified_n,
             (select count(*) from providers) as providers,
             (select count(*) from api_keys where org_id = $1 and revoked_at is null) as keys`,
-    [orgId],
-  );
+      [orgId],
+    )).rows,
+    models: (await db.query<{ model: string; n: string }>(
+      `select model, count(*) as n from agent_runs where org_id = $1 group by model order by count(*) desc limit 5`,
+      [orgId],
+    )).rows,
+    ownKey: await hasOrgAnthropicKey(db, orgId),
+  }));
   const s = stats[0];
-  const { rows: models } = await pool.query<{ model: string; n: string }>(
-    `select model, count(*) as n from agent_runs where org_id = $1 group by model order by count(*) desc limit 5`,
-    [orgId],
-  );
-  const ownKey = await hasOrgAnthropicKey(pool, orgId);
 
   return (
     <main>
@@ -93,16 +91,26 @@ export default async function TrustPage() {
             <li>Strict Content-Security-Policy with per-request nonces; rate limiting on the edge; independent nightly database backups.</li>
             <li>Agent access (MCP) uses per-org bearer keys — reads mirror your screens, the only write creates drafts behind your gates, revocation is instant.</li>
             <li>Sharing anything (a list, a skill, a claim, an intro) is offer → accept, audited on both ledgers, revocable — consent is mechanics, not paperwork.</li>
+            <li>GDPR data-subject rights are built in: an owner can export a person&apos;s data as portable JSON (Art. 15/20) and erase it (Art. 17) — anonymized in one transaction, scoped to your tenant, logged with a one-way hash of the email, never the address.</li>
           </ul>
         </Card>
 
         <Card>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Retention &amp; subprocessors</h2>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Residency, retention &amp; subprocessors</h2>
           <p className="mb-2 text-sm text-neutral-600 dark:text-neutral-300">
             Your record is yours: evidence, decisions, and ledgers persist until you delete them; deleting an organization cascades its data. Revoked shares stop being readable immediately — recipients hold live reads, never copies.
           </p>
+          <p className="mb-2 text-sm text-neutral-600 dark:text-neutral-300">
+            <span className="font-semibold text-neutral-700 dark:text-neutral-200">Data residency.</span> Your primary
+            data — CRM records, evidence, decisions, ledgers — is stored in <span className="font-semibold">Canada (AWS ca-central-1)</span> on
+            Supabase Postgres, and the independent nightly backups stay in that region. Sub-processors that perform
+            <em> transient</em> processing (never the system of record) operate in their own regions, primarily the US.
+            EU / in-region data pinning is available to enterprise customers under a DPA — ask us.
+          </p>
           <p className="text-sm text-neutral-600 dark:text-neutral-300">
-            Subprocessors: Anthropic (AI inference), Supabase (Postgres), Vercel (app hosting), Railway (research worker), Resend (email delivery, when enabled), Tavily &amp; People Data Labs (research providers, when enabled). {Number(s.providers)} intelligence providers are registered; each can be disabled per tenant.
+            Subprocessors and their processing regions: Anthropic (AI inference, US), Supabase (Postgres — system of record, Canada / ca-central-1),
+            Vercel (app hosting, global edge / US primary), Railway (research worker, US), Resend (email delivery, US, when enabled),
+            Tavily &amp; People Data Labs (research providers, US, when enabled). {Number(s.providers)} intelligence providers are registered; each can be disabled per tenant.
           </p>
         </Card>
       </div>

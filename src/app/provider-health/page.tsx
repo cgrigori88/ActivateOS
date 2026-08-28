@@ -70,7 +70,7 @@ export default async function ProviderHealthPage() {
                   <tr key={r.providerId}>
                     <td>
                       <span className="font-medium">{r.providerId}</span>
-                      <div className="text-[11px] text-neutral-400">{r.purpose}</div>
+                      <div className="text-label text-neutral-400">{r.purpose}</div>
                     </td>
                     <td className="text-neutral-500">{r.providerType}</td>
                     <td className="text-neutral-500">{r.costClass}</td>

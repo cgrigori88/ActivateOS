@@ -227,7 +227,7 @@ function Wordmark() {
   return (
     <Link href="/" className="flex items-center gap-2">
       <span className="text-accent dark:text-blue-400">{MARK}</span>
-      <span className="text-[15px] font-bold tracking-[-0.03em]">PursuitOS</span>
+      <span className="text-title font-bold tracking-[-0.03em]">PursuitOS</span>
     </Link>
   );
 }
@@ -380,7 +380,7 @@ export function Shell({
         href={item.href}
         aria-current={active ? "page" : undefined}
         title={collapsed ? item.label : undefined}
-        className={`group relative flex min-h-[34px] items-center gap-3 rounded-full px-3 py-[6px] text-[13px] transition-colors duration-[140ms] ${
+        className={`group relative flex min-h-[34px] items-center gap-3 rounded-full px-3 py-[6px] text-body transition-colors duration-[140ms] ${
           active
             ? "bg-white/[0.14] font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]"
             : "font-medium text-rail-ink-soft hover:bg-white/[0.07] hover:text-rail-ink"
@@ -392,7 +392,7 @@ export function Shell({
         <span className={collapsed ? "sr-only" : "truncate"}>{item.label}</span>
         {(alerts?.[item.href] ?? 0) > 0 && !collapsed && (
           <span
-            className="ml-auto rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-[0_0_0_1px_rgba(255,255,255,0.14)]"
+            className="ml-auto rounded-full bg-red-600 px-1.5 py-0.5 text-micro font-bold leading-none text-white shadow-[0_0_0_1px_rgba(255,255,255,0.14)]"
             title={`${alerts![item.href]} failure(s) — something broke`}
           >
             {alerts![item.href]}
@@ -403,7 +403,7 @@ export function Shell({
         )}
         {(badges?.[item.href] ?? 0) > 0 && !(alerts?.[item.href] ?? 0) && !collapsed && (
           <span
-            className="ml-auto rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-[0_0_0_1px_rgba(255,255,255,0.14)]"
+            className="ml-auto rounded-full bg-accent px-1.5 py-0.5 text-micro font-bold leading-none text-white shadow-[0_0_0_1px_rgba(255,255,255,0.14)]"
             title={`${badges![item.href]} item(s) need review`}
           >
             {badges![item.href]}
@@ -448,7 +448,7 @@ export function Shell({
       <div className={`flex min-h-[52px] items-center px-4 py-3 ${collapsed ? "justify-center" : ""}`}>
         <Link href="/" aria-label="PursuitOS home" className="flex items-center gap-2 text-rail-ink">
           <span className="text-accent-tint">{MARK}</span>
-          {!collapsed && <span className="text-[15px] font-bold tracking-[-0.03em]">PursuitOS</span>}
+          {!collapsed && <span className="text-title font-bold tracking-[-0.03em]">PursuitOS</span>}
         </Link>
         {guest && !collapsed && (
           <Link
@@ -465,7 +465,7 @@ export function Shell({
           type="button"
           onClick={() => setPalette(true)}
           title="Search  ⌘K"
-          className={`flex w-full min-h-[34px] items-center gap-3 rounded-full px-3 py-[6px] text-[13px] font-medium text-rail-ink-soft transition-colors duration-[140ms] hover:bg-white/[0.07] hover:text-rail-ink ${
+          className={`flex w-full min-h-[34px] items-center gap-3 rounded-full px-3 py-[6px] text-body font-medium text-rail-ink-soft transition-colors duration-[140ms] hover:bg-white/[0.07] hover:text-rail-ink ${
             collapsed ? "justify-center" : ""
           }`}
         >
@@ -475,7 +475,7 @@ export function Shell({
           </svg>
           {!collapsed && <span className="truncate">Search</span>}
           {!collapsed && (
-            <kbd className="ml-auto rounded-md border border-white/15 px-1.5 py-0.5 font-mono text-[10px] leading-none text-rail-ink-soft/80">
+            <kbd className="ml-auto rounded-md border border-white/15 px-1.5 py-0.5 font-mono text-micro leading-none text-rail-ink-soft/80">
               ⌘K
             </kbd>
           )}
@@ -485,7 +485,7 @@ export function Shell({
         {navGroups.map((group, i) => (
           <div key={i}>
             {group.label && !collapsed && (
-              <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-rail-ink-soft/60">
+              <p className="mb-1 px-3 text-micro font-bold uppercase tracking-[0.12em] text-rail-ink-soft/60">
                 {group.label}
               </p>
             )}
@@ -499,17 +499,17 @@ export function Shell({
           themeButton
         ) : (
           <div className="flex items-center gap-2.5">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent text-[11px] font-bold uppercase text-white">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent text-label font-bold uppercase text-white">
               {user ? user.slice(0, 2) : "OP"}
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[12.5px] font-semibold text-rail-ink">{user ?? "Operator"}</span>
               {user && signOut ? (
                 <form action={signOut}>
-                  <button className="block truncate text-[11px] text-rail-ink-soft hover:text-rail-ink hover:underline">Sign out</button>
+                  <button className="block truncate text-label text-rail-ink-soft hover:text-rail-ink hover:underline">Sign out</button>
                 </form>
               ) : (
-                <span className="block truncate text-[11px] text-rail-ink-soft">demo access</span>
+                <span className="block truncate text-label text-rail-ink-soft">demo access</span>
               )}
             </span>
             {themeButton}

@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import { commsConfig } from "@/lib/comms/provider";
 import { resendConfigured } from "@/lib/comms/resend";
 import { threadAddress } from "@/lib/comms/alias";
 import { BackLink, Card, EvidenceLine, PageHeader, StatusBadge } from "@/components/ui";
-import { currentOrgId } from "@/lib/auth/org";
 import { CONFIDENCE_FORMULA, contextConfidence } from "@/lib/context/confidence";
 import { promoteMotionAction } from "@/app/pipeline/actions";
 import { generateDraftAction, sendDraftAction } from "./actions";
@@ -24,10 +23,10 @@ export default async function BriefPage({
   params: Promise<{ motionId: string }>;
 }) {
   const { motionId } = await params;
-  const pool = getPool();
 
-  const { rows: motions } = await pool.query(
-    `select m.*, c.legal_name, c.industry, c.employee_count, c.id as company_id,
+  const data = await withTenant(async (db, orgId) => {
+    const { rows: motions } = await db.query(
+      `select m.*, c.legal_name, c.industry, c.employee_count, c.id as company_id,
             n.slug, pa.name as partner_name, pa.partner_type, s.name as seller_name,
             p.score as propensity, p.band
      from revenue_motions m
@@ -37,61 +36,70 @@ export default async function BriefPage({
      left join sellers s on s.id = m.partner_seller_id
      left join propensity_scores p on p.id = m.propensity_score_id
      where m.id = $1`,
-    [motionId],
-  );
-  if (motions.length === 0) return <main>Unknown motion.</main>;
-  const m = motions[0];
+      [motionId],
+    );
+    if (motions.length === 0) return null;
+    const m = motions[0];
 
-  const { rows: cited } = await pool.query(
-    `select distinct e.id, e.claim, e.source_type, e.observed_at
+    const { rows: cited } = await db.query(
+      `select distinct e.id, e.claim, e.source_type, e.observed_at
      from agent_runs r
      cross join lateral unnest(r.input_evidence_ids) as ev(id)
      join evidence e on e.id = ev.id
      where r.motion_id = $1 and e.status = 'verified'
      order by e.observed_at desc limit 12`,
-    [motionId],
-  );
+      [motionId],
+    );
 
-  const { rows: assets } = await pool.query(
-    `select a.asset_type, a.title, a.content
+    const { rows: assets } = await db.query(
+      `select a.asset_type, a.title, a.content
      from campaign_assets a join campaigns cp on cp.id = a.campaign_id
      where cp.motion_id = $1 order by a.created_at`,
-    [motionId],
-  );
+      [motionId],
+    );
 
-  const { rows: steps } = await pool.query(
-    `select step, action, due_at, status from motion_actions
+    const { rows: steps } = await db.query(
+      `select step, action, due_at, status from motion_actions
      where motion_id = $1 order by step`,
-    [motionId],
-  );
+      [motionId],
+    );
 
-  const { rows: threads } = await pool.query(
-    `select id, thread_alias from communication_threads
+    const { rows: threads } = await db.query(
+      `select id, thread_alias from communication_threads
      where motion_id = $1 and status = 'open' order by created_at desc limit 1`,
-    [motionId],
-  );
-  const thread = threads[0] ?? null;
-  let threadMessages: {
-    id: string;
-    direction: string;
-    from_name: string | null;
-    from_email: string;
-    subject: string | null;
-    text_body: string | null;
-    ai_draft: string | null;
-    status: string;
-    to_emails: string[];
-    created_at: Date;
-  }[] = [];
-  if (thread) {
-    const result = await pool.query(
-      `select id, direction, from_name, from_email, subject, text_body, ai_draft,
+      [motionId],
+    );
+    const thread = threads[0] ?? null;
+    let threadMessages: {
+      id: string;
+      direction: string;
+      from_name: string | null;
+      from_email: string;
+      subject: string | null;
+      text_body: string | null;
+      ai_draft: string | null;
+      status: string;
+      to_emails: string[];
+      created_at: Date;
+    }[] = [];
+    if (thread) {
+      const result = await db.query(
+        `select id, direction, from_name, from_email, subject, text_body, ai_draft,
               status, to_emails, created_at
        from messages where thread_id = $1 order by created_at`,
-      [thread.id],
-    );
-    threadMessages = result.rows;
-  }
+        [thread.id],
+      );
+      threadMessages = result.rows;
+    }
+
+    // Confidence stamp: how trustworthy the record behind this brief is, at a glance.
+    const confidence = await contextConfidence(db, orgId, m.company_id);
+
+    return { m, cited, assets, steps, thread, threadMessages, confidence };
+  });
+  if (!data) return <main>Unknown motion.</main>;
+  const { m, cited, assets, steps, thread, threadMessages, confidence } = data;
+
   const draft = threadMessages.find(
     (x) => x.direction === "outbound" && x.status === "draft" && x.from_email === "pending",
   );
@@ -101,10 +109,6 @@ export default async function BriefPage({
   const sentOrStored = threadMessages.filter((x) => x.status !== "draft");
   const cfg = commsConfig();
   const canSendDirect = resendConfigured();
-
-  // Confidence stamp: how trustworthy the record behind this brief is, at a glance.
-  const briefOrgId = await currentOrgId(pool);
-  const confidence = briefOrgId ? await contextConfidence(pool, briefOrgId, m.company_id) : null;
 
   return (
     <main>
@@ -197,7 +201,7 @@ export default async function BriefPage({
           <p className="text-sm text-neutral-400">
             No cited evidence on this motion yet — citations attach when the AI designer grounds a
             motion in verified evidence, or as research on{" "}
-            <Link href={`/accounts/${m.company_id}`} className="text-blue-700 hover:underline dark:text-blue-400">
+            <Link href={`/accounts/${m.company_id}`} className="text-accent hover:underline dark:text-blue-400">
               the account
             </Link>{" "}
             verifies new claims.
@@ -213,7 +217,7 @@ export default async function BriefPage({
           <p className="text-sm text-neutral-400">
             No cadence yet — dated pursuit steps are generated when the motion is activated with a
             pursuit plan, and they land in the{" "}
-            <Link href="/queue" className="text-blue-700 hover:underline dark:text-blue-400">
+            <Link href="/queue" className="text-accent hover:underline dark:text-blue-400">
               action queue
             </Link>{" "}
             as they come due.
@@ -372,11 +376,11 @@ export default async function BriefPage({
               >
                 Generate outreach draft
               </button>
-              <p className="mt-2 text-[11px] text-neutral-400">
+              <p className="mt-2 text-label text-neutral-400">
                 A single 1:1 email for this motion&apos;s conversation — review, then send via
                 PursuitOS or package for the partner seller; replies are captured here. For
                 one-to-many sequenced sends, use a{" "}
-                <Link href="/campaigns" className="text-blue-700 hover:underline dark:text-blue-400">
+                <Link href="/campaigns" className="text-accent hover:underline dark:text-blue-400">
                   campaign
                 </Link>
                 .

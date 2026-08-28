@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import { Card, PageHeader, StatusBadge } from "@/components/ui";
-import { currentOrgId } from "@/lib/auth/org";
 import { analyzeUploadAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -36,11 +35,9 @@ export default async function IntakePage({
   searchParams?: Promise<{ notice?: string }>;
 }) {
   const sp = (await searchParams) ?? {};
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-
-  const { rows: partners } = await pool.query<PartnerRow>(
-    `select p.id, p.name, p.partner_type,
+  const { partners, runs } = await withTenant(async (db, orgId) => ({
+    partners: (await db.query<PartnerRow>(
+      `select p.id, p.name, p.partner_type,
        coalesce((select count(distinct pa.company_id) from partner_accounts pa where pa.partner_id = p.id), 0) as accounts,
        coalesce((select count(*) from import_batches b where b.partner_id = p.id), 0) as batches,
        coalesce((select sum(b.row_count) from import_batches b where b.partner_id = p.id), 0) as rows_total,
@@ -51,25 +48,25 @@ export default async function IntakePage({
        and (exists (select 1 from import_batches b where b.partner_id = p.id)
         or exists (select 1 from partner_accounts pa where pa.partner_id = p.id))
      order by last_import desc nulls last`,
-    [orgId],
-  );
-
-  const { rows: runs } = await pool.query<{
-    id: string;
-    filename: string | null;
-    kind: string;
-    status: string;
-    row_count: number;
-    matched_count: number;
-    created_at: Date;
-    partner: string | null;
-  }>(
-    `select b.id, b.filename, b.kind, b.status, b.row_count, b.matched_count, b.created_at, p.name as partner
+      [orgId],
+    )).rows,
+    runs: (await db.query<{
+      id: string;
+      filename: string | null;
+      kind: string;
+      status: string;
+      row_count: number;
+      matched_count: number;
+      created_at: Date;
+      partner: string | null;
+    }>(
+      `select b.id, b.filename, b.kind, b.status, b.row_count, b.matched_count, b.created_at, p.name as partner
      from import_batches b left join partners p on p.id = b.partner_id
      where b.org_id = $1
      order by b.created_at desc limit 25`,
-    [orgId],
-  );
+      [orgId],
+    )).rows,
+  }));
 
   return (
     <main>
@@ -137,25 +134,25 @@ export default async function IntakePage({
               <Card key={p.id}>
                 <div className="mb-2 flex items-center gap-2">
                   <span className="font-semibold">{p.name}</span>
-                  <span className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 ring-1 ring-inset ring-neutral-300/50 dark:ring-neutral-700">
+                  <span className="rounded px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 ring-1 ring-inset ring-neutral-300/50 dark:ring-neutral-700">
                     {(p.partner_type ?? "partner").replace(/_/g, " ")}
                   </span>
-                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${f.tone}`}>{f.label}</span>
+                  <span className={`rounded px-1.5 py-0.5 text-micro font-semibold ${f.tone}`}>{f.label}</span>
                   <span className="ml-auto text-xs text-neutral-400">{p.batches} batch{Number(p.batches) === 1 ? "" : "es"}</span>
                 </div>
                 <div className="flex items-baseline gap-6">
                   <div>
-                    <div className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">{rowsTotal.toLocaleString()}</div>
+                    <div className="pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em]">{rowsTotal.toLocaleString()}</div>
                     <div className="text-xs text-neutral-500">rows · {Number(p.accounts).toLocaleString()} accounts</div>
                   </div>
                   <div>
-                    <div className="pos-bento-fig tnum text-[26px] font-extrabold leading-none tracking-[-0.03em]">{rate}%</div>
+                    <div className="pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em]">{rate}%</div>
                     <div className="text-xs text-neutral-500">match rate</div>
                   </div>
                 </div>
                 <div className="mt-3 flex items-center justify-between text-xs text-neutral-500">
                   <span>{p.last_import ? `Imported ${new Date(p.last_import).toISOString().slice(0, 10)}` : "—"}</span>
-                  <Link href={`/mapping?partner=${p.id}`} className="text-blue-700 hover:underline dark:text-blue-400">
+                  <Link href={`/mapping?partner=${p.id}`} className="text-accent hover:underline dark:text-blue-400">
                     View mapping
                   </Link>
                 </div>
@@ -188,7 +185,7 @@ export default async function IntakePage({
                 <tr key={r.id}>
                   <td className="font-medium">
                     {r.status === "analyzed" ? (
-                      <Link href={`/intake/${r.id}`} className="text-blue-700 hover:underline dark:text-blue-400">
+                      <Link href={`/intake/${r.id}`} className="text-accent hover:underline dark:text-blue-400">
                         {r.filename ?? "upload"}
                       </Link>
                     ) : (
@@ -196,17 +193,17 @@ export default async function IntakePage({
                     )}
                   </td>
                   <td className="text-neutral-500">{r.partner ?? "—"}</td>
-                  <td className="text-neutral-500 uppercase text-[11px] tracking-wide">{r.kind}</td>
+                  <td className="text-neutral-500 uppercase text-label tracking-wide">{r.kind}</td>
                   <td>
                     {r.status === "analyzed" ? (
                       <Link
                         href={`/intake/${r.id}`}
-                        className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-white hover:opacity-90"
+                        className="rounded-full bg-accent px-2 py-0.5 text-micro font-bold text-white hover:opacity-90"
                       >
                         Review mapping
                       </Link>
                     ) : r.status === "discarded" ? (
-                      <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">discarded</span>
+                      <span className="text-label font-medium uppercase tracking-wide text-neutral-400">discarded</span>
                     ) : (
                       <StatusBadge status={r.status === "imported" ? "succeeded" : r.status === "failed" ? "failed" : "running"} />
                     )}

@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { Card, NextStep, PageHeader } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { listPartnerships } from "@/lib/partnerships/partnerships";
@@ -30,31 +29,30 @@ export default async function JointPage({
   searchParams?: Promise<{ accepted?: string }>;
 }) {
   const sp = (await searchParams) ?? {};
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) return <main>No organization.</main>;
+  const { pursuits, statements, proposable } = await withTenant(async (db, orgId) => {
+    const pursuits = await listJointPursuits(db, orgId);
+    const partnerships = (await listPartnerships(db, orgId)).filter((p) => p.status === "active");
 
-  const pursuits = await listJointPursuits(pool, orgId);
-  const partnerships = (await listPartnerships(pool, orgId)).filter((p) => p.status === "active");
+    // Settlement statements — one per partnership that has any opened room.
+    const pursued = new Set(pursuits.filter((x) => x.status === "active" || x.status === "closed").map((x) => x.partnershipId));
+    const statements: (SettlementStatement & { otherOrgName: string | null })[] = [];
+    for (const p of partnerships) {
+      if (!pursued.has(p.id)) continue;
+      const s = await settlementStatement(db, p.id);
+      if (s.settled.length + s.inFlight.length + Object.values(s.lostCount).reduce((a, b) => a + b, 0) === 0) continue;
+      statements.push({ ...s, otherOrgName: p.otherOrgName ?? p.myLensName });
+    }
 
-  // Settlement statements — one per partnership that has any opened room.
-  const pursued = new Set(pursuits.filter((x) => x.status === "active" || x.status === "closed").map((x) => x.partnershipId));
-  const statements: (SettlementStatement & { otherOrgName: string | null })[] = [];
-  for (const p of partnerships) {
-    if (!pursued.has(p.id)) continue;
-    const s = await settlementStatement(pool, p.id);
-    if (s.settled.length + s.inFlight.length + Object.values(s.lostCount).reduce((a, b) => a + b, 0) === 0) continue;
-    statements.push({ ...s, otherOrgName: p.otherOrgName ?? p.myLensName });
-  }
-
-  // Proposable accounts per partnership: named overlap minus existing pursuits.
-  const taken = new Set(pursuits.filter((x) => x.status !== "declined").map((x) => `${x.partnershipId}:${x.companyId}`));
-  const proposable: { partnershipId: string; otherOrgName: string | null; accounts: { company_id: string; name: string }[] }[] = [];
-  for (const p of partnerships) {
-    const named = await namedOverlapAccounts(pool, p.id);
-    const open = named.filter((a) => !taken.has(`${p.id}:${a.company_id}`));
-    if (open.length > 0) proposable.push({ partnershipId: p.id, otherOrgName: p.otherOrgName ?? p.myLensName, accounts: open });
-  }
+    // Proposable accounts per partnership: named overlap minus existing pursuits.
+    const taken = new Set(pursuits.filter((x) => x.status !== "declined").map((x) => `${x.partnershipId}:${x.companyId}`));
+    const proposable: { partnershipId: string; otherOrgName: string | null; accounts: { company_id: string; name: string }[] }[] = [];
+    for (const p of partnerships) {
+      const named = await namedOverlapAccounts(db, p.id);
+      const open = named.filter((a) => !taken.has(`${p.id}:${a.company_id}`));
+      if (open.length > 0) proposable.push({ partnershipId: p.id, otherOrgName: p.otherOrgName ?? p.myLensName, accounts: open });
+    }
+    return { pursuits, statements, proposable };
+  });
 
   return (
     <main>
@@ -78,7 +76,7 @@ export default async function JointPage({
           <p className="text-sm text-neutral-500">
             No joint pursuits yet — and nothing is proposable until a partnership&apos;s blind-overlap
             ladder reaches the <em>named accounts</em> rung. Run the ladder on the{" "}
-            <Link href="/admin" className="text-blue-700 hover:underline dark:text-blue-400">Admin</Link> page;
+            <Link href="/admin" className="text-accent hover:underline dark:text-blue-400">Admin</Link> page;
             once both owners approve the named rung, those shared accounts become eligible rooms here.
           </p>
         </Card>
@@ -90,11 +88,11 @@ export default async function JointPage({
               <Card key={p.id} className={p.awaitingYou ? "ring-2 ring-violet-300 dark:ring-violet-800" : ""}>
                 <div className="mb-1 flex items-center gap-2">
                   <Link href={`/joint/${p.id}`} className="font-semibold hover:underline">{p.accountName}</Link>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset ${STATUS_TONE[p.status]}`}>
+                  <span className={`rounded-full px-2 py-0.5 text-micro font-semibold uppercase tracking-wide ring-1 ring-inset ${STATUS_TONE[p.status]}`}>
                     {p.status}
                   </span>
                   {p.awaitingYou && (
-                    <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-white">awaiting your decision</span>
+                    <span className="rounded-full bg-accent px-2 py-0.5 text-micro font-bold text-white">awaiting your decision</span>
                   )}
                 </div>
                 <p className="text-xs text-neutral-500">
@@ -125,7 +123,7 @@ export default async function JointPage({
               <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
                 Settlement — with {s.otherOrgName}
               </h2>
-              <span className="text-[11px] text-neutral-400">identical on both sides · only jointly pursued accounts settle jointly</span>
+              <span className="text-label text-neutral-400">identical on both sides · only jointly pursued accounts settle jointly</span>
             </div>
             <p className="mb-3 text-xs text-neutral-500">
               An opportunity appears here only if its account has an opened joint room in this
@@ -138,7 +136,7 @@ export default async function JointPage({
               {Object.entries(s.settledTotals).map(([org, total]) => (
                 <div key={org}>
                   <div className="pos-bento-fig tnum text-[22px] font-extrabold leading-none tracking-[-0.03em]">{fmt(total)}</div>
-                  <div className="mt-0.5 text-[11px] text-neutral-500">
+                  <div className="mt-0.5 text-label text-neutral-500">
                     settled by {s.orgNames[org] ?? "org"}
                     {s.lostCount[org] > 0 ? ` · ${s.lostCount[org]} lost` : ""}
                   </div>
@@ -156,7 +154,7 @@ export default async function JointPage({
                         <td className="font-medium">{e.account}</td>
                         <td className="text-xs text-neutral-500">{s.orgNames[e.closerOrgId] ?? "—"}</td>
                         <td>
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-inset ${
+                          <span className={`rounded-full px-2 py-0.5 text-micro font-semibold uppercase tracking-wide ring-1 ring-inset ${
                             e.attribution === "sourced"
                               ? "bg-violet-50 text-violet-800 ring-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900"
                               : "bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:ring-neutral-700"

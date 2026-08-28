@@ -98,9 +98,9 @@ export function ListPicker({
               />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{l.name}</span>
-                <span className="block truncate text-[11px] text-neutral-500">{l.reason}</span>
+                <span className="block truncate text-label text-neutral-500">{l.reason}</span>
               </span>
-              <span className="tnum shrink-0 text-[11px] text-neutral-400">
+              <span className="tnum shrink-0 text-label text-neutral-400">
                 {l.members} acct{l.members === 1 ? "" : "s"}
                 {l.avgScore != null && <> · fit {l.avgScore}</>}
               </span>
@@ -119,7 +119,7 @@ export function ListPicker({
         >
           Attach {sel.size > 0 ? `${sel.size} list${sel.size === 1 ? "" : "s"}` : "lists"}
         </button>
-        <span className="text-[11px] text-neutral-400">{sel.size === 0 ? "check the lists to add" : "nothing sends until you approve each touch"}</span>
+        <span className="text-label text-neutral-400">{sel.size === 0 ? "check the lists to add" : "nothing sends until you approve each touch"}</span>
       </form>
     </div>
   );

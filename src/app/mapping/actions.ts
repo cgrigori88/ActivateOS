@@ -2,57 +2,45 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getPool } from "@/db/client";
 import { CATEGORIES, targetFromCell, type Category } from "@/lib/mapping/populations";
 import { createTargetFromCompanies } from "@/lib/mapping/insights";
 import { createMultiVendorCampaign } from "@/lib/campaigns/multi-vendor";
 import { designMotion } from "@/lib/agents/motion-designer";
-import { currentOrgId, requireWrite } from "@/lib/auth/org";
+import { requireWrite } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 
 const MOTION_TARGET_SLUG = "infrastructure-automation";
-
-async function soleOrgId(db: import("pg").PoolClient): Promise<string | null> {
-  // Tenant context: the signed-in user's org (falls back to the sole org in
-  // Basic-Auth/demo mode). Name kept to avoid churning every call site.
-  return currentOrgId(db);
-}
 
 /**
  * Propose a population (list). Created 'pending' so the other side vets it
  * before it maps. `side` = 'org' (host) or a partner id.
  */
 export async function createPopulationAction(formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const name = String(formData.get("name") ?? "").trim();
   const categoryRaw = String(formData.get("category") ?? "custom");
   const category: Category = (CATEGORIES as readonly string[]).includes(categoryRaw) ? (categoryRaw as Category) : "custom";
   const side = String(formData.get("side") ?? "org");
   if (!name) throw new Error("a name is required");
 
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
-    const orgId = await soleOrgId(db);
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     const partnerId = side === "org" ? null : side;
     await db.query(
       `insert into account_populations (org_id, partner_id, name, category, status, created_by)
        values ($1, $2, $3, $4, 'pending', 'web')`,
       [orgId, partnerId, name, category],
     );
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath("/mapping");
 }
 
 export async function setPopulationStatusAction(populationId: string, status: string): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
   if (!["approved", "rejected", "pending"].includes(status)) throw new Error("invalid status");
-  // FLOW-1 fix: org-scoped so a foreign list id can't be approved/rejected.
-  await pool.query(`update account_populations set status = $2 where id = $1 and org_id = $3`, [populationId, status, orgId]);
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    // FLOW-1 fix: org-scoped so a foreign list id can't be approved/rejected.
+    await db.query(`update account_populations set status = $2 where id = $1 and org_id = $3`, [populationId, status, orgId]);
+  });
   revalidatePath("/mapping");
 }
 
@@ -61,38 +49,31 @@ export async function setPopulationStatusAction(populationId: string, status: st
  * matrix (the reviewer's decision). Empty selection = keep all detected fields.
  */
 export async function acceptPopulationAction(populationId: string, formData: FormData): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);  // viewers are read-only (multi-tenant slice 3)
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
   const fields = formData.getAll("fields").map((f) => String(f)).filter(Boolean);
-  // FLOW-1 fix: org-scoped.
-  await pool.query(
-    `update account_populations set status = 'approved', selected_fields = $2 where id = $1 and org_id = $3`,
-    [populationId, fields.length ? fields : null, orgId],
-  );
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    // FLOW-1 fix: org-scoped.
+    await db.query(
+      `update account_populations set status = 'approved', selected_fields = $2 where id = $1 and org_id = $3`,
+      [populationId, fields.length ? fields : null, orgId],
+    );
+  });
   revalidatePath("/mapping");
   redirect(`/mapping?view=review&notice=${encodeURIComponent(`Accepted list with ${fields.length || "all"} field(s) mapped.`)}`);
 }
 
 /** Create a target list from an AI-recommended cross-partner bucket. */
 export async function createTargetListAction(formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const name = String(formData.get("name") ?? "").trim() || "Target list";
   const companyIds = String(formData.get("companyIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   // Provenance: the workbench posts source=web (a person picked the accounts);
   // absent means the AI-recommend view created it.
   const createdBy = String(formData.get("source") ?? "") === "web" ? "web" : "ai";
-  const pool = getPool();
-  const db = await pool.connect();
-  let added = 0;
-  try {
-    const orgId = await soleOrgId(db);
+  const added = await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     const res = await createTargetFromCompanies(db, { orgId, name, companyIds, createdBy });
-    added = res.added;
-  } finally {
-    db.release();
-  }
+    return res.added;
+  });
   revalidatePath("/mapping");
   redirect(`/mapping?view=recommend&notice=${encodeURIComponent(`Created target list "${name}" with ${added} account(s).`)}`);
 }
@@ -103,7 +84,6 @@ export async function createTargetListAction(formData: FormData): Promise<void> 
  * campaign; touches and launch stay human-gated.
  */
 export async function createMultiVendorCampaignAction(formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const name = String(formData.get("name") ?? "").trim() || "Multi-vendor play";
   const companyIds = String(formData.get("companyIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   // partners field: "id:role,id:role"
@@ -117,17 +97,11 @@ export async function createMultiVendorCampaignAction(formData: FormData): Promi
     });
   if (companyIds.length === 0 || partners.length < 2) throw new Error("a multi-vendor play needs accounts and 2+ partners");
 
-  const pool = getPool();
-  const db = await pool.connect();
-  let campaignId: string;
-  try {
-    const orgId = await soleOrgId(db);
-    if (!orgId) throw new Error("no organization");
+  const campaignId = await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     const res = await createMultiVendorCampaign(db, { orgId, name, companyIds, partners });
-    campaignId = res.campaignId;
-  } finally {
-    db.release();
-  }
+    return res.campaignId;
+  });
   revalidatePath("/mapping");
   revalidatePath("/campaigns");
   redirect(`/campaigns/${campaignId}?notice=${encodeURIComponent(`Multi-vendor play "${name}" created — list linked, ${partners.length} partners attached. Draft touches next.`)}`);
@@ -135,27 +109,20 @@ export async function createMultiVendorCampaignAction(formData: FormData): Promi
 
 /** Generate motions for a selected set of accounts (bounded, AI, graceful). */
 export async function generateMotionsForSelectionAction(formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const ids = String(formData.get("companyIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 10);
-  const pool = getPool();
-  const db = await pool.connect();
   let ok = 0;
   let fail = 0;
-  try {
-    const orgId = await soleOrgId(db);
-    if (orgId) {
-      for (const companyId of ids) {
-        try {
-          await designMotion(db, { orgId, companyId, targetSlug: MOTION_TARGET_SLUG });
-          ok++;
-        } catch {
-          fail++;
-        }
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    for (const companyId of ids) {
+      try {
+        await designMotion(db, { orgId, companyId, targetSlug: MOTION_TARGET_SLUG });
+        ok++;
+      } catch {
+        fail++;
       }
     }
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath("/mapping");
   const msg = ok > 0 ? `Drafted ${ok} motion(s)${fail ? `, ${fail} skipped (no score/evidence or AI off)` : ""}.` : `Couldn't draft motions (${fail} skipped — needs scores/evidence and AI configured).`;
   redirect(`/mapping?view=recommend&notice=${encodeURIComponent(msg)}`);
@@ -163,20 +130,16 @@ export async function generateMotionsForSelectionAction(formData: FormData): Pro
 
 /** AI-draft a motion for a cross-partner account (grounded, lands as draft). */
 export async function draftMotionAction(companyId: string): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  const pool = getPool();
-  const db = await pool.connect();
   let motionId: string | null = null;
   let notice: string | null = null;
   try {
-    const orgId = await soleOrgId(db);
-    if (!orgId) throw new Error("no organization");
-    const res = await designMotion(db, { orgId, companyId, targetSlug: MOTION_TARGET_SLUG });
-    motionId = res.motionId;
+    motionId = await withTenant(async (db, orgId) => {
+      await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+      const res = await designMotion(db, { orgId, companyId, targetSlug: MOTION_TARGET_SLUG });
+      return res.motionId;
+    });
   } catch (err) {
     notice = `Couldn't draft a motion: ${err instanceof Error ? err.message : String(err)}`;
-  } finally {
-    db.release();
   }
   revalidatePath("/mapping");
   redirect(motionId ? `/briefs/${motionId}` : `/mapping?view=recommend&notice=${encodeURIComponent(notice ?? "failed")}`);
@@ -187,19 +150,13 @@ export async function draftMotionAction(companyId: string): Promise<void> {
  * approved org-side 'target' population from the cell's shared accounts.
  */
 export async function targetFromCellAction(rowPopId: string, colPopId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const name = String(formData.get("name") ?? "").trim() || "Target list";
   const partnerId = String(formData.get("partner") ?? "").trim();
-  const pool = getPool();
-  const db = await pool.connect();
-  let added = 0;
-  try {
-    const orgId = await soleOrgId(db);
+  const added = await withTenant(async (db, orgId) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     const res = await targetFromCell(db, { orgId, rowPopId, colPopId, name });
-    added = res.added;
-  } finally {
-    db.release();
-  }
+    return res.added;
+  });
   revalidatePath("/mapping");
   redirect(`/mapping?view=matrix${partnerId ? `&partner=${partnerId}` : ""}&notice=${encodeURIComponent(`Created target list "${name}" with ${added} account(s).`)}`);
 }

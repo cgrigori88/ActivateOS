@@ -72,7 +72,7 @@ export function CcPicker({ contacts, defaultCc }: { contacts: CcContact[]; defau
                   <input type="checkbox" checked={sel.has(c.email.toLowerCase())} onChange={() => toggle(c.email.toLowerCase())} className="h-4 w-4 shrink-0" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm">{c.name ?? c.email}</span>
-                    <span className="block truncate text-[11px] text-neutral-500">
+                    <span className="block truncate text-label text-neutral-500">
                       {c.email}
                       {c.title ? ` · ${c.title}` : ""}
                     </span>

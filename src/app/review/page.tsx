@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
+import { withTenant } from "@/lib/db/tenant";
 import { resolveReviewAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -47,10 +47,10 @@ export default async function ReviewPage({
 }) {
   const sp = await searchParams;
   const byPartner = sp.group === "partner";
-  const pool = getPool();
 
-  const { rows: all } = await pool.query<Item>(
-    `select rq.id, rq.reason, rq.created_at,
+  const { all, sources, companyPartners } = await withTenant(async (db) => {
+    const { rows: all } = await db.query<Item>(
+      `select rq.id, rq.reason, rq.created_at,
             e.claim, e.raw_excerpt, e.source_type, e.status, e.computed_confidence, e.observed_at,
             c.id as company_id, c.legal_name
      from review_queue rq
@@ -59,26 +59,28 @@ export default async function ReviewPage({
      where rq.status = 'pending'
      order by (rq.reason = 'contradiction') desc, (rq.reason = 'checker_disagreement') desc, rq.created_at
      limit 300`,
-  );
-  const { rows: sources } = await pool.query<{ name: string; trust: string; rate: string }>(
-    `select name, round(trust_score, 2) as trust, round(audit_sample_rate * 100) as rate
+    );
+    const { rows: sources } = await db.query<{ name: string; trust: string; rate: string }>(
+      `select name, round(trust_score, 2) as trust, round(audit_sample_rate * 100) as rate
      from signal_sources order by trust_score desc`,
-  );
+    );
 
-  // Which partners map each affected account (an account can be on several).
-  const companyIds = [...new Set(all.map((i) => i.company_id).filter(Boolean) as string[])];
-  const companyPartners = new Map<string, string[]>();
-  if (companyIds.length) {
-    const { rows: pm } = await pool.query<{ company_id: string; partner_name: string }>(
-      `select distinct pm.company_id, p.name as partner_name
+    // Which partners map each affected account (an account can be on several).
+    const companyIds = [...new Set(all.map((i) => i.company_id).filter(Boolean) as string[])];
+    const companyPartners = new Map<string, string[]>();
+    if (companyIds.length) {
+      const { rows: pm } = await db.query<{ company_id: string; partner_name: string }>(
+        `select distinct pm.company_id, p.name as partner_name
        from population_members pm
        join account_populations ap on ap.id = pm.population_id and ap.partner_id is not null and ap.status = 'approved'
        join partners p on p.id = ap.partner_id
        where pm.company_id = any($1)`,
-      [companyIds],
-    );
-    for (const r of pm) companyPartners.set(r.company_id, [...(companyPartners.get(r.company_id) ?? []), r.partner_name]);
-  }
+        [companyIds],
+      );
+      for (const r of pm) companyPartners.set(r.company_id, [...(companyPartners.get(r.company_id) ?? []), r.partner_name]);
+    }
+    return { all, sources, companyPartners };
+  });
   const partnerOptions = [...new Set([...companyPartners.values()].flat())].sort();
 
   const sourceOptions = [...new Set(all.map((i) => i.source_type))];
@@ -167,20 +169,20 @@ export default async function ReviewPage({
             <Card key={g.companyId ?? g.name} className="p-0">
               <details open={grouped.length <= 3}>
                 <summary className="flex cursor-pointer items-center gap-2 px-4 py-3">
-                  {byPartner && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">partner</span>}
+                  {byPartner && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">partner</span>}
                   <span className="font-semibold">{g.name}</span>
-                  {g.companyId && <Link href={`/accounts/${g.companyId}`} className="text-xs text-blue-700 hover:underline dark:text-blue-400">account →</Link>}
+                  {g.companyId && <Link href={`/accounts/${g.companyId}`} className="text-xs text-accent hover:underline dark:text-blue-400">account →</Link>}
                   <span className="tnum text-xs text-neutral-400">{g.items.length} to review</span>
                   <span className="ml-auto flex gap-1">
                     {[...new Set(g.items.map((i) => i.reason))].map((r) => (
-                      <span key={r} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${REASON_TONE[r]}`}>{REASON_LABELS[r] ?? r}</span>
+                      <span key={r} className={`rounded px-1.5 py-0.5 text-micro font-medium ${REASON_TONE[r]}`}>{REASON_LABELS[r] ?? r}</span>
                     ))}
                   </span>
                 </summary>
                 <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
                   {g.items.map((item) => (
                     <div key={item.id} className="px-4 py-3">
-                      <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+                      <div className="mb-1 flex flex-wrap items-center gap-2 text-label text-neutral-400">
                         {byPartner && item.company_id && <Link href={`/accounts/${item.company_id}`} className="font-medium text-neutral-600 hover:underline dark:text-neutral-300">{item.legal_name}</Link>}
                         <span className={`rounded px-1.5 py-0.5 font-medium ${REASON_TONE[item.reason]}`}>{REASON_LABELS[item.reason] ?? item.reason}</span>
                         <span>{item.source_type}</span>
@@ -191,7 +193,7 @@ export default async function ReviewPage({
                       <p className="mb-1 text-sm font-medium leading-snug">{item.claim}</p>
                       {item.raw_excerpt && item.raw_excerpt !== item.claim && (
                         <details className="mb-2">
-                          <summary className="cursor-pointer text-xs text-blue-700 hover:underline dark:text-blue-400">Show source excerpt</summary>
+                          <summary className="cursor-pointer text-xs text-accent hover:underline dark:text-blue-400">Show source excerpt</summary>
                           <blockquote className="mt-1 border-l-2 border-neutral-300 pl-3 text-sm text-neutral-600 dark:border-neutral-700 dark:text-neutral-400">
                             {String(item.raw_excerpt).slice(0, 800)}
                           </blockquote>

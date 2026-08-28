@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { listGoals, METRICS, METRIC_LABEL, formatMetric, type Goal } from "@/lib/goals/goals";
 import { listTargets, type TargetRow } from "@/lib/goals/targets";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { createGoalAction, setGoalStatusAction, upsertTargetAction, deleteTargetAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -17,8 +16,8 @@ export const dynamic = "force-dynamic";
  */
 
 const PACE_TONE: Record<Goal["pace"], string> = {
-  ahead: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
-  on_track: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  ahead: "bg-green-100 text-positive dark:bg-green-950 dark:text-green-300",
+  on_track: "bg-blue-100 text-accent dark:bg-blue-950 dark:text-blue-300",
   behind: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
   none: "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400",
 };
@@ -31,11 +30,18 @@ export default async function GoalsPage({
   searchParams: Promise<{ status?: string; due?: string }>;
 }) {
   const sp = await searchParams;
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  const all = orgId ? await listGoals(pool, orgId) : [];
-  const targets = orgId ? await listTargets(pool, orgId) : [];
-  const { rows: partnerRows } = await pool.query<{ id: string; name: string }>(`select id, name from partners order by name`);
+  // RISK-1 adoption (task #67): all reads run under withTenant, which pins the
+  // session to the caller's org. Inert on the owner connection; real isolation
+  // once DATABASE_URL points at app_rw.
+  const { all, targets, partnerRows } = await withTenant(async (db, orgId) => ({
+    all: await listGoals(db, orgId),
+    targets: await listTargets(db, orgId),
+    // org-scoped: the target-scope dropdown must not list other tenants' partners.
+    partnerRows: (await db.query<{ id: string; name: string }>(
+      `select id, name from partners where org_id = $1 order by name`,
+      [orgId],
+    )).rows,
+  }));
   const currentYear = new Date().getFullYear();
 
   const dueDays = ["7", "30", "90"].includes(sp.due ?? "") ? Number(sp.due) : null;
@@ -91,7 +97,7 @@ export default async function GoalsPage({
           <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Owner</span><input name="owner" placeholder="Dana" className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" /></label>
           <div className="flex items-end"><button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">Create goal</button></div>
         </form>
-        <p className="mt-2 text-[11px] text-neutral-400">Link motions and campaigns to a goal from their pages — progress rolls up automatically from what&rsquo;s linked.</p>
+        <p className="mt-2 text-label text-neutral-400">Link motions and campaigns to a goal from their pages — progress rolls up automatically from what&rsquo;s linked.</p>
       </Card>
 
       {goals.length === 0 ? (
@@ -106,8 +112,8 @@ export default async function GoalsPage({
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <span className="font-semibold">{g.name}</span>
                   {/* pace only means something while the goal is live; done/archived goals keep just their status */}
-                  {g.status === "active" && <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${PACE_TONE[g.pace]}`}>{PACE_LABEL[g.pace]}</span>}
-                  {g.status !== "active" && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-neutral-500 dark:bg-neutral-800">{g.status}</span>}
+                  {g.status === "active" && <span className={`rounded px-1.5 py-0.5 text-micro font-medium ${PACE_TONE[g.pace]}`}>{PACE_LABEL[g.pace]}</span>}
+                  {g.status !== "active" && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-micro font-medium uppercase text-neutral-500 dark:bg-neutral-800">{g.status}</span>}
                   <span className="ml-auto text-xs text-neutral-400">
                     {g.motionsLinked} motion{g.motionsLinked === 1 ? "" : "s"} · {g.campaignsLinked} campaign{g.campaignsLinked === 1 ? "" : "s"}
                   </span>
@@ -141,12 +147,12 @@ export default async function GoalsPage({
                   <span className="ml-auto flex gap-2">
                     {g.status === "active" && (
                       <>
-                        <form action={setGoalStatusAction.bind(null, g.id, "achieved")}><button className="font-medium text-green-700 hover:underline dark:text-green-400">mark achieved</button></form>
+                        <form action={setGoalStatusAction.bind(null, g.id, "achieved")}><button className="font-medium text-positive hover:underline dark:text-green-400">mark achieved</button></form>
                         <form action={setGoalStatusAction.bind(null, g.id, "archived")}><button className="font-medium text-neutral-500 hover:underline">archive</button></form>
                       </>
                     )}
                     {g.status !== "active" && (
-                      <form action={setGoalStatusAction.bind(null, g.id, "active")}><button className="font-medium text-blue-700 hover:underline dark:text-blue-400">reactivate</button></form>
+                      <form action={setGoalStatusAction.bind(null, g.id, "active")}><button className="font-medium text-accent hover:underline dark:text-blue-400">reactivate</button></form>
                     )}
                   </span>
                 </div>
@@ -161,7 +167,7 @@ export default async function GoalsPage({
       <section className="mt-10">
         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Revenue &amp; pipeline targets</h2>
-          <span className="text-[11px] text-neutral-400">targets are typed; actuals compute from opportunities — base (direct) vs joint (co-sell)</span>
+          <span className="text-label text-neutral-400">targets are typed; actuals compute from opportunities — base (direct) vs joint (co-sell)</span>
         </div>
 
         {/* Set a target */}
@@ -230,7 +236,7 @@ export default async function GoalsPage({
                                 )}
                               </div>
                               <span className="tnum w-56 shrink-0 text-right text-xs">
-                                <span className={over ? "font-semibold text-green-700 dark:text-green-400" : "font-medium"}>${Math.round(t.actualUsd / 1000)}k</span>
+                                <span className={over ? "font-semibold text-positive dark:text-green-400" : "font-medium"}>${Math.round(t.actualUsd / 1000)}k</span>
                                 {target != null ? (
                                   <span className="text-neutral-400"> / ${Math.round(target / 1000)}k · {t.attainmentPct}%</span>
                                 ) : (

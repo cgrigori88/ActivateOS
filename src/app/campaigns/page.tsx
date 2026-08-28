@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
-import { currentOrgId } from "@/lib/auth/org";
 import {
   generateSequenceAction,
   createBlankCampaignAction,
@@ -58,10 +57,10 @@ export default async function CampaignsPage({
 }) {
   const sp = await searchParams;
   const notice = sp.notice;
-  const pool = getPool();
 
-  const { rows: campaigns } = await pool.query<CampaignRow>(
-    `select ca.id, ca.name, ca.status, ca.objective, ca.created_at, ca.source,
+  const { campaigns, goals, motions, accounts } = await withTenant(async (db, orgId) => {
+    const { rows: campaigns } = await db.query<CampaignRow>(
+      `select ca.id, ca.name, ca.status, ca.objective, ca.created_at, ca.source,
             c.id as company_id, c.legal_name, pa.name as partner_name, n.slug as solution,
             ca.goal_id, g.name as goal_name,
             (select count(*) from campaign_touches t where t.campaign_id = ca.id) as touches,
@@ -86,9 +85,23 @@ export default async function CampaignsPage({
      left join goals g on g.id = ca.goal_id
      where ca.dismissed_at is null
      order by ca.created_at desc`,
-  );
-  const orgId = await currentOrgId(pool);
-  const goals = orgId ? await goalOptions(pool, orgId) : [];
+    );
+    const goals = await goalOptions(db, orgId);
+
+    const { rows: motions } = await db.query<MotionOption>(
+      `select m.id, c.legal_name, m.primary_persona
+     from revenue_motions m
+     join companies c on c.id = m.company_id
+     where m.status in ('approved','active')
+     order by m.created_at desc limit 50`,
+    );
+
+    const { rows: accounts } = await db.query<{ id: string; legal_name: string }>(
+      `select id, legal_name from companies order by legal_name asc limit 300`,
+    );
+
+    return { campaigns, goals, motions, accounts };
+  });
 
   const suggestions = campaigns.filter((c) => c.source === "ai_suggested" && c.status === "draft");
   let rest = campaigns.filter((c) => !(c.source === "ai_suggested" && c.status === "draft"));
@@ -110,18 +123,6 @@ export default async function CampaignsPage({
   const statusOptions = [...new Set(campaigns.map((c) => c.status))];
   const partnerOptions = [...new Set(campaigns.map((c) => c.partner_name).filter(Boolean) as string[])];
   const solutionOptions = [...new Set(campaigns.map((c) => c.solution).filter(Boolean) as string[])];
-
-  const { rows: motions } = await pool.query<MotionOption>(
-    `select m.id, c.legal_name, m.primary_persona
-     from revenue_motions m
-     join companies c on c.id = m.company_id
-     where m.status in ('approved','active')
-     order by m.created_at desc limit 50`,
-  );
-
-  const { rows: accounts } = await pool.query<{ id: string; legal_name: string }>(
-    `select id, legal_name from companies order by legal_name asc limit 300`,
-  );
 
   return (
     <main>
@@ -155,10 +156,10 @@ export default async function CampaignsPage({
           <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Generate from a motion</h2>
           <p className="mb-3 text-xs text-neutral-500">AI drafts a grounded sequence from an approved/active motion. Each touch is a draft until you approve it.</p>
           <form action={suggestCampaignsAction} className="mb-3">
-            <button className="rounded-md px-3 py-1.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
+            <button className="rounded-md px-3 py-1.5 text-xs font-medium text-accent ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
               Ask AI to suggest campaigns →
             </button>
-            <span className="ml-2 text-[11px] text-neutral-400">drafts suggestions for motions without a campaign</span>
+            <span className="ml-2 text-label text-neutral-400">drafts suggestions for motions without a campaign</span>
           </form>
           {motions.length === 0 ? (
             <p className="text-sm text-neutral-500">
@@ -228,7 +229,7 @@ export default async function CampaignsPage({
           <div className="space-y-2">
             {suggestions.map((ca) => (
               <div key={ca.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 bg-white px-3 py-2 dark:border-blue-900 dark:bg-neutral-900">
-                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700 dark:bg-blue-900 dark:text-blue-300">AI</span>
+                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-micro font-bold uppercase tracking-wide text-accent dark:bg-blue-900 dark:text-blue-300">AI</span>
                 <Link href={`/campaigns/${ca.id}`} className="font-medium hover:underline">{ca.name}</Link>
                 <Link href={`/accounts/${ca.company_id}`} className="text-xs text-neutral-500 hover:underline">{ca.legal_name}</Link>
                 <span className="text-xs text-neutral-400">{ca.touches} touch{Number(ca.touches) === 1 ? "" : "es"}</span>
@@ -284,17 +285,17 @@ export default async function CampaignsPage({
                     <span className="flex items-center gap-1.5">
                       <Link href={`/campaigns/${ca.id}`} className="font-medium hover:underline">{ca.name}</Link>
                       {ca.source === "ai_suggested" && (
-                        <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold uppercase text-blue-700 dark:bg-blue-900 dark:text-blue-300" title="AI-suggested, accepted by a human">AI</span>
+                        <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold uppercase text-accent dark:bg-blue-900 dark:text-blue-300" title="AI-suggested, accepted by a human">AI</span>
                       )}
                     </span>
-                    {ca.objective && <div className="text-[11px] text-neutral-400">{ca.objective}</div>}
+                    {ca.objective && <div className="text-label text-neutral-400">{ca.objective}</div>}
                   </td>
                   <td>
                     <Link href={`/accounts/${ca.company_id}`} className="hover:underline">{ca.legal_name}</Link>
                   </td>
                   <td>
                     {Number(ca.lists) > 0 ? (
-                      <Link href={`/campaigns/${ca.id}`} className="text-xs text-blue-700 hover:underline dark:text-blue-400">
+                      <Link href={`/campaigns/${ca.id}`} className="text-xs text-accent hover:underline dark:text-blue-400">
                         {ca.reach} account{Number(ca.reach) === 1 ? "" : "s"} · {ca.lists} list{Number(ca.lists) === 1 ? "" : "s"}
                       </Link>
                     ) : (
@@ -304,11 +305,11 @@ export default async function CampaignsPage({
                   {goals.length > 0 && (
                     <td>
                       <form action={setCampaignGoalAction.bind(null, ca.id)} className="flex items-center gap-1">
-                        <select name="goalId" defaultValue={ca.goal_id ?? ""} className="max-w-[9rem] rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-[11px] dark:border-neutral-700">
+                        <select name="goalId" defaultValue={ca.goal_id ?? ""} className="max-w-[9rem] rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-label dark:border-neutral-700">
                           <option value="">—</option>
                           {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
-                        <button className="text-[11px] font-medium text-blue-700 hover:underline dark:text-blue-400">set</button>
+                        <button className="text-label font-medium text-accent hover:underline dark:text-blue-400">set</button>
                       </form>
                     </td>
                   )}
@@ -321,7 +322,7 @@ export default async function CampaignsPage({
                   </td>
                   <td className="text-right">
                     <form action={deleteCampaignAction.bind(null, ca.id)}>
-                      <button className="text-[11px] font-medium text-red-700 hover:underline dark:text-red-400" title="Delete the campaign; sent emails stay in their threads">delete</button>
+                      <button className="text-label font-medium text-red-700 hover:underline dark:text-red-400" title="Delete the campaign; sent emails stay in their threads">delete</button>
                     </form>
                   </td>
                 </tr>

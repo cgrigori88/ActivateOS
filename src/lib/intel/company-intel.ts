@@ -46,7 +46,7 @@ function familiesFromSignalTypes(types: string[]): Set<string> {
   return out;
 }
 
-export async function loadCompanyIntel(pool: pg.Pool, companyId: string): Promise<CompanyIntel> {
+export async function loadCompanyIntel(pool: pg.Pool | pg.PoolClient, companyId: string): Promise<CompanyIntel> {
   const [evidenceRes, coverageRes, signalRes] = await Promise.all([
     pool.query(
       `select claim, source_type, provider_id, status, stance, computed_confidence, first_party, collected_at

@@ -1,4 +1,4 @@
-import { getPool } from "@/db/client";
+import { getOwnerPool } from "@/db/client";
 import { HeroMesh } from "@/components/hero-mesh";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { changePasswordAction, createOwnerAction, signInAction, signOutAction } from "./actions";
@@ -28,7 +28,7 @@ export default async function LoginPage({
   let hasMembers = true;
   let signedInAs: string | null = null;
   if (configured) {
-    const { rows } = await getPool().query<{ n: string }>(`select count(*)::text as n from org_members`);
+    const { rows } = await getOwnerPool().query<{ n: string }>(`select count(*)::text as n from org_members`);
     hasMembers = Number(rows[0].n) > 0;
     const supabase = await supabaseServer();
     const { data } = await supabase.auth.getUser();
@@ -36,7 +36,7 @@ export default async function LoginPage({
   }
 
   const field =
-    "w-full rounded-input border border-neutral-300/80 bg-white/70 px-3.5 py-2.5 text-[15px] backdrop-blur transition-colors duration-[140ms] placeholder:text-neutral-400 hover:border-neutral-400 focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/15 dark:border-white/15 dark:bg-white/[0.06] dark:hover:border-white/30";
+    "w-full rounded-input border border-neutral-300/80 bg-white/70 px-3.5 py-2.5 text-title backdrop-blur transition-colors duration-[140ms] placeholder:text-neutral-400 hover:border-neutral-400 focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/15 dark:border-white/15 dark:bg-white/[0.06] dark:hover:border-white/30";
   const label = "mb-1.5 block text-[12.5px] font-semibold text-neutral-600 dark:text-neutral-300";
   const primary =
     "inline-flex min-h-[44px] w-full items-center justify-center rounded-full bg-accent px-5 text-[14.5px] font-bold text-white transition-colors duration-[140ms] hover:bg-accent-strong";
@@ -72,17 +72,17 @@ export default async function LoginPage({
 
           {!configured ? (
             <>
-              <h1 className="text-[32px] font-extrabold leading-[1.1] tracking-[-0.03em]">Identity isn&apos;t configured</h1>
-              <p className="mt-3 text-[15px] leading-relaxed text-neutral-500 dark:text-neutral-400">
-                Set <code className="rounded bg-neutral-900/[0.06] px-1.5 py-0.5 font-mono text-[13px] dark:bg-white/10">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-                <code className="rounded bg-neutral-900/[0.06] px-1.5 py-0.5 font-mono text-[13px] dark:bg-white/10">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> on this
+              <h1 className="text-hero font-extrabold leading-[1.1] tracking-[-0.03em]">Identity isn&apos;t configured</h1>
+              <p className="mt-3 text-title leading-relaxed text-neutral-500 dark:text-neutral-400">
+                Set <code className="rounded bg-neutral-900/[0.06] px-1.5 py-0.5 font-mono text-body dark:bg-white/10">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+                <code className="rounded bg-neutral-900/[0.06] px-1.5 py-0.5 font-mono text-body dark:bg-white/10">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> on this
                 deployment. Basic Auth continues to gate the app where enabled.
               </p>
             </>
           ) : signedInAs ? (
             <>
-              <h1 className="text-[32px] font-extrabold leading-[1.1] tracking-[-0.03em]">You&apos;re signed in</h1>
-              <p className="mt-3 text-[15px] text-neutral-500 dark:text-neutral-400">
+              <h1 className="text-hero font-extrabold leading-[1.1] tracking-[-0.03em]">You&apos;re signed in</h1>
+              <p className="mt-3 text-title text-neutral-500 dark:text-neutral-400">
                 as <span className="font-semibold text-neutral-900 dark:text-neutral-100">{signedInAs}</span>
               </p>
 
@@ -94,7 +94,7 @@ export default async function LoginPage({
               </div>
 
               <details className="group mt-8 border-t border-neutral-900/10 pt-6 dark:border-white/10">
-                <summary className="inline-flex cursor-pointer list-none items-center gap-2 text-[13px] font-semibold text-neutral-500 transition-colors duration-[140ms] hover:text-neutral-900 dark:hover:text-neutral-100">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-2 text-body font-semibold text-neutral-500 transition-colors duration-[140ms] hover:text-neutral-900 dark:hover:text-neutral-100">
                   <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 transition-transform duration-[220ms] group-open:rotate-90" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M6 4l4 4-4 4" />
                   </svg>
@@ -121,8 +121,8 @@ export default async function LoginPage({
             </>
           ) : (
             <>
-              <h1 className="text-[32px] font-extrabold leading-[1.1] tracking-[-0.03em]">Sign in</h1>
-              <p className="mt-3 text-[15px] text-neutral-500 dark:text-neutral-400">
+              <h1 className="text-hero font-extrabold leading-[1.1] tracking-[-0.03em]">Sign in</h1>
+              <p className="mt-3 text-title text-neutral-500 dark:text-neutral-400">
                 Operator access to the partner revenue graph.
               </p>
 
@@ -142,7 +142,7 @@ export default async function LoginPage({
                 <>
                   <div className="my-8 flex items-center gap-4">
                     <span className="h-px flex-1 bg-neutral-900/10 dark:bg-white/10" />
-                    <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-neutral-400">First run</span>
+                    <span className="text-label font-bold uppercase tracking-[0.1em] text-neutral-400">First run</span>
                     <span className="h-px flex-1 bg-neutral-900/10 dark:bg-white/10" />
                   </div>
 
@@ -161,7 +161,7 @@ export default async function LoginPage({
                       <input id="owner-password" name="password" type="password" required minLength={12} autoComplete="new-password" placeholder="At least 12 characters" className={field} />
                       <p className="mt-1.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">12 characters minimum.</p>
                     </div>
-                    <button className="inline-flex min-h-[44px] w-full items-center justify-center rounded-full bg-emerald px-5 text-[14.5px] font-bold text-white transition-colors duration-[140ms] hover:bg-[#047857]">
+                    <button className="inline-flex min-h-[44px] w-full items-center justify-center rounded-full bg-emerald px-5 text-[14.5px] font-bold text-white transition-colors duration-[140ms] hover:brightness-95">
                       Create owner &amp; sign in
                     </button>
                   </form>
@@ -181,7 +181,7 @@ export default async function LoginPage({
           <div className="absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-[#04070f] via-[#04070f]/70 to-transparent" />
 
           <div className="absolute inset-x-0 bottom-0 p-10">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-300/70">
+            <p className="text-label font-bold uppercase tracking-[0.14em] text-blue-300/70">
               The partner-context gap
             </p>
             <p className="mt-3 max-w-[22ch] text-[34px] font-extrabold leading-[1.08] tracking-[-0.03em] text-white">

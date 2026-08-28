@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
 import { BandBadge, Bento, Card, PageHeader } from "@/components/ui";
 import {
   CATEGORIES,
@@ -23,7 +22,7 @@ import { OverlapWorkbench, type OverlapRow } from "./overlap-workbench";
 import { alignedFieldKeys, populationFields } from "@/lib/mapping/populations";
 import { createPopulationAction, setPopulationStatusAction, targetFromCellAction, acceptPopulationAction } from "./actions";
 import { ViewSelect, PartnerSelect } from "./view-select";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 
 export const dynamic = "force-dynamic";
 // AI drafting actions invoked from this segment can run tens of seconds —
@@ -62,7 +61,7 @@ function ViewTabs({ view, pendingCount = 0 }: { view: View; pendingCount?: numbe
           href="/mapping?view=review"
           className="pos-lift mt-3 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200"
         >
-          <span className="rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">{pendingCount}</span>
+          <span className="rounded-full bg-accent px-1.5 py-0.5 text-micro font-bold leading-none text-white">{pendingCount}</span>
           <span>
             {pendingCount === 1 ? "A partner list is" : `${pendingCount} partner lists are`} waiting for your review before
             {pendingCount === 1 ? " it maps" : " they map"} — open the review queue →
@@ -84,7 +83,7 @@ export default async function MappingPage({
   const view: View = (["matrix", "recommend", "review", "overlap"].includes(rawView ?? "") ? rawView : "matrix") as View;
 
   const pendingCount = Number(
-    (await getPool().query<{ n: string }>(`select count(*)::text n from account_populations where status = 'pending'`)).rows[0]?.n ?? 0,
+    (await withTenant((db) => db.query<{ n: string }>(`select count(*)::text n from account_populations where status = 'pending'`))).rows[0]?.n ?? 0,
   );
 
   // ── Pending review — vet a pushed partner list before it maps ────────────
@@ -153,13 +152,10 @@ export default async function MappingPage({
   // Same populations data as the matrix — a co-sell overlap is an account in
   // both an org and a partner list — enriched with the real suggested play,
   // propensity drivers, and explicit channel conflict.
-  const pool = getPool();
-  const db = await pool.connect();
-  let rows: OverlapRow[] = [];
-  let partnerList: { id: string; name: string; type: string | null }[] = [];
-  try {
-    const orgId = await soleOrgId(db);
-    if (orgId) {
+  const { rows, partnerList } = await withTenant(async (db, orgId) => {
+    let rows: OverlapRow[] = [];
+    let partnerList: { id: string; name: string; type: string | null }[] = [];
+    {
       const coverage = await partnerCoverage(db, orgId);
       const companyIds = coverage.map((a) => a.companyId);
 
@@ -267,9 +263,8 @@ export default async function MappingPage({
       for (const a of coverage) for (const p of a.partners) pmap.set(p.id, p);
       partnerList = [...pmap.values()].sort((a, b) => a.name.localeCompare(b.name));
     }
-  } finally {
-    db.release();
-  }
+    return { rows, partnerList };
+  });
 
   return (
     <main>
@@ -292,7 +287,7 @@ export default async function MappingPage({
         <Card>
           <p className="text-sm text-neutral-500">
             No co-sell overlaps yet. An overlap is an account that sits in one of your lists AND a partner&apos;s —
-            build lists on both sides in the <Link href="/mapping?view=matrix" className="text-blue-700 hover:underline dark:text-blue-400">Account mapping</Link> view.
+            build lists on both sides in the <Link href="/mapping?view=matrix" className="text-accent hover:underline dark:text-blue-400">Account mapping</Link> view.
           </p>
         </Card>
       ) : (
@@ -309,16 +304,11 @@ export default async function MappingPage({
 
 // ── Account-mapping matrix components (Phase 10) ─────────────────────────────
 
-async function soleOrgId(db: import("pg").PoolClient): Promise<string | null> {
-  // Tenant context: signed-in user's org, or the sole org in Basic-Auth mode.
-  return currentOrgId(db);
-}
-
 const CAT_TONE: Record<string, string> = {
   customer: "bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300",
   open_opportunity: "bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-950 dark:text-amber-300",
   prospect: "bg-violet-50 text-violet-700 ring-violet-600/20 dark:bg-violet-950 dark:text-violet-300",
-  target: "bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-950 dark:text-green-300",
+  target: "bg-green-50 text-positive ring-green-600/20 dark:bg-green-950 dark:text-green-300",
 };
 function catTone(c: string): string {
   return CAT_TONE[c] ?? "bg-neutral-100 text-neutral-600 ring-neutral-500/20 dark:bg-neutral-800 dark:text-neutral-300";
@@ -326,12 +316,7 @@ function catTone(c: string): string {
 
 
 async function ReviewSection({ openId }: { openId?: string }) {
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
-    const orgId = await soleOrgId(db);
-    if (!orgId) return <Card><p className="text-sm text-neutral-500">No organization yet.</p></Card>;
-
+  return withTenant(async (db, orgId) => {
     const { rows: pending } = await db.query<{ id: string; name: string; category: Category; partner_name: string | null; members: number; created_at: Date }>(
       `select ap.id, ap.name, ap.category, p.name as partner_name,
               (select count(*) from population_members m where m.population_id = ap.id)::int as members, ap.created_at
@@ -346,7 +331,7 @@ async function ReviewSection({ openId }: { openId?: string }) {
         <Card>
           <p className="text-sm text-neutral-500">
             No lists awaiting review. When a partner pushes an account list, it lands here for you to inspect and accept
-            before it maps. (Propose one yourself in the <Link href="/mapping?view=matrix" className="text-blue-700 hover:underline dark:text-blue-400">Account mapping</Link> lists manager.)
+            before it maps. (Propose one yourself in the <Link href="/mapping?view=matrix" className="text-accent hover:underline dark:text-blue-400">Account mapping</Link> lists manager.)
           </p>
         </Card>
       );
@@ -389,9 +374,7 @@ async function ReviewSection({ openId }: { openId?: string }) {
         {dialog && <ReviewDialog {...dialog} />}
       </div>
     );
-  } finally {
-    db.release();
-  }
+  });
 }
 
 function ReviewDialog({
@@ -415,7 +398,7 @@ function ReviewDialog({
         <Link href="/mapping?view=review" className="ml-auto text-xs text-neutral-500 hover:underline">close</Link>
       </div>
       <p className="mb-3 text-xs text-neutral-500">
-        {fields.length} field(s) detected · <span className="font-medium text-green-700 dark:text-green-400">{alignedCount} align to yours</span>. Choose which to carry into the mapped matrix, then accept.
+        {fields.length} field(s) detected · <span className="font-medium text-positive dark:text-green-400">{alignedCount} align to yours</span>. Choose which to carry into the mapped matrix, then accept.
       </p>
 
       <form action={acceptPopulationAction.bind(null, pop.id)}>
@@ -433,8 +416,8 @@ function ReviewDialog({
                   <td className="font-medium capitalize">{f.key.replace(/_/g, " ")}</td>
                   <td>
                     {f.aligned
-                      ? <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-950 dark:text-green-300">aligned</span>
-                      : <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">new field</span>}
+                      ? <span className="rounded bg-green-100 px-1.5 py-0.5 text-micro font-medium text-positive dark:bg-green-950 dark:text-green-300">aligned</span>
+                      : <span className="rounded bg-amber-100 px-1.5 py-0.5 text-micro font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">new field</span>}
                   </td>
                   <td className="tnum text-right text-neutral-500">{Math.round((f.present / Math.max(total, 1)) * 100)}%</td>
                   <td className="text-neutral-500">{f.sample ?? "—"}</td>
@@ -478,7 +461,7 @@ function ReviewDialog({
               </table>
             </div>
             {total > sample.length && (
-              <p className="mt-1.5 text-[11px] text-neutral-400">
+              <p className="mt-1.5 text-label text-neutral-400">
                 First {sample.length} of {total.toLocaleString()} accounts, alphabetically — the field table above summarizes the whole list.
               </p>
             )}
@@ -487,7 +470,7 @@ function ReviewDialog({
 
         <div className="flex items-center gap-3">
           <button className="rounded-md bg-green-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-800">Accept &amp; map</button>
-          <span className="text-[11px] text-neutral-400">Reviewed in-app — nothing leaves the system.</span>
+          <span className="text-label text-neutral-400">Reviewed in-app — nothing leaves the system.</span>
         </div>
       </form>
       <form action={setPopulationStatusAction.bind(null, pop.id, "rejected")} className="mt-2">
@@ -498,19 +481,14 @@ function ReviewDialog({
 }
 
 async function RecommendSection() {
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
-    const orgId = await soleOrgId(db);
-    if (!orgId) return <Card><p className="text-sm text-neutral-500">No organization yet.</p></Card>;
-
+  return withTenant(async (db, orgId) => {
     const accounts = await crossPartnerOpportunities(db, orgId);
     if (accounts.length === 0) {
       return (
         <Card>
           <p className="text-sm text-neutral-500">
             No cross-partner accounts to learn from yet — approve lists on your side and at least one partner in{" "}
-            <Link href="/mapping?view=matrix" className="text-blue-700 hover:underline dark:text-blue-400">Account mapping</Link>.
+            <Link href="/mapping?view=matrix" className="text-accent hover:underline dark:text-blue-400">Account mapping</Link>.
           </p>
         </Card>
       );
@@ -537,7 +515,7 @@ async function RecommendSection() {
             <Card key={b.key}>
               <div className="mb-1 flex items-baseline justify-between gap-2">
                 <h3 className="text-sm font-semibold">{b.name}</h3>
-                <span className="tnum whitespace-nowrap rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                <span className="tnum whitespace-nowrap rounded bg-neutral-100 px-1.5 py-0.5 text-label font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
                   {b.companyIds.length} account{b.companyIds.length === 1 ? "" : "s"}
                 </span>
               </div>
@@ -558,7 +536,7 @@ async function RecommendSection() {
           <div className="mb-6">
             <div className="mb-2 flex items-baseline justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Multi-vendor plays · suggested</h2>
-              <span className="text-[11px] text-neutral-400">One click builds the package: named list → campaign → partners in roles. You still approve every touch.</span>
+              <span className="text-label text-neutral-400">One click builds the package: named list → campaign → partners in roles. You still approve every touch.</span>
             </div>
             {(mp || spn) && mp && mp.closed > 0 && (
               <p className="mb-3 rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2 text-xs text-violet-800 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
@@ -592,7 +570,7 @@ async function RecommendSection() {
         {/* Ranked opportunities — filter, select one or many, then act */}
         <div className="mb-2 flex items-baseline justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Ranked co-sell opportunities</h2>
-          <span className="text-[11px] text-neutral-400">Filter, select accounts, then create a target list or draft motions.</span>
+          <span className="text-label text-neutral-400">Filter, select accounts, then create a target list or draft motions.</span>
         </div>
         <SelectableAccounts
           accounts={top.map((a) => ({
@@ -609,15 +587,13 @@ async function RecommendSection() {
           createTarget={createTargetListAction}
           generateMotions={generateMotionsForSelectionAction}
         />
-        <p className="mt-2 text-[11px] text-neutral-400">
+        <p className="mt-2 text-label text-neutral-400">
           Rank = propensity + a boost for each additional partner covering the account. &ldquo;Generate motions&rdquo; is
           bounded to 10 at a time and grounds each in the account&apos;s evidence.
         </p>
       </>
     );
-  } finally {
-    db.release();
-  }
+  });
 }
 
 /** Subtle propensity heatmap — blue with alpha, legible on light and dark. */
@@ -628,12 +604,7 @@ function cellShade(avg: number | null): string | undefined {
 }
 
 async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: string; hideEmpty?: boolean; mr?: string; mc?: string }) {
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
-    const orgId = await soleOrgId(db);
-    if (!orgId) return <Card><p className="text-sm text-neutral-500">No organization yet.</p></Card>;
-
+  return withTenant(async (db, orgId) => {
     const partners = await partnersWithPopulations(db, orgId);
     if (partners.length === 0) {
       return (
@@ -687,9 +658,9 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
             <div className="flex items-center gap-3">
               {/* Organize matrix — choose which populations are rows / columns */}
               <details className="relative">
-                <summary className="cursor-pointer text-[11px] font-medium text-blue-700 hover:underline dark:text-blue-400">Organize matrix</summary>
+                <summary className="cursor-pointer text-label font-medium text-accent hover:underline dark:text-blue-400">Organize matrix</summary>
                 <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-                  <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">Rows — your lists</p>
+                  <p className="mb-1 text-micro uppercase tracking-wide text-neutral-400">Rows — your lists</p>
                   <div className="mb-3 space-y-0.5">
                     {allRows.map((r) => {
                       const on = mrSet ? mrSet.has(r.id) : true;
@@ -701,7 +672,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                       );
                     })}
                   </div>
-                  <p className="mb-1 text-[10px] uppercase tracking-wide text-neutral-400">Columns — partner lists</p>
+                  <p className="mb-1 text-micro uppercase tracking-wide text-neutral-400">Columns — partner lists</p>
                   <div className="space-y-0.5">
                     {allCols.map((c) => {
                       const on = mcSet ? mcSet.has(c.id) : true;
@@ -715,7 +686,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                   </div>
                 </div>
               </details>
-              <Link href={q({ hide: hideEmpty ? undefined : "1" })} className="text-[11px] text-neutral-500 hover:underline">
+              <Link href={q({ hide: hideEmpty ? undefined : "1" })} className="text-label text-neutral-500 hover:underline">
                 {hideEmpty ? "Show empty lists" : "Hide empty lists"}
               </Link>
             </div>
@@ -726,7 +697,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
         <Card className="mb-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <h2 className="text-sm font-semibold">{selectedName}</h2>
-            <span className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neutral-500 ring-1 ring-inset ring-neutral-300/50 dark:ring-neutral-700">
+            <span className="rounded px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 ring-1 ring-inset ring-neutral-300/50 dark:ring-neutral-700">
               {isAll ? "all partners" : "connected partner"}
             </span>
           </div>
@@ -738,7 +709,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
             <Bento label="campaigns" value={hub.campaignsTotal.toLocaleString()} subs={[`${hub.campaignsLive} live`, `${hub.touchesSent} sent`]} href="/campaigns" />
             <Bento label="open pipeline" value={`$${Math.round(hub.pipelineUsd / 1000)}k`} subs={[`${hub.oppsOpen} open`, hub.oppsWon ? `${hub.oppsWon} won $${Math.round(hub.wonUsd / 1000)}k` : ""]} href="/pipeline" />
           </div>
-          <p className="mt-3 text-[11px] text-neutral-400">
+          <p className="mt-3 text-label text-neutral-400">
             {isAll
               ? "Rolled up across every connected partner. Each partner's lists + fields stay scoped to them; totals here aggregate all partner-attributed motions, campaigns, and pipeline."
               : `Scoped to ${selectedName}: their lists + fields stay theirs; motions, campaigns, and pipeline count here when attributed to this partner. Your own lists (the vendor side) map against every partner.`}
@@ -762,9 +733,9 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                   <th className="text-center text-neutral-500">Total</th>
                   {cols.map((c) => (
                     <th key={c.id} className="text-center align-bottom">
-                      {isAll && c.partner_name && <div className="text-[10px] font-semibold text-blue-700 dark:text-blue-400">{c.partner_name}</div>}
+                      {isAll && c.partner_name && <div className="text-micro font-semibold text-accent dark:text-blue-400">{c.partner_name}</div>}
                       <div className="font-medium">{c.name}</div>
-                      <div className="text-[10px] font-normal text-neutral-400">{CATEGORY_LABEL[c.category]}</div>
+                      <div className="text-micro font-normal text-neutral-400">{CATEGORY_LABEL[c.category]}</div>
                     </th>
                   ))}
                 </tr>
@@ -773,10 +744,10 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <td className="sticky left-0 z-10 bg-white dark:bg-neutral-900">
-                      <span className={`inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${catTone(r.category)}`}>
+                      <span className={`inline-flex rounded px-1.5 py-0.5 text-label font-medium ring-1 ring-inset ${catTone(r.category)}`}>
                         {r.name}
                       </span>
-                      <div className="text-[10px] text-neutral-400">{r.members} accounts</div>
+                      <div className="text-micro text-neutral-400">{r.members} accounts</div>
                     </td>
                     <td className="text-center tnum font-semibold text-neutral-500">{(rowTotals.get(r.id) ?? 0).toLocaleString()}</td>
                     {cols.map((c) => {
@@ -788,7 +759,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                         <td key={c.id} className="p-0 text-center" style={{ backgroundColor: cellShade(cell.avgScore) }}>
                           <Link href={q({ row: r.id, col: c.id })} className="flex flex-col items-center px-3 py-2.5 hover:ring-2 hover:ring-inset hover:ring-blue-500">
                             <span className="tnum text-lg font-semibold text-blue-800 dark:text-blue-300">{cell.count.toLocaleString()}</span>
-                            <span className="text-[10px] text-neutral-600 dark:text-neutral-400">
+                            <span className="text-micro text-neutral-600 dark:text-neutral-400">
                               {cell.avgScore != null ? `avg ${cell.avgScore.toFixed(0)}` : "—"}
                               {cell.highCount > 0 ? ` · ${cell.highCount} hot` : ""}
                             </span>
@@ -807,7 +778,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                 </tr>
               </tbody>
             </table>
-            <p className="border-t border-neutral-100 px-3 py-2 text-[11px] text-neutral-500 dark:border-neutral-800">
+            <p className="border-t border-neutral-100 px-3 py-2 text-label text-neutral-500 dark:border-neutral-800">
               Cell = accounts on both lists, shaded by avg propensity · hot = high/very-high band · Total = distinct
               accounts · {isAll ? "columns span every partner" : "click a cell to drill in"} · use Organize matrix to choose rows/columns.
             </p>
@@ -815,17 +786,13 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
         )}
       </>
     );
-  } finally {
-    db.release();
-  }
+  });
 }
 
 const BASE_COLS = ["industry", "employees", "propensity"];
 
 async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colId: string; cols?: string; partnerId?: string }) {
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  return withTenant(async (db) => {
     const { row, col, accounts } = await intersection(db, { rowPopId: rowId, colPopId: colId });
     const fields = await availableFields(db, { rowPopId: rowId, colPopId: colId });
     // Honor the fields chosen at review time (selected_fields); if none set on
@@ -862,7 +829,7 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
               Build target list
             </summary>
             <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-              <p className="mb-2 text-[11px] text-neutral-500">Creates an approved target list from these {accounts.length} accounts — ready to score, sequence, and campaign.</p>
+              <p className="mb-2 text-label text-neutral-500">Creates an approved target list from these {accounts.length} accounts — ready to score, sequence, and campaign.</p>
               <form action={targetFromCellAction.bind(null, rowId, colId)} className="flex items-end gap-2">
                 <input type="hidden" name="partner" value={partnerId ?? ""} />
                 <input name="name" defaultValue={`${row?.name ?? ""} × ${col?.name ?? ""}`} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
@@ -876,7 +843,7 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
               Columns
             </summary>
             <div className="absolute right-0 z-10 mt-1 w-56 rounded-lg border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-              <p className="mb-1 px-1 text-[10px] uppercase tracking-wide text-neutral-400">Toggle columns (from the data)</p>
+              <p className="mb-1 px-1 text-micro uppercase tracking-wide text-neutral-400">Toggle columns (from the data)</p>
               {allToggles.map((k) => (
                 <Link
                   key={k}
@@ -904,7 +871,7 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
                 <tr key={a.company_id}>
                   <td>
                     <Link href={`/accounts/${a.company_id}`} className="font-medium hover:underline">{a.legal_name}</Link>
-                    {a.primary_domain && <div className="text-[11px] text-neutral-400">{a.primary_domain}</div>}
+                    {a.primary_domain && <div className="text-label text-neutral-400">{a.primary_domain}</div>}
                   </td>
                   {active.map((k) => {
                     if (k === "industry") return <td key={k} className="text-neutral-600 dark:text-neutral-300">{a.industry ?? "—"}</td>;
@@ -930,18 +897,11 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
         </div>
       </div>
     );
-  } finally {
-    db.release();
-  }
+  });
 }
 
 async function PopulationManager() {
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
-    const orgId = await soleOrgId(db);
-    if (!orgId) return null;
-
+  return withTenant(async (db, orgId) => {
     const { rows: partners } = await db.query<{ id: string; name: string }>(
       `select id, name from partners where org_id = $1 order by name`,
       [orgId],
@@ -967,7 +927,7 @@ async function PopulationManager() {
                   <span className="text-xs text-neutral-500">{nameFor(p.partner_id)} · {CATEGORY_LABEL[p.category]} · {p.members} accounts</span>
                   <span className="ml-auto flex gap-1">
                     <form action={setPopulationStatusAction.bind(null, p.id, "approved")}>
-                      <button className="text-xs font-medium text-green-700 hover:underline dark:text-green-400">approve</button>
+                      <button className="text-xs font-medium text-positive hover:underline dark:text-green-400">approve</button>
                     </form>
                     <form action={setPopulationStatusAction.bind(null, p.id, "rejected")}>
                       <button className="text-xs font-medium text-red-700 hover:underline dark:text-red-400">reject</button>
@@ -1001,13 +961,11 @@ async function PopulationManager() {
             Propose list
           </button>
         </form>
-        <p className="mt-2 text-[11px] text-neutral-400">
+        <p className="mt-2 text-label text-neutral-400">
           Members + fields (territory, vertical, segment, owner, contacts) come from a CSV ingest — the attributes model
           is ready; the ingest wiring is the next step. Proposed lists start pending until approved.
         </p>
       </Card>
     );
-  } finally {
-    db.release();
-  }
+  });
 }

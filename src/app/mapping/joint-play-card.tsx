@@ -41,7 +41,7 @@ export function JointPlayCard({
         {p.partners.map((x) => (
           <span
             key={x.id}
-            className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-800 ring-1 ring-inset ring-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900"
+            className="rounded-full bg-violet-50 px-2 py-0.5 text-label font-medium text-violet-800 ring-1 ring-inset ring-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900"
             title={x.type ?? "partner"}
           >
             {x.name} <span className="font-normal opacity-60">{x.role.replace(/_/g, " ")}</span>
@@ -66,7 +66,7 @@ export function JointPlayCard({
           >
             <input type="checkbox" checked={sel.has(a.companyId)} onChange={() => toggle(a.companyId)} className="h-4 w-4 shrink-0" />
             <span className="min-w-0 flex-1 truncate text-sm">{a.name}</span>
-            <span className="tnum shrink-0 text-[11px] text-neutral-400">{a.score != null ? `propensity ${a.score}` : "unscored"}</span>
+            <span className="tnum shrink-0 text-label text-neutral-400">{a.score != null ? `propensity ${a.score}` : "unscored"}</span>
           </label>
         ))}
       </div>

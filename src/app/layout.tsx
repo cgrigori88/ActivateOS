@@ -5,8 +5,8 @@ import { headers } from "next/headers";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { Shell } from "@/components/shell";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
-import { currentOrgId, currentRole } from "@/lib/auth/org";
-import { getPool } from "@/db/client";
+import { currentRole } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { signOutAction } from "@/app/login/actions";
 
 const sans = Plus_Jakarta_Sans({
@@ -44,32 +44,32 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
   // Who is signed in (identity mode only) — the rail's user chip + sign-out.
   let user: string | null = null;
-  let isOwner = true; // Basic-Auth / local-dev mode: the operator owns the demo
   if (authConfigured()) {
     try {
       const supabase = await supabaseServer();
-      const { data } = await supabase.auth.getUser();
-      user = data.user?.email ?? null;
-      if (user) isOwner = (await currentRole(getPool())) === "owner";
+      user = (await supabase.auth.getUser()).data.user?.email ?? null;
     } catch {
       /* no request cookies (build) — chip falls back to Operator */
     }
   }
-  // Attention badges for the rail: work waiting on a human decision, scoped to
-  // the caller's tenant. One query; failures never block the shell.
+  // Rail state — owner nav + attention badges, scoped to the caller's tenant.
+  // RISK-1: role + all badge reads run in one withTenant (pins app.org_id).
+  // Defaults survive a build pass / no-tenant / db hiccup so the shell always
+  // renders. isOwner defaults to Basic-Auth-owns-the-demo only when identity
+  // is off; under identity a membership-less user stays non-owner.
+  let isOwner = !authConfigured();
   const badges: Record<string, number> = {};
   const alerts: Record<string, number> = {};
   let guest = false;
   try {
-    const pool = getPool();
-    const orgId = await currentOrgId(pool);
-    if (orgId) {
-      const { rows: kindRows } = await pool.query<{ kind: string }>(
+    await withTenant(async (db, orgId) => {
+      isOwner = (await currentRole(db)) === "owner";
+      const { rows: kindRows } = await db.query<{ kind: string }>(
         `select kind from organizations where id = $1`,
         [orgId],
       );
       guest = kindRows[0]?.kind === "guest";
-      const { rows } = await pool.query<{ pending_lists: string; pending_review: string; incoming_offers: string; pending_pursuits: string; pending_intros: string }>(
+      const { rows } = await db.query<{ pending_lists: string; pending_review: string; incoming_offers: string; pending_pursuits: string; pending_intros: string }>(
         `select
            (select count(*) from account_populations where status = 'pending' and org_id = $1) as pending_lists,
            (select count(*) from review_queue where status = 'pending' and org_id = $1) as pending_review,
@@ -103,7 +103,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
       // Routines whose LATEST run failed — red, not blue: something broke,
       // it isn't waiting on a decision (task #77).
-      const { rows: failed } = await pool.query<{ n: string }>(
+      const { rows: failed } = await db.query<{ n: string }>(
         `select count(*)::text as n from (
            select distinct on (r.id) rr.status
            from routines r join routine_runs rr on rr.routine_id = r.id
@@ -113,9 +113,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         [orgId],
       );
       if (Number(failed[0]?.n ?? 0) > 0) alerts["/routines"] = Number(failed[0].n);
-    }
+    });
   } catch {
-    /* build pass or db unavailable — no badges, shell still renders */
+    /* build pass, no tenant, or db unavailable — defaults, shell still renders */
   }
 
   return (

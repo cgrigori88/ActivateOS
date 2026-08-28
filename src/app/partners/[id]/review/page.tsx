@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { partnerRoom } from "@/lib/partners/hub";
 import { listInitiatives } from "@/lib/partnerships/initiatives";
 import { loadPartnerPlaybook } from "@/lib/playbooks/playbooks";
@@ -35,28 +34,26 @@ function Section({ title, note, children }: { title: string; note?: string; chil
 function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-lg border border-neutral-200 px-3 py-2 dark:border-neutral-800 print:border-neutral-300">
-      <div className="text-[11px] uppercase tracking-wide text-neutral-400">{label}</div>
+      <div className="text-label uppercase tracking-wide text-neutral-400">{label}</div>
       <div className="tnum text-lg font-semibold">{value}</div>
-      {sub && <div className="text-[11px] text-neutral-400">{sub}</div>}
+      {sub && <div className="text-label text-neutral-400">{sub}</div>}
     </div>
   );
 }
 
 export default async function PartnershipReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) return <main>No organization.</main>;
 
-  const room = await partnerRoom(pool, orgId, id);
-  if (!room) notFound();
-  const { partner, book, partnership, ladder, grants, pursuits, settlement, scorecard } = room;
-  const initiatives = await listInitiatives(pool, orgId, { partnerId: id, includeArchived: false });
-  const playbook = (await loadPartnerPlaybook(pool, orgId, id)) ?? { positioning: "", strengths: "", rules: "" };
-
-  // The renewal clock on this partner's approved lists — the co-sell homework.
-  const { rows: renewals } = await pool.query<{ legal_name: string; renewal: string; list_name: string }>(
-    `select distinct on (pm.company_id) c.legal_name,
+  const { room, initiatives, playbook, renewals } = await withTenant(async (db, orgId) => {
+    const room = await partnerRoom(db, orgId, id);
+    if (!room) notFound();
+    return {
+      room,
+      initiatives: await listInitiatives(db, orgId, { partnerId: id, includeArchived: false }),
+      playbook: (await loadPartnerPlaybook(db, orgId, id)) ?? { positioning: "", strengths: "", rules: "" },
+      // The renewal clock on this partner's approved lists — the co-sell homework.
+      renewals: (await db.query<{ legal_name: string; renewal: string; list_name: string }>(
+        `select distinct on (pm.company_id) c.legal_name,
             pm.attributes->>'renewal_date' as renewal, ap.name as list_name
      from population_members pm
      join account_populations ap on ap.id = pm.population_id
@@ -65,8 +62,11 @@ export default async function PartnershipReviewPage({ params }: { params: Promis
      where pm.attributes ? 'renewal_date'
        and (pm.attributes->>'renewal_date')::date between now()::date and (now() + interval '180 days')::date
      order by pm.company_id, (pm.attributes->>'renewal_date')::date asc`,
-    [orgId, id],
-  );
+        [orgId, id],
+      )).rows,
+    };
+  });
+  const { partner, book, partnership, ladder, grants, pursuits, settlement, scorecard } = room;
 
   const generatedAt = new Date().toISOString().slice(0, 16).replace("T", " ");
   const approvedRungs = ladder ? Object.entries(ladder.rungs).filter(([, r]) => r.state === "approved").map(([level]) => level) : [];
@@ -82,7 +82,7 @@ export default async function PartnershipReviewPage({ params }: { params: Promis
       </div>
 
       <header className="mb-6 border-b-2 border-neutral-900 pb-3 dark:border-neutral-100 print:border-neutral-900">
-        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-neutral-400">Partnership review</p>
+        <p className="text-label font-bold uppercase tracking-[0.14em] text-neutral-400">Partnership review</p>
         <h1 className="text-2xl font-bold">{partner.name}</h1>
         <p className="mt-1 text-xs text-neutral-500">
           {[partner.partnerType, partnership?.otherOrgName ? `connected tenant: ${partnership.otherOrgName}` : "not yet a connected tenant"].filter(Boolean).join(" · ")}
@@ -110,7 +110,7 @@ export default async function PartnershipReviewPage({ params }: { params: Promis
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-[11px] uppercase tracking-wide text-neutral-400">
+              <tr className="text-left text-label uppercase tracking-wide text-neutral-400">
                 <th className="py-1 pr-2 font-semibold">Initiative</th>
                 <th className="py-1 pr-2 font-semibold">Period</th>
                 <th className="py-1 pr-2 text-right font-semibold">Target</th>
@@ -127,7 +127,7 @@ export default async function PartnershipReviewPage({ params }: { params: Promis
                   <td className="py-1.5 pr-2 text-neutral-500">{i.periodLabel ?? "—"}</td>
                   <td className="tnum py-1.5 pr-2 text-right">{i.targetUsd != null ? money(i.targetUsd) : "—"}</td>
                   <td className="tnum py-1.5 pr-2 text-right text-emerald-700 dark:text-emerald-400">{money(i.wonUsd)} ({i.wonN})</td>
-                  <td className="tnum py-1.5 pr-2 text-right text-blue-700 dark:text-blue-400">{money(i.openUsd)} ({i.openN})</td>
+                  <td className="tnum py-1.5 pr-2 text-right text-accent dark:text-blue-400">{money(i.openUsd)} ({i.openN})</td>
                   <td className="tnum py-1.5 pr-2 text-right text-neutral-500">{i.lostN > 0 ? `${money(i.lostUsd)} (${i.lostN})` : "—"}</td>
                   <td className="py-1.5 text-right text-neutral-500">{i.motions}m · {i.campaigns}c</td>
                 </tr>
@@ -189,7 +189,7 @@ export default async function PartnershipReviewPage({ params }: { params: Promis
         </Section>
       )}
 
-      <footer className="mt-8 border-t border-neutral-200 pt-2 text-[11px] text-neutral-400 dark:border-neutral-800 print:border-neutral-300">
+      <footer className="mt-8 border-t border-neutral-200 pt-2 text-label text-neutral-400 dark:border-neutral-800 print:border-neutral-300">
         Generated by PursuitOS from the live partnership record. Scorecard figures come from the settlement ledger and motion outcomes; initiative progress from linked opportunities; coverage from ingested partner lists. This document is an output of the work, not a separate chore.
       </footer>
     </main>

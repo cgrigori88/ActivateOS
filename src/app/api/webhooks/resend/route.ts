@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPool } from "@/db/client";
+import { getOwnerPool } from "@/db/client";
 import { processInboundMessage } from "@/lib/comms/inbound";
 import { ResendProvider, verifyWebhookSignature } from "@/lib/comms/resend";
 import { suppress } from "@/lib/comms/send";
@@ -45,7 +45,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
   const type = payload.type ?? "";
 
-  const pool = getPool();
+  const pool = getOwnerPool();
   const db = await pool.connect();
   try {
     // Inbound customer email → the full intelligence pipeline.

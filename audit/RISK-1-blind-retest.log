@@ -1,0 +1,140 @@
+RISK-1 RLS enforcement — blind per-policy re-test as app_rw (SET ROLE, nologin preserved)
+Date (container): 2026-08-27T06:08:49Z
+DEMO org       = c87398c0-e799-4237-bdda-28e7917d8d3d
+COUNTERPART org= d1a10000-0000-4000-8000-000000000001
+Ground truth (owner view): evidence DEMO=35/CP=0 | campaigns 4/0 | opportunities 4/0 | partners 5/1 | initiatives 1/0
+app_rw: rolbypassrls=f rolsuper=f (RLS applies after SET ROLE)
+========================================================================
+
+### READ ISOLATION — acting as DEMO (SET LOCAL app.org_id=DEMO) — expect own-org counts
+      tbl      | visible | expected 
+---------------+---------+----------
+ campaigns     |       4 |        4
+ evidence      |      35 |       35
+ initiatives   |       1 |        1
+ opportunities |       4 |        4
+ partners      |       5 |        5
+(5 rows)
+
+
+### READ ISOLATION — acting as COUNTERPART (app.org_id=CP) — expect only CP's rows (partners=1, rest 0)
+      tbl      | visible | expected 
+---------------+---------+----------
+ campaigns     |       0 |        0
+ evidence      |       0 |        0
+ initiatives   |       0 |        0
+ opportunities |       0 |        0
+ partners      |       1 |        1
+(5 rows)
+
+
+### DEFAULT-DENY — acting as app_rw with NO app.org_id set — expect 0 everywhere
+   tbl    | visible | expected 
+----------+---------+----------
+ evidence |       0 |        0
+ partners |       0 |        0
+(2 rows)
+
+
+### WRITE ISOLATION — own-org INSERT (app.org_id=DEMO, insert initiatives for DEMO) — expect SUCCESS, rolled back
+      result       |                org_id                
+-------------------+--------------------------------------
+ own-org insert OK | c87398c0-e799-4237-bdda-28e7917d8d3d
+(1 row)
+
+
+### WRITE ISOLATION — cross-org INSERT (app.org_id=DEMO, insert initiatives for COUNTERPART) — expect RLS WITH CHECK violation
+ERROR:  new row violates row-level security policy for table "initiatives"
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+
+### WRITE ISOLATION — cross-org UPDATE (app.org_id=DEMO, update evidence WHERE org_id=CP) — expect 0 rows affected
+ERROR:  column "updated_at" of relation "evidence" does not exist
+LINE 1: with upd as (update evidence set updated_at = now() where or...
+                                         ^
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+
+### WRITE ISOLATION — cross-org UPDATE via forged predicate (app.org_id=DEMO, blanket update partners) — expect only DEMO's 5 rows touched, CP's 1 untouched
+ERROR:  column "updated_at" of relation "partners" does not exist
+LINE 1: with upd as (update partners set updated_at = now() returnin...
+                                         ^
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+========================================================================
+END OF RE-TEST
+
+### (RE-RUN) WRITE ISOLATION — cross-org UPDATE (app.org_id=DEMO, no-op update evidence WHERE org_id=CP) — expect 0 rows
+ rows_affected_expect_0 
+------------------------
+                      0
+(1 row)
+
+
+### (RE-RUN) WRITE ISOLATION — blanket UPDATE partners (app.org_id=DEMO, no WHERE) — expect only DEMO's 5 touched, CP's 1 invisible/untouched
+                org_id                | touched 
+--------------------------------------+---------
+ c87398c0-e799-4237-bdda-28e7917d8d3d |       5
+(1 row)
+
+========================================================================
+END OF UPDATE RE-RUN
+
+================================================================================
+RESOLVER PROOF (0059 + withTenant) — org resolution off the owner role, as app_rw
+--------------------------------------------------------------------------------
+step: direct organizations read (app_rw)      -> 0 rows   (RLS blocks it: the chicken-and-egg)
+step: resolve_user_org(null) [SECURITY DEFINER]-> returns the sole org (bypasses RLS)
+step: set_config('app.org_id', <org>, true)    -> GUC set from the resolver
+step: evidence visible after GUC               -> 34 rows (DEMO-scoped; withTenant mechanism works end-to-end)
+Conclusion: under app_rw a session resolves its org via the definer function and
+scopes all tenant reads via the GUC. The cutover's hard blocker is solved.
+
+================================================================================
+REFERENCE-ROOM CUTOVER PROOF — the Goals room, run as the real app_rw role
+--------------------------------------------------------------------------------
+Setup: local app_rw given a temporary LOGIN (reverted to NOLOGIN after), a
+second app instance started with DATABASE_URL pointing at app_rw.
+- /goals  (MIGRATED to withTenant): renders FULL data under app_rw — 2 active
+  goals, named goals + pace. Real DB-level isolation is active and correct.
+- /pipeline (NOT yet migrated): renders ALL ZEROS under app_rw ($0k, 0 opps,
+  "No opportunities yet") — its bare getPool() queries hit RLS default-deny.
+Conclusion: withTenant delivers real isolation under the non-owner role, and
+unmigrated rooms FAIL CLOSED (empty, never cross-tenant). The flip is safe to
+stage; every room must adopt withTenant before DATABASE_URL is pointed at app_rw.
+resolve_user_org semantics fixed: uid null -> sole org; identified-but-
+unprivileged uid -> NULL (no tenant), matching currentOrgId().
+
+================================================================================
+FULL-APP app_rw CRAWL (after the withTenant sweep + 0060/0061 policies)
+--------------------------------------------------------------------------------
+Ran every room on two live servers — one connected as the OWNER, one as the
+real app_rw login role — and compared rendered <main> text length. RESULT: all
+19 rooms render IDENTICAL length under both (owner == app_rw), e.g. pipeline
+2530/2530 showing "2 open opportunities · $423k". The migrated app renders full
+tenant-scoped data under the non-owner role; RLS enforces the boundary.
+Root cause fixed by 0061: global reference tables (companies/taxonomy/…) and
+parent-scoped child tables (stakeholders/campaign_touches/messages/…) had RLS
+on but no app_rw policy, so INNER JOINs dropped every row until policied.
+(admin/page.tsx not in the crawl — documented remaining.)
+
+================================================================================
+0062 resolve_api_key FOCUSED BLIND TEST (MCP key path)
+--------------------------------------------------------------------------------
+Reproduced the exact 0058 RLS mechanism in a minimal fixture (app_current_org,
+GUC-aware is_org_member, app_rw role + `for all to app_rw using(is_org_member
+(org_id))` policy on api_keys) with two orgs, one key each, plus one revoked
+key. Ran as the non-owner role with NO app.org_id set — the pre-tenant
+bootstrap state the MCP route's resolveKey() runs in. Results (all as expected):
+
+  1. direct `select from api_keys` under app_rw, no GUC ......... 0 rows (RLS blocks)
+  2. resolve_api_key('hashA') ............................ org 1111… (definer bypass)
+  3. resolve_api_key('hashB') ............................ org 2222…
+  4. resolve_api_key('nope')  ............................ 0 rows
+  5. resolve_api_key('hashRevoked') ..................... 0 rows (revoked excluded)
+  6. last_used_at stamped for hashA/hashB, NOT the revoked key (touched t/t/f)
+
+Conclusion: the SECURITY DEFINER resolver lets the app_rw connection learn a
+key's org before any tenant scope exists — the api_keys analogue of
+resolve_user_org() — without granting app_rw any direct read of api_keys. The
+MCP surface will authenticate correctly after the DATABASE_URL→app_rw flip; on
+the owner pool today it runs as the same owner, so behavior is unchanged.
+(admin/page.tsx also migrated to withTenant + owner-pool split; verified by tsc
+and the established withTenant pattern already proven across the room sweep.)

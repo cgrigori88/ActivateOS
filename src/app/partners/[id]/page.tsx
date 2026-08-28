@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { BackLink, Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { partnerRoom } from "@/lib/partners/hub";
 import { OVERLAP_LEVELS, LEVEL_LABEL, type RungState } from "@/lib/partnerships/overlap";
@@ -41,7 +40,7 @@ function rungChip(state: RungState["state"]) {
     locked: "locked",
   };
   return (
-    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold ${styles[state]}`}>
+    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-label font-bold ${styles[state]}`}>
       {labels[state]}
     </span>
   );
@@ -56,31 +55,32 @@ export default async function PartnerRoomPage({
 }) {
   const { id } = await params;
   const sp = (await searchParams) ?? {};
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) return <main>No organization.</main>;
 
-  const room = await partnerRoom(pool, orgId, id);
-  if (!room) notFound();
-  const playbook = await loadPartnerPlaybook(pool, orgId, id);
-  const initiatives = await listInitiatives(pool, orgId, { partnerId: id });
-
-  // Skill sharing (task #85): both directions on this partnership, plus the
-  // skills of ours that could still be offered.
-  const skillShares: SkillShareView[] = room.partnership ? await listSkillShares(pool, orgId, room.partnership.id) : [];
-  const evidenceShares: EvidenceShareView[] = room.partnership?.status === "active" ? await listEvidenceShares(pool, orgId, room.partnership.id) : [];
-  const offerableClaims = room.partnership?.status === "active" ? await offerableEvidence(pool, orgId, room.partnership.id) : [];
-  const { rows: shareableSkills } = room.partnership?.status === "active"
-    ? await pool.query<{ id: string; name: string; kind: string }>(
-        `select s.id, s.name, s.kind from skills s
+  const { room, playbook, initiatives, skillShares, evidenceShares, offerableClaims, shareableSkills } = await withTenant(async (db, orgId) => {
+    const room = await partnerRoom(db, orgId, id);
+    if (!room) notFound();
+    return {
+      room,
+      playbook: await loadPartnerPlaybook(db, orgId, id),
+      initiatives: await listInitiatives(db, orgId, { partnerId: id }),
+      // Skill sharing (task #85): both directions on this partnership, plus the
+      // skills of ours that could still be offered.
+      skillShares: (room.partnership ? await listSkillShares(db, orgId, room.partnership.id) : []) as SkillShareView[],
+      evidenceShares: (room.partnership?.status === "active" ? await listEvidenceShares(db, orgId, room.partnership.id) : []) as EvidenceShareView[],
+      offerableClaims: room.partnership?.status === "active" ? await offerableEvidence(db, orgId, room.partnership.id) : [],
+      shareableSkills: room.partnership?.status === "active"
+        ? (await db.query<{ id: string; name: string; kind: string }>(
+            `select s.id, s.name, s.kind from skills s
          where s.org_id = $1 and s.status = 'active'
            and (s.scope_type = 'org' or (s.scope_type = 'partner' and s.scope_id = $2))
            and not exists (select 1 from skill_shares sh
                            where sh.skill_id = s.id and sh.partnership_id = $3 and sh.status in ('offered', 'accepted'))
          order by s.name`,
-        [orgId, id, room.partnership.id],
-      )
-    : { rows: [] };
+            [orgId, id, room.partnership.id],
+          )).rows
+        : [],
+    };
+  });
   const { partner, hub, book, partnership, ladder, grants, pursuits, settlement, scorecard, intros, introEligible, contactOptions } = room;
   const awaitingIntros = intros.filter((w) => w.awaitingYou);
   const otherIntros = intros.filter((w) => !w.awaitingYou);
@@ -137,7 +137,7 @@ export default async function PartnerRoomPage({
           <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Initiatives</h2>
           <span className="flex items-baseline gap-3 text-xs">
             <span className="text-neutral-400">targets the pipeline moves — nothing here is self-reported</span>
-            <Link href={`/partners/${partner.id}/review`} className="whitespace-nowrap font-medium text-blue-700 hover:underline dark:text-blue-400" title="the document version — every figure pulled live, printable for whoever still wants a PDF">
+            <Link href={`/partners/${partner.id}/review`} className="whitespace-nowrap font-medium text-accent hover:underline dark:text-blue-400" title="the document version — every figure pulled live, printable for whoever still wants a PDF">
               Partnership review →
             </Link>
           </span>
@@ -181,7 +181,7 @@ export default async function PartnerRoomPage({
                 )}
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-500">
                   <span className="tnum"><b className="text-emerald-700 dark:text-emerald-400">{money(init.wonUsd)}</b> won ({init.wonN})</span>
-                  <span className="tnum"><b className="text-blue-700 dark:text-blue-400">{money(init.openUsd)}</b> registered ({init.openN} open)</span>
+                  <span className="tnum"><b className="text-accent dark:text-blue-400">{money(init.openUsd)}</b> registered ({init.openN} open)</span>
                   {init.lostN > 0 && <span className="tnum"><b className="text-rose-700 dark:text-rose-400">{money(init.lostUsd)}</b> lost ({init.lostN})</span>}
                   <span>{init.motions} motion{init.motions === 1 ? "" : "s"} · {init.campaigns} campaign{init.campaigns === 1 ? "" : "s"}</span>
                   <span className="ml-auto flex gap-2">
@@ -259,7 +259,7 @@ export default async function PartnerRoomPage({
             <ol className="space-y-2">
               {OVERLAP_LEVELS.map((level, i) => (
                 <li key={level} className="flex items-center gap-3">
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-violet/12 text-[11px] font-bold text-violet dark:text-violet-300">
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-violet/12 text-label font-bold text-violet dark:text-violet-300">
                     {i + 1}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm">{LEVEL_LABEL[level]}</span>
@@ -324,7 +324,7 @@ export default async function PartnerRoomPage({
                 <li key={g.id} className="flex items-center gap-2 text-sm">
                   <span aria-hidden className="shrink-0 text-neutral-400">{g.direction === "outgoing" ? "↗" : "↙"}</span>
                   <span className="min-w-0 flex-1 truncate">{g.listName}</span>
-                  <span className="text-[11px] text-neutral-400">{g.direction}</span>
+                  <span className="text-label text-neutral-400">{g.direction}</span>
                   <StatusBadge status={g.status === "offered" ? "draft" : g.status === "accepted" ? "active" : g.status} />
                 </li>
               ))}
@@ -425,12 +425,12 @@ export default async function PartnerRoomPage({
                 <li key={w.id} className="text-sm">
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 truncate font-medium">{w.accountName}</span>
-                    <span className="text-[11px] text-neutral-400">{w.mine ? "you asked" : `${w.otherOrgName ?? "they"} asked`}</span>
+                    <span className="text-label text-neutral-400">{w.mine ? "you asked" : `${w.otherOrgName ?? "they"} asked`}</span>
                     <StatusBadge status={w.status === "accepted" ? "approved" : w.status === "declined" ? "rejected" : w.status} />
-                    <span className="ml-auto text-[11px] text-neutral-400">{w.decidedAt ?? w.createdAt}</span>
+                    <span className="ml-auto text-label text-neutral-400">{w.decidedAt ?? w.createdAt}</span>
                   </div>
                   {w.status === "accepted" && w.revealedContact && (
-                    <p className="mt-1 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[13px] text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+                    <p className="mt-1 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-body text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
                       Meet <span className="font-semibold">{w.revealedContact.name}</span>
                       {w.revealedContact.title ? ` — ${w.revealedContact.title}` : ""} ·{" "}
                       <span className="font-mono text-[12px]">{w.revealedContact.email}</span>
@@ -538,13 +538,13 @@ export default async function PartnerRoomPage({
           <ul className="mb-3 space-y-2">
             {evidenceShares.map((sh) => (
               <li key={sh.id} className="flex items-start gap-2 text-sm">
-                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${sh.direction === "incoming" ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
+                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-micro font-bold uppercase ${sh.direction === "incoming" ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
                   {sh.direction === "incoming" ? "from them" : "from us"}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="font-medium">{sh.accountName}</span>
                   <span className="text-neutral-500"> — {sh.claim.length > 140 ? sh.claim.slice(0, 140) + "…" : sh.claim}</span>
-                  <span className="ml-1 text-[11px] text-neutral-400">({sh.sourceType}, {sh.observedAt})</span>
+                  <span className="ml-1 text-label text-neutral-400">({sh.sourceType}, {sh.observedAt})</span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
                   {sh.status === "offered" && sh.direction === "incoming" ? (
@@ -576,7 +576,7 @@ export default async function PartnerRoomPage({
                 ))}
               </select>
               <button className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white">Offer to {partner.name}</button>
-              <span className="text-[11px] text-neutral-400">they must accept before it appears in their account room</span>
+              <span className="text-label text-neutral-400">they must accept before it appears in their account room</span>
             </form>
           ) : (
             <p className="text-xs text-neutral-400">No offerable claims — evidence must be verified and on the approved named overlap.</p>
@@ -624,10 +624,10 @@ export default async function PartnerRoomPage({
                       {s.direction === "outgoing" ? "yours" : "theirs"}
                     </span>
                     <span className="min-w-0 flex-1 truncate font-medium">{s.skillName}</span>
-                    <span className="text-[11px] text-neutral-400">{s.kind} · {s.status}{s.status === "accepted" ? " — live" : ""}</span>
+                    <span className="text-label text-neutral-400">{s.kind} · {s.status}{s.status === "accepted" ? " — live" : ""}</span>
                     {s.direction === "outgoing" && (
                       <form action={revokeSkillShareAction.bind(null, partner.id, s.id)}>
-                        <button className="text-[11px] font-medium text-rose hover:underline">revoke</button>
+                        <button className="text-label font-medium text-rose hover:underline">revoke</button>
                       </form>
                     )}
                   </li>

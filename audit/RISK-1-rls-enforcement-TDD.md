@@ -1,5 +1,132 @@
 # RISK-1 — RLS Enforcement: Technical Design Document
 
+**Status:** FOUNDATION BUILT + BLIND-VERIFIED (migration 0058); CUTOVER GATED.
+This is task #67, the security tier's second focused change. The DB-layer belt
+is now complete and proven in the local DB; it is **inert** (owner still
+connects, nothing FORCE'd) and safe to ship. The cutover — running the app as
+the non-owner role — is deliberately deferred as its own change because it
+needs app-layer plumbing (see "Remaining for cutover"). Do NOT attempt the
+cutover as a bare role flip; it will break the app.
+
+## What shipped in this pass (0058), and the evidence
+
+Built and verified, not narrated (raw log: `audit/RISK-1-blind-retest.log`):
+
+- `is_org_member(org)` is now **GUC-aware**: `... where user_id = auth.uid()`
+  OR `org = app_current_org()`, where `app_current_org()` reads the
+  transaction-local `app.org_id`. This lets trusted server code propagate the
+  caller's org without a Data API JWT, and keeps the existing `auth.uid()`
+  path working for the Data API.
+- A non-owner role `app_rw` (**NOLOGIN**, NOINHERIT, no BYPASSRLS) with
+  table/sequence/function grants.
+- A uniform `for all to app_rw using (is_org_member(org_id)) with check (...)`
+  tenant-isolation policy on **all 53 org-scoped tables** (data-driven, so no
+  table is silently left default-denying — the earlier 14-table draft left 38
+  tables uncovered, which the first blind re-test caught).
+
+Blind per-policy re-test (as `app_rw` via `SET ROLE`, so NOLOGIN is preserved),
+across tables from both the original and newly-covered sets — all pass:
+
+| Check | Result |
+| --- | --- |
+| Read own org (DEMO): evidence/campaigns/opps/partners/initiatives | 35 / 4 / 4 / 5 / 1 — exact |
+| Read as counterpart org: only its rows visible | partners 1, rest 0 |
+| No `app.org_id` set → default-deny | 0 rows everywhere |
+| Own-org INSERT (initiatives) | succeeds |
+| Cross-org INSERT | **blocked — WITH CHECK violation** |
+| Cross-org UPDATE (`where org_id = other`) | 0 rows affected |
+| **Blanket UPDATE, no WHERE** (a forgotten app-layer filter) | touches only own org's 5 rows; counterpart's row invisible |
+
+The last row is the point of the belt: even an app query that forgets its
+`org_id` filter cannot cross tenants once the cutover is done.
+
+Design note — why per-table `app_rw` policies instead of repointing the
+existing `auth.uid()` policies (as the original draft below proposed): the
+existing policies target the `authenticated` role for the Supabase Data API.
+Adding parallel `to app_rw` policies leaves that contract untouched and makes
+the app_rw path explicit, rather than broadening 40 existing policies to
+`public` and re-verifying the Data API. Tenant isolation is the belt's only
+job; role gating (viewer/writer/owner) stays in the app layer
+(`requireWrite`/`requireOwner`), so app_rw policies gate on membership alone.
+
+## Remaining for cutover (separate, gated change)
+
+1. ~~**Resolve the caller's org from the authenticated web session**~~ — DONE
+   (0059 + `sessionOrgId`). The chicken-and-egg (app_rw can't read org_members
+   via auth.uid() before the GUC is set) is solved by `resolve_user_org(uid)`,
+   a SECURITY DEFINER function that resolves the org as the owner. Verified
+   under app_rw (audit/RISK-1-blind-retest.log, resolver section): a direct
+   `organizations` read returns 0 rows, but `resolve_user_org(null)` returns
+   the org and, with the GUC set from it, `evidence` becomes visible.
+2. ~~**`withTenant` wrapper**~~ — DONE (`src/lib/db/tenant.ts`). `BEGIN` →
+   `set_config('app.org_id', …, is_local => true)` → run `fn` → `COMMIT`;
+   fails closed if no org resolves. Inert while DATABASE_URL points at the
+   owner, so query sites can adopt it with zero behavior change.
+3. **Adopt `withTenant` at the query sites** — SWEEP DONE for the tenant data
+   path (proven reference: Goals renders full data as app_rw while an
+   unmigrated room renders zeros — audit/RISK-1-blind-retest.log). Migrated:
+   all data-room pages (25) and server actions (18), the session API routes
+   (palette, writebacks, privacy/export, accounts/export), and the app shell
+   (layout badges + role). Supporting pieces added:
+   - `withTenantOrg(orgId, fn)` — explicit-org variant for the MCP surface
+     (org from the API key, not the session).
+   - `getOwnerPool()` — the OWNER-POOL SET: paths that can't run as app_rw
+     (provisioning/bootstrap login + guest join; member management + any
+     `auth.users` read; the research worker; inbound webhooks; the research
+     trigger). Inert until DATABASE_URL_OWNER is set at cutover.
+   - `runTx(db, fn)` — lets lib functions that managed their own transaction
+     accept either a Pool (own txn) or a withTenant client (caller's txn).
+   - **0060** — app_rw RLS policies for the CROSS-TENANT consent-ladder tables
+     (partnerships/overlap/joint/grants/intros/shares/population_members),
+     which 0058's org_id-only loop didn't cover.
+   - **0061** — app_rw policies for GLOBAL reference tables (companies,
+     taxonomy, products, providers, organizations, …) and PARENT-SCOPED child
+     tables (stakeholders, campaign_touches, messages, meddpicc, …). The
+     app_rw crawl surfaced these: they had RLS on but no app_rw policy, so
+     INNER JOINs to `companies` etc. dropped every row (pipeline rendered
+     empty). Reference tables → `using(true)`; children → membership on the
+     parent's org.
+   VERIFIED — a full owner-vs-app_rw crawl of all 19 data rooms on two live
+   servers (one connected as the owner, one as the real app_rw login role)
+   renders IDENTICAL content in every room (audit/RISK-1-blind-retest.log,
+   "FULL-APP app_rw CRAWL"). The app now runs correctly under the non-owner
+   role with RLS enforcing tenant isolation.
+   The sweep is NOT blind — it fixed real bugs: the resolver semantics
+   (membership-less user), a latent unscoped `partners` dropdown and an
+   unscoped `accounts/export`, and it surfaced (flagged, RLS-covered) many
+   pre-existing unscoped list reads (Today/analytics/etc.) — see the flagged
+   list in the sweep commit.
+   DONE since: (a) `admin/page.tsx` migrated — role gate + the `auth.users`
+   join run on `getOwnerPool()`; every org-data + AI-operations read moved into
+   a single `withTenant` transaction (which also CLOSED a latent leak: the
+   AI-operations reads were previously unscoped and, on the owner pool,
+   surfaced every tenant's agent/provider runs to any owner). (b) SECURITY
+   DEFINER `resolve_api_key(hash)` shipped as migration 0062; `resolveKey()`
+   now calls it, so the MCP key lookup resolves the org (and stamps
+   last_used_at) in owner context — works under app_rw, unchanged on the owner
+   pool. Blind-tested against the 0058 RLS mechanism: under app_rw with no GUC a
+   direct api_keys read returns 0 rows, while resolve_api_key returns the right
+   org, excludes revoked keys, and stamps last_used_at (see
+   audit/RISK-1-blind-retest.log, "0062 resolve_api_key focused blind test").
+   REMAINING before cutover: (c) optionally add app-layer `org_id` filters to
+   the flagged list reads (RLS already closes them at cutover — defense in
+   depth).
+4. Point `DATABASE_URL` at `app_rw` and `DATABASE_URL_OWNER` at the owner role;
+   optionally `FORCE` per table.
+5. Re-run the blind per-policy re-test on a real-auth session, then cut over.
+
+Steps 1–2 (the hard architecture) are built + verified; 3 is under way with a
+proven reference room; 4–5 are the gated prod flip. Do NOT flip until step 3
+covers every room — an unmigrated room shows empty (fails closed, never leaks).
+
+Rollback is trivial: point `DATABASE_URL` back at the owner role — RLS goes
+inert again (owner bypass) and the app-layer `org_id` scoping remains the
+control. 0058 is safe to leave in place regardless.
+
+---
+
+_Original design (pre-execution) retained below for the record._
+
 **Status:** design for sign-off — NOT executed. This is task #67, the security
 tier's second focused change. Do not attempt as a role flip; it will break the
 app. Requires the plumbing below first, then a blind per-policy re-test.

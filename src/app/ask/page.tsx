@@ -1,5 +1,4 @@
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { Card, PageHeader } from "@/components/ui";
 import { askAction } from "./actions";
 
@@ -30,15 +29,13 @@ const SUGGESTIONS = [
 
 export default async function AskPage({ searchParams }: { searchParams: Promise<{ notice?: string }> }) {
   const sp = await searchParams;
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) return <main>No organization.</main>;
-
-  const { rows: exchanges } = await pool.query<Exchange>(
-    `select id, question, answer, tool_calls, created_at
-     from ask_exchanges where org_id = $1 order by created_at desc limit 12`,
-    [orgId],
-  );
+  const { exchanges } = await withTenant(async (db, orgId) => ({
+    exchanges: (await db.query<Exchange>(
+      `select id, question, answer, tool_calls, created_at
+       from ask_exchanges where org_id = $1 order by created_at desc limit 12`,
+      [orgId],
+    )).rows,
+  }));
 
   return (
     <main>
@@ -87,7 +84,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
             <Card key={ex.id}>
               <p className="mb-1 text-sm font-semibold">{ex.question}</p>
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{ex.answer}</p>
-              <p className="mt-2 text-[11px] text-neutral-400">
+              <p className="mt-2 text-label text-neutral-400">
                 {new Date(ex.created_at).toISOString().slice(0, 16).replace("T", " ")} UTC
                 {ex.tool_calls.length > 0 && (
                   <> · grounded by {ex.tool_calls.map((c) => c.tool).join(", ")}</>

@@ -37,7 +37,7 @@ export default function RouteError({
         </Link>
       </div>
       {error.digest && (
-        <p className="text-[11px] text-neutral-400">
+        <p className="text-label text-neutral-400">
           Error reference: <span className="font-mono">{error.digest}</span>
         </p>
       )}

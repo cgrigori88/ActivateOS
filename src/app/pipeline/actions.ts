@@ -1,8 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getPool } from "@/db/client";
-import { currentOrgId, requireWrite } from "@/lib/auth/org";
+import { requireWrite } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { assignInitiative } from "@/lib/partnerships/initiatives";
 import { decideWriteback, draftWritebacks } from "@/lib/opportunities/writeback";
 import {
@@ -12,26 +12,30 @@ import {
 } from "@/lib/opportunities/lifecycle";
 import { assessMeddpicc, upsertElement, type ElementKey, type Status } from "@/lib/opportunities/meddpicc";
 
+// RISK-1 (task #67): every DB touch runs inside withTenant, which pins the
+// session to the caller's org (app.org_id). requireWrite runs inside so its
+// membership lookup is visible under the GUC; revalidate stays outside (after
+// commit). Inert on the owner connection; under app_rw the by-id writes here
+// (deal_registrations / stakeholders / meddpicc) auto-scope to the org via RLS
+// — the DB belt behind the app-layer checks.
+
 /** Set one MEDDPICC element (status + notes) on an opportunity. */
 export async function setMeddpiccAction(opportunityId: string, element: ElementKey, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const status = String(formData.get("status") ?? "unknown") as Status;
   const notes = String(formData.get("notes") ?? "").trim() || null;
-  const pool = getPool();
-  await upsertElement(pool, { opportunityId, element, status, notes, source: "human", updatedBy: "web" });
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    await upsertElement(db, { opportunityId, element, status, notes, source: "human", updatedBy: "web" });
+  });
   revalidatePath("/pipeline");
 }
 
 /** Draft a full MEDDPICC assessment from the account's evidence & stakeholders. */
 export async function assessMeddpiccAction(opportunityId: string): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await assessMeddpicc(db, opportunityId);
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath("/pipeline");
 }
 
@@ -39,39 +43,29 @@ export async function advanceOpportunityAction(
   opportunityId: string,
   to: Stage,
 ): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await advanceOpportunity(db, opportunityId, to);
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath("/pipeline");
 }
 
 export async function promoteMotionAction(motionId: string): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await createOpportunityFromMotion(db, motionId);
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath("/pipeline");
   revalidatePath(`/briefs/${motionId}`);
 }
 
 /** Register a co-sell deal on an opportunity (Phase 9E). */
 export async function registerDealAction(opportunityId: string, formData: FormData): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const vendor = String(formData.get("vendor") ?? "").trim() || null;
   const product = String(formData.get("product") ?? "").trim() || null;
   const protectDays = Number(formData.get("protectDays") ?? 90) || 90;
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     const { rows } = await db.query<{
       org_id: string | null;
       company_id: string;
@@ -93,25 +87,24 @@ export async function registerDealAction(opportunityId: string, formData: FormDa
        values ($1, $2, $3, $4, $5, $6, $7, $8, 'submitted', now(), (now() + make_interval(days => $9))::date)`,
       [o.org_id, opportunityId, o.company_id, o.motion_id, o.partner_id, vendor, product, o.amount_usd, protectDays],
     );
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath("/pipeline");
 }
 
 /** Advance a registration's status (submitted → approved/rejected/expired). */
 export async function setRegistrationStatusAction(registrationId: string, status: string): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const allowed = ["submitted", "approved", "rejected", "expired"];
   if (!allowed.includes(status)) throw new Error("invalid status");
-  const pool = getPool();
-  await pool.query(
-    `update deal_registrations
-       set status = $2, decided_at = case when $2 in ('approved','rejected') then now() else decided_at end,
-           updated_at = now()
-     where id = $1`,
-    [registrationId, status],
-  );
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    await db.query(
+      `update deal_registrations
+         set status = $2, decided_at = case when $2 in ('approved','rejected') then now() else decided_at end,
+             updated_at = now()
+       where id = $1`,
+      [registrationId, status],
+    );
+  });
   revalidatePath("/pipeline");
 }
 
@@ -120,50 +113,43 @@ export async function setStakeholderAction(
   contactId: string,
   formData: FormData,
 ): Promise<void> {
-  await requireWrite(getPool());  // viewers are read-only (multi-tenant slice 3)
   const role = String(formData.get("role") ?? "influencer");
   const sentiment = String(formData.get("sentiment") ?? "unknown");
-  const pool = getPool();
-  const db = await pool.connect();
-  try {
+  await withTenant(async (db) => {
+    await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await db.query(
       `update stakeholders set role = $3, sentiment = $4
        where opportunity_id = $1 and contact_id = $2`,
       [opportunityId, contactId, role, sentiment],
     );
-  } finally {
-    db.release();
-  }
+  });
   revalidatePath("/pipeline");
 }
 
 /** Attach an opportunity to an initiative (task #83) — or detach with "". */
 export async function assignInitiativeAction(opportunityId: string, formData: FormData): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
   const initiativeId = String(formData.get("initiativeId") ?? "") || null;
-  await assignInitiative(pool, orgId, "opportunity", opportunityId, initiativeId);
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);
+    await assignInitiative(db, orgId, "opportunity", opportunityId, initiativeId);
+  });
   revalidatePath("/pipeline");
   revalidatePath("/partners");
 }
 
 /** Draft CRM correction proposals from the current tie-out (slice A). */
 export async function draftWritebacksAction(): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
-  await draftWritebacks(pool, orgId);
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);
+    await draftWritebacks(db, orgId);
+  });
   revalidatePath("/pipeline");
 }
 
 export async function decideWritebackAction(id: string, status: "approved" | "dismissed"): Promise<void> {
-  const pool = getPool();
-  await requireWrite(pool);
-  const orgId = await currentOrgId(pool);
-  if (!orgId) throw new Error("No organization in scope.");
-  await decideWriteback(pool, orgId, id, status);
+  await withTenant(async (db, orgId) => {
+    await requireWrite(db);
+    await decideWriteback(db, orgId, id, status);
+  });
   revalidatePath("/pipeline");
 }

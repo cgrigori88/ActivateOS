@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getPool } from "@/db/client";
-import { currentOrgId } from "@/lib/auth/org";
+import { withTenant } from "@/lib/db/tenant";
 import { Card, PageHeader } from "@/components/ui";
 import { namedOverlapAccounts, pursuitEvents } from "@/lib/partnerships/joint";
 import { addNoteAction, closePursuitAction, decidePursuitAction, refreshBrokerAction, saveJointPlaybookAction } from "../actions";
@@ -20,16 +19,14 @@ export const dynamic = "force-dynamic";
 export default async function JointPursuitPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/.test(id)) notFound();
-  const pool = getPool();
-  const orgId = await currentOrgId(pool);
-  if (!orgId) notFound();
 
-  const { rows } = await pool.query<{
-    id: string; partnership_id: string; company_id: string; name: string; status: string;
-    proposed_by_org: string; created_at: Date; legal_name: string; industry: string | null;
-    initiator_org_id: string; counterpart_org_id: string | null; other_name: string | null; my_name: string;
-  }>(
-    `select jp.id, jp.partnership_id, jp.company_id, jp.name, jp.status, jp.proposed_by_org, jp.created_at,
+  const { pursuit, events, named, jointPlaybook, orgId } = await withTenant(async (db, orgId) => {
+    const { rows } = await db.query<{
+      id: string; partnership_id: string; company_id: string; name: string; status: string;
+      proposed_by_org: string; created_at: Date; legal_name: string; industry: string | null;
+      initiator_org_id: string; counterpart_org_id: string | null; other_name: string | null; my_name: string;
+    }>(
+      `select jp.id, jp.partnership_id, jp.company_id, jp.name, jp.status, jp.proposed_by_org, jp.created_at,
             c.legal_name, c.industry, p.initiator_org_id, p.counterpart_org_id,
             (select o.name from organizations o
              where o.id = case when p.initiator_org_id = $2 then p.counterpart_org_id else p.initiator_org_id end) as other_name,
@@ -38,14 +35,19 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
      join partnerships p on p.id = jp.partnership_id
      join companies c on c.id = jp.company_id
      where jp.id = $1 and (p.initiator_org_id = $2 or p.counterpart_org_id = $2)`,
-    [id, orgId],
-  );
-  const pursuit = rows[0];
-  if (!pursuit) notFound();
+      [id, orgId],
+    );
+    const pursuit = rows[0];
+    if (!pursuit) notFound();
+    return {
+      pursuit,
+      events: await pursuitEvents(db, orgId, id),
+      named: await namedOverlapAccounts(db, pursuit.partnership_id),
+      jointPlaybook: await loadJointPlaybook(db, pursuit.partnership_id),
+      orgId,
+    };
+  });
 
-  const events = await pursuitEvents(pool, orgId, id);
-  const named = await namedOverlapAccounts(pool, pursuit.partnership_id);
-  const jointPlaybook = await loadJointPlaybook(pool, pursuit.partnership_id);
   const account = named.find((a) => a.company_id === pursuit.company_id);
   const otherOrgId = pursuit.initiator_org_id === orgId ? pursuit.counterpart_org_id : pursuit.initiator_org_id;
   const myCats = account?.cats[orgId] ?? [];
@@ -100,7 +102,7 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
                     : "border-neutral-200 dark:border-neutral-800"
                 }`}
               >
-                <p className="mb-1 text-[11px] text-neutral-400">
+                <p className="mb-1 text-label text-neutral-400">
                   <span className={`font-semibold uppercase tracking-wide ${e.side === "broker" ? "text-violet-700 dark:text-violet-400" : "text-neutral-500"}`}>
                     {e.side === "broker" ? "broker" : e.side === "us" ? `${pursuit.my_name} (you)` : pursuit.other_name}
                   </span>
@@ -129,15 +131,15 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
             <p className="mb-2 text-xs text-neutral-500">The other side&apos;s complete surface for this account — nothing beyond this list crosses the boundary.</p>
             <ul className="space-y-1.5 text-sm">
               <li className="flex items-start gap-2">
-                <span className="mt-0.5 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">overlap</span>
+                <span className="mt-0.5 rounded-full bg-violet-50 px-2 py-0.5 text-micro font-semibold uppercase text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">overlap</span>
                 <span>That you hold this account as: {myCats.map((c) => c.replace(/_/g, " ")).join(", ") || "—"} (named rung, both owners approved)</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="mt-0.5 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">ledger</span>
+                <span className="mt-0.5 rounded-full bg-violet-50 px-2 py-0.5 text-micro font-semibold uppercase text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">ledger</span>
                 <span>Every entry in this room&apos;s shared ledger, verbatim</span>
               </li>
               <li className="flex items-start gap-2">
-                <span className="mt-0.5 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-neutral-500 dark:bg-neutral-800">not</span>
+                <span className="mt-0.5 rounded-full bg-neutral-100 px-2 py-0.5 text-micro font-semibold uppercase text-neutral-500 dark:bg-neutral-800">not</span>
                 <span className="text-neutral-500">Your evidence, contacts, pipeline, campaigns, scores — none of it, unless separately shared as a field-scoped list grant</span>
               </li>
             </ul>

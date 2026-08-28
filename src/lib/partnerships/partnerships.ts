@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
+import { runTx } from "@/db/client";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 
 type Db = Pool | PoolClient;
@@ -100,10 +101,8 @@ export async function createPartnershipInvite(
  * `partners` row named after their org, so every existing screen works), binds
  * it to the partnership, and activates. Both ledgers record it.
  */
-export async function redeemPartnershipInvite(pool: Pool, orgId: string, code: string): Promise<void> {
-  const db = await pool.connect();
-  try {
-    await db.query("begin");
+export async function redeemPartnershipInvite(pool: Pool | PoolClient, orgId: string, code: string): Promise<void> {
+  return runTx(pool, async (db) => {
     const { rows } = await db.query<{
       id: string; initiator_org_id: string; initiator_name: string;
     }>(
@@ -131,13 +130,7 @@ export async function redeemPartnershipInvite(pool: Pool, orgId: string, code: s
     await audit(db, orgId, "partnership.accepted", { with: invite.initiator_name }, invite.id);
     const { rows: me } = await db.query<{ name: string }>(`select name from organizations where id = $1`, [orgId]);
     await audit(db, invite.initiator_org_id, "partnership.accepted", { by: me[0]?.name ?? orgId }, invite.id);
-    await db.query("commit");
-  } catch (err) {
-    await db.query("rollback");
-    throw err;
-  } finally {
-    db.release();
-  }
+  });
 }
 
 /**
@@ -145,10 +138,8 @@ export async function redeemPartnershipInvite(pool: Pool, orgId: string, code: s
  * their materialized copies flipped to rejected — access ends NOW, on both
  * sides, and both ledgers say who pulled the plug.
  */
-export async function revokePartnership(pool: Pool, orgId: string, partnershipId: string): Promise<void> {
-  const db = await pool.connect();
-  try {
-    await db.query("begin");
+export async function revokePartnership(pool: Pool | PoolClient, orgId: string, partnershipId: string): Promise<void> {
+  return runTx(pool, async (db) => {
     const { rows } = await db.query<{ id: string; initiator_org_id: string; counterpart_org_id: string | null }>(
       `select id, initiator_org_id, counterpart_org_id from partnerships
        where id = $1 and (initiator_org_id = $2 or counterpart_org_id = $2)
@@ -179,13 +170,7 @@ export async function revokePartnership(pool: Pool, orgId: string, partnershipId
     const detail = { by: me[0]?.name ?? orgId };
     await audit(db, p.initiator_org_id, "partnership.revoked", detail, partnershipId);
     if (p.counterpart_org_id) await audit(db, p.counterpart_org_id, "partnership.revoked", detail, partnershipId);
-    await db.query("commit");
-  } catch (err) {
-    await db.query("rollback");
-    throw err;
-  } finally {
-    db.release();
-  }
+  });
 }
 
 // ── list grants (the only thing that crosses the boundary) ──────────────────
@@ -294,10 +279,8 @@ async function materializeMembers(
  * attributes filtered to the granted fields. The copy is theirs; revocation
  * flips it to rejected rather than deleting their history.
  */
-export async function acceptListGrant(pool: Pool, orgId: string, grantId: string): Promise<void> {
-  const db = await pool.connect();
-  try {
-    await db.query("begin");
+export async function acceptListGrant(pool: Pool | PoolClient, orgId: string, grantId: string): Promise<void> {
+  return runTx(pool, async (db) => {
     const g = await loadIncomingGrant(db, orgId, grantId, true);
 
     // My lens on the sharer: their side initiated → my lens is counterpart's, and vice versa.
@@ -324,13 +307,7 @@ export async function acceptListGrant(pool: Pool, orgId: string, grantId: string
     const detail = { list: src[0].name, grant_id: grantId };
     await audit(db, orgId, "grant.accepted", detail, g.partnership_id);
     await audit(db, g.from_org_id, "grant.accepted", detail, g.partnership_id);
-    await db.query("commit");
-  } catch (err) {
-    await db.query("rollback");
-    throw err;
-  } finally {
-    db.release();
-  }
+  });
 }
 
 /**
@@ -339,10 +316,8 @@ export async function acceptListGrant(pool: Pool, orgId: string, grantId: string
  * trigger it; the grant itself is the standing consent, so a sync changes
  * nothing about WHAT is shared, only brings it current.
  */
-export async function syncListGrant(pool: Pool, orgId: string, grantId: string): Promise<void> {
-  const db = await pool.connect();
-  try {
-    await db.query("begin");
+export async function syncListGrant(pool: Pool | PoolClient, orgId: string, grantId: string): Promise<void> {
+  return runTx(pool, async (db) => {
     const { rows } = await db.query<{
       id: string; partnership_id: string; population_id: string;
       selected_fields: string[] | null; materialized_population_id: string | null;
@@ -369,13 +344,7 @@ export async function syncListGrant(pool: Pool, orgId: string, grantId: string):
     await audit(db, g.from_org_id, "grant.synced", detail, g.partnership_id);
     const other = otherOrg(g, g.from_org_id);
     if (other) await audit(db, other, "grant.synced", detail, g.partnership_id);
-    await db.query("commit");
-  } catch (err) {
-    await db.query("rollback");
-    throw err;
-  } finally {
-    db.release();
-  }
+  });
 }
 
 /** Receiver declines: the offer dies, nothing ever materialized. */
@@ -390,10 +359,8 @@ export async function declineListGrant(db: Db, orgId: string, grantId: string): 
  * Sharer revokes: the offer (or the live share) ends and any materialized copy
  * flips to rejected on the receiving side.
  */
-export async function revokeListGrant(pool: Pool, orgId: string, grantId: string): Promise<void> {
-  const db = await pool.connect();
-  try {
-    await db.query("begin");
+export async function revokeListGrant(pool: Pool | PoolClient, orgId: string, grantId: string): Promise<void> {
+  return runTx(pool, async (db) => {
     const { rows } = await db.query<{
       id: string; partnership_id: string; materialized_population_id: string | null;
       initiator_org_id: string; counterpart_org_id: string | null;
@@ -414,13 +381,7 @@ export async function revokeListGrant(pool: Pool, orgId: string, grantId: string
     await audit(db, orgId, "grant.revoked", { grant_id: grantId }, g.partnership_id);
     const other = otherOrg(g, orgId);
     if (other) await audit(db, other, "grant.revoked", { grant_id: grantId }, g.partnership_id);
-    await db.query("commit");
-  } catch (err) {
-    await db.query("rollback");
-    throw err;
-  } finally {
-    db.release();
-  }
+  });
 }
 
 // ── reads (admin room) ──────────────────────────────────────────────────────

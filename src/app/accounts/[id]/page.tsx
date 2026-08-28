@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import {
   BandBadge,
   Card,
@@ -11,7 +11,6 @@ import {
 } from "@/components/ui";
 import { loadCompanyIntel } from "@/lib/intel/company-intel";
 import { CONFIDENCE_FORMULA, confidenceTone, contextConfidence } from "@/lib/context/confidence";
-import { currentOrgId } from "@/lib/auth/org";
 import { addMeetingNoteAction, setTeamStatusAction } from "./actions";
 import { draftAccountMotionAction } from "@/app/motions/actions";
 import { dealTimeline, type TimelineEvent } from "@/lib/context/timeline";
@@ -31,30 +30,29 @@ export default async function AccountPage({
 }) {
   const { id } = await params;
   const sp = (await searchParams) ?? {};
-  const pool = getPool();
 
-  const { rows: companies } = await pool.query(
+  const data = await withTenant(async (db, orgId) => {
+  const { rows: companies } = await db.query(
     `select legal_name, primary_domain, industry, employee_count, country from companies where id = $1`,
     [id],
   );
   if (companies.length === 0) {
-    return <main>Unknown account.</main>;
+    return null;
   }
   const company = companies[0];
 
   // Latest account digest for this company (Routines, task #73).
-  const digestOrgId = await currentOrgId(pool);
-  const { rows: digests } = await pool.query<{ items: unknown; period_end: Date }>(
+  const { rows: digests } = await db.query<{ items: unknown; period_end: Date }>(
     `select d.items, d.period_end from account_digests d
      where d.company_id = $1 and d.org_id = $2
      order by d.created_at desc limit 1`,
-    [id, digestOrgId],
+    [id, orgId],
   );
   const digest = digests[0] ?? null;
 
   // Draft-a-motion affordance (task #83): one open motion per account — if
   // one exists the button becomes the road to it instead of a duplicate.
-  const { rows: openMotions } = await pool.query<{ id: string; status: string }>(
+  const { rows: openMotions } = await db.query<{ id: string; status: string }>(
     `select id, status from revenue_motions
      where company_id = $1 and status in ('draft', 'approved', 'active')
      order by created_at desc limit 1`,
@@ -65,10 +63,10 @@ export default async function AccountPage({
   // The account flight recorder (task #83): every system's events fused into
   // one record, each with provenance; the partner half consent-filtered by
   // construction.
-  const timeline: TimelineEvent[] = digestOrgId ? await dealTimeline(pool, digestOrgId, id, 40) : [];
-  const meetings = digestOrgId ? await listMeetingNotes(pool, digestOrgId, id) : [];
+  const timeline: TimelineEvent[] = await dealTimeline(db, orgId, id, 40);
+  const meetings = await listMeetingNotes(db, orgId, id);
 
-  const { rows: scores } = await pool.query(
+  const { rows: scores } = await db.query(
     `select p.id, p.score, p.band, n.slug, p.computed_at,
             p.prev_score, p.positive_points, p.negative_points, p.changes
      from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
@@ -78,7 +76,7 @@ export default async function AccountPage({
 
   let dimensions: { dimension: string; value: string }[] = [];
   if (scores.length > 0) {
-    const result = await pool.query(
+    const result = await db.query(
       `select dimension, value from propensity_dimensions where score_id = $1
        order by dimension`,
       [scores[0].id],
@@ -89,7 +87,7 @@ export default async function AccountPage({
   let features: { feature: string; contribution: string; evidence_ids: string[] }[] = [];
   let evidence = new Map<string, { claim: string; source_type: string; computed_confidence: string }>();
   if (scores.length > 0) {
-    const result = await pool.query(
+    const result = await db.query(
       `select feature, contribution, evidence_ids from score_features
        where score_id = $1 order by contribution desc`,
       [scores[0].id],
@@ -97,7 +95,7 @@ export default async function AccountPage({
     features = result.rows;
     const allIds = [...new Set(features.flatMap((f) => f.evidence_ids))];
     if (allIds.length > 0) {
-      const ev = await pool.query(
+      const ev = await db.query(
         `select id, claim, source_type, computed_confidence from evidence where id = any($1)`,
         [allIds],
       );
@@ -113,7 +111,7 @@ export default async function AccountPage({
     reason: string | null;
   } | null = null;
   {
-    const result = await pool.query(
+    const result = await db.query(
       `select t.id, t.partner_id, s.name as seller, t.status, t.reason
        from pursuit_teams t
        left join sellers s on s.id = t.seller_id
@@ -136,7 +134,7 @@ export default async function AccountPage({
   }[] = [];
   let fitFeatures = new Map<string, { feature: string; contribution: string; detail: string | null }[]>();
   if (scores.length > 0) {
-    const result = await pool.query(
+    const result = await db.query(
       `select distinct on (f.partner_id)
               f.id as fit_id, f.partner_id, pa.name as partner, pa.partner_type,
               f.score, f.band, best.name as seller, best.strength as seller_strength
@@ -154,7 +152,7 @@ export default async function AccountPage({
     );
     partnerFits = result.rows.sort((a, b) => Number(b.score) - Number(a.score));
     if (partnerFits.length > 0) {
-      const features = await pool.query(
+      const features = await db.query(
         `select fit_id, feature, contribution, detail from partner_fit_features
          where fit_id = any($1) order by contribution desc`,
         [partnerFits.map((f) => f.fit_id)],
@@ -168,7 +166,7 @@ export default async function AccountPage({
     }
   }
 
-  const { rows: motions } = await pool.query(
+  const { rows: motions } = await db.query(
     `select m.id, m.status, m.thesis, m.trigger_summary, m.primary_persona, m.secondary_persona,
             m.cta, m.confidence
      from revenue_motions m where m.company_id = $1 order by m.created_at desc limit 1`,
@@ -177,7 +175,7 @@ export default async function AccountPage({
 
   let assets: { asset_type: string; title: string; content: string }[] = [];
   if (motions.length > 0) {
-    const result = await pool.query(
+    const result = await db.query(
       `select a.asset_type, a.title, a.content
        from campaign_assets a join campaigns cp on cp.id = a.campaign_id
        where cp.motion_id = $1 order by a.created_at`,
@@ -186,7 +184,7 @@ export default async function AccountPage({
     assets = result.rows;
   }
 
-  const { rows: events } = await pool.query(
+  const { rows: events } = await db.query(
     `select event_type, occurred_at from outcome_events where company_id = $1
      order by occurred_at desc limit 10`,
     [id],
@@ -194,11 +192,54 @@ export default async function AccountPage({
 
   // Intelligence surface (§43): evidence provenance, data completeness, and
   // provider coverage — what we actually know and how well we know it.
-  const intel = await loadCompanyIntel(pool, id);
+  const intel = await loadCompanyIntel(db, id);
 
   // Context confidence (meets/beats batch): how much of this record is TRUE,
   // current, and broadly sourced — formula shown verbatim in the title.
-  const confidence = digestOrgId ? await contextConfidence(pool, digestOrgId, id) : null;
+  const confidence = await contextConfidence(db, orgId, id);
+
+  return {
+    company,
+    digest,
+    openMotion,
+    timeline,
+    meetings,
+    scores,
+    dimensions,
+    features,
+    evidence,
+    team,
+    partnerFits,
+    fitFeatures,
+    motions,
+    assets,
+    events,
+    intel,
+    confidence,
+  };
+  });
+  if (!data) {
+    return <main>Unknown account.</main>;
+  }
+  const {
+    company,
+    digest,
+    openMotion,
+    timeline,
+    meetings,
+    scores,
+    dimensions,
+    features,
+    evidence,
+    team,
+    partnerFits,
+    fitFeatures,
+    motions,
+    assets,
+    events,
+    intel,
+    confidence,
+  } = data;
 
   return (
     <main>
@@ -252,16 +293,16 @@ export default async function AccountPage({
         {openMotion ? (
           <Link
             href={`/briefs/${openMotion.id}`}
-            className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300/80 px-4 py-1.5 text-[13px] font-semibold transition-colors duration-[140ms] hover:bg-neutral-900/[0.04] dark:border-white/15 dark:hover:bg-white/10"
+            className="inline-flex items-center gap-1.5 rounded-full border border-neutral-300/80 px-4 py-1.5 text-body font-semibold transition-colors duration-[140ms] hover:bg-neutral-900/[0.04] dark:border-white/15 dark:hover:bg-white/10"
           >
             Open motion ({openMotion.status}) — read the brief <span aria-hidden>→</span>
           </Link>
         ) : (
           <form action={draftAccountMotionAction.bind(null, id)}>
-            <button className="inline-flex items-center gap-1.5 rounded-full bg-blue-700 px-4 py-1.5 text-[13px] font-bold text-white transition-colors duration-[140ms] hover:bg-blue-800">
+            <button className="inline-flex items-center gap-1.5 rounded-full bg-blue-700 px-4 py-1.5 text-body font-bold text-white transition-colors duration-[140ms] hover:bg-blue-800">
               Draft a motion (AI)
             </button>
-            <span className="ml-2 text-[11px] text-neutral-400">grounded in this account&apos;s evidence — lands as a draft for your approval</span>
+            <span className="ml-2 text-label text-neutral-400">grounded in this account&apos;s evidence — lands as a draft for your approval</span>
           </form>
         )}
       </div>
@@ -274,18 +315,18 @@ export default async function AccountPage({
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
               What&apos;s new on this account
             </h2>
-            <span className="text-[11px] text-neutral-400">
+            <span className="text-label text-neutral-400">
               digest through {new Date(digest.period_end).toISOString().slice(0, 10)} ·{" "}
-              <Link href="/routines" className="text-blue-700 hover:underline dark:text-blue-400">Routines</Link>
+              <Link href="/routines" className="text-accent hover:underline dark:text-blue-400">Routines</Link>
             </span>
           </div>
           <ul className="space-y-1.5">
             {(digest.items as { type: string; text: string; at: string }[]).map((it, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
-                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                  it.type === "evidence" ? "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
+                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold uppercase tracking-wide ${
+                  it.type === "evidence" ? "bg-blue-50 text-accent dark:bg-blue-950/50 dark:text-blue-400"
                   : it.type === "renewal" ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
-                  : it.type === "engagement" || it.type === "meeting" ? "bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400"
+                  : it.type === "engagement" || it.type === "meeting" ? "bg-green-50 text-positive dark:bg-green-950/50 dark:text-green-400"
                   : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"
                 }`}>{it.type}</span>
                 <span className="min-w-0 flex-1">{it.text}</span>
@@ -302,26 +343,26 @@ export default async function AccountPage({
         <Card className="mb-6">
           <div className="mb-2 flex items-baseline justify-between gap-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Deal timeline</h2>
-            <span className="text-[11px] text-neutral-400">
+            <span className="text-label text-neutral-400">
               every system, one record — each event names its source
             </span>
           </div>
           <ul className="space-y-1.5">
             {timeline.map((ev, i) => (
               <li key={i} className="flex items-start gap-2 text-sm">
-                <span className="tnum mt-0.5 w-[76px] shrink-0 font-mono text-[11px] text-neutral-400">
+                <span className="tnum mt-0.5 w-[76px] shrink-0 font-mono text-label text-neutral-400">
                   {ev.at.slice(0, 10)}
                 </span>
                 <span
-                  className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold uppercase tracking-wide ${
                     ev.kind === "joint" || ev.kind === "intro" || ev.kind === "shared_evidence"
                       ? "bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400"
                       : ev.kind === "renewal"
                         ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
                         : ev.kind === "reply" || ev.kind === "opportunity" || ev.kind === "meeting"
-                          ? "bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400"
+                          ? "bg-green-50 text-positive dark:bg-green-950/50 dark:text-green-400"
                           : ev.kind === "send" || ev.kind === "motion"
-                            ? "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400"
+                            ? "bg-blue-50 text-accent dark:bg-blue-950/50 dark:text-blue-400"
                             : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"
                   }`}
                 >
@@ -348,7 +389,7 @@ export default async function AccountPage({
       <Card className="mb-6">
         <div className="mb-2 flex items-baseline justify-between gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Meetings</h2>
-          <span className="text-[11px] text-neutral-400">
+          <span className="text-label text-neutral-400">
             each note lands as first-party evidence and counts as engagement
           </span>
         </div>
@@ -361,7 +402,7 @@ export default async function AccountPage({
           <ul className="mb-3 space-y-2">
             {meetings.map((m) => (
               <li key={m.id} className="rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
-                <p className="mb-1 text-[11px] text-neutral-400">
+                <p className="mb-1 text-label text-neutral-400">
                   <span className="font-semibold text-neutral-600 dark:text-neutral-300">{m.metAt}</span>
                   {m.title && <> · {m.title}</>}
                   {m.attendees && <> · with {m.attendees}</>}
@@ -404,7 +445,7 @@ export default async function AccountPage({
             <span className="text-sm text-neutral-500">{scores[0].slug}</span>
             {scores[0].positive_points != null && (
               <span className="ml-auto text-sm text-neutral-500">
-                <span className="text-green-700 dark:text-green-400">
+                <span className="text-positive dark:text-green-400">
                   +{Number(scores[0].positive_points).toFixed(0)}
                 </span>{" "}
                 /{" "}
@@ -424,7 +465,7 @@ export default async function AccountPage({
                   className="rounded-lg bg-neutral-50 px-2 py-1.5 text-center dark:bg-neutral-950"
                 >
                   <div className="tnum text-base font-semibold">{Number(d.value).toFixed(0)}</div>
-                  <div className="text-[10px] leading-tight text-neutral-500">
+                  <div className="text-micro leading-tight text-neutral-500">
                     {d.dimension.replace(/_/g, " ")}
                   </div>
                 </div>
@@ -451,7 +492,7 @@ export default async function AccountPage({
                 <span
                   className={
                     Number(f.contribution) >= 0
-                      ? "text-green-700 dark:text-green-400"
+                      ? "text-positive dark:text-green-400"
                       : "text-red-700 dark:text-red-400"
                   }
                 >
@@ -531,7 +572,7 @@ export default async function AccountPage({
                 <StatusBadge status={e.status} />
                 <span className="flex-1 leading-relaxed text-neutral-700 dark:text-neutral-300">
                   {e.stance === "refutes" && (
-                    <span className="mr-1 rounded bg-red-50 px-1 text-[10px] font-semibold uppercase text-red-700 dark:bg-red-950 dark:text-red-300">
+                    <span className="mr-1 rounded bg-red-50 px-1 text-micro font-semibold uppercase text-red-700 dark:bg-red-950 dark:text-red-300">
                       refutes
                     </span>
                   )}
@@ -573,7 +614,7 @@ export default async function AccountPage({
                       {f.partner_type?.replace(/_/g, " ")}
                     </span>
                     {isRouted && (
-                      <span className="ml-auto text-xs font-semibold uppercase text-green-700 dark:text-green-400">
+                      <span className="ml-auto text-xs font-semibold uppercase text-positive dark:text-green-400">
                         {team?.status === "accepted" ? "Accepted" : "Routed"}
                       </span>
                     )}
