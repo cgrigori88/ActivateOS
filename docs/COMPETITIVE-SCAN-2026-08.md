@@ -1,8 +1,9 @@
 # Competitive & Signal Scan — August 2026
 
-**Context.** In one stretch, five credible "AI-native go-to-market" signals landed:
+**Context.** In one stretch, several credible "AI-native go-to-market" signals landed:
 Salesforce **Claudeforce**, Mohit Aron's **SciFin**, HubSpot/Dharmesh's **YouSpot**,
-**Monid/TinyFish** (free agent web infra), and **Traxy** (LinkedIn buyer-intent).
+**Monid/TinyFish** (free agent web infra), **Traxy** (LinkedIn buyer-intent), and
+**Comp AI CRM** (open-source agentic-first CRM — our closest architectural peer).
 This file records the meets / beats / leaps read for PursuitOS. Two throughlines
 matter more than any single product:
 
@@ -124,6 +125,64 @@ consent + provider abstraction is cleaner but slower to person-level engagement.
 
 ---
 
+## 4. Comp AI CRM (trycomp.ai / `trycompai/crm`) — open-source *agentic-first* CRM
+
+**What it is.** MIT-licensed, self-hostable CRM built on the exact inversion PursuitOS
+already believes: *"the agent is not a feature of the CRM; the CRM is where the agent
+keeps its notes."* Bun + Vercel `eve` durable agents, Next.js/shadcn, NestJS+tRPC,
+Postgres/Neon+Prisma, Better Auth. Three services share `DATABASE_URL`: app, API, agent.
+Works with **zero API keys** (Perplexity optional for web research). This is the closest
+*architectural* peer of the four — not a market we skip, a mirror of our own thesis. Study
+it for sharpenings, not for positioning.
+
+**MEETS (same thesis, already ours).**
+- Agent-as-harness over CRM tools = `askTheRecord` + `MCP_TOOLS`.
+- Evidence-first, "nothing about a person is guessed" = our evidence table (stance,
+  first_party, source_type, verified/quarantined/rejected).
+- Self-scheduled follow-up = refresh runner + `routine_runs` + `trigger_settings`.
+- Skills-as-versioned-prose (`evidence.md`, `identity-matching.md`, `data-boundaries.md`,
+  `writing-a-brief.md`) = the `SKILL.md` direction already flagged (Monid).
+
+**BEATS (four concrete sharpenings worth stealing).**
+1. **Provenance-typed evidence over a raw confidence float.** Their tools report *what they
+   observed* — `crm.signature-block`, `github.account-identity` — and a **ledger prices the
+   evidence by source type**; they deliberately reject model-emitted confidence scores
+   ("a confidently wrong fact is worse than a blank field"). PursuitOS stores
+   `computed_confidence` as a number; adding a typed *provenance* dimension (what kind of
+   source, priced by trust) on top of the float is a cleaner, more defensible model — and
+   feeds our verification layer directly.
+2. **`schedule_recheck` must carry a human-readable reason.** "An agent that cannot say why
+   it will be back in fourteen days does not have a reason, it has a default." Our routine /
+   refresh scheduling should attach and surface a *why* on every self-scheduled recheck.
+3. **Sandbox security posture for the agent (enterprise-trust gold, ties to RISK-1/3).**
+   Deny-all egress; the sandbox is **never given `DATABASE_URL`**; `web_fetch`/`web_search`
+   run in the app runtime, not the sandbox — "a shell with credentials and egress is
+   exfiltration-shaped; a shell with neither is a text processor." As we open the MCP/agent
+   surface, this is the exact posture a corporate security officer wants to see documented.
+4. **Task queue via `FOR UPDATE SKIP LOCKED` + lease/expiry.** `claimDue` leases rows so
+   multiple dispatchers claim disjoint work and dead sessions free their rows. A crisp,
+   proven pattern for our worker's refresh/routine drain — worth mirroring in the runner.
+
+**LEAPS (where their *deliberate* choice becomes our moat).**
+Comp AI is **single-tenant by design** and argues it explicitly: a constant `organizationId`
+is "a column, an index and a permissions check that buys nothing and reads like a real one
+at review time." That argument is *correct for a single-seller CRM* — and **structurally
+fatal for a partner-led one**. They have optimized away the exact primitive
+(org-scoping → cross-tenant consent ladder → shared-but-gated evidence → settlement) that is
+PursuitOS's entire moat. This is the cleanest possible illustration of the wedge: the most
+principled agentic-CRM engineers in the open-source world looked at multi-tenancy and threw
+it out — because they will never broker a deal *between* two of their customers. We exist to.
+
+**GTM note.** MIT + self-hostable + `SKILL.md`-installable is a real distribution lever.
+Reinforces publishing our own open `SKILL.md` + MCP connector for viral install, while
+keeping the ecosystem/settlement server-side and closed.
+
+**Caution.** None here — it's open source; read the code. The lesson is a *design* one:
+adopt the four sharpenings, and note that their headline simplification is the thing we must
+never adopt.
+
+---
+
 ## Synthesis & recommendation
 
 **Recurring GAP (build once, unlocks three of the above):** an **interaction-capture
@@ -141,6 +200,12 @@ valuable.
    margin + lets intelligence run continuously). Publish a `SKILL.md`.
 2. **Cheap, now:** name + surface the "AI harness + MCP" story you already have; a unified
    Feed; route-on-surface webhooks; a built-in split-test using existing attribution.
+2b. **Cheap, now (Comp AI sharpenings):** attach a human-readable *reason* to every
+   self-scheduled recheck; add a provenance-typed dimension to evidence (source-kind priced
+   by trust, on top of the confidence float); adopt `FOR UPDATE SKIP LOCKED` lease semantics
+   in the worker drain; and **document the agent sandbox posture** (no `DATABASE_URL` in
+   sandbox, deny-all egress, network tools in app runtime) — direct enterprise-trust win that
+   dovetails with RISK-1/RISK-3.
 3. **Real engineering, high payoff:** the interaction-capture layer (comms + LinkedIn
    engagement) → unlocks person-level intent and self-building context.
 4. **The wedge to keep sharpening:** *"The most credible CRM founders all shipped my
