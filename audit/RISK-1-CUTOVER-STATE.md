@@ -17,17 +17,44 @@ _Last updated during the guided prod cutover session. Project: PursuitOS
     ssl object overrides it, so verification IS happening. Optional cleanup: set
     the string to `verify-full` for honesty (not required).
 
-- **RISK-1 (RLS enforcement) — DB + code done; the connection flip remains.**
+- **RISK-1 (RLS enforcement) — CUT OVER & VERIFIED ON PROD.**
   - Migrations **0058–0062 applied to prod** (via SQL editor; prod's
     `public.schema_migrations` tracker is stale at 0012, so `npm run db:migrate`
     must NOT be used against prod — it would replay everything). Verified:
-    `app_rw` role exists (nologin), 53 org-scoped `_rw` policies, 9 cross-tenant,
+    `app_rw` role exists, 53 org-scoped `_rw` policies, 9 cross-tenant,
     36 reference/child, and `app_current_org` / `is_org_member` /
     `resolve_user_org` / `can_see_partnership` / `resolve_api_key` all present.
-  - `withTenant` app code merged to `main` (PRs #11, #12) and **deployed to prod**,
-    running green on the **owner** connection (RLS inert; owner bypasses it).
-  - App connects through the **transaction pooler** as the owner role
-    (`postgres.sxtwrrckvlohottrdsbr`) on `aws-0-ca-central-1.pooler.supabase.com:6543`.
+  - `withTenant` app code merged to `main` (PRs #11, #12) and deployed to prod.
+  - **The flip is done:** `app_rw` given a distinct login password;
+    `DATABASE_URL_OWNER` (Vercel) = the owner string; **`DATABASE_URL` (Vercel) =
+    the `app_rw` string** (`app_rw.sxtwrrckvlohottrdsbr` @ the transaction pooler,
+    port 6543). Railway worker unchanged (stays on the owner connection).
+    Supabase's transaction pooler **accepts the custom `app_rw` login role** — the
+    one unknown, now confirmed.
+  - **Prod RLS verification (SQL editor, `grant app_rw to postgres` → `set role
+    app_rw` → tested → revoked):** with NO tenant context `select count(*) from
+    campaigns` = **0** (RLS denies); with `set app.org_id` to the org = **5**
+    (scoped to that org). RLS is enforcing correctly on production.
+  - Passwords are role-separated: `DATABASE_URL_OWNER` carries the postgres
+    password, `DATABASE_URL` carries a *different* app_rw password (neither
+    reveals the other).
+
+## Remaining (optional / when convenient)
+
+- **Two-tenant blind isolation test** — the gold-standard sign-off: two
+  Supabase-auth users in two different orgs, each sees only their own data; plus
+  an MCP key hitting `/api/mcp`. Needs a second org — run whenever one exists.
+- **App-side role readout** (optional): a temporary owner-gated route printing
+  `current_user` to show `app_rw` in black and white. Not required — the RLS
+  proof above + clean `app_rw` auth already establish it.
+- **`FORCE ROW LEVEL SECURITY`** per table — belt-and-suspenders, only after the
+  two-tenant test is green.
+- **Railway worker** — confirm it's on the post-#12 code (embedded CA) and
+  healthy on the owner connection.
+- Optional honesty cleanup: set Vercel `DATABASE_URL` sslmode to `verify-full`
+  (the embedded-CA ssl object already governs, so cosmetic).
+
+## Historical (pre-flip) — retained for the record
 
 ## Remaining: the app_rw flip (do this fresh)
 
