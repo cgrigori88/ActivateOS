@@ -5,35 +5,65 @@ import pg from "pg";
 let pool: pg.Pool | null = null;
 
 /**
- * TLS policy for the DB link (RISK-3). By default node-postgres takes SSL from
- * the connection string, and Supabase's template ships `sslmode=no-verify` —
- * encrypted but UNAUTHENTICATED, so a MITM can impersonate the database.
+ * Supabase Root 2021 CA — the PRIVATE root that signs both the direct-DB cert
+ * (db.<ref>.supabase.co) AND the pooler chain (*.pooler.supabase.com ←
+ * Supabase Intermediate 2021 CA ← this root). It is NOT in the system trust
+ * store, so verifying a Supabase connection REQUIRES trusting it explicitly.
  *
- * This makes verify-full turnkey WITHOUT risking an outage: only when a CA is
- * supplied out-of-band do we pin it and demand a verified certificate. Set
- * exactly one of:
- *   - DATABASE_CA_CERT  = the PEM contents of the server CA (inline)
- *   - DATABASE_CA_PATH  = a filesystem path to that PEM
- * With neither set, behavior is unchanged (the connection string decides), so
- * this is safe to deploy before the CA is in place. Once the CA is set, also
- * drop `sslmode=no-verify` from DATABASE_URL — the explicit ssl object below
- * overrides it regardless, but keeping the string honest avoids confusion.
+ * It is embedded here (not read from an env var) on purpose: passing a multi-
+ * line PEM through a hosting provider's env store repeatedly mangled the
+ * newlines, which silently disabled verification (SELF_SIGNED_CERT_IN_CHAIN) and
+ * caused a prod outage. This is a public CA cert, stable until 2031-04-26 —
+ * baking it in makes verify-full immune to env formatting. Verify at:
+ *   node -e 'require("tls")' ... (chain printed in the RISK-3 notes)
+ */
+const SUPABASE_ROOT_2021_CA = `-----BEGIN CERTIFICATE-----
+MIIDxDCCAqygAwIBAgIUbLxMod62P2ktCiAkxnKJwtE9VPYwDQYJKoZIhvcNAQEL
+BQAwazELMAkGA1UEBhMCVVMxEDAOBgNVBAgMB0RlbHdhcmUxEzARBgNVBAcMCk5l
+dyBDYXN0bGUxFTATBgNVBAoMDFN1cGFiYXNlIEluYzEeMBwGA1UEAwwVU3VwYWJh
+c2UgUm9vdCAyMDIxIENBMB4XDTIxMDQyODEwNTY1M1oXDTMxMDQyNjEwNTY1M1ow
+azELMAkGA1UEBhMCVVMxEDAOBgNVBAgMB0RlbHdhcmUxEzARBgNVBAcMCk5ldyBD
+YXN0bGUxFTATBgNVBAoMDFN1cGFiYXNlIEluYzEeMBwGA1UEAwwVU3VwYWJhc2Ug
+Um9vdCAyMDIxIENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqQXW
+QyHOB+qR2GJobCq/CBmQ40G0oDmCC3mzVnn8sv4XNeWtE5XcEL0uVih7Jo4Dkx1Q
+DmGHBH1zDfgs2qXiLb6xpw/CKQPypZW1JssOTMIfQppNQ87K75Ya0p25Y3ePS2t2
+GtvHxNjUV6kjOZjEn2yWEcBdpOVCUYBVFBNMB4YBHkNRDa/+S4uywAoaTWnCJLUi
+cvTlHmMw6xSQQn1UfRQHk50DMCEJ7Cy1RxrZJrkXXRP3LqQL2ijJ6F4yMfh+Gyb4
+O4XajoVj/+R4GwywKYrrS8PrSNtwxr5StlQO8zIQUSMiq26wM8mgELFlS/32Uclt
+NaQ1xBRizkzpZct9DwIDAQABo2AwXjALBgNVHQ8EBAMCAQYwHQYDVR0OBBYEFKjX
+uXY32CztkhImng4yJNUtaUYsMB8GA1UdIwQYMBaAFKjXuXY32CztkhImng4yJNUt
+aUYsMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAB8spzNn+4VU
+tVxbdMaX+39Z50sc7uATmus16jmmHjhIHz+l/9GlJ5KqAMOx26mPZgfzG7oneL2b
+VW+WgYUkTT3XEPFWnTp2RJwQao8/tYPXWEJDc0WVQHrpmnWOFKU/d3MqBgBm5y+6
+jB81TU/RG2rVerPDWP+1MMcNNy0491CTL5XQZ7JfDJJ9CCmXSdtTl4uUQnSuv/Qx
+Cea13BX2ZgJc7Au30vihLhub52De4P/4gonKsNHYdbWjg7OWKwNv/zitGDVDB9Y2
+CMTyZKG3XEu5Ghl1LEnI3QmEKsqaCLv12BnVjbkSeZsMnevJPs1Ye6TjjJwdik5P
+o/bKiIz+Fq8=
+-----END CERTIFICATE-----`;
+
+/**
+ * TLS policy for the DB link (RISK-3). Supabase's template ships
+ * `sslmode=no-verify` — encrypted but UNAUTHENTICATED, so a MITM can impersonate
+ * the database. Setting DATABASE_CA_CERT (any non-empty value) or DATABASE_CA_PATH
+ * flips on real verification: rejectUnauthorized against a trust set of the
+ * system roots PLUS the embedded Supabase root PLUS any extra CA supplied. With
+ * neither env var set, behavior is unchanged (the connection string decides), so
+ * local dev against a plain Postgres is unaffected.
+ *
+ * The embedded Supabase root is what actually validates prod (the env var only
+ * acts as the on-switch), so verification cannot be silently broken by a mangled
+ * PEM in the hosting env store — the failure mode that caused a prod outage.
  */
 function sslOption(): pg.PoolConfig["ssl"] {
   const inline = process.env.DATABASE_CA_CERT?.trim();
   const path = process.env.DATABASE_CA_PATH?.trim();
-  // Normalize \n-escaped PEMs (some env stores flatten newlines) so the cert parses.
-  const pinned = inline ? inline.replace(/\\n/g, "\n") : path ? readFileSync(path, "utf8") : null;
-  if (!pinned) return undefined; // no CA configured → leave SSL to the connection string
-  // Trust the pinned CA IN ADDITION to Node's built-in roots — not instead of.
-  // Serverless connects through the Supabase POOLER, which presents a
-  // publicly-trusted cert that chains to a SYSTEM root; a DIRECT connection
-  // presents a cert signed by Supabase's PRIVATE root (the downloaded
-  // prod-ca-2021). Trusting only the pinned CA breaks the pooler path
-  // (SELF_SIGNED_CERT_IN_CHAIN); trusting only system roots breaks the direct
-  // path. rejectUnauthorized stays true, so this is real verification against a
-  // known trust set — no MITM opening, just a superset of accepted issuers.
-  return { ca: [...tls.rootCertificates, pinned], rejectUnauthorized: true };
+  if (!inline && !path) return undefined; // no CA configured → connection string decides (local dev)
+  const cas: string[] = [...tls.rootCertificates, SUPABASE_ROOT_2021_CA];
+  // Honor an explicitly supplied CA too, but only if it actually parses — a
+  // mangled env value must never weaken the trust set, just be ignored.
+  const extra = inline ? inline.replace(/\\n/g, "\n") : path ? readFileSync(path, "utf8") : null;
+  if (extra && extra.includes("BEGIN CERTIFICATE")) cas.push(extra);
+  return { ca: cas, rejectUnauthorized: true };
 }
 
 /**
