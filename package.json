@@ -11,6 +11,8 @@
     "test": "tsx --test tests/*.test.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed-knowledge.ts",
+    "pursuits:backfill": "tsx scripts/backfill-pursuits.ts",
+    "pursuits:verify": "tsx scripts/pursuit-verify.ts",
     "ingest": "tsx scripts/ingest-accounts.ts",
     "map-signals": "tsx scripts/map-signals.ts",
     "score": "tsx scripts/score.ts",
