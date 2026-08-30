@@ -41,13 +41,14 @@ async function expectThrows(fn: () => Promise<unknown>): Promise<boolean> {
 
 async function main() {
   console.log(`[federation-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
+  const RID = Math.random().toString(36).slice(2, 8);
   const s = await asOwner(async (db) => {
-    const org = async (n: string) => (await db.query<{ id: string }>(`insert into organizations (name, kind, created_at) values ($1,'full', now()) returning id`, [n])).rows[0].id;
+    const org = async (n: string) => (await db.query<{ id: string }>(`insert into organizations (name, kind, created_at) values ($1,'full', now()) returning id`, [`${n} ${RID}`])).rows[0].id;
     const vendor = await org("E3A Vendor"); const distributor = await org("E3A Distributor");
     const reseller = await org("E3A Reseller"); const customer = await org("E3A Customer"); const outsider = await org("E3A Outsider");
-    const node = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name, slug) values ('E3A Cat','e3a-cat') returning id`)).rows[0].id;
+    const node = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name, slug) values ($1,$2) returning id`, [`E3A Cat ${RID}`, `e3a-cat-${RID}`])).rows[0].id;
     const co = async (n: string) => (await db.query<{ id: string }>(`insert into companies (legal_name, normalized_name, industry, country) values ($1,$1,'Technology','US') returning id`, [n])).rows[0].id;
-    const acct = await co("E3A Globex");
+    const acct = await co(`E3A Globex ${RID}`);
     const hero = (await upsertPursuit(db, { orgId: vendor, accountId: acct, productCategoryId: node, pursuitType: "MODERNIZATION", useCase: "virtualization exit", businessProblem: "Exit legacy virtualization", createdVia: "SYSTEM_DETECTED", dataEnvironment: "DEMO" })).id;
     const solo = (await upsertPursuit(db, { orgId: vendor, accountId: acct, productCategoryId: node, pursuitType: "EXPANSION", useCase: "solo", businessProblem: "Solo pursuit", createdVia: "SYSTEM_DETECTED", dataEnvironment: "DEMO" })).id;
     return { vendor, distributor, reseller, customer, outsider, hero, solo };
