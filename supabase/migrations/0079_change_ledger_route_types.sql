@@ -1,0 +1,20 @@
+-- 0079: Extend change_ledger with Workstream C route events (§13/§18/§51). Additive — the
+-- column stays text; only the CHECK widens. Includes the WS-B Fact events so the constraint
+-- remains a superset. Flat + idempotent.
+
+alter table change_ledger drop constraint if exists change_ledger_change_type_check;
+alter table change_ledger add constraint change_ledger_change_type_check
+  check (change_type in (
+    'PURSUIT_CREATED','PURSUIT_MIGRATED','STATUS_CHANGED','SCORE_CHANGED','TIMING_CHANGED',
+    'FACT_PROMOTED','FACT_SUPERSEDED','CONTRADICTION_DETECTED','PARTNER_ROUTE_CHANGED',
+    'SELLER_ROUTE_CHANGED','TEAM_CHANGED','MOTION_CHANGED','ACTION_CREATED','ACTION_COMPLETED',
+    'CUSTOMER_ENGAGED','OPPORTUNITY_LINKED','OUTCOME_RECORDED','PURSUIT_MERGED','PURSUIT_SPLIT',
+    'OVERRIDE_RECORDED','EXPECTED_VALUE_CHANGED',
+    -- Workstream B
+    'FACT_CANDIDATE_CREATED','FACT_CONFIDENCE_CHANGED','FACT_DISPUTED','FACT_STALE','FACT_EXPIRED',
+    'FACT_REJECTED','FACT_LINKED_TO_PURSUIT','CONVERGENCE_CHANGED','WHY_NOW_CHANGED',
+    -- Workstream C — Routing / Ecosystem Decisioning
+    'ROUTE_RECOMMENDATION_CHANGED','PARTNER_SELECTED','PARTNER_OVERRIDE','SELLER_RECOMMENDATION_CHANGED',
+    'SELLER_ASSIGNED','PARTNER_DECLINED','ROUTE_OUTCOME_RECORDED','TEAM_MEMBER_INVITED',
+    'TEAM_MEMBER_ACCEPTED','TEAM_MEMBER_DECLINED','ENTITY_RESOLUTION_REVIEW','TRANSACTION_SIGNAL_INGESTED'
+  ));
