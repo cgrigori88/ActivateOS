@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { recordChange } from "../ledger";
 import { grantIsLiveById } from "./grants";
+import { obsLog } from "../../obs/log";
 
 /**
  * Governed external-action executor (Release Gate R1-G4). The single execution
@@ -112,6 +113,7 @@ export async function drainOutbox(db: PoolClient, opts: DrainOpts = {}): Promise
     let result: ProviderResult;
     try { result = await exec(db, job); }
     catch (e) { const c = classifyError(e); result = { outcome: c.retryable ? "FAILED_RETRYABLE" : "FAILED_FINAL", failureClass: c.failureClass, detail: { error: (e as Error).message.slice(0, 240) } }; }
+    obsLog("outbox.executed", { correlationId: job.correlationId, orgId: job.orgId, outboxId: job.id, invocationId: job.invocationId, actionFamily: job.actionFamily, attempt: job.attempts + 1, outcome: result.outcome, simulated: !real });
 
     if (result.outcome === "SUCCEEDED") {
       await writeReceipt(db, job, "accepted", result);
