@@ -8,6 +8,12 @@ alter table partners add column if not exists partner_type text default 'reselle
 alter table partners add column if not exists industries text[] default '{}';
 alter table partners add column if not exists countries text[] default '{}';
 
+-- Seller vendor/partner split + territory (0001) added to the base sellers table.
+alter table sellers add column if not exists partner_id uuid references partners(id) on delete set null;
+alter table sellers add column if not exists vendor_id uuid;
+alter table sellers add column if not exists territory text;
+alter table sellers add column if not exists email text;
+
 create table if not exists partner_capabilities (
   partner_id uuid not null references partners(id) on delete cascade,
   taxonomy_node_id uuid not null references taxonomy_nodes(id) on delete cascade,

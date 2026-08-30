@@ -15,6 +15,8 @@
     "pursuits:verify": "tsx scripts/pursuit-verify.ts",
     "facts:backfill": "tsx scripts/backfill-facts.ts",
     "facts:verify": "tsx scripts/facts-verify.ts",
+    "routes:backfill": "tsx scripts/routes-backfill.ts",
+    "routes:verify": "tsx scripts/routes-verify.ts",
     "ingest": "tsx scripts/ingest-accounts.ts",
     "map-signals": "tsx scripts/map-signals.ts",
     "score": "tsx scripts/score.ts",

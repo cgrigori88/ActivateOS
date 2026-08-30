@@ -21,12 +21,9 @@ interface Ctx { orgId: string; accountId: string; }
 
 /** Rank candidate sellers for a pursuit. `kind` filters vendor vs partner sellers. */
 export async function rankSellers(db: PoolClient, ctx: Ctx, kind: "vendor" | "partner", partnerId: string | null): Promise<SellerCandidate[]> {
-  const sellers = await db.query<{ id: string }>(
-    kind === "partner"
-      ? `select id from sellers where partner_id = $1`
-      : `select id from sellers where vendor_id is not null and org_id = $2`,
-    kind === "partner" ? [partnerId] : [null, ctx.orgId],
-  );
+  const sellers = kind === "partner"
+    ? await db.query<{ id: string }>(`select id from sellers where partner_id = $1`, [partnerId])
+    : await db.query<{ id: string }>(`select id from sellers where vendor_id is not null and org_id = $1`, [ctx.orgId]);
 
   const out: SellerCandidate[] = [];
   for (const s of sellers.rows) {
