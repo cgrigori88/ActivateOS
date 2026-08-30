@@ -11,6 +11,52 @@ credential this environment deliberately does not hold.
 > against production. RPO/RTO figures are **rehearsal-measured** until the real exercise
 > in §2 is completed.
 
+---
+
+## 0. Production Preflight — complete BEFORE any commissioning step
+
+**No commissioning step in §1–§5 may begin until every item below is explicitly confirmed
+by the operator and recorded (a signed checklist, ticket, or change record).** This
+section gates §1 onward. It performs nothing on its own.
+
+> ### ⛔ Invariant — Never infer a production target
+> **Never infer or auto-select a production tenant, organization, database, backup
+> destination, telemetry destination, or credential. Every production target must be
+> explicitly supplied and confirmed by the operator.** Nothing in this runbook, no script,
+> and no default may choose a production target on the operator's behalf. If a value is not
+> explicitly supplied and confirmed, **halt**.
+
+> ### 🔐 Invariant — Separate read from write
+> **Read-only inspection and production mutation must use separate credentials/scopes
+> wherever the infrastructure permits it.** OR-1 inspection (§1.1) uses a read-only
+> credential; any later write (baseline/apply, flag changes, backup) uses a distinct,
+> more-scoped credential. Do not reuse a read-write credential for an inspection step.
+
+### 0.1 Preflight confirmations (record the confirmed value; do not paste secrets)
+
+| # | Confirm | How it is confirmed | Recorded |
+|---|---|---|---|
+| 1 | **Production environment identity + database target** | operator states the environment name AND the exact DB host/name; matches the intended prod (not staging, not a replica) | ☐ |
+| 2 | **Operator identity + authorization** | named operator, authorized to commission this environment (change record / approver) | ☐ |
+| 3 | **Read-only credentials for OR-1 inspection** | a **read-only** `DATABASE_URL` exists and is used for §1.1 | ☐ |
+| 4 | **Separately scoped write credentials** | a distinct read-write / owner credential for §1.5 apply, §4 flag writes, §2 backup — **different** from #3 | ☐ |
+| 5 | **Backup destination + encryption key availability** | offsite destination reachable; `BACKUP_ENCRYPTION_KEY` present in the secret manager and retrievable (not lost) | ☐ |
+| 6 | **Telemetry / alerting destination** | the sink/log-drain + alert route is chosen and reachable (see §3; a **real adapter must be wired before OR-3 LIVE PASS** — core ships only `null`/`console`) | ☐ |
+| 7 | **Pilot organization ID** | the exact pilot org UUID, explicitly supplied by the operator (never inferred) | ☐ |
+| 8 | **All non-pilot organizations remain dark** | `pilot-flags.ts --list` shows federation/governed OFF for every non-pilot org | ☐ |
+| 9 | **Current values of every env master + per-org flag** | captured via `pilot-flags.ts --list` and the deployment env; snapshot recorded as the pre-change baseline | ☐ |
+| 10 | **`OUTREACH_AUTOSEND = OFF`** | worker env confirmed off (no real external send path armed) | ☐ |
+| 11 | **Synthetic/demo data cannot trigger external actions** | confirmed by design: a real send requires `dataEnvironment = PRODUCTION` **and** `OUTREACH_AUTOSEND=on` **and** a wired provider family — DEMO/non-PRODUCTION never sends | ☐ |
+| 12 | **Rollback owner + rollback command per enabled capability** | for each capability to be enabled, a named rollback owner and the exact disable command are written down (see the §5 rollback column) | ☐ |
+| 13 | **Timestamped pre-change database backup** | a fresh encrypted backup taken and its timestamp recorded **before** any write step (§2.2); restorable per §2 | ☐ |
+
+### 0.2 Preflight gate
+Proceed to §1 **only** when items 1–13 are confirmed and recorded. If any item cannot be
+confirmed — especially an inferred/assumed production target (invariant above) — **halt and
+escalate.** Do not substitute a default, a staging value, or a "probably correct" target.
+
+---
+
 **Locked and unchanged:** all A→E and R1 invariants — single mutation authority through
 `dispatchSkill`, FORCE RLS tenant isolation, two-dimension disclosure, tenant-scoped
 fail-closed flags, governed external-action outbox, event-driven recompute, dark outcome
