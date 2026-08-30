@@ -1,5 +1,6 @@
 import type { RouteComparisonView, RouteCandidateView, ScoreReason } from "@/lib/pursuits/read-models/types";
 import { BandPill, SyntheticBadge, BAND_VAR, BAND_WORD } from "./parts";
+import { humanizeReason, titleEnum } from "./vocab";
 
 /**
  * Route decision surfaces (Workstream D.5 §15/§16/§22). The commercial path is a
@@ -69,7 +70,7 @@ export function RecommendationChange({ view }: { view: RouteComparisonView }) {
         <div className="mt-1 text-[17px] font-extrabold tracking-[-0.02em]">{overridden ? sel!.label : "Recommendation accepted"}</div>
         {overridden && (
           <div className="mt-0.5 text-[11.5px] text-neutral-600 dark:text-neutral-300">
-            {view.overrideCategory ? <b>{view.overrideCategory.replace(/_/g, " ").toLowerCase()}</b> : null}{view.overrideReason ? ` · "${view.overrideReason}"` : ""} — recommendation preserved.
+            {view.overrideCategory ? <b>{titleEnum(view.overrideCategory)}</b> : null}{view.overrideReason ? ` · "${view.overrideReason}"` : ""} — recommendation preserved.
           </div>
         )}
       </div>
@@ -119,7 +120,7 @@ function ReasonRow({ r, muted }: { r: ScoreReason; muted?: boolean }) {
   return (
     <div className="flex items-start gap-2 py-1 text-[12.5px]">
       <span className="flex-none font-extrabold" style={{ color: r.polarity >= 0 ? "var(--color-accent-verified)" : "var(--color-accent-risk)" }}>{sign}</span>
-      <span className={muted ? "text-neutral-500" : ""}>{r.text}</span>
+      <span className={muted ? "text-neutral-500" : ""}>{humanizeReason(r.text)}</span>
     </div>
   );
 }

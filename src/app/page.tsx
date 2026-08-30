@@ -172,11 +172,19 @@ export default async function TodayPage() {
         </Panel>
       )}
 
-      <div className="mb-6 flex flex-wrap gap-2">
-        <CountChip label="Awaiting approval" value={c.draft_motions} href="/motions" tone={Number(c.draft_motions) > 0 ? "amber" : "neutral"} />
-        <CountChip label="Evidence to review" value={c.pending_review} href="/review" tone={Number(c.pending_review) > 0 ? "amber" : "neutral"} />
-        <CountChip label="Scored accounts" value={c.scored_accounts} href="/accounts" tone="sky" />
-        <CountChip label="Verified evidence" value={c.verified_evidence} href="/sources" tone="green" />
+      {/* Instrumentation is secondary to decisions (D.5 §4): when the decision
+          queue leads, the KPI strip steps back — smaller and dimmer — so Today
+          is dominated by what needs acting on, not empty counters. */}
+      <div className={pursuitQueue && pursuitQueue.items.length > 0 ? "mb-6" : "mb-6"}>
+        {pursuitQueue && pursuitQueue.items.length > 0 && (
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.06em] text-neutral-400">At a glance</div>
+        )}
+        <div className={`flex flex-wrap gap-2 ${pursuitQueue && pursuitQueue.items.length > 0 ? "scale-[0.92] origin-left opacity-75" : ""}`}>
+          <CountChip label="Awaiting approval" value={c.draft_motions} href="/motions" tone={Number(c.draft_motions) > 0 ? "amber" : "neutral"} />
+          <CountChip label="Evidence to review" value={c.pending_review} href="/review" tone={Number(c.pending_review) > 0 ? "amber" : "neutral"} />
+          <CountChip label="Scored accounts" value={c.scored_accounts} href="/accounts" tone="sky" />
+          <CountChip label="Verified evidence" value={c.verified_evidence} href="/sources" tone="green" />
+        </div>
       </div>
 
       {nextActions.length > 0 && (

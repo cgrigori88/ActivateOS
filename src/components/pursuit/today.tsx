@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { DecisionItem, DecisionClass } from "@/lib/pursuits/read-models/types";
 import { BandPill, SyntheticBadge } from "./parts";
+import { skillLabel } from "./vocab";
 
 /**
  * Today decision queue (Workstream D.5 §20). The operating queue: what needs my
@@ -43,7 +44,7 @@ export function TodayDecisionCard({ item }: { item: DecisionItem }) {
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-neutral-500">
           <span>Operational urgency <b className="capitalize text-neutral-700 dark:text-neutral-200">{item.operationalUrgency}</b></span>
           <span className="flex items-center gap-1.5">Commercial priority <BandPill band={item.commercialPriority} /></span>
-          {action && <span>Governed by <b className="font-mono text-[11px] text-neutral-600 dark:text-neutral-300">{action.skill}</b></span>}
+          {action && <span>Governed by <b className="text-neutral-600 dark:text-neutral-300">{skillLabel(action.skill)}</b></span>}
         </div>
       </div>
       <Link

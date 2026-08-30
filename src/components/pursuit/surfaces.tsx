@@ -1,5 +1,6 @@
 import type { PursuitDetailView, WhyNowView, WhyNowComponent, FactItem, PursuitTeamView, PursuitTimelineView } from "@/lib/pursuits/read-models/types";
 import { MetricCell, BandPill, TrustTag, SyntheticBadge, TeamStatusBadge, UnknownState } from "./parts";
+import { humanizeText } from "./vocab";
 
 /** Money in a compact, readable form; unknown stays unknown. */
 export function money(n: number | null, cur: string | null): string {
@@ -168,7 +169,7 @@ export function MaterialChangeTimeline({ timeline }: { timeline: PursuitTimeline
             <span className="mt-1.5 h-2 w-2 rounded-full" style={{ background: hue }} aria-hidden />
             <div>
               <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
-                {e.label}
+                {humanizeText(e.label)}
                 {high && <span className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase" style={{ color: "var(--color-accent-risk)", background: "color-mix(in srgb, var(--color-accent-risk) 12%, transparent)" }}>{e.materiality}</span>}
                 {e.synthetic && <SyntheticBadge />}
               </div>

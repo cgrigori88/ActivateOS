@@ -8,6 +8,7 @@ import { Panel } from "@/components/pursuit/panel";
 import { PursuitHero, MetricBand, WhyNowBento, FactsBento, TeamBento, MaterialChangeTimeline } from "@/components/pursuit/surfaces";
 import { RoutePath, RecommendationChange, RouteCandidateTable, DisclosureSplit } from "@/components/pursuit/route";
 import { BandPill, SyntheticBadge } from "@/components/pursuit/parts";
+import { humanizeText } from "@/components/pursuit/vocab";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -39,58 +40,68 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         {d.demoBanner && <SyntheticBadge text="Demo environment" />}
       </div>
 
-      {/* Hero + decision band */}
-      <Panel className="mb-4">
-        <PursuitHero d={d} lifecycleWord={LIFECYCLE_WORD[d.lifecycle] ?? d.lifecycle} />
-        <div className="mt-5">
-          <MetricBand scores={d.decisionBand} />
-        </div>
-      </Panel>
+      {/*
+        Decision-first composition (D.5 §2/§24). One flow that reorders per
+        viewport via `order`: on MOBILE it is a flex column ordered around the
+        decision — identity → Why Now (with unknowns) → recommended/selected
+        route → why (disclosure) → team → facts → material changes. On DESKTOP
+        the same panels flow by `lg:order` into a 2-col grid (hero full · Why
+        Now|Facts · route full · disclosure full · team|timeline).
+      */}
+      <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start">
+        {/* Identity + decision band */}
+        <Panel className="order-1 lg:order-1 lg:col-span-2">
+          <PursuitHero d={d} lifecycleWord={LIFECYCLE_WORD[d.lifecycle] ?? d.lifecycle} />
+          <div className="mt-5">
+            <MetricBand scores={d.decisionBand} />
+          </div>
+        </Panel>
 
-      {/* Why Now | Facts */}
-      <div className="mb-4 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-        <Panel eyebrow="Assembled from the fact & signal graph — traceable" title="Why now" accent="var(--color-priority)">
+        {/* Why Now (carries unknowns + contradictions) */}
+        <Panel eyebrow="Assembled from the fact & signal graph — traceable" title="Why now" accent="var(--color-priority)" className="order-2 lg:order-2">
           <WhyNowBento w={d.whyNow} />
         </Panel>
-        <Panel eyebrow="Trusted intelligence" title="Facts behind this" accent="var(--color-evidence)" tint>
-          <FactsBento facts={d.facts} />
+
+        {/* Route decision — recommended + human selection above the dense compare */}
+        <Panel eyebrow="Recommendation is not selection" title="Route decision" accent="var(--color-route)" className="order-3 lg:order-4 lg:col-span-2"
+          aside={r.changeEvents.length > 0 ? (
+            <span className="inline-flex flex-wrap items-center gap-1.5 text-[11.5px]">
+              <span className="font-semibold uppercase tracking-[0.03em] text-neutral-400">Changed</span>
+              <span className="font-semibold text-neutral-400 line-through">{r.changeEvents.at(-1)!.before ? humanizeText(r.changeEvents.at(-1)!.before!) : "—"}</span>→
+              <span className="font-bold" style={{ color: "var(--color-route)" }}>{humanizeText(r.changeEvents.at(-1)!.after ?? "—")}</span>
+              {r.changeEvents.at(-1)!.synthetic && <SyntheticBadge text="synthetic signal" />}
+            </span>
+          ) : undefined}>
+          <div className="space-y-4">
+            <RoutePath view={r} />
+            <RecommendationChange view={r} />
+            <RouteCandidateTable view={r} />
+          </div>
         </Panel>
-      </div>
 
-      {/* Route decision */}
-      <Panel eyebrow="Recommendation is not selection" title="Route decision" accent="var(--color-route)" className="mb-4"
-        aside={r.changeEvents.length > 0 ? (
-          <span className="inline-flex flex-wrap items-center gap-1.5 text-[11.5px]">
-            <span className="font-semibold uppercase tracking-[0.03em] text-neutral-400">Changed</span>
-            <span className="font-semibold text-neutral-400 line-through">{r.changeEvents.at(-1)!.before ?? "—"}</span>→
-            <span className="font-bold" style={{ color: "var(--color-route)" }}>{r.changeEvents.at(-1)!.after}</span>
-            {r.changeEvents.at(-1)!.synthetic && <SyntheticBadge text="synthetic signal" />}
-          </span>
-        ) : undefined}>
-        <div className="space-y-4">
-          <RoutePath view={r} />
-          <RecommendationChange view={r} />
-          <RouteCandidateTable view={r} />
-        </div>
-      </Panel>
+        {/* Why (disclosure split) — the centerpiece */}
+        {r.recommended && (
+          <Panel eyebrow="Enforced server-side, not in the browser" title={`Why ${recWord}`} accent="var(--color-band-high)" className="order-4 lg:order-5 lg:col-span-2">
+            <p className="mb-3.5 max-w-[80ch] text-[12.5px] text-neutral-500">
+              The same recommendation, two audiences. What a partner may see is decided in the read model before it reaches a screen — the confidential figure is never serialized into the shareable payload.
+            </p>
+            <DisclosureSplit candidate={r.recommended} />
+          </Panel>
+        )}
 
-      {/* Disclosure split — the centerpiece */}
-      {r.recommended && (
-        <Panel eyebrow="Enforced server-side, not in the browser" title={`Why ${recWord}`} accent="var(--color-band-high)" className="mb-4">
-          <p className="mb-3.5 max-w-[80ch] text-[12.5px] text-neutral-500">
-            The same recommendation, two audiences. What a partner may see is decided in the read model before it reaches a screen — the confidential figure is never serialized into the shareable payload.
-          </p>
-          <DisclosureSplit candidate={r.recommended} />
-        </Panel>
-      )}
-
-      {/* Team | What changed */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Pursuit team" accent="var(--color-readiness)"
+        {/* Team readiness */}
+        <Panel title="Pursuit team" accent="var(--color-readiness)" className="order-5 lg:order-6"
           aside={<span className="inline-flex items-center gap-1.5 text-[11.5px] text-neutral-500">Readiness <BandPill band={d.team.activationReadiness.band} /></span>}>
           <TeamBento team={d.team} />
         </Panel>
-        <Panel eyebrow="Material events only" title="What changed" accent="var(--color-accent-violet)">
+
+        {/* Facts / evidence */}
+        <Panel eyebrow="Trusted intelligence" title="Facts behind this" accent="var(--color-evidence)" tint className="order-6 lg:order-3">
+          <FactsBento facts={d.facts} />
+        </Panel>
+
+        {/* Material changes */}
+        <Panel eyebrow="Material events only" title="What changed" accent="var(--color-accent-violet)" className="order-7 lg:order-7">
           <MaterialChangeTimeline timeline={d.timeline} />
         </Panel>
       </div>

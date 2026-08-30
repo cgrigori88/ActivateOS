@@ -32,7 +32,9 @@ ok("dimension: unknown renders 'Not available'", body.includes("Not available"))
 // 4. Disclosure split — the centerpiece (internal has the figure, page is the vendor/internal boot)
 ok("disclosure split: Internal view", body.includes("Internal view"));
 ok("disclosure split: Shareable with partner", body.includes("Shareable with partner"));
-ok("internal payload contains the confidential figure", body.includes("1840000") || body.includes("1,840,000"));
+// Server-component render: the raw figure never reaches the client; the internal
+// view shows the humanized confidential figure, the partner-safe view shows neither.
+ok("internal payload shows the confidential figure (humanized)", body.includes("1.84M") && !body.includes("1840000"));
 
 // 5. Team + material changes
 ok("Pursuit team", body.includes("Pursuit team") && /readiness held/i.test(body));
