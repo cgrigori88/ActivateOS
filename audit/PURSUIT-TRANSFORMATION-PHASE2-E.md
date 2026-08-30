@@ -263,4 +263,104 @@ Each sub-phase is independently flag-gated and independently verifiable.
 
 ---
 
-**HALT — awaiting Workstream E Phase 2 sign-off before writing any implementation code. No production data will be touched; all flags remain dark.**
+**Phase 2 signed off (approved with refinements). The refinements below are LOCKED into this artifact and the DoD. Phase 3 proceeds in the gated E3-A…E3-H order; every sub-phase ends with a targeted blind harness + RLS test + tsc + migration verification + production-flag-OFF confirmation + committed audit artifact, then the full E blind suite.**
+
+---
+
+# PHASE 2 REFINEMENTS — SIGN-OFF GUARDRAILS (LOCKED)
+
+These 42 refinements are incorporated as permanent invariants. They refine, not redesign, §§2.0–2.17.
+
+## A. Canonical object & separation of concerns (R1, R2, R3, R10, R20)
+- **R1 One Pursuit identity.** Federation never produces vendor/distributor/reseller/room/partner copies + reconciliation. Participants receive **policy-governed projections** of the one canonical Pursuit. Rooms/guest/exec/customer-safe views are projections, never the authoritative commercial object.
+- **R2 Four concepts modeled explicitly, never derived from one another:** (i) **Pursuit participation** (`pursuit_participants`) — who legitimately participates; (ii) **Commercial route** (`route_candidates`/`selected_*`) — who is recommended/selected to market; (iii) **Collaboration scope** (`joint_pursuits`/room membership) — who may collaborate in a context; (iv) **Disclosure authorization** (`context_grants` + disclosure engine) — what each org/user may receive. Disclosure is **not** derived from participation; participation **not** from route; route membership **not** from room membership. TD SYNNEX may participate, CDW be the selected reseller, a Red Hat/CDW room exist, and TD SYNNEX still hold evidence CDW cannot inspect.
+- **R3 Multi-party topology, not bilateral.** `pursuit_participants` must support arbitrary authorized topologies (Vendor→Distributor→Reseller→Customer; Vendor→Hyperscaler→SI→Customer; Vendor→Distributor→MSP→Customer; Vendor→ISV→GSI→Customer; one distributor→many resellers; etc.). `role_in_pursuit` is an **extensible registry** (a `pursuit_role_types` seed table, not a frozen CHECK); the initial roles are seed data, not the graph shape.
+- **R10 Recommendation ≠ Decision ≠ Action ≠ Execution ≠ Interaction ≠ Outcome** is elevated to a **canonical invariant** persisted across six objects (snapshots · `pursuit_overrides`+`selected_*` · `governed_action_invocations` requested · execution/accepted state · `interaction_events` · `pursuit_outcomes`). They never collapse into one status. This is the learning graph.
+- **R20 Account intelligence ≠ Pursuit intelligence.** The Account ("Globex runs VMware") never substitutes for the Pursuit thesis ("migrate before renewal, via this route, now, these people, these reasons"). Many Pursuits per account; Account score never stands in for Pursuit intelligence.
+
+## B. Context Contribution as a durable provenance object (R4, R5, R30, R34)
+- **R4 NET-NEW `context_contributions`** — the durable object beneath the RAW/DERIVED/FEDERATED/ASSERTED/AGGREGATED modes and the provenance boundary that Facts, route features, and score features reference:
+```
+context_contributions(
+  contribution_id uuid pk, pursuit_id uuid, source_org_id uuid not null,
+  source_system text, provider_id uuid,
+  contribution_mode text,                 -- RAW|DERIVED|FEDERATED|ASSERTED|AGGREGATED
+  data_category text, subject_entity_id uuid, subject_kind text,
+  semantic_meaning text, provenance jsonb,
+  observed_at timestamptz, contributed_at timestamptz, valid_until timestamptz,
+  disclosure_class text, sensitivity_class text,       -- two dimensions (R6)
+  purpose text, scope jsonb, consent_grant_id uuid,
+  raw_stored boolean, derived_only boolean,            -- R5 no-central-custody
+  retention_class text, expires_at timestamptz,        -- R29
+  onward_sharing_allowed boolean, delegation_allowed boolean, -- R8
+  revocation_state text, data_environment text)
+```
+  A Fact/route-feature/score-feature carries `contribution_id` as its provenance boundary; the contribution stays inspectable independent of the derived artifact.
+- **R5 No central custody as a requirement.** `raw_stored`/`derived_only` + the provider mode set (`RAW_TRANSFER, DERIVED_FEATURE, FEDERATED_QUERY, ASSERTION, AGGREGATED_RESULT`) ensure the schema supports "ask my system a permitted question; I keep the rows." Advanced mechanisms (secure computation, clean-room, PSI, local connectors) are **not implemented now**, but the schema must not preclude them.
+- **R30 TD SYNNEX is an implementation, never schema.** No `td_synnex_*` columns anywhere except inside a provider-specific adapter module.
+- **R34 The Pursuit Graph is the moat.** Preserve structured stable-ID edges (Company × Product × Problem × Timing × Evidence × Partner × Distributor × Seller × Route × Action × Outcome over time). Never flatten into blobs or unstructured AI memory. Postgres stays; explicit edge semantics are preserved (R19).
+
+## C. Disclosure — two policy dimensions, policy resolution not redaction (R6, R7)
+- **R6 Separate AUDIENCE from SENSITIVITY.** Two enums, not one overloaded field:
+  - **Audience (`disclosure_class`):** `ORG_PRIVATE, PURSUIT_INTERNAL, PARTICIPANT_SHARED, ORG_ALLOWLIST, GENERALIZED, AGGREGATED, PUBLIC`.
+  - **Sensitivity (`sensitivity_class`):** `PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED`.
+  A highly sensitive item may still be `ORG_ALLOWLIST`-shareable with one authorized org; a low-sensitivity item may still be irrelevant to a given participant. (Supersedes the single 7-value field in §2.3.)
+- **R7 `applyDisclosure()` is policy resolution.** It can omit fields, substitute generalized facts, return aggregates, return boolean/ordinal features, substitute safe explanations, or **suppress existence entirely** — never mere `"$1.84M"→"[REDACTED]"`. **Invariant:** unauthorized data must not exist in the serialized payload (response body, HTML, JSON, React/RSC flight, client-readable logs, hidden DOM). The three-tier TD SYNNEX result (internal exact / partner-safe generalized / unauthorized absent) is a **permanent regression test**.
+
+## D. Consent — purpose limitation, delegation, revocation, retention (R8, R28, R29)
+- **R8 Purpose-limited grants.** `context_grants` carries subject, granting org, receiving org, permitted **information classes**, permitted **actions**, **commercial purpose**, **pursuit/account/list scope**, effective time, `expires_at`, revocation, **delegation_allowed**, **onward_sharing_allowed**. "Org A permits X to Org B for purpose Y within Pursuit Z until T."
+- **R28 Graceful revocation.** On revoke: future reads blocked immediately; historical audit preserved; prior derived decisions remain historically explainable; **future recomputation must not use data beyond its permitted retention/use policy**. Revocation ≠ `deleted=true`.
+- **R29 Retention.** Contribution metadata supports `retention_class`, `expires_at`, purge policy, `retain_derived_result`, `retain_audit_reference`. No schema assumes contributed data lives forever. No retention UI now.
+
+## E. Governed action as a commercial transaction boundary (R9, R24, R25, R26, R35)
+- **R9 `dispatchSkill()` is one of the most security-sensitive boundaries.** UI **asks**; the Skill boundary **decides legality**; the domain service **mutates**; the ledger **records**. UI code never directly mutates commercial state for governed-Skill actions. Every execution carries: authenticated actor + actor org + pursuit + action authority + consent/grant + current object version + policy version + skill version + input validation + idempotency + preconditions + effect class + approval rule + outcome + audit event.
+- **R24 Data consent ≠ action authority.** A sharing grant never implies action rights. CROSS_TENANT_ACTION requires a **separate action-family capability/grant** (`action_grants` or an `authority` field on `context_grants` scoped to an action family), distinct from data-disclosure consent.
+- **R25 External-action outbox.** EXTERNAL_ACTION side effects are **never tied to DB-transaction success**: domain txn → durable `action_outbox` record → executor → provider → receipt → event. Prevents partial-state failures; supports safe retries. Provider execution is not required in the demo; the **boundary is**.
+- **R26 External-action receipts.** Every external execution eventually yields a receipt (provider, provider-action-id, submitted/accepted/completed timestamps, status) — operational proof the system *did* something, not merely recommended it.
+- **R35 LLMs subordinate to governed state.** AI proposes Facts/summaries/Pursuits/routes/actions/messages; authoritative state passes deterministic/policy/domain boundaries. LLM output never becomes durable truth by emission. Fact-candidate boundary, governed Skills, provenance, human override all preserved.
+
+## F. Event / recompute discipline (R11, R12, R13, R22, R23, R36, R37)
+- **R11 Deterministic dependency map** (never recompute-everything): material event → affected Pursuits → affected dimensions → enqueue → recompute at correct as-of → append-only snapshot → material-delta detection → Today update → persisted explanation. Worked examples (verified fact→propensity/evidence/timing/why-now; distributor contribution→route dims/score/recommendation/readiness; PAM accepts→readiness/today/team; closed-won→outcome/experiment/cohort/calibration) are locked into the dependency table.
+- **R12 Event time ≠ knowledge time.** `occurred_at` vs `observed_at`/`recorded_at` preserved through E; an as-of reconstruction uses only what was known then (the Aug-1 transaction contributed Aug-12 must not appear in an Aug-5 reconstruction).
+- **R13 Recompute never rewrites history.** Every recalculation is versioned append-only. "What did PursuitOS believe on July 17 given only July-17 knowledge?" must remain answerable. No silent mutation of historical snapshots.
+- **R22 Materiality suppression (versioned).** No Today item for `propensity 68→69`; **yes** for band change, route-recommendation change, required-participant decline, timing-anchor appearance, contradiction, opportunity close, value-threshold crossing, consent revocation. Materiality rules carry a version.
+- **R23 Action-loop guards.** Track `originating_event`, `causation_id`, `correlation_id`, actor, invocation, recompute request, resulting events; automated actions carry explicit recursion/loop guards to prevent action→event→recompute→action storms.
+- **R36 "Unknown" is a legitimate commercial state** across federation/scoring/UI/recompute/experiments — never 0/false/low/negative/absence. Preserved end to end.
+- **R37 System-version lineage** on every learning-critical output: fact-policy, score-model, route-model, disclosure-policy, entity-resolution, skill, attribution, experiment versions. Without it, backtesting is unreliable.
+
+## G. Outcomes, attribution, experiments, overrides (R14, R15, R16, R17)
+- **R14 Event-rich outcomes.** `pursuit_outcomes` captures economically-meaningful intermediates (intro-accepted, seller-accepted, meeting-booked/completed, opportunity-created/qualified/progressed, deal-registered, quote-created, partner-accepted, technical-resource-engaged, customer-responded, renewal-retained, expansion-created, closed-won/lost, dormant, disqualified) — frequent intermediate signal while final revenue stays sparse.
+- **R15 Outcome ≠ attribution.** Separate `attribution` object: classes `SOURCE, INFLUENCED, ASSISTED, OBSERVED, UNKNOWN` (fractional policies later), each with policy/version, reason, evidence, `calculated_at`, human override. Marketing-style attribution never contaminates the factual Outcome.
+- **R16 Experiments retain intervention history:** treatment/intervention, eligible population, assigned cohort, timestamps, **intelligence state before intervention**, recommendation, human decision, actions taken, outcome (recommended-CDW vs overridden-WWT; distributor-signal present/absent; intro vs no-intro; action-within-24h vs delayed).
+- **R17 Human overrides are first-class supervision observations** (not mere audit): recommended value + confidence + alternatives + human choice + override category + reason + actor role + outcome + whether the system later converged. Enables "when experienced channel execs override, are they usually right?"
+
+## H. Entity resolution, org graph, identity (R18, R19)
+- **R18 Org-scoped, federation-aware resolution.** An org may assert "our internal account X = canonical company Y" **without overwriting another org's source-specific identity record**. Maintain source identity → candidate canonical → resolution, with provenance. One tenant's dirty CRM never globally poisons the company graph.
+- **R19 Organization graph as strategic infrastructure.** The Org/Commercial/Evidence/Relationship/Transaction/Execution/Outcome graphs get **stable IDs + explicit edge semantics** in Postgres (no new graph DB now) so they can be coherently projected/analyzed later.
+
+## I. UX freeze & trust-not-complexity (R31, R32, R33)
+- **R31 D.5 UX freeze holds.** No global redesign in E. New federation/execution UI is native to the D.5 token/component system (dark navy rail; Ecosystem→Outreach→Intelligence→Execution→Revenue IA; Pursuits first-class; tinted Bentos; hairlines; semantic dimension colors; quiet demo badge; light-mode primary; mobile decision-first).
+- **R32 Federation UI reveals trust, not complexity.** Show participating orgs, what's shared vs internal, who granted access, and purpose. Hide policy-engine internals, grant IDs, ACL matrices, DB concepts, provider mechanics (Admin/debug only).
+- **R33 Product narrative preserved:** Observe → Establish truth → Form Pursuits → Decide → Coordinate → Execute → Observe outcome → Learn — visible in architecture, docs, and GTM language.
+
+## J. Honesty & production safety (R35, R40, R42)
+- **R40 No "self-learning AI" claim.** Correct language: PursuitOS *captures* structured outcomes/decisions/history so policies *can be evaluated and progressively calibrated*; automated calibration comes later with real design-partner data. No fake intelligence from synthetic results.
+- **R42 Production safety (unchanged, release-blocking):** no production backfill; no real TD SYNNEX data; no live cross-tenant action; no unapproved provider writes; all federation/action flags default OFF; synthetic/demo data clearly labeled; dry-run first on any migration affecting existing data; cross-tenant RLS remains a release blocker.
+
+## K. Security invariants — add inference-attack tests (R27)
+Extend the T1–T10 register with **T11 inference resistance**: the attacker who cannot read a value directly must not trivially reconstruct it via count differences, existence/non-existence, sorting, route-score deltas, error behavior, timing behavior, hidden association rows, or tiny-cohort aggregates. No sophisticated privacy math now; sensitive raw values must not be trivially reconstructable from derived outputs.
+
+## L. Definition of Done — LOCKED as a permanent regression scenario (R38, R39)
+The §2.16 closed loop becomes a **permanent** regression scenario (not a one-time E test):
+> shared Pursuit → caller-specific disclosure → human decision → governed action → audited state transition → interaction/outcome → event → recomputation → changed Pursuit intelligence → changed Today,
+with tenant isolation, disclosure absence, consent enforcement, as-of correctness, provenance, recommendation/decision separation, and immutable history all held.
+
+**R39 Adverse-path hero scenario (added, required):** CDW recommended → TD SYNNEX context supports CDW → route approved → required CDW resource **declines** → readiness falls → event triggers recompute → alternate route becomes materially better → Today surfaces "Route reconsideration required" → human selects alternate → previous route preserved historically → outcome eventually lands → learning records the entire sequence. Proves PursuitOS is an operating system reacting to changing commercial reality, not a static recommender. Both the happy-path and adverse-path scenarios ship in the E blind suite.
+
+---
+
+## Phase 3 dependency-ordered execution (LOCKED)
+`E3-A` Federation identity + participation (participants, extensible roles, `can_see_pursuit`, room projection) → `E3-B` Consent + disclosure (grants w/ purpose limitation + two-dimension classes, caller-specific serialization, T1–T11 invariants) → `E3-C` Context contributions (the provenance object + modes) → `E3-D` Governed Skill boundary (registry, authority incl. action-vs-data-consent, dispatch, invocation, outbox/receipt boundary, audit) → `E3-E` Event/recompute engine (dependency map, idempotent jobs, as-of propagation, versioned materiality, loop guards) → `E3-F` Outcomes + intermediate outcomes + attribution + experiments + intervention history → `E3-G` Federation-aware entity resolution + provider contract hardening → `E3-H` Closed-loop integration + UX (happy-path + adverse-path).
+After every sub-phase: targeted blind harness · RLS test · tsc · migration verification · production-flag-OFF confirmation · no production backfill · committed audit artifact. Then the full E blind suite (both hero scenarios).
+
+**APPROVED. Proceeding to Phase 3 E3-A.**
