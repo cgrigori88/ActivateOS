@@ -6,6 +6,7 @@ import { BandPill, SyntheticBadge } from "@/components/pursuit/parts";
 import { money } from "@/components/pursuit/surfaces";
 import { withTenant } from "@/lib/db/tenant";
 import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
+import { experienceEnabledFor } from "@/lib/pursuits/tenant-flags";
 import { getPursuitPortfolio } from "@/lib/pursuits/read-models/portfolio";
 import { callerFor } from "@/lib/pursuits/read-models/caller";
 import type { PortfolioRow } from "@/lib/pursuits/read-models/types";
@@ -19,11 +20,13 @@ export const dynamic = "force-dynamic";
  * recomputes. Gated by PURSUIT_EXPERIENCE_ENABLED.
  */
 export default async function PursuitsPage() {
-  if (!pursuitExperienceEnabled()) notFound();
+  if (!pursuitExperienceEnabled()) notFound();   // deployment master (fast deny)
   const view = await withTenant(async (db, orgId) => {
+    if (!(await experienceEnabledFor(db, orgId))) return null;   // per-tenant enforcement (server-side)
     const caller = await callerFor(db, orgId);
     return getPursuitPortfolio(db, caller);
   });
+  if (!view) notFound();
 
   return (
     <div className="mx-auto max-w-[1240px] px-4 py-6">

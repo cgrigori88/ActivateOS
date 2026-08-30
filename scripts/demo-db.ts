@@ -33,6 +33,7 @@ import { proposeGrant, acceptGrant } from "../src/lib/pursuits/federation/grants
 import { recordContribution } from "../src/lib/pursuits/federation/contributions";
 import { seedGovernedSkills } from "../src/lib/pursuits/federation/skills";
 import { recordOutcome } from "../src/lib/pursuits/federation/outcomes";
+import { setOrgFeature } from "../src/lib/pursuits/tenant-flags";
 import { populatePartnerRouteRelevance } from "../src/lib/routing/route-why-now";
 
 const HOST = process.env.DEMO_PGHOST ?? "127.0.0.1";
@@ -146,6 +147,14 @@ async function seed(pool: Pool) {
   await asOrg(s.vendor, (db) => acceptGrant(db, grant));
   await asOrg(distributor, (db) => recordContribution(db, { pursuitId: hero, sourceOrgId: distributor, mode: "FEDERATED", dataCategory: "transaction_adjacency", semanticMeaning: "Distributor transaction adjacency strongly supports the recommended route", disclosureClass: "PARTICIPANT_SHARED", sensitivityClass: "CONFIDENTIAL", purpose: "co-sell", consentGrantId: grant, isSimulated: true }));
   await asOrg(s.vendor, (db) => recordOutcome(db, { orgId: s.vendor, pursuitId: hero, label: "MEETING_BOOKED", occurredAt: new Date(), dataEnvironment: "DEMO", isSimulated: true }));
+
+  // R1-G2 — enable the demo vendor org for the pursuit experience + federation per-tenant
+  // (the gates are now env-master AND per-org; without this the demo boot fails closed).
+  await asOrg(s.vendor, async (db) => {
+    for (const flag of ["pursuits", "facts", "routing", "pursuit_experience", "federation", "governed_action"] as const) {
+      await setOrgFeature(db, s.vendor, flag, true, { reason: "demo tenant" });
+    }
+  });
 
   return { vendor: s.vendor, partnerOrg: s.partnerOrg, hero, second, foreign };
 }

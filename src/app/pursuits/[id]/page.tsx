@@ -9,7 +9,7 @@ import { PursuitHero, MetricBand, WhyNowBento, FactsBento, TeamBento, MaterialCh
 import { RoutePath, RecommendationChange, RouteCandidateTable, DisclosureSplit } from "@/components/pursuit/route";
 import { BandPill, SyntheticBadge } from "@/components/pursuit/parts";
 import { humanizeText } from "@/components/pursuit/vocab";
-import { federationEnabled } from "@/lib/pursuits/federation/flags";
+import { experienceEnabledFor, federationEnabledFor } from "@/lib/pursuits/tenant-flags";
 import { getPursuitFederation, getGovernedActions, getPursuitOutcomes } from "@/lib/pursuits/federation/read-models";
 import { buildFederationViewer } from "@/lib/pursuits/federation/grants";
 import { FederationBento } from "@/components/pursuit/federation";
@@ -30,23 +30,31 @@ const LIFECYCLE_WORD: Record<string, string> = {
  * receives what the caller is permitted to see (disclosure is server-side).
  */
 export default async function PursuitDetail({ params }: { params: Promise<{ id: string }> }) {
+  // Env master is the fast deployment deny; per-tenant enforcement happens below.
   if (!pursuitExperienceEnabled()) notFound();
   const { id } = await params;
-  const d = await withTenant(async (db, orgId) => getPursuitDetail(db, await callerFor(db, orgId), id));
-  if (!d) notFound();
-  const r = d.route;
-
-  // Federation surface — additive, and only assembled when the layer is enabled. In
-  // production (federation OFF) this is skipped entirely and the D.5 surface is unchanged.
-  const federation = federationEnabled()
-    ? await withTenant(async (db, orgId) => {
-        const fed = await getPursuitFederation(db, orgId, id);
-        if (!fed) return null;
+  // Server-side per-tenant gate + the detail read, in one tenant transaction. A tenant
+  // not enabled for the experience gets notFound() — not a hidden-but-reachable page.
+  const loaded = await withTenant(async (db, orgId) => {
+    if (!(await experienceEnabledFor(db, orgId))) return null;
+    const detail = await getPursuitDetail(db, await callerFor(db, orgId), id);
+    if (!detail) return null;
+    // Federation surface — only assembled when the layer is enabled FOR THIS TENANT.
+    let federation = null;
+    if (await federationEnabledFor(db, orgId)) {
+      const fed = await getPursuitFederation(db, orgId, id);
+      if (fed) {
         const actions = await getGovernedActions(db, { type: "USER", orgId, role: "operator" }, id);
         const outcomes = await getPursuitOutcomes(db, await buildFederationViewer(db, orgId, id), id);
-        return { fed, actions, outcomes };
-      })
-    : null;
+        federation = { fed, actions, outcomes };
+      }
+    }
+    return { detail, federation };
+  });
+  if (!loaded) notFound();
+  const d = loaded.detail;
+  const federation = loaded.federation;
+  const r = d.route;
   const recWord = r.recommended?.label ?? "the recommended route";
 
   return (
