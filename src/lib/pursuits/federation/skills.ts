@@ -58,6 +58,11 @@ export const SKILL_REGISTRY: SkillDef[] = [
     handler: async () => ({ requested: true }) },
   { skillId: "send_partner_intro", version: 1, description: "Send a warm introduction to a partner (external)", effectClass: "EXTERNAL_ACTION",
     eligibleActors: ["USER"], requiredPermission: "operator", actionFamily: "intro.email", provider: "email" },
+  // R1-G4 — an APPROVED outreach send is a governed EXTERNAL_ACTION: enqueued to the
+  // transactional outbox and performed by the executor, never inline. Drafting ≠ sending;
+  // approval ≠ execution. The scheduler/worker (WORKER) or an operator may enqueue it.
+  { skillId: "send_campaign_touch", version: 1, description: "Execute an approved outreach send (external)", effectClass: "EXTERNAL_ACTION",
+    eligibleActors: ["USER", "WORKER", "SYSTEM"], requiredPermission: "operator", actionFamily: "outreach.send", provider: "email" },
   // R1-G1 — the governed home of the MCP write surface. draft_campaign_touch is an
   // internal draft (agents allowed; behind the human approval gate). request_warm_intro
   // is cross-tenant; its authority is the active partnership, checked via `authorize`.
@@ -139,11 +144,18 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
     if (!authz.ok) return record(db, def, actor, ctx, "REJECTED", { reason: authz.reason ?? "no cross-tenant action authority (R24)" });
   }
   if (def.effectClass === "EXTERNAL_ACTION") {
-    // Never execute inline — enqueue the outbox (R25). Receipt lands when the executor drains it.
+    // Never execute inline — enqueue the transactional outbox (R25/G4). The executor,
+    // not this handler, performs the side effect; the receipt + EXECUTED land when it
+    // drains. Idempotency at the transport: (org, idempotency_key) is unique, so a
+    // retried enqueue of the same authorized action collapses to the existing row.
     const inv = await record(db, def, actor, ctx, "EXECUTING", {});
     await db.query(
-      `insert into action_outbox (invocation_id, org_id, provider, action_family, payload) values ($1,$2,$3,$4,$5)`,
-      [inv.invocationId, actor.orgId, def.provider ?? "unknown", def.actionFamily ?? null, JSON.stringify(ctx.args ?? {})]);
+      `insert into action_outbox
+         (invocation_id, org_id, provider, action_family, payload, status, idempotency_key, correlation_id, data_environment)
+       values ($1,$2,$3,$4,$5,'PENDING',$6,$7,$8)
+       on conflict (org_id, idempotency_key) where idempotency_key is not null do nothing`,
+      [inv.invocationId, actor.orgId, def.provider ?? "unknown", def.actionFamily ?? null, JSON.stringify(ctx.args ?? {}),
+       ctx.idempotencyKey ?? null, ctx.correlationId ?? null, ctx.dataEnvironment ?? "PRODUCTION"]);
     return { ...inv, queued: true };
   }
 

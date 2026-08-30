@@ -2,6 +2,8 @@ import type pg from "pg";
 import { sendOutbound } from "./send";
 import { deriveEngagement } from "../intel/engagement";
 import { addDays, normalizeTz, zonedToUtc } from "./tz";
+import { dispatchSkill, type Actor } from "../pursuits/federation/skills";
+import type { DataEnvironment } from "../pursuits/lineage";
 
 /**
  * Sequence cadence (Phase 9B). Launching a campaign turns its approved touches
@@ -149,14 +151,16 @@ export async function sendTouchNow(
  */
 export async function drainScheduledTouches(
   db: pg.PoolClient,
-  args?: { now?: Date; autosend?: boolean; limit?: number },
-): Promise<{ due: number; sent: number; errors: string[] }> {
+  args?: { now?: Date; limit?: number },
+): Promise<{ due: number; enqueued: number; errors: string[] }> {
   const now = args?.now ?? new Date();
-  const autosend = args?.autosend ?? process.env.OUTREACH_AUTOSEND === "on";
   const limit = args?.limit ?? 50;
 
-  const { rows: due } = await db.query<{ id: string }>(
-    `select t.id from campaign_touches t
+  // R1-G4: a due, approved touch is ENQUEUED as a governed EXTERNAL_ACTION — it is not
+  // sent here. The outbox executor performs the send (gated, retried, receipted). This
+  // function no longer touches a provider; drafting/approval ≠ execution.
+  const { rows: due } = await db.query<{ id: string; org_id: string | null; data_environment: string | null }>(
+    `select t.id, ca.org_id, ca.data_environment from campaign_touches t
      join campaigns ca on ca.id = t.campaign_id
      where t.status = 'scheduled' and t.scheduled_at is not null and t.scheduled_at <= $1
        and ca.recipient_email is not null
@@ -165,16 +169,20 @@ export async function drainScheduledTouches(
   );
 
   const errors: string[] = [];
-  let sent = 0;
-  if (autosend) {
-    for (const t of due) {
-      try {
-        await sendTouchNow(db, { touchId: t.id });
-        sent++;
-      } catch (err) {
-        errors.push(`${t.id}: ${err instanceof Error ? err.message : String(err)}`);
-      }
+  let enqueued = 0;
+  for (const t of due) {
+    if (!t.org_id) { errors.push(`${t.id}: campaign has no org`); continue; }
+    try {
+      const actor: Actor = { type: "WORKER", id: "scheduler", orgId: t.org_id, role: "operator" };
+      const r = await dispatchSkill(db, "send_campaign_touch", actor, {
+        args: { touchId: t.id }, idempotencyKey: `send:${t.id}`,
+        dataEnvironment: (t.data_environment as DataEnvironment) ?? "PRODUCTION",
+      });
+      if (r.status === "EXECUTING" || r.status === "EXECUTED") enqueued++;
+      else errors.push(`${t.id}: ${r.status}${r.reason ? " " + r.reason : ""}`);
+    } catch (err) {
+      errors.push(`${t.id}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  return { due: due.length, sent, errors };
+  return { due: due.length, enqueued, errors };
 }

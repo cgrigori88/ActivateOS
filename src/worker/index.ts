@@ -10,6 +10,8 @@ import { importAccountsCsv } from "../lib/ingest/ingest-accounts";
 import { runPendingResearchLocked } from "../lib/intel/research-runner";
 import { runScreeningSweepAllOrgs, runScreeningSweepLocked } from "../lib/intel/screen-runner";
 import { drainScheduledTouches } from "../lib/comms/sequence";
+import { drainOutbox } from "../lib/pursuits/federation/executor";
+import { registerOutreachExecutor } from "../lib/comms/governed-send";
 import { suggestCampaigns } from "../lib/comms/suggest";
 import { runDueRoutines } from "../lib/routines/routines";
 
@@ -64,10 +66,17 @@ async function runResearch(limit = RESEARCH_LIMIT) {
 }
 
 async function runOutreach() {
+  // R1-G4: enqueue due approved sends as governed EXTERNAL_ACTIONs, then drain the
+  // outbox executor. Real provider execution is gated on OUTREACH_AUTOSEND (dark by
+  // default); a non-PRODUCTION action always simulates, so demo data never sends.
+  registerOutreachExecutor();
+  const allowRealProvider = process.env.OUTREACH_AUTOSEND === "on";
   const pool = getOwnerPool();
   const db = await pool.connect();
   try {
-    return await drainScheduledTouches(db);
+    const enq = await drainScheduledTouches(db);
+    const exec = await drainOutbox(db, { allowRealProvider });
+    return { due: enq.due, enqueued: enq.enqueued, executed: exec.succeeded, failed: exec.final, errors: enq.errors };
   } finally {
     db.release();
   }
@@ -284,7 +293,7 @@ function startScheduler(): void {
     if (autosend) {
       try {
         const o = await runOutreach();
-        if (o.sent > 0 || o.errors.length > 0) log("cron: outreach", o);
+        if (o.enqueued > 0 || o.executed > 0 || o.errors.length > 0) log("cron: outreach", o);
       } catch (err) {
         log("cron: outreach error", { error: err instanceof Error ? err.message : String(err) });
       }

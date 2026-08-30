@@ -71,6 +71,17 @@ export async function hasLiveDataGrant(db: PoolClient, toOrgId: string, pursuitI
   return rows[0].ok;
 }
 
+/** Is one specific grant (by id) currently LIVE — accepted and unexpired? Used by the
+ *  external-action executor to re-check consent BEFORE execution (R1-G4 revocation). */
+export async function grantIsLiveById(db: PoolClient, grantId: string): Promise<boolean> {
+  const { rows } = await db.query<{ ok: boolean }>(
+    `select exists (
+       select 1 from context_grants
+       where id = $1 and status = 'accepted' and (expires_at is null or expires_at > now())) as ok`,
+    [grantId]);
+  return rows[0].ok;
+}
+
 /**
  * Does `toOrgId` hold a LIVE ACTION authority for `actionFamily` on this pursuit (R24)?
  * A DATA sharing grant NEVER satisfies this — action authority is a separate grant kind.
