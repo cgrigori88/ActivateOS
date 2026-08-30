@@ -282,6 +282,11 @@ existing human approval gates, and **cross-tenant data appears only where both
 partners already consented**. Keys are minted/revoked in Admin, hashed at rest,
 last-used tracked.
 
+**Release gate (see 7.6):** before any agent-driven production *mutation* is enabled,
+every MCP/action-agent write must be routed through the governed **`dispatchSkill`**
+boundary (§6.4). There is to be **no privileged alternate mutation path** for MCP or
+agents that bypasses that boundary.
+
 ## 5.5 Routines — scheduled autonomous intelligence
 A catalog of scheduled jobs (morning brief, per-account digests) run by a
 background worker, surfaced as digest cards and attention flags. Failures raise a
@@ -293,7 +298,8 @@ red rail badge and a line in the morning brief.
 
 ## 6.1 Stack
 - **App:** Next.js (App Router) on Vercel (serverless).
-- **Database:** PostgreSQL on Supabase — **62 migrations, ~98 tables.**
+- **Database:** PostgreSQL on Supabase — **87 migrations, ~148 tables** (incl. the
+  Federated Pursuit substrate, §6.4, built and gated dark).
 - **Worker:** a long-lived Railway service (HTTP trigger + internal scheduler) for
   the research pipeline, routines, refresh, and nightly backups.
 - **Auth:** Supabase Auth (JWT); membership-as-grant model.
@@ -312,6 +318,49 @@ red rail badge and a line in the morning brief.
 Independent nightly backups (dump/restore library + worker schedule + CLI) —
 because the managed DB's own backups were insufficient. Restores are exercised, not
 assumed.
+
+## 6.4 Federated Pursuit substrate — canonical platform primitives (built; gated dark)
+
+Workstream E turned one canonical commercial Pursuit into a **governed, multi-company
+system of action**: one Pursuit can be informed, governed, decided, executed, and
+measured across independent organizations *without* forcing any org to surrender its
+underlying data or control. These are **canonical platform primitives** — treated
+like `pursuits`, `facts`, and the change ledger, **not** local Workstream-E features —
+and every later workstream builds on them rather than around them. All ship **dark**
+behind flags that default **OFF** (§7.7); enabling them is a deliberate rollout, not a
+code change.
+
+| Primitive | Where | Canonical role |
+|---|---|---|
+| **Pursuit participation** | `pursuit_participants`, `can_see_pursuit()`, `federation/participation.ts` | N orgs on ONE canonical Pursuit; extensible role registry; participation state machine. The Pursuit is never copied. |
+| **Disclosure policy + grants** | `context_grants`, `federation/disclosure.ts`, `federation/grants.ts` | Two-dimension policy (audience × sensitivity) resolved **server-side** per caller; purpose-limited grants; DATA consent ≠ action authority. |
+| **Context contributions** | `context_contributions`, `federation/contributions.ts` | The durable provenance object (5 modes RAW/DERIVED/FEDERATED/ASSERTED/AGGREGATED); provenance always retained, value disclosure separate; no central custody required. |
+| **Governed skills / actions** | `governed_skills`, `governed_action_invocations`, `action_outbox`, `action_receipts`, `federation/skills.ts` | `dispatchSkill` is the single legality gate for governed mutation: actor eligibility + permission, effect-class routing, idempotency, loop guard, external outbox+receipt, audited invocation. |
+| **Recompute requests / dependency map** | `recompute_requests`, `federation/events.ts` | Event-driven reactive engine: deterministic dependency map, **as-of** propagation (event time, never `now()`), materiality suppression, loop guard, append-only snapshots. |
+| **Pursuit outcomes** | `pursuit_outcomes`, `federation/outcomes.ts` | Event-rich outcomes (intermediates + terminal incl. NO_DECISION/DORMANT/DISQUALIFIED), each captured **with** its decision-time context. |
+| **Attribution** | `attribution` | Explicit, versioned, **NOT ROI** (SOURCE/INFLUENCED/ASSISTED/OBSERVED/UNKNOWN); a human override preserves the machine claim. Separate object from the outcome. |
+| **Experiments / intervention history** | `experiments`, `experiment_arms`, `cohort_assignments`; override convergence on `pursuit_overrides` | Intervention history with the intelligence state **before** the intervention; a human override is supervision data that learns whether the system later converged. |
+| **Federation-aware entity resolution** | `company_aliases.source_org_id`, `entity_resolution_reviews.source_org_id`, `identity/federation-resolve.ts` | Resolution scoped to the source org's id space; unresolved identities **quarantined** (never attach a signal to another org's Pursuit). |
+| **Participant read models** | `federation/read-models.ts` (`getPursuitFederation` / `getGovernedActions` / `getPursuitOutcomes`) | The one door for federated reads: DB scopes rows by `can_see_pursuit`, the read model applies caller-specific disclosure before anything reaches a screen. |
+
+## 6.5 Permanent regression invariants — the closed loop (LOCKED)
+
+Two end-to-end scenarios are **permanent** regression invariants (`scripts/closed-loop-verify.ts`).
+They are not to be weakened or replaced by any later workstream.
+
+**Happy path:** shared Pursuit → caller-specific disclosure → recommendation → human
+decision → governed action → audited state transition → outcome → event → as-of
+recompute → material intelligence change → changed Today state.
+
+**Adverse path:** resource/capability withdrawal → readiness change → material route
+reconsideration → recompute → alternate recommendation → human decision → immutable
+prior history → outcome.
+
+Both hold, together, with: tenant isolation; disclosure **absence** tested at the
+served-payload boundary; consent enforcement (DATA grant ≠ action authority); as-of
+correctness; provenance retention; **recommendation ≠ decision ≠ action ≠ outcome**
+persisted as separate objects; append-only / reconstructable history; and **Unknown
+distinct from zero/false/negative.**
 
 ---
 
@@ -361,6 +410,37 @@ PursuitOS can credibly tell a prospective design partner: *your data is isolated
 the database layer, your customers' PII is handled to GDPR, your AI runs on your own
 contract if you want, and every cross-company disclosure is consent-gated and
 audited.* Very few early-stage GTM tools can say all of that.
+
+## 7.6 Named pre-production / release gates (federated execution)
+
+The Federated Pursuit substrate (§6.4) is built and verified but ships **dark**. Two
+gates are **release-blocking** and must be cleared, in order, before the relevant
+capability is enabled in production:
+
+1. **Governed mutation boundary.** Before any agent-driven production *mutation* is
+   enabled, **every MCP / action-agent write is routed through `dispatchSkill`**.
+   There must be **no privileged alternate mutation path** for MCP or agents that
+   bypasses the governed boundary.
+2. **Outcome emission.** Production outcome emission stays gated behind
+   `OUTCOME_LEARNING_ENABLED`. It must **not** be enabled using synthetic/demo data as
+   calibration material; activate it only as part of a deliberate **real-design-partner
+   rollout**. (No automated calibration on synthetic results — the loop *captures*
+   structure so policies can later be evaluated and calibrated with real data.)
+
+## 7.7 Production-safety invariants (preserved, release-blocking)
+
+- Federation / action / outcome flags **default OFF**.
+- **No production backfill** without a dry-run and explicit approval.
+- **No live TD SYNNEX dependency** — the distributor signal is a `TransactionSignalProvider`
+  implementation, not schema; demo data is synthetic.
+- **Demo / synthetic provenance retained** (`data_environment='DEMO'` / `is_simulated`),
+  never presented as live.
+- **Cross-tenant RLS remains release-blocking** — the app runs as `app_rw`; a
+  non-participant sees nothing, tested at the served-payload boundary.
+- **Disclosure absence** is tested where the payload is served, not only in the model.
+- **recommendation ≠ decision ≠ action ≠ outcome** — persisted as separate objects.
+- **Historical snapshots remain append-only / reconstructable** (as-of correctness).
+- **Unknown remains distinct** from zero / false / negative.
 
 ---
 
@@ -456,8 +536,15 @@ pipeline_summary, account_brief, overlap_status, joint_pursuits, partner_context
 initiative_status, deal_context, org_skills, request_warm_intro, draft_touch.
 
 ## 9.5 Scale snapshot
-62 migrations · ~98 tables · 20 rooms · 4 API surfaces · 17 providers · 10 MCP tools
-· 26 capability modules.
+87 migrations · ~148 tables · 20 rooms · 4 API surfaces · 17 providers · 10 MCP tools
+· 26 capability modules · 10 Federated Pursuit primitives (§6.4, gated dark).
+
+## 9.6 Federated Pursuit primitives (canonical — see §6.4)
+pursuit_participants · disclosure policy/grants · context contributions · governed
+skills/actions · recompute requests + dependency map · pursuit outcomes · attribution
+· experiments/intervention history · federation-aware entity resolution · participant
+read models. **Locked closed-loop invariants: §6.5. Release gates: §7.6. Production-safety
+invariants: §7.7.**
 
 ---
 
