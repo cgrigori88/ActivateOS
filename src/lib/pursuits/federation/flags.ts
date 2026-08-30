@@ -33,3 +33,17 @@ export function federationReadiness(): FederationReadiness {
 export function federationEnabled(): boolean {
   return federationReadiness().ready;
 }
+
+function requestedGovernedAction(): boolean {
+  const v = (process.env.GOVERNED_ACTION_ENABLED ?? "").trim().toLowerCase();
+  return v === "true" || v === "1" || v === "on" || v === "yes";
+}
+
+/**
+ * Governed action layer (E3-D). Ships DARK behind GOVERNED_ACTION_ENABLED and
+ * DEPENDS on federation being ready (participation + consent). Fails safe: OFF
+ * unless requested AND federation is ready.
+ */
+export function governedActionEnabled(): boolean {
+  return requestedGovernedAction() && federationEnabled();
+}
