@@ -60,16 +60,28 @@ export async function GET(req: Request): Promise<NextResponse> {
   });
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** POST: drain the queue once (under the global lock). */
 export async function POST(req: Request): Promise<NextResponse> {
   if (!authorized(req)) return refuse(req);
   const url = new URL(req.url);
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 10) || 10, 1), 100);
-  const orgId = url.searchParams.get("orgId") ?? undefined;
+  const orgParam = url.searchParams.get("orgId");
 
   const pool = getOwnerPool();
   const db = await pool.connect();
   try {
+    // R1-G3: this runs on the owner pool (RLS-exempt). A caller-supplied orgId must not
+    // silently select an arbitrary tenant — validate it is a real org and reject a
+    // mismatch, rather than switching context to any id a secret-holder names.
+    let orgId: string | undefined;
+    if (orgParam !== null) {
+      if (!UUID_RE.test(orgParam)) return NextResponse.json({ status: "error", message: "invalid orgId" }, { status: 400 });
+      const { rows } = await db.query<{ id: string }>(`select id from organizations where id = $1`, [orgParam]);
+      if (!rows[0]) return NextResponse.json({ status: "error", message: "unknown org" }, { status: 404 });
+      orgId = rows[0].id;
+    }
     const result = await runPendingResearchLocked(db, { limit, orgId });
     if (result.locked) {
       return NextResponse.json(
