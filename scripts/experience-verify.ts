@@ -175,6 +175,23 @@ async function main() {
     check("portfolio excludes other tenants", !pf.rows.some((r) => r.pursuitId === orgBPursuit));
   });
 
+  // ---- Optional: dump the real view objects for visual proof (§68) ----
+  // Off by default. When EXPERIENCE_DUMP=<path> is set, serialize the exact
+  // read-model outputs the UI renders — so the visual proof is driven by real
+  // computed values, never invented ones.
+  if (process.env.EXPERIENCE_DUMP) {
+    const dump = await asOrg(s.orgA, async (db) => ({
+      today: await getTodayQueue(db, internalCaller(s.orgA)),
+      portfolio: await getPursuitPortfolio(db, internalCaller(s.orgA)),
+      detail: await getPursuitDetail(db, internalCaller(s.orgA), hero),
+      routeInternal: await getRouteComparison(db, internalCaller(s.orgA), hero),
+      routeLimited: await getRouteComparison(db, limitedCaller(s.orgA), hero),
+    }));
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(process.env.EXPERIENCE_DUMP, JSON.stringify(dump, null, 2));
+    console.log(`[experience-verify] dumped view objects → ${process.env.EXPERIENCE_DUMP}`);
+  }
+
   console.log(`\n[experience-verify] ${passed} passed, ${failed} failed`);
   if (failed) { console.log("[experience-verify] FAILURES:"); for (const f of failures) console.log("  - " + f); }
   await pool.end();
