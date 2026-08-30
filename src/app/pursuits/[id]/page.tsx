@@ -9,6 +9,10 @@ import { PursuitHero, MetricBand, WhyNowBento, FactsBento, TeamBento, MaterialCh
 import { RoutePath, RecommendationChange, RouteCandidateTable, DisclosureSplit } from "@/components/pursuit/route";
 import { BandPill, SyntheticBadge } from "@/components/pursuit/parts";
 import { humanizeText } from "@/components/pursuit/vocab";
+import { federationEnabled } from "@/lib/pursuits/federation/flags";
+import { getPursuitFederation, getGovernedActions, getPursuitOutcomes } from "@/lib/pursuits/federation/read-models";
+import { buildFederationViewer } from "@/lib/pursuits/federation/grants";
+import { FederationBento } from "@/components/pursuit/federation";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -31,6 +35,18 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
   const d = await withTenant(async (db, orgId) => getPursuitDetail(db, await callerFor(db, orgId), id));
   if (!d) notFound();
   const r = d.route;
+
+  // Federation surface — additive, and only assembled when the layer is enabled. In
+  // production (federation OFF) this is skipped entirely and the D.5 surface is unchanged.
+  const federation = federationEnabled()
+    ? await withTenant(async (db, orgId) => {
+        const fed = await getPursuitFederation(db, orgId, id);
+        if (!fed) return null;
+        const actions = await getGovernedActions(db, { type: "USER", orgId, role: "operator" }, id);
+        const outcomes = await getPursuitOutcomes(db, await buildFederationViewer(db, orgId, id), id);
+        return { fed, actions, outcomes };
+      })
+    : null;
   const recWord = r.recommended?.label ?? "the recommended route";
 
   return (
@@ -104,6 +120,13 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         <Panel eyebrow="Material events only" title="What changed" accent="var(--color-accent-violet)" className="order-7 lg:order-7">
           <MaterialChangeTimeline timeline={d.timeline} />
         </Panel>
+
+        {/* Federation — participants, shared context, governed actions, outcome trail (disclosure-safe) */}
+        {federation && (
+          <Panel eyebrow="One pursuit, many organizations — disclosure decided server-side" title="Federation" accent="var(--color-route)" className="order-8 lg:order-8 lg:col-span-2">
+            <FederationBento fed={federation.fed} actions={federation.actions} outcomes={federation.outcomes} />
+          </Panel>
+        )}
       </div>
     </div>
   );

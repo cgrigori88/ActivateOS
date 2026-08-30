@@ -28,6 +28,11 @@ import { recomputeRoute } from "../src/lib/routing/route-model";
 import { selectPartnerRoute } from "../src/lib/routing/override";
 import { assembleTeam } from "../src/lib/routing/team";
 import { ingestFeatures } from "../src/lib/transactions/features";
+import { addParticipant, acceptParticipation } from "../src/lib/pursuits/federation/participation";
+import { proposeGrant, acceptGrant } from "../src/lib/pursuits/federation/grants";
+import { recordContribution } from "../src/lib/pursuits/federation/contributions";
+import { seedGovernedSkills } from "../src/lib/pursuits/federation/skills";
+import { recordOutcome } from "../src/lib/pursuits/federation/outcomes";
 import { populatePartnerRouteRelevance } from "../src/lib/routing/route-why-now";
 
 const HOST = process.env.DEMO_PGHOST ?? "127.0.0.1";
@@ -126,6 +131,21 @@ async function seed(pool: Pool) {
   });
   // Human override: select WWT over recommended CDW (records the override + change event).
   await asOrg(s.vendor, (db) => selectPartnerRoute(db, hero, { partnerId: s.wwt, actorId: crypto.randomUUID(), reason: "exec relationship", category: "EXECUTIVE_DIRECTION" }));
+
+  // Federation fixture (E3-H, §2.14) — the ONE canonical hero pursuit gains a distributor
+  // participant, a purpose-limited DATA grant, a FEDERATED context contribution, and a
+  // material outcome. All DEMO / is_simulated; the restricted figure stays vendor-internal.
+  // Renders only when FEDERATION_ENABLED=1; the demo DB stays inert otherwise.
+  const distributor = (await asOrg(s.vendor, (db) => db.query<{ id: string }>(`insert into organizations (name, kind, created_at) values ('TD SYNNEX (demo)','full', now() + interval '2 hours') returning id`))).rows[0].id;
+  await withClient(DEMO_URL, (c) => c.query(`grant connect on database ${DB} to app_rw`).then(() => {})).catch(() => {});
+  await asOrg(s.vendor, (db) => seedGovernedSkills(db));
+  const partId = await asOrg(s.vendor, (db) => addParticipant(db, { pursuitId: hero, orgId: s.vendor, roleKey: "VENDOR", sponsorOrgId: s.vendor, state: "ACTIVE" }).then(() =>
+    addParticipant(db, { pursuitId: hero, orgId: distributor, roleKey: "DISTRIBUTOR", sponsorOrgId: s.vendor })));
+  await asOrg(distributor, (db) => acceptParticipation(db, partId));
+  const grant = await asOrg(distributor, (db) => proposeGrant(db, { pursuitId: hero, fromOrgId: distributor, toOrgId: s.vendor, grantKind: "DATA", purpose: "co-sell context sharing", informationClasses: ["transaction_adjacency"] }));
+  await asOrg(s.vendor, (db) => acceptGrant(db, grant));
+  await asOrg(distributor, (db) => recordContribution(db, { pursuitId: hero, sourceOrgId: distributor, mode: "FEDERATED", dataCategory: "transaction_adjacency", semanticMeaning: "Distributor transaction adjacency strongly supports the recommended route", disclosureClass: "PARTICIPANT_SHARED", sensitivityClass: "CONFIDENTIAL", purpose: "co-sell", consentGrantId: grant, isSimulated: true }));
+  await asOrg(s.vendor, (db) => recordOutcome(db, { orgId: s.vendor, pursuitId: hero, label: "MEETING_BOOKED", occurredAt: new Date(), dataEnvironment: "DEMO", isSimulated: true }));
 
   return { vendor: s.vendor, partnerOrg: s.partnerOrg, hero, second, foreign };
 }
