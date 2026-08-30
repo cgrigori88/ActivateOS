@@ -1,18 +1,15 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
-import { runTx } from "@/db/client";
 import { loadStageWeights } from "../opportunities/stage-weights";
 import { weightedPipelineValue, type Stage } from "../opportunities/lifecycle";
 import { listJointPursuits, pursuitEvents } from "../partnerships/joint";
 import { overlapLadder } from "../partnerships/overlap";
 import { listPartnerships } from "../partnerships/partnerships";
-import { upsertTouch } from "../comms/authoring";
 import { dealTimeline } from "../context/timeline";
 import { accountDivergences } from "../context/divergence";
 import { listSkills, sharedInSkills } from "../skills/skills";
 import { listInitiatives } from "../partnerships/initiatives";
 import { listEvidenceShares } from "../partnerships/evidence-shares";
-import { requestWarmIntro } from "../partnerships/warm-intros";
 import { settlementStatement } from "../partnerships/settlement";
 
 /**
@@ -33,19 +30,19 @@ export function mintKey(): { plaintext: string; hash: string } {
   return { plaintext, hash: createHash("sha256").update(plaintext).digest("hex") };
 }
 
-export async function resolveKey(pool: Pool | PoolClient, bearer: string | null): Promise<{ orgId: string; keyId: string } | null> {
+export async function resolveKey(pool: Pool | PoolClient, bearer: string | null): Promise<{ orgId: string; keyId: string; scope: string } | null> {
   if (!bearer || !bearer.startsWith("pos_")) return null;
   const hash = createHash("sha256").update(bearer).digest("hex");
   // RISK-1: resolve_api_key() (migration 0062) is SECURITY DEFINER — it looks up
   // the key's org and stamps last_used_at in owner context, so this works before
   // any tenant scope is set and under app_rw (which cannot read api_keys itself).
   // On the owner connection it runs as the same owner: unchanged behavior.
-  const { rows } = await pool.query<{ org_id: string; key_id: string }>(
-    `select org_id, key_id from public.resolve_api_key($1)`,
+  const { rows } = await pool.query<{ org_id: string; key_id: string; scope: string }>(
+    `select org_id, key_id, scope from public.resolve_api_key($1)`,
     [hash],
   );
   if (!rows[0]) return null;
-  return { orgId: rows[0].org_id, keyId: rows[0].key_id };
+  return { orgId: rows[0].org_id, keyId: rows[0].key_id, scope: rows[0].scope ?? "write" };
 }
 
 // ── Tools ───────────────────────────────────────────────────────────────────
@@ -54,6 +51,10 @@ export interface McpToolDef {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  /** R1-G1: write tools are governed. They carry the skill id the MCP route dispatches
+   *  through dispatchSkill; their `run` is never invoked for writes (it refuses). */
+  write?: boolean;
+  skillId?: string;
   run(pool: Pool | PoolClient, orgId: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
@@ -183,8 +184,10 @@ export const MCP_TOOLS: McpToolDef[] = [
   },
   {
     name: "draft_touch",
+    write: true,
+    skillId: "draft_campaign_touch",
     description:
-      "THE ONLY WRITE TOOL, and it only drafts: add a DRAFT email touch to an existing campaign (matched by name). Nothing is sent — the draft lands behind the same human approval gate as every touch. Returns the created draft.",
+      "A WRITE TOOL (governed): add a DRAFT email touch to an existing campaign (matched by name). Nothing is sent — the draft lands behind the same human approval gate as every touch. Routed through the governed action boundary. Returns the created draft.",
     inputSchema: {
       type: "object",
       properties: {
@@ -196,38 +199,9 @@ export const MCP_TOOLS: McpToolDef[] = [
       required: ["campaign", "subject", "body"],
       additionalProperties: false,
     },
-    async run(pool, orgId, args) {
-      const q = String(args.campaign ?? "").trim();
-      const { rows } = await pool.query<{ id: string; name: string }>(
-        `select id, name from campaigns where name ilike $1 order by created_at desc limit 1`,
-        [`%${q}%`],
-      );
-      if (!rows[0]) return { created: false, message: `No campaign matching "${q}".` };
-      await runTx(pool, (db) =>
-        upsertTouch(db, {
-          campaignId: rows[0].id,
-          fields: {
-            name: String(args.name ?? "Agent draft"),
-            subject: String(args.subject),
-            body: String(args.body),
-            preheader: "",
-            headline: "",
-            highlights: [],
-            ctaLabel: "",
-            ctaUrl: "",
-            sendOffsetDays: 0,
-            accountAngle: "",
-            customHtml: "",
-            ccEmails: [],
-          },
-        }),
-      );
-      return {
-        created: true,
-        campaign: rows[0].name,
-        status: "draft",
-        note: "Draft only — a human approves it in the campaign room before anything can send.",
-      };
+    async run() {
+      // R1-G1: writes go through dispatchSkill (see the MCP route). A direct call is a bug.
+      throw new Error("draft_touch is a governed write — dispatch via dispatchSkill, not run()");
     },
   },
   {
@@ -310,8 +284,10 @@ export const MCP_TOOLS: McpToolDef[] = [
   },
   {
     name: "request_warm_intro",
+    write: true,
+    skillId: "request_warm_intro",
     description:
-      "Ask the partner for a warm introduction into one named-overlap account. This CREATES A REQUEST the partner must decide — accepting is itself the disclosure (they pick exactly one contact to reveal). Requires an active partnership with the named rung approved and the account on it. The consent fabric, not this tool, decides what is ultimately shared.",
+      "A CROSS-TENANT WRITE TOOL (governed): ask the partner for a warm introduction into one named-overlap account. This CREATES A REQUEST the partner must decide — accepting is itself the disclosure (they pick exactly one contact to reveal). Requires an active partnership with the named rung approved and the account on it. Routed through the governed action boundary; the consent fabric, not this tool, decides what is ultimately shared.",
     inputSchema: {
       type: "object",
       properties: {
@@ -322,24 +298,9 @@ export const MCP_TOOLS: McpToolDef[] = [
       required: ["partner", "account"],
       additionalProperties: false,
     },
-    async run(pool, orgId, args) {
-      const pq = String(args.partner ?? "").trim();
-      const aq = String(args.account ?? "").trim();
-      const { rows: pr } = await pool.query<{ id: string }>(
-        `select id from partners where org_id = $1 and name ilike $2 limit 1`, [orgId, `%${pq}%`]);
-      if (!pr[0]) return { ok: false, message: `No partner matching "${pq}".` };
-      const { rows: ps } = await pool.query<{ id: string }>(
-        `select id from partnerships p
-         where p.status = 'active'
-           and ((p.initiator_org_id = $1 and p.initiator_partner_id = $2)
-             or (p.counterpart_org_id = $1 and p.counterpart_partner_id = $2))
-         limit 1`, [orgId, pr[0].id]);
-      if (!ps[0]) return { ok: false, message: "No active partnership with that partner." };
-      const { rows: co } = await pool.query<{ id: string }>(
-        `select id from companies where legal_name ilike $1 limit 1`, [`%${aq}%`]);
-      if (!co[0]) return { ok: false, message: `No account matching "${aq}".` };
-      await requestWarmIntro(pool, orgId, ps[0].id, co[0].id, String(args.ask ?? "").slice(0, 500));
-      return { ok: true, message: "Warm-intro request created — the partner decides, and their acceptance is the disclosure." };
+    async run() {
+      // R1-G1: cross-tenant writes go through dispatchSkill (see the MCP route). A direct call is a bug.
+      throw new Error("request_warm_intro is a governed cross-tenant write — dispatch via dispatchSkill, not run()");
     },
   },
   {

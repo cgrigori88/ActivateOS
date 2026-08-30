@@ -5,10 +5,11 @@ import { resolveOrgAnthropicKey } from "@/lib/ai/org-keys";
 
 /**
  * Ask-the-record: a conversational answer over the org's OWN MCP tool surface.
- * The model never sees raw tables — it sees the same read-only tools an
- * external BYO-bot gets, so an answer can only contain what the record
- * (and the caller's tenant) actually holds. The one write tool (draft_touch)
- * is excluded: the ask surface reads.
+ * The model never sees raw tables — it sees ONLY the read tools of the MCP
+ * surface, so an answer can only contain what the record (and the caller's
+ * tenant) actually holds. R1-G1: EVERY write tool is excluded — no governed
+ * mutation, and in particular no cross-tenant write (request_warm_intro), is
+ * ever an autonomous tool for this LLM. The ask surface reads.
  *
  * Cheap tier on purpose (two-tier routing rule): synthesis over tool results
  * is routine volume, not judgment-heavy design work.
@@ -31,7 +32,7 @@ export interface AskResult {
 }
 
 export async function askTheRecord(pool: Pool | PoolClient, orgId: string, question: string): Promise<AskResult> {
-  const tools = MCP_TOOLS.filter((t) => t.name !== "draft_touch");
+  const tools = MCP_TOOLS.filter((t) => !t.write);
   const anthropic = getAnthropic(await resolveOrgAnthropicKey(pool, orgId));
 
   const apiTools = tools.map((t) => ({

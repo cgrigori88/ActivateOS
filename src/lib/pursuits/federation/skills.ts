@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { hasActionAuthority } from "./grants";
 import { acceptParticipation } from "./participation";
+import { draftTouchImpl, requestWarmIntroImpl, warmIntroAuthorize } from "../../agents/mcp-writes";
 
 /**
  * Governed Skill boundary (Workstream E3-D, R9/R24/R25/R26). `dispatchSkill` is
@@ -34,6 +35,13 @@ interface SkillDef {
   effectClass: EffectClass; eligibleActors: ActorType[]; requiredPermission: keyof typeof ROLE_RANK;
   actionFamily?: string; provider?: string;
   precheck?: (db: PoolClient, actor: Actor, ctx: DispatchCtx) => Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * Cross-tenant authority hook (R1-G1). When a CROSS_TENANT_ACTION skill supplies
+   * this, it REPLACES the default federation context-grant check (`hasActionAuthority`)
+   * — so an action whose consent lives in a different fabric (e.g. a warm intro gated
+   * by an active partnership) is still governed here, not through an unrelated model.
+   */
+  authorize?: (db: PoolClient, actor: Actor, ctx: DispatchCtx) => Promise<{ ok: boolean; reason?: string }>;
   handler?: (db: PoolClient, actor: Actor, ctx: DispatchCtx) => Promise<unknown>;
 }
 
@@ -50,6 +58,16 @@ export const SKILL_REGISTRY: SkillDef[] = [
     handler: async () => ({ requested: true }) },
   { skillId: "send_partner_intro", version: 1, description: "Send a warm introduction to a partner (external)", effectClass: "EXTERNAL_ACTION",
     eligibleActors: ["USER"], requiredPermission: "operator", actionFamily: "intro.email", provider: "email" },
+  // R1-G1 — the governed home of the MCP write surface. draft_campaign_touch is an
+  // internal draft (agents allowed; behind the human approval gate). request_warm_intro
+  // is cross-tenant; its authority is the active partnership, checked via `authorize`.
+  { skillId: "draft_campaign_touch", version: 1, description: "Draft a campaign email touch (draft-only, behind human approval)", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER", "AGENT"], requiredPermission: "operator",
+    handler: async (db, actor, ctx) => draftTouchImpl(db, actor.orgId, ctx.args ?? {}) },
+  { skillId: "request_warm_intro", version: 1, description: "Request a warm introduction into a named-overlap account (cross-tenant)", effectClass: "CROSS_TENANT_ACTION",
+    eligibleActors: ["USER", "AGENT"], requiredPermission: "operator", actionFamily: "intro.request",
+    authorize: async (db, actor, ctx) => warmIntroAuthorize(db, actor.orgId, ctx.args ?? {}),
+    handler: async (db, actor, ctx) => requestWarmIntroImpl(db, actor.orgId, ctx.args ?? {}) },
 ];
 
 function defFor(skillId: string, version?: number): SkillDef | undefined {
@@ -113,8 +131,12 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
 
   // Effect-class routing.
   if (def.effectClass === "CROSS_TENANT_ACTION") {
-    const authorized = ctx.pursuitId ? await hasActionAuthority(db, actor.orgId, ctx.pursuitId, def.actionFamily ?? skillId) : false;
-    if (!authorized) return record(db, def, actor, ctx, "REJECTED", { reason: "no cross-tenant action authority (R24)" });
+    // A skill may supply its own authority fabric (e.g. partnership consent); otherwise
+    // the default is a federation context-grant ACTION authority (R24).
+    const authz = def.authorize
+      ? await def.authorize(db, actor, ctx)
+      : { ok: ctx.pursuitId ? await hasActionAuthority(db, actor.orgId, ctx.pursuitId, def.actionFamily ?? skillId) : false };
+    if (!authz.ok) return record(db, def, actor, ctx, "REJECTED", { reason: authz.reason ?? "no cross-tenant action authority (R24)" });
   }
   if (def.effectClass === "EXTERNAL_ACTION") {
     // Never execute inline — enqueue the outbox (R25). Receipt lands when the executor drains it.

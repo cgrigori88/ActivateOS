@@ -3,6 +3,11 @@ import { getPool } from "@/db/client";
 import { rateLimited } from "@/lib/security/rate-limit";
 import { MCP_TOOLS, resolveKey } from "@/lib/agents/mcp-tools";
 import { withTenantOrg } from "@/lib/db/tenant";
+import { dispatchSkill, type Actor } from "@/lib/pursuits/federation/skills";
+
+/** A resolved MCP key's scope maps to a governed Actor role (R1-G1). */
+type ResolvedKey = { orgId: string; keyId: string; scope: string };
+function keyRole(scope: string): Actor["role"] { return scope === "read" ? "viewer" : "operator"; }
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +40,8 @@ function rpcError(id: number | string | null, code: number, message: string) {
   return { jsonrpc: "2.0" as const, id, error: { code, message } };
 }
 
-async function handleMessage(msg: RpcRequest, orgId: string): Promise<Record<string, unknown> | null> {
+async function handleMessage(msg: RpcRequest, key: ResolvedKey): Promise<Record<string, unknown> | null> {
+  const orgId = key.orgId;
   const id = msg.id ?? null;
   // Notifications (no id) get no response.
   if (msg.id === undefined) return null;
@@ -60,12 +66,23 @@ async function handleMessage(msg: RpcRequest, orgId: string): Promise<Record<str
       const name = String(msg.params?.name ?? "");
       const tool = MCP_TOOLS.find((t) => t.name === name);
       if (!tool) return rpcError(id, -32602, `Unknown tool: ${name}`);
+      const args = (msg.params?.arguments as Record<string, unknown>) ?? {};
       try {
         // RISK-1: scope the tool's queries to the key's org via the GUC (org
         // comes from the API key, not a web session — hence withTenantOrg).
-        const result = await withTenantOrg(orgId, (db) =>
-          tool.run(db, orgId, (msg.params?.arguments as Record<string, unknown>) ?? {}),
-        );
+        // R1-G1: a WRITE tool is never run inline — it is dispatched through the
+        // governed boundary (actor eligibility + permission + effect class +
+        // idempotency + audited invocation). There is no ungoverned MCP write path.
+        if (tool.write && tool.skillId) {
+          const actor: Actor = { type: "AGENT", id: key.keyId, orgId, role: keyRole(key.scope) };
+          const idem = typeof args.idempotencyKey === "string" ? args.idempotencyKey : null;
+          const disp = await withTenantOrg(orgId, (db) =>
+            dispatchSkill(db, tool.skillId!, actor, { args, idempotencyKey: idem, dataEnvironment: "PRODUCTION" }));
+          const ok = disp.status === "EXECUTED" || disp.status === "EXECUTING";
+          const payload = ok ? (disp.result ?? { status: disp.status }) : { status: disp.status, reason: disp.reason };
+          return rpcResult(id, { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], isError: !ok });
+        }
+        const result = await withTenantOrg(orgId, (db) => tool.run(db, orgId, args));
         return rpcResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], isError: false });
       } catch (err) {
         return rpcResult(id, {
@@ -116,7 +133,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       responses.push(rpcError((msg?.id as number) ?? null, -32600, "Invalid request"));
       continue;
     }
-    const res = await handleMessage(msg, key.orgId);
+    const res = await handleMessage(msg, key);
     if (res) responses.push(res);
   }
 
