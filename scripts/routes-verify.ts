@@ -64,7 +64,7 @@ async function seed(): Promise<Seed> {
     await db.query(`insert into seller_account_relationships (seller_id, company_id, strength, last_interaction_at) values ($1,$2,65,now())`, [cdwSeller, companyA]);
     await db.query(`insert into seller_account_relationships (seller_id, company_id, strength, last_interaction_at) values ($1,$2,65,now())`, [wwtSeller, companyA]);
     // Distributor external alias for entity resolution.
-    await db.query(`insert into company_aliases (company_id, alias_type, alias_value) values ($1,'distributor_account_id','TDS-000123')`, [companyA]);
+    await db.query(`insert into company_aliases (company_id, alias_type, alias) values ($1,'distributor_account_id','TDS-000123')`, [companyA]);
     await db.query(`update companies set duns='150483782' where id=$1`, [companyA]);
     // Parent/child hierarchy.
     const childCo = await company("Globex Canada", "Technology", "CA");

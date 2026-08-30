@@ -58,8 +58,13 @@ export async function transactionScore(
   );
   if (!rows.length) return { score01: 0.5, confidence: 0, available: false, features: [] };
 
-  // Weighted blend of the adjacency-relevant features (normalized 0..1).
-  const w: Record<string, number> = { category_adjacency: 0.35, purchase_recency: 0.25, category_spend_growth: 0.2, purchase_frequency: 0.1, partner_tenure: 0.1 };
+  // Weighted blend of the adjacency-relevant features (normalized 0..1). E3-G opens the
+  // vocabulary to distributor inventory / renewal / marketplace families (§21/§37); each
+  // stays deterministic and only contributes when a resolved feature is actually present.
+  const w: Record<string, number> = {
+    category_adjacency: 0.3, purchase_recency: 0.2, category_spend_growth: 0.15, purchase_frequency: 0.08, partner_tenure: 0.07,
+    inventory_availability: 0.08, renewal_window: 0.07, marketplace_presence: 0.03, marketplace_velocity: 0.02,
+  };
   let num = 0, den = 0, conf = 0;
   const feats: TransactionScore["features"] = [];
   for (const r of rows) {

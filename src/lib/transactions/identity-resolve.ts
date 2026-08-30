@@ -13,22 +13,35 @@ import { recordChange } from "../pursuits/ledger";
 export type ResolutionMethod = "EXTERNAL_ID" | "DOMAIN" | "DUNS" | "VERIFIED_ALIAS" | "FUZZY_NAME";
 export type ResolutionStatus = "AUTO_RESOLVED" | "REVIEW_REQUIRED" | "UNRESOLVED";
 
-export interface ResolveInput { orgId: string; sourceSystem: string; externalId?: string | null; domain?: string | null; duns?: string | null; externalName?: string | null; }
+/**
+ * `sourceOrgId` scopes external-id / alias lookups to a participating org's id space
+ * (E3-G, §14/§30). An external account id means different companies in different orgs'
+ * id spaces, so a lookup only ever considers this org's own aliases plus global /
+ * first-party ones (source_org_id is null) — one org's mapping can never resolve
+ * another org's signal onto the wrong company. Omit it for legacy first-party callers.
+ */
+export interface ResolveInput { orgId: string; sourceSystem: string; sourceOrgId?: string | null; externalId?: string | null; domain?: string | null; duns?: string | null; externalName?: string | null; }
 export interface ResolveResult { companyId: string | null; method: ResolutionMethod | null; confidence: number; status: ResolutionStatus; }
 
 const AUTO = 0.95, REVIEW = 0.75;
 
+// Alias lookups consider THIS org's id space plus global (null) aliases, never another org's.
+const SCOPE = `(source_org_id is null or source_org_id = $2)`;
+
 export async function resolveCompany(db: PoolClient, input: ResolveInput): Promise<ResolveResult> {
-  // 1) Deterministic: external id alias.
+  const scope = input.sourceOrgId ?? null;
+  // 1) Deterministic: external id alias (scoped to the org id space).
   if (input.externalId) {
-    const a = await db.query<{ company_id: string }>(`select company_id from company_aliases where alias_value = $1 limit 1`, [input.externalId]);
+    const a = await db.query<{ company_id: string }>(
+      `select company_id from company_aliases where alias = $1 and ${SCOPE} limit 1`, [input.externalId, scope]);
     if (a.rows[0]) return finalize(db, input, a.rows[0].company_id, "EXTERNAL_ID", 0.98);
   }
   // 2) Deterministic: domain.
   if (input.domain) {
     const d = await db.query<{ id: string }>(`select id from companies where primary_domain = $1 limit 1`, [input.domain]).catch(() => ({ rows: [] as { id: string }[] }));
     if (d.rows[0]) return finalize(db, input, d.rows[0].id, "DOMAIN", 0.97);
-    const da = await db.query<{ company_id: string }>(`select company_id from company_aliases where alias_type='domain' and alias_value = $1 limit 1`, [input.domain]);
+    const da = await db.query<{ company_id: string }>(
+      `select company_id from company_aliases where alias_type='domain' and alias = $1 and ${SCOPE} limit 1`, [input.domain, scope]);
     if (da.rows[0]) return finalize(db, input, da.rows[0].company_id, "DOMAIN", 0.96);
   }
   // 3) Deterministic: DUNS.
@@ -62,9 +75,9 @@ async function finalize(db: PoolClient, input: ResolveInput, companyId: string, 
 
 async function openReview(db: PoolClient, input: ResolveInput, candidateId: string | null, method: ResolutionMethod, confidence: number, status: ResolutionStatus): Promise<void> {
   await db.query(
-    `insert into entity_resolution_reviews (org_id, source_system, external_id, external_name, candidate_company_id, method, confidence, status)
-     values ($1,$2,$3,$4,$5,$6,$7,$8)`,
-    [input.orgId, input.sourceSystem, input.externalId ?? null, input.externalName ?? null, candidateId, method, confidence, status],
+    `insert into entity_resolution_reviews (org_id, source_system, source_org_id, external_id, external_name, candidate_company_id, method, confidence, status)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [input.orgId, input.sourceSystem, input.sourceOrgId ?? null, input.externalId ?? null, input.externalName ?? null, candidateId, method, confidence, status],
   );
   await recordChange(db, {
     orgId: input.orgId, pursuitId: null, entityType: "company", entityId: candidateId,
