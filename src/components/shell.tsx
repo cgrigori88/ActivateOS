@@ -119,67 +119,84 @@ const icons = {
    Partner → Measure → Platform. Queue, Scheduled sends and Provider health
    live as TABS inside Today, Campaigns and Intelligence — their routes
    survive, `also` keeps the rail item lit while you're on them. */
+const PARTNERS_ICON = (
+  <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+    <circle cx="5.5" cy="8" r="3.8" />
+    <circle cx="10.5" cy="8" r="3.8" />
+  </svg>
+);
+const SKILLS_ICON = (
+  <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+    <path d="M8 1.8l1.5 3.6 3.9.4-2.9 2.6.8 3.8L8 10.3l-3.3 1.9.8-3.8-2.9-2.6 3.9-.4z" />
+  </svg>
+);
+/* Pursuits — a crosshair on a target: the canonical commercial object, first
+   class in Intelligence (D.5 §2/§21). */
+const PURSUITS_ICON = (
+  <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
+    <circle cx="8" cy="8" r="5.6" />
+    <circle cx="8" cy="8" r="1.8" />
+    <path d="M8 0.6v2.2M8 13.2v2.2M0.6 8h2.2M13.2 8h2.2" />
+  </svg>
+);
+
+/* The rail tells the product story (D.5 §2/§21): PursuitOS as an operating
+   system, not a page list — Ecosystem (who can create value together) →
+   Intelligence (where to pursue revenue and why) → Execution (what happens
+   next) → Revenue (what it created). Pursuits is the first-class Intelligence
+   object. Category labels stay understated; the hierarchy carries the meaning. */
 const NAV: NavGroup[] = [
   { label: null, items: [
-    { href: "/", label: "Today", icon: icons.today, also: ["/queue"] },
-    { href: "/ask", label: "Ask", icon: icons.insights },
+    { href: "/", label: "Today", icon: icons.today },
   ] },
   {
-    label: "Decide",
-    items: [
-      { href: "/review", label: "Review", icon: icons.review },
-      { href: "/motions", label: "Motions", icon: icons.motions, also: ["/briefs"] },
-    ],
-  },
-  {
-    label: "Build",
+    label: "Ecosystem",
     items: [
       { href: "/intake", label: "Intake", icon: icons.intake },
       { href: "/mapping", label: "Mapping", icon: icons.mapping },
-      { href: "/accounts", label: "Accounts", icon: icons.accounts },
       { href: "/contacts", label: "Contacts", icon: icons.contacts },
-      { href: "/campaigns", label: "Campaigns", icon: icons.campaigns, also: ["/upcoming"] },
+      { href: "/partners", label: "Partners", also: ["/joint"], icon: PARTNERS_ICON },
     ],
   },
   {
-    label: "Partner",
+    label: "Outreach",
     items: [
-      {
-        href: "/partners",
-        label: "Partners",
-        also: ["/joint"],
-        icon: (
-          <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
-            <circle cx="5.5" cy="8" r="3.8" />
-            <circle cx="10.5" cy="8" r="3.8" />
-          </svg>
-        ),
-      },
-    ],
-  },
-  {
-    label: "Measure",
-    items: [
-      { href: "/pipeline", label: "Pipeline", icon: icons.pipeline },
-      { href: "/goals", label: "Goals", icon: icons.today },
+      { href: "/campaigns", label: "Campaigns", icon: icons.campaigns },
+      { href: "/upcoming", label: "Upcoming", icon: icons.upcoming },
       { href: "/analytics", label: "Analytics", icon: icons.providerHealth },
+    ],
+  },
+  {
+    label: "Intelligence",
+    items: [
+      { href: "/pursuits", label: "Pursuits", icon: PURSUITS_ICON },
+      { href: "/accounts", label: "Accounts", icon: icons.accounts },
+      { href: "/sources", label: "Sources", icon: icons.sources },
+      { href: "/provider-health", label: "Provider health", icon: icons.providerHealth },
+      { href: "/review", label: "Review", icon: icons.review },
+      { href: "/trust", label: "Trust", icon: icons.review },
+    ],
+  },
+  {
+    label: "Execution",
+    items: [
+      { href: "/motions", label: "Motions", icon: icons.motions, also: ["/briefs"] },
+      { href: "/queue", label: "Queue", icon: icons.queue },
+    ],
+  },
+  {
+    label: "Revenue",
+    items: [
+      { href: "/goals", label: "Goals", icon: icons.today },
+      { href: "/pipeline", label: "Pipeline", icon: icons.pipeline },
       { href: "/insights", label: "Insights", icon: icons.insights },
     ],
   },
   {
     label: "Platform",
     items: [
-      { href: "/sources", label: "Intelligence", icon: icons.sources, also: ["/provider-health"] },
-      { href: "/trust", label: "Trust", icon: icons.review },
-      {
-        href: "/skills",
-        label: "Skills",
-        icon: (
-          <svg viewBox="0 0 16 16" className="h-4 w-4" {...stroke}>
-            <path d="M8 1.8l1.5 3.6 3.9.4-2.9 2.6.8 3.8L8 10.3l-3.3 1.9.8-3.8-2.9-2.6 3.9-.4z" />
-          </svg>
-        ),
-      },
+      { href: "/ask", label: "Ask", icon: icons.insights },
+      { href: "/skills", label: "Skills", icon: SKILLS_ICON },
     ],
   },
 ];
@@ -300,10 +317,11 @@ export function Shell({
     isOwner === false
       ? NAV
       : NAV.map((g, i) => (i === NAV.length - 1 ? { ...g, items: [...g.items, ...ADMIN_ITEMS] } : g));
-  // Workstream D: the Pursuit experience adds one canonical room at the top, gated by its flag.
+  // Workstream D/D.5: Pursuits is a first-class Intelligence room, gated by its
+  // flag — present in the taxonomy, filtered out of Intelligence when off.
   const navGroups = pursuitExperience
-    ? baseNav.map((g, i) => (i === 0 ? { ...g, items: [g.items[0], { href: "/pursuits", label: "Pursuits", icon: icons.motions }, ...g.items.slice(1)] } : g))
-    : baseNav;
+    ? baseNav
+    : baseNav.map((g) => (g.label === "Intelligence" ? { ...g, items: g.items.filter((it) => it.href !== "/pursuits") } : g));
 
   /* Light is the default: the app opens light regardless of the OS setting, and
      only a stored choice turns it dark. */

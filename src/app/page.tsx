@@ -5,6 +5,13 @@ import { BandBadge, Card, CountChip, PageHeader, StatusBadge } from "@/component
 import { RoomTabs } from "@/components/room-tabs";
 import { accountDivergences } from "@/lib/context/divergence";
 import { enabledTriggers } from "@/lib/triggers/catalog";
+import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
+import { getTodayQueue } from "@/lib/pursuits/read-models/today";
+import { callerFor } from "@/lib/pursuits/read-models/caller";
+import { Panel } from "@/components/pursuit/panel";
+import { TodayQueue } from "@/components/pursuit/today";
+import { SyntheticBadge } from "@/components/pursuit/parts";
+import type { TodayQueueView } from "@/lib/pursuits/read-models/types";
 
 export const dynamic = "force-dynamic";
 
@@ -100,6 +107,14 @@ async function loadNextActions() {
 export default async function TodayPage() {
   const nextActions = await loadNextActions();
 
+  // Pursuit decision queue (D.5 §20): the operating queue — what needs my
+  // decision that can materially change revenue, ordered by materiality. Leads
+  // the page when the Pursuit experience is on; the existing Today content stays.
+  let pursuitQueue: TodayQueueView | null = null;
+  if (pursuitExperienceEnabled()) {
+    pursuitQueue = await withTenant(async (db, orgId) => getTodayQueue(db, await callerFor(db, orgId)));
+  }
+
   // Reality-divergence detection (task #83): where the systems disagree —
   // with each other, or with the partner's side of the deal.
   const { divergences, counts, drafts, top, activity } = await withTenant(async (db, orgId) => {
@@ -144,6 +159,18 @@ export default async function TodayPage() {
         subtitle="What needs your decision, and where the next revenue is."
       />
       <RoomTabs tabs={[{ href: "/", label: "Today" }, { href: "/queue", label: "Queue" }]} />
+
+      {pursuitQueue && pursuitQueue.items.length > 0 && (
+        <Panel
+          eyebrow="What can materially change revenue — ordered by materiality, not arrival"
+          title="Decision queue"
+          accent="var(--color-priority)"
+          className="mb-6"
+          aside={pursuitQueue.demoBanner ? <SyntheticBadge text="Demo environment" /> : undefined}
+        >
+          <TodayQueue items={pursuitQueue.items} />
+        </Panel>
+      )}
 
       <div className="mb-6 flex flex-wrap gap-2">
         <CountChip label="Awaiting approval" value={c.draft_motions} href="/motions" tone={Number(c.draft_motions) > 0 ? "amber" : "neutral"} />

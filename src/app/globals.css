@@ -58,8 +58,27 @@
   --color-band-high: #2563eb;
   --color-band-medium: #b45309;
   --color-band-low: #64748b;
+  --color-band-unknown: #94a3b8;
   --color-positive: #15803d;
   --color-negative: #b91c1c;
+
+  /* Pursuit decision dimensions (D.5 §6/§7/§17). Each commercial dimension has
+     its OWN hue so a metric band reads as six distinct instruments, not one
+     blue score — colour explains what kind of thing you are looking at. These
+     are semantic tokens; Pursuit components consume them, never bespoke hexes. */
+  --color-priority: #2563eb;     /* blue — attention ranking */
+  --color-propensity: #7c3aed;   /* violet — demand attractiveness */
+  --color-evidence: #0891b2;     /* cyan — how verified */
+  --color-timing: #d97706;       /* amber — time-sensitivity */
+  --color-route: #0d9488;        /* teal — path quality */
+  --color-readiness: #059669;    /* green — can we execute */
+
+  /* Named accents (D.5 §6) — the restrained semantic palette, as tokens. */
+  --color-accent-violet: #7c3aed;      /* AI / synthetic / proposed */
+  --color-accent-intelligence: #0891b2;/* signal / analytical value */
+  --color-accent-verified: #059669;    /* verified / accepted / positive */
+  --color-accent-attention: #d97706;   /* timing / pending / friction */
+  --color-accent-risk: #e11d48;        /* risk / contradiction / rejection */
 
   /* Expanded palette: surfaces, categories, charts. */
   --color-indigo: #6366f1;
@@ -126,6 +145,18 @@
   --hairline: rgba(11, 18, 32, 0.1);
   --hairline-strong: rgba(11, 18, 32, 0.16);
 
+  /* Semantic surface + border layer (D.5 §7). Defined once by REFERENCE to the
+     per-theme material vars above, so they adapt in dark without redefinition.
+     Pursuit components build hierarchy from these — canvas → raised → inset →
+     glass — never from a hard black outline. */
+  --surface-primary: var(--glass-bg);
+  --surface-inset: color-mix(in srgb, var(--color-neutral-500) 6%, transparent);
+  --surface-elevated: var(--glass-bg);
+  --border-subtle: var(--hairline);
+  --border-emphasis: var(--hairline-strong);
+  --shadow-low: 0 1px 2px rgba(11, 18, 32, 0.05), 0 1px 3px rgba(11, 18, 32, 0.06);
+  --shadow-medium: var(--shadow-pop);
+
   --dur-react: 140ms;
   --dur-move: 220ms;
   --ease-move: cubic-bezier(0.2, 0, 0, 1);
@@ -149,6 +180,8 @@ html.dark {
 
   --hairline: rgba(255, 255, 255, 0.09);
   --hairline-strong: rgba(255, 255, 255, 0.16);
+  --surface-inset: rgba(255, 255, 255, 0.04);
+  --shadow-low: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 html {

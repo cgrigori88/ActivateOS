@@ -1,0 +1,150 @@
+/**
+ * Reproducible PursuitOS demo database (Workstream D.5 §A).
+ *
+ * Builds a full, real-schema local tenant the authenticated app can boot against:
+ *   1. a fresh database,
+ *   2. a Supabase-compatibility bootstrap (auth schema + stub auth.uid(),
+ *      the `authenticated` role, extensions) so the REAL migrations apply
+ *      unchanged — this is the actual product schema, not a reduced harness,
+ *   3. all supabase/migrations/*.sql in order,
+ *   4. the WS-D demo seed: a vendor tenant (created first, so the sole-org
+ *      fallback resolves to it), a guest partner tenant, and the Globex hero
+ *      Pursuit with facts, route, human override, team and a RESTRICTED reason.
+ *
+ * The demo is DEMO-labelled data; app_rw is given a login here for the local
+ * boot only. Run:  npx tsx scripts/demo-db.ts
+ * Boot the app:    DATABASE_URL=postgresql://app_rw:demo@127.0.0.1:5433/pursuit_demo \
+ *                  NEXT_PUBLIC_SUPABASE_URL= NEXT_PUBLIC_SUPABASE_ANON_KEY= \
+ *                  PURSUITS_ENABLED=1 FACTS_ENABLED=1 ROUTING_ENABLED=1 \
+ *                  PURSUIT_EXPERIENCE_ENABLED=1 next dev -p 3100
+ */
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { Pool, type PoolClient } from "pg";
+import { upsertPursuit } from "../src/lib/pursuits/model";
+import { promoteFromSignal } from "../src/lib/facts/promotion";
+import { linkFactToPursuits } from "../src/lib/facts/pursuit-link";
+import { recomputeRoute } from "../src/lib/routing/route-model";
+import { selectPartnerRoute } from "../src/lib/routing/override";
+import { assembleTeam } from "../src/lib/routing/team";
+import { ingestFeatures } from "../src/lib/transactions/features";
+import { populatePartnerRouteRelevance } from "../src/lib/routing/route-why-now";
+
+const HOST = process.env.DEMO_PGHOST ?? "127.0.0.1";
+const PORT = Number(process.env.DEMO_PGPORT ?? 5433);
+const ADMIN = process.env.DEMO_ADMIN_URL ?? `postgresql://postgres:postgres@${HOST}:${PORT}/postgres`;
+const DB = process.env.DEMO_DB_NAME ?? "pursuit_demo";
+const DEMO_URL = `postgresql://postgres:postgres@${HOST}:${PORT}/${DB}`;
+
+const BOOTSTRAP = `
+create extension if not exists pgcrypto;
+create extension if not exists vector;
+do $$ begin if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin noinherit; end if; end $$;
+do $$ begin if not exists (select 1 from pg_roles where rolname='anon') then create role anon nologin noinherit; end if; end $$;
+do $$ begin if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role nologin noinherit bypassrls; end if; end $$;
+create schema if not exists auth;
+create table if not exists auth.users (id uuid primary key default gen_random_uuid(), email text);
+create or replace function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+create or replace function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
+`;
+
+async function withClient<T>(url: string, fn: (c: PoolClient) => Promise<T>): Promise<T> {
+  const pool = new Pool({ connectionString: url });
+  const c = await pool.connect();
+  try { return await fn(c); } finally { c.release(); await pool.end(); }
+}
+
+async function runMigrations(url: string) {
+  const dir = join(process.cwd(), "supabase", "migrations");
+  const files = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
+  await withClient(url, async (c) => {
+    for (const f of files) {
+      try {
+        await c.query("begin");
+        await c.query(readFileSync(join(dir, f), "utf8"));
+        await c.query("commit");
+      } catch (e) {
+        await c.query("rollback").catch(() => {});
+        console.error(`\n[demo-db] migration FAILED: ${f}\n${(e as Error).message}`);
+        throw e;
+      }
+    }
+    console.log(`[demo-db] applied ${files.length} migrations`);
+  });
+}
+
+async function seed(pool: Pool) {
+  const asOwner = async <T>(fn: (db: PoolClient) => Promise<T>): Promise<T> => {
+    const c = await pool.connect();
+    try { await c.query("begin"); const r = await fn(c); await c.query("commit"); return r; }
+    catch (e) { await c.query("rollback").catch(() => {}); throw e; } finally { c.release(); }
+  };
+  const asOrg = async <T>(orgId: string, fn: (db: PoolClient) => Promise<T>): Promise<T> => {
+    const c = await pool.connect();
+    try { await c.query("begin"); await c.query("select set_config('app.org_id',$1,true)", [orgId]); const r = await fn(c); await c.query("commit"); return r; }
+    catch (e) { await c.query("rollback").catch(() => {}); throw e; } finally { c.release(); }
+  };
+
+  const s = await asOwner(async (db) => {
+    // Vendor tenant is DETERMINISTICALLY earliest (staggered created_at) so the
+    // sole-org fallback (resolve_user_org: earliest org) always resolves to the
+    // internal operator — never a tie the guest could win.
+    const vendor = (await db.query<{ id: string }>(`insert into organizations (name, kind, created_at) values ('Vertex Systems','full', now() - interval '1 hour') returning id`)).rows[0].id;
+    const partnerOrg = (await db.query<{ id: string }>(`insert into organizations (name, kind, created_at) values ('Meridian Technology Partners','guest', now()) returning id`)).rows[0].id;
+    const node = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name, slug) values ('Virtualization','virtualization') returning id`)).rows[0].id;
+    const co = async (n: string) => (await db.query<{ id: string }>(`insert into companies (legal_name, normalized_name, industry, country) values ($1,$1,'Technology','US') returning id`, [n])).rows[0].id;
+    const globex = await co("Globex Manufacturing Inc."); const initech = await co("Initech Financial");
+    const partner = async (o: string, n: string) => (await db.query<{ id: string }>(`insert into partners (org_id, name, partner_type, capacity) values ($1,$2,'reseller',10) returning id`, [o, n])).rows[0].id;
+    const cdw = await partner(vendor, "CDW"); const wwt = await partner(vendor, "WWT");
+    for (const p of [cdw, wwt]) await db.query(`insert into partner_capabilities (partner_id, taxonomy_node_id, strength, certified) values ($1,$2,0.85,true)`, [p, node]);
+    await db.query(`insert into partner_relationships (partner_id, company_id, strength, tenure_months) values ($1,$2,64,24)`, [cdw, globex]);
+    await db.query(`insert into partner_relationships (partner_id, company_id, strength, tenure_months) values ($1,$2,72,30)`, [wwt, globex]);
+    const seller = async (p: string, n: string) => { const id = (await db.query<{ id: string }>(`insert into sellers (org_id, partner_id, name) values ($1,$2,$3) returning id`, [vendor, p, n])).rows[0].id; await db.query(`insert into seller_account_relationships (seller_id, company_id, strength) values ($1,$2,65)`, [id, globex]); return id; };
+    await seller(cdw, "CDW Rep"); await seller(wwt, "WWT Rep");
+    return { vendor, partnerOrg, node, globex, initech, cdw, wwt };
+  });
+
+  const hero = (await asOrg(s.vendor, (db) => upsertPursuit(db, { orgId: s.vendor, accountId: s.globex, productCategoryId: s.node, pursuitType: "MODERNIZATION", useCase: "virtualization exit", businessProblem: "Exit legacy virtualization before renewal", createdVia: "SYSTEM_DETECTED", dataEnvironment: "DEMO" }))).id;
+  const second = (await asOrg(s.vendor, (db) => upsertPursuit(db, { orgId: s.vendor, accountId: s.globex, productCategoryId: s.node, pursuitType: "EXPANSION", useCase: "ai platform", businessProblem: "AI platform expansion", createdVia: "SYSTEM_DETECTED", dataEnvironment: "DEMO" }))).id;
+  const foreign = (await asOrg(s.partnerOrg, (db) => upsertPursuit(db, { orgId: s.partnerOrg, accountId: s.initech, pursuitType: "NET_NEW", useCase: "greenfield", createdVia: "SYSTEM_DETECTED", dataEnvironment: "DEMO" }))).id;
+
+  await asOrg(s.vendor, async (db) => {
+    await db.query(`update pursuits set current_priority_score=72, current_purchase_propensity_score=68, current_evidence_confidence_score=61, current_timing_score=55, expected_value_weighted=1250000, expected_value_currency='USD', data_environment='DEMO' where id=$1`, [hero]);
+    const ev = await db.query<{ id: string }>(`insert into evidence (org_id, company_id, source_type, claim, confidence, observed_at, status, computed_confidence, first_party) values ($1,$2,'crm','Globex has a cloud modernization initiative.',0.85,now(),'verified',0.85,true) returning id`, [s.vendor, s.globex]);
+    const sig = await db.query<{ id: string }>(`insert into signals (org_id, company_id, signal_type, taxonomy_node_id, direction, magnitude, confidence, observed_at, half_life_days, evidence_id, value) values ($1,$2,'STRATEGIC_INITIATIVE',$3,1,0.8,0.8,now(),180,$4,'{"text":"cloud modernization"}') returning id`, [s.vendor, s.globex, s.node, ev.rows[0].id]);
+    const promo = await promoteFromSignal(db, s.vendor, sig.rows[0].id, "DEMO");
+    let factId: string | null = null;
+    if (promo?.outcome === "PROMOTED" && promo.factId) { factId = promo.factId; await linkFactToPursuits(db, promo.factId); }
+    await db.query(`update pursuits set why_now = $2 where id=$1`, [hero, JSON.stringify({ version: 1, as_of: new Date().toISOString(), business_trigger: factId ? { fact_id: factId, predicate: "strategic_initiative", label: "Globex" } : null, timing_anchor: null, signal_convergence: { independent_family_count: 1 }, contradictory_evidence: [] })]);
+    await ingestFeatures(db, s.vendor, null, "DERIVED", s.globex, s.node, s.cdw, [{ featureKey: "category_adjacency", featureValue: 0.95, confidence: 0.85, dataClassification: "TRANSACTION_CONFIDENTIAL" }], "DEMO", true);
+    await recomputeRoute(db, hero, new Date(), "DEMO");
+    await recomputeRoute(db, second, new Date(), "DEMO");
+    await populatePartnerRouteRelevance(db, hero);
+    await assembleTeam(db, hero, "DEMO");
+    const rc = await db.query<{ id: string }>(`select rc.id from route_candidates rc join pursuit_route_snapshots sn on sn.id=rc.route_snapshot_id where sn.pursuit_id=$1 and sn.is_current and rc.is_recommended`, [hero]);
+    if (rc.rows[0]) await db.query(`insert into route_candidate_reasons (candidate_id, org_id, reason_code, polarity, detail, disclosure_class) values ($1,$2,'RAW_SPEND',1,'TD spend $1840000 in category',$3)`, [rc.rows[0].id, s.vendor, "RESTRICTED"]);
+  });
+  // Human override: select WWT over recommended CDW (records the override + change event).
+  await asOrg(s.vendor, (db) => selectPartnerRoute(db, hero, { partnerId: s.wwt, actorId: crypto.randomUUID(), reason: "exec relationship", category: "EXECUTIVE_DIRECTION" }));
+
+  return { vendor: s.vendor, partnerOrg: s.partnerOrg, hero, second, foreign };
+}
+
+async function main() {
+  console.log(`[demo-db] building ${DB} @ ${HOST}:${PORT}`);
+  await withClient(ADMIN, async (c) => {
+    await c.query(`select pg_terminate_backend(pid) from pg_stat_activity where datname=$1 and pid<>pg_backend_pid()`, [DB]).catch(() => {});
+    await c.query(`drop database if exists ${DB}`);
+    await c.query(`create database ${DB}`);
+  });
+  await withClient(DEMO_URL, (c) => c.query(BOOTSTRAP).then(() => console.log("[demo-db] bootstrap applied")));
+  await runMigrations(DEMO_URL);
+  await withClient(DEMO_URL, (c) => c.query(`alter role app_rw login password 'demo'; grant connect on database ${DB} to app_rw;`).then(() => {}));
+
+  const pool = new Pool({ connectionString: DEMO_URL });
+  const ids = await seed(pool);
+  await pool.end();
+  console.log(`[demo-db] seeded:\n  vendor(sole)=${ids.vendor}\n  guest=${ids.partnerOrg}\n  HERO=${ids.hero}\n  second=${ids.second}\n  foreign(cross-tenant)=${ids.foreign}`);
+  console.log(`[demo-db] boot: DATABASE_URL=postgresql://app_rw:demo@${HOST}:${PORT}/${DB} (Supabase env empty, flags on)`);
+}
+main().catch((e) => { console.error("[demo-db] fatal:", e); process.exit(1); });
