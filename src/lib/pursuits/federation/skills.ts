@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { hasActionAuthority } from "./grants";
 import { acceptParticipation } from "./participation";
 import { draftTouchImpl, requestWarmIntroImpl, warmIntroAuthorize } from "../../agents/mcp-writes";
+import { reportEvent } from "../../obs/reporter";
 
 /**
  * Governed Skill boundary (Workstream E3-D, R9/R24/R25/R26). `dispatchSkill` is
@@ -210,5 +211,18 @@ async function record(db: PoolClient, def: SkillDef, actor: Actor, ctx: Dispatch
      extra.result !== undefined ? JSON.stringify(extra.result) : null, extra.error ?? null, ctx.dataEnvironment ?? "PRODUCTION"],
   );
   void executed;
+  // OR-3: surface governed-action rejections/failures. Cross-tenant authority denial is
+  // a tenant-isolation signal; a handler error is a governed-action failure. Ids +
+  // reason code only — args/result/payload never leave the DB.
+  if (status === "REJECTED" || status === "FAILED") {
+    const crossTenant = def.effectClass === "CROSS_TENANT_ACTION" && /authority|R24/i.test(extra.reason ?? "");
+    reportEvent({
+      kind: status === "FAILED" ? "governed_action" : crossTenant ? "tenant_isolation_failure" : "dispatch_skill",
+      severity: status === "FAILED" ? "error" : crossTenant ? "warning" : "info",
+      message: `${def.skillId} ${status}${extra.reason ? `: ${extra.reason}` : ""}`,
+      orgId: actor.orgId, pursuitId: ctx.pursuitId ?? null, actionInvocationId: rows[0].id,
+      correlationId: ctx.correlationId ?? null, effectClass: def.effectClass, environment: ctx.dataEnvironment ?? "PRODUCTION",
+    });
+  }
   return { status, invocationId: rows[0].id, reason: extra.reason, result: extra.result };
 }

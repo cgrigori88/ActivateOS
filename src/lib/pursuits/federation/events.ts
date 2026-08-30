@@ -3,6 +3,7 @@ import { recomputeRoute } from "../../routing/route-model";
 import { recordChange, type ChangeType } from "../ledger";
 import { priorityDeltaMateriality, isSurfaced, type Materiality } from "../materiality";
 import type { DataEnvironment } from "../lineage";
+import { reportEvent } from "../../obs/reporter";
 
 /**
  * Event-driven recompute engine (Workstream E3-E). The reactive half the mapping
@@ -238,6 +239,9 @@ export async function drainRecomputeQueue(
     } catch (e) {
       await db.query(`update recompute_requests set status='FAILED', reason=$2, updated_at=now() where id=$1`,
         [r.id, (e as Error).message.slice(0, 240)]);
+      // OR-3: a failed recompute is operator-actionable. Ids + target only — no payload.
+      reportEvent({ kind: "recompute", severity: "error", message: `recompute ${r.target} failed for ${r.change_type}`,
+        correlationId: r.correlation_id, orgId: r.org_id, pursuitId: r.pursuit_id, recomputeRequestId: r.id, retryCount: r.attempts + 1, environment: r.data_environment });
       res.failed++;
     }
   }

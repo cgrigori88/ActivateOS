@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { recordChange } from "../ledger";
 import { grantIsLiveById } from "./grants";
 import { obsLog } from "../../obs/log";
+import { reportEvent } from "../../obs/reporter";
 
 /**
  * Governed external-action executor (Release Gate R1-G4). The single execution
@@ -138,6 +139,9 @@ export async function drainOutbox(db: PoolClient, opts: DrainOpts = {}): Promise
           `update action_outbox set status='FAILED_FINAL', attempts=attempts+1, last_error=$2, last_failure_class=$3, updated_at=now() where id=$1`,
           [job.id, (result.detail?.error as string) ?? result.failureClass ?? "final", result.failureClass ?? "PERMANENT"]);
         await db.query(`update governed_action_invocations set status='FAILED' where id=$1`, [job.invocationId]);
+        // OR-3: dead-letter is operator-actionable. Ids + failure class only — no payload.
+        reportEvent({ kind: "dead_letter", severity: "error", message: `external action ${job.actionFamily ?? job.provider} dead-lettered (${result.failureClass ?? "PERMANENT"})`,
+          correlationId: job.correlationId, orgId: job.orgId, actionInvocationId: job.invocationId, provider: job.provider, effectClass: "EXTERNAL_ACTION", retryCount: job.attempts + 1, environment: job.dataEnvironment });
         res.final++;
       }
     }
@@ -160,6 +164,8 @@ async function compensate(db: PoolClient, job: OutboxJob, reason: string): Promi
   await writeReceipt(db, job, "compensated", { outcome: "FAILED_FINAL", failureClass: "COMPENSATED", detail: { reason } });
   await db.query(`update action_outbox set status='COMPENSATED', last_error=$2, last_failure_class='COMPENSATED', updated_at=now() where id=$1`, [job.id, reason]);
   await db.query(`update governed_action_invocations set status='COMPENSATED' where id=$1`, [job.invocationId]);
+  reportEvent({ kind: "outbox_execution", severity: "warning", message: `external action compensated (${reason})`,
+    correlationId: job.correlationId, orgId: job.orgId, actionInvocationId: job.invocationId, provider: job.provider, effectClass: "EXTERNAL_ACTION", environment: job.dataEnvironment });
   await recordChange(db, { orgId: job.orgId, entityType: "action", entityId: job.invocationId, changeType: "ACTION_INVOKED",
     materiality: "MEDIUM", reason: `external action compensated: ${reason}`, actorType: "WORKER", triggerType: "GOVERNED_ACTION",
     dataEnvironment: job.dataEnvironment as never });
