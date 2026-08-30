@@ -1,3 +1,4 @@
+import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
@@ -126,7 +127,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
       <body className="min-h-screen font-sans">
-        <Shell user={user} signOut={signOutAction} isOwner={isOwner} badges={badges} alerts={alerts} guest={guest}>{children}</Shell>
+        <Shell user={user} signOut={signOutAction} isOwner={isOwner} badges={badges} alerts={alerts} guest={guest} pursuitExperience={pursuitExperienceEnabled()}>{children}</Shell>
       </body>
     </html>
   );

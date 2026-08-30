@@ -243,6 +243,7 @@ export function Shell({
   badges,
   alerts,
   guest,
+  pursuitExperience,
 }: {
   children: ReactNode;
   /** Signed-in identity email; null in Basic-Auth / local-dev mode. */
@@ -256,6 +257,8 @@ export function Shell({
   alerts?: Record<string, number>;
   /** Guest workspace (B+2): free seat riding a partnership; Admin explains the cap. */
   guest?: boolean;
+  /** Workstream D: PURSUIT_EXPERIENCE_ENABLED — adds the Pursuits room when on (default off). */
+  pursuitExperience?: boolean;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -293,10 +296,14 @@ export function Shell({
 
   // Owners get Routines + Admin folded into the Platform group (never a
   // separate group — Intelligence belongs to everyone, governance to owners).
-  const navGroups =
+  const baseNav =
     isOwner === false
       ? NAV
       : NAV.map((g, i) => (i === NAV.length - 1 ? { ...g, items: [...g.items, ...ADMIN_ITEMS] } : g));
+  // Workstream D: the Pursuit experience adds one canonical room at the top, gated by its flag.
+  const navGroups = pursuitExperience
+    ? baseNav.map((g, i) => (i === 0 ? { ...g, items: [g.items[0], { href: "/pursuits", label: "Pursuits", icon: icons.motions }, ...g.items.slice(1)] } : g))
+    : baseNav;
 
   /* Light is the default: the app opens light regardless of the OS setting, and
      only a stored choice turns it dark. */
