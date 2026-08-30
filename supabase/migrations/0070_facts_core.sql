@@ -28,6 +28,10 @@ create table if not exists fact_candidates (
   object_type        text,
   object_value       jsonb not null default '{}',
   polarity           smallint not null default 1 check (polarity in (-1,1)),
+  -- Computed identity keys (mirror facts.*), set at candidate creation so corroboration
+  -- across sibling candidates for the same proposition is a simple equality lookup (§8).
+  fact_identity_key  text,
+  fact_value_key     text,
   -- Mandatory source span (§30/§31): a candidate with no supporting span cannot promote.
   source_evidence_id uuid references evidence(id) on delete cascade,
   source_signal_id   uuid references signals(id) on delete set null,
@@ -52,6 +56,7 @@ create table if not exists fact_candidates (
 create index if not exists fact_candidates_org_status on fact_candidates (org_id, status);
 create index if not exists fact_candidates_company on fact_candidates (company_id);
 create index if not exists fact_candidates_evidence on fact_candidates (source_evidence_id);
+create index if not exists fact_candidates_value on fact_candidates (org_id, fact_value_key);
 
 -- ---------------------------------------------------------------------------
 -- facts: durable beliefs.
