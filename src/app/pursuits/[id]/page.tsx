@@ -37,21 +37,45 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
   // not enabled for the experience gets notFound() — not a hidden-but-reachable page.
   const loaded = await withTenant(async (db, orgId) => {
     if (!(await experienceEnabledFor(db, orgId))) return null;
+    const fed = (await federationEnabledFor(db, orgId)) ? await getPursuitFederation(db, orgId, id) : null;
+
+    // Participant viewer (can see the pursuit as an ACTIVE participant but does NOT own
+    // it): render ONLY the disclosure-filtered federation projection — never the
+    // sponsor's decision surface. This is the same canonical Pursuit, a different view.
+    if (fed && !fed.isSponsor && fed.isParticipant) {
+      const actions = await getGovernedActions(db, { type: "USER", orgId, role: "operator" }, id);
+      const outcomes = await getPursuitOutcomes(db, await buildFederationViewer(db, orgId, id), id);
+      return { kind: "participant" as const, fed, actions, outcomes };
+    }
+
+    // Sponsor / owning org: the full D.5 decision surface (+ the federation panel).
     const detail = await getPursuitDetail(db, await callerFor(db, orgId), id);
     if (!detail) return null;
-    // Federation surface — only assembled when the layer is enabled FOR THIS TENANT.
     let federation = null;
-    if (await federationEnabledFor(db, orgId)) {
-      const fed = await getPursuitFederation(db, orgId, id);
-      if (fed) {
-        const actions = await getGovernedActions(db, { type: "USER", orgId, role: "operator" }, id);
-        const outcomes = await getPursuitOutcomes(db, await buildFederationViewer(db, orgId, id), id);
-        federation = { fed, actions, outcomes };
-      }
+    if (fed) {
+      const actions = await getGovernedActions(db, { type: "USER", orgId, role: "operator" }, id);
+      const outcomes = await getPursuitOutcomes(db, await buildFederationViewer(db, orgId, id), id);
+      federation = { fed, actions, outcomes };
     }
-    return { detail, federation };
+    return { kind: "sponsor" as const, detail, federation };
   });
   if (!loaded) notFound();
+
+  // The participant view: header + the disclosure-safe federation projection only.
+  if (loaded.kind === "participant") {
+    return (
+      <div className="mx-auto max-w-[1240px] px-4 py-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <BackLink href="/pursuits" label="Pursuits" />
+          <SyntheticBadge text="Shared pursuit — participant view" />
+        </div>
+        <Panel eyebrow="One pursuit, many organizations — disclosure decided server-side" title="Shared pursuit" accent="var(--color-route)">
+          <FederationBento fed={loaded.fed} actions={loaded.actions} outcomes={loaded.outcomes} />
+        </Panel>
+      </div>
+    );
+  }
+
   const d = loaded.detail;
   const federation = loaded.federation;
   const r = d.route;

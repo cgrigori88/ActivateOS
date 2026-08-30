@@ -148,13 +148,17 @@ async function seed(pool: Pool) {
   await asOrg(distributor, (db) => recordContribution(db, { pursuitId: hero, sourceOrgId: distributor, mode: "FEDERATED", dataCategory: "transaction_adjacency", semanticMeaning: "Distributor transaction adjacency strongly supports the recommended route", disclosureClass: "PARTICIPANT_SHARED", sensitivityClass: "CONFIDENTIAL", purpose: "co-sell", consentGrantId: grant, isSimulated: true }));
   await asOrg(s.vendor, (db) => recordOutcome(db, { orgId: s.vendor, pursuitId: hero, label: "MEETING_BOOKED", occurredAt: new Date(), dataEnvironment: "DEMO", isSimulated: true }));
 
-  // R1-G2 — enable the demo vendor org for the pursuit experience + federation per-tenant
-  // (the gates are now env-master AND per-org; without this the demo boot fails closed).
-  await asOrg(s.vendor, async (db) => {
-    for (const flag of ["pursuits", "facts", "routing", "pursuit_experience", "federation", "governed_action"] as const) {
-      await setOrgFeature(db, s.vendor, flag, true, { reason: "demo tenant" });
-    }
-  });
+  // R1-G2/G8 — enable the pursuit experience + federation per-tenant for every demo org
+  // (vendor sponsor, distributor participant, guest outsider) so the R1-G8 pilot can view
+  // the SAME canonical pursuit through the authenticated app from each viewpoint. The
+  // gates are env-master AND per-org; outcome_learning stays OFF (synthetic tenants).
+  for (const org of [s.vendor, distributor, s.partnerOrg]) {
+    await asOrg(org, async (db) => {
+      for (const flag of ["pursuits", "facts", "routing", "pursuit_experience", "federation", "governed_action"] as const) {
+        await setOrgFeature(db, org, flag, true, { reason: "demo/pilot tenant" });
+      }
+    });
+  }
 
   return { vendor: s.vendor, partnerOrg: s.partnerOrg, hero, second, foreign };
 }
