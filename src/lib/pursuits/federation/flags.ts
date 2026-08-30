@@ -47,3 +47,18 @@ function requestedGovernedAction(): boolean {
 export function governedActionEnabled(): boolean {
   return requestedGovernedAction() && federationEnabled();
 }
+
+function requestedOutcomeLearning(): boolean {
+  const v = (process.env.OUTCOME_LEARNING_ENABLED ?? "").trim().toLowerCase();
+  return v === "true" || v === "1" || v === "on" || v === "yes";
+}
+
+/**
+ * Outcome-learning layer (E3-F). Outcomes / attribution / experiments are org-local
+ * learning primitives — they do NOT require federation — so this gate depends only
+ * on the Pursuit experience being ready. Ships DARK behind OUTCOME_LEARNING_ENABLED
+ * and fails safe: OFF unless requested AND the experience is ready.
+ */
+export function outcomeLearningEnabled(): boolean {
+  return requestedOutcomeLearning() && experienceReadiness().ready;
+}
