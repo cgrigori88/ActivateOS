@@ -12,6 +12,7 @@ import { runScreeningSweepAllOrgs, runScreeningSweepLocked } from "../lib/intel/
 import { drainScheduledTouches } from "../lib/comms/sequence";
 import { drainOutbox } from "../lib/pursuits/federation/executor";
 import { registerOutreachExecutor } from "../lib/comms/governed-send";
+import { drainRecomputeQueue } from "../lib/pursuits/federation/events";
 import { suggestCampaigns } from "../lib/comms/suggest";
 import { runDueRoutines } from "../lib/routines/routines";
 
@@ -60,6 +61,18 @@ async function runResearch(limit = RESEARCH_LIMIT) {
   const db = await pool.connect();
   try {
     return await runPendingResearchLocked(db, { limit });
+  } finally {
+    db.release();
+  }
+}
+
+async function runRecompute() {
+  // R1-G5: drain the event-driven recompute queue (recovers stale RUNNING rows, caps
+  // poison attempts). Empty and inert until a tenant's federation/experience is enabled.
+  const pool = getOwnerPool();
+  const db = await pool.connect();
+  try {
+    return await drainRecomputeQueue(db, {});
   } finally {
     db.release();
   }
@@ -297,6 +310,14 @@ function startScheduler(): void {
       } catch (err) {
         log("cron: outreach error", { error: err instanceof Error ? err.message : String(err) });
       }
+    }
+    // Recompute (R1-G5): drain the event-driven recompute queue every tick. Inert until
+    // a tenant's federation/experience is enabled; recovers stale RUNNING rows on restart.
+    try {
+      const rc = await runRecompute();
+      if (rc.processed > 0) log("cron: recompute", rc);
+    } catch (err) {
+      log("cron: recompute error", { error: err instanceof Error ? err.message : String(err) });
     }
     // Routines (task #73): each enabled routine fires at its configured hour;
     // the library enforces once-per-day and weekly cadences itself.

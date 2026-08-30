@@ -165,23 +165,39 @@ export interface DrainResult { processed: number; done: number; suppressed: numb
  * immaterial so it never reaches Today. Append-only: recompute writes new snapshots,
  * never mutating prior ones (R13). Idempotent per row via `for update skip locked`.
  */
+const RECOMPUTE_LEASE_MS = 5 * 60 * 1000; // a RUNNING row idle past this is presumed abandoned
+
 export async function drainRecomputeQueue(
-  db: PoolClient, opts: { limit?: number; emitDownstream?: boolean } = {},
+  db: PoolClient, opts: { limit?: number; emitDownstream?: boolean; now?: Date } = {},
 ): Promise<DrainResult> {
   const emitDownstream = opts.emitDownstream ?? true;
+  const now = opts.now ?? new Date();
+  const staleBefore = new Date(now.getTime() - RECOMPUTE_LEASE_MS);
+  // Recover work safely: pick PENDING rows AND any RUNNING row whose lease has expired
+  // (a worker that died mid-drain). A fresh RUNNING (recent locked_at) is left alone.
   const { rows } = await db.query<{
     id: string; org_id: string; pursuit_id: string; change_type: string; target: RecomputeTarget;
     as_of: Date; correlation_id: string | null; requested_by_event_id: string | null; data_environment: string;
+    attempts: number; max_attempts: number;
   }>(
-    `select id, org_id, pursuit_id, change_type, target, as_of, correlation_id, requested_by_event_id, data_environment
-       from recompute_requests where status = 'PENDING'
-       order by created_at limit $1 for update skip locked`,
-    [opts.limit ?? 100]);
+    `select id, org_id, pursuit_id, change_type, target, as_of, correlation_id, requested_by_event_id,
+            data_environment, attempts, max_attempts
+       from recompute_requests
+      where status = 'PENDING'
+         or (status = 'RUNNING' and (locked_at is null or locked_at < $2))
+      order by created_at limit $1 for update skip locked`,
+    [opts.limit ?? 100, staleBefore]);
 
   const res: DrainResult = { processed: 0, done: 0, suppressed: 0, failed: 0, surfaced: 0 };
   for (const r of rows) {
     res.processed++;
-    await db.query(`update recompute_requests set status='RUNNING', attempts=attempts+1, updated_at=now() where id=$1`, [r.id]);
+    // Poison guard: a request that has already burned its attempts fails visibly rather
+    // than looping forever.
+    if (r.attempts >= r.max_attempts) {
+      await db.query(`update recompute_requests set status='FAILED', reason='max attempts exceeded', updated_at=now() where id=$1`, [r.id]);
+      res.failed++; continue;
+    }
+    await db.query(`update recompute_requests set status='RUNNING', attempts=attempts+1, locked_at=now(), updated_at=now() where id=$1`, [r.id]);
     try {
       // Load the triggering event's before/after for score-like materiality.
       let trigger: Scored | null = null;
