@@ -82,10 +82,18 @@ async function main() {
   console.log(`[experience-verify] seeded hero=${hero.slice(0, 8)}\n`);
 
   // ---- Flag dependency fail-safe (§56) ----
+  // Controls its own env so the assertion is deterministic regardless of how
+  // the harness was invoked: with the experience requested but a dependency
+  // (FACTS_ENABLED) withheld, the gate must report OFF and name the gap.
   console.log("§66.32  Feature flag dependency fails safe");
+  const savedExp = process.env.PURSUIT_EXPERIENCE_ENABLED, savedFacts = process.env.FACTS_ENABLED;
+  process.env.PURSUIT_EXPERIENCE_ENABLED = "1";
+  delete process.env.FACTS_ENABLED;
   const readiness = experienceReadiness();
   check("experience disabled when dependencies off", !pursuitExperienceEnabled());
-  check("readiness reports missing dependencies", readiness.missing.length >= 1, JSON.stringify(readiness.missing));
+  check("readiness reports missing dependencies", readiness.missing.includes("FACTS_ENABLED"), JSON.stringify(readiness.missing));
+  if (savedExp === undefined) delete process.env.PURSUIT_EXPERIENCE_ENABLED; else process.env.PURSUIT_EXPERIENCE_ENABLED = savedExp;
+  if (savedFacts === undefined) delete process.env.FACTS_ENABLED; else process.env.FACTS_ENABLED = savedFacts;
 
   // ---- Today queue (§2/§3/§4) ----
   console.log("§66.2  Today decision queue: typed, materiality-ordered, urgency≠priority");
