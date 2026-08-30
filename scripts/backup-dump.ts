@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { getPool } from "../src/db/client";
 import { dumpDatabase } from "../src/lib/backup/dump";
+import { encryptBackup } from "../src/lib/backup/crypto";
 
 /**
  * On-demand logical backup of the database DATABASE_URL points at.
@@ -25,9 +26,13 @@ async function main() {
   try {
     const dump = await dumpDatabase(db, { schemaVersion });
     const stamp = dump.manifest.createdAt.replace(/[:.]/g, "-").slice(0, 19);
-    const path = join(outDir, `pursuitos-backup-${stamp}.json.gz`);
     const gz = gzipSync(Buffer.from(JSON.stringify(dump), "utf8"));
-    writeFileSync(path, gz);
+    // OR-2: encrypt at rest when a key is configured (recommended/required for a pilot).
+    const key = process.env.BACKUP_ENCRYPTION_KEY;
+    const enc = key ? encryptBackup(gz, key) : gz;
+    const path = join(outDir, `pursuitos-backup-${stamp}.json.gz${key ? ".enc" : ""}`);
+    writeFileSync(path, enc);
+    if (key) console.log("encrypted at rest (AES-256-GCM)");
 
     const totalRows = Object.values(dump.manifest.rowCounts).reduce((a, b) => a + b, 0);
     console.log(`wrote ${path} (${(gz.length / 1024).toFixed(0)} KB gz)`);

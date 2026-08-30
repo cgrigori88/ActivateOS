@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { Pool } from "pg";
 import { restoreDatabase, type BackupFile } from "../src/lib/backup/dump";
+import { decryptBackup, isEncrypted } from "../src/lib/backup/crypto";
 
 /**
  * Restore a logical backup into a database that already has the schema
@@ -21,7 +22,13 @@ async function main() {
     process.exit(1);
   }
 
-  const dump = JSON.parse(gunzipSync(readFileSync(file)).toString("utf8")) as BackupFile;
+  let raw: Buffer = readFileSync(file);
+  if (isEncrypted(raw)) {
+    const key = process.env.BACKUP_ENCRYPTION_KEY;
+    if (!key) { console.error("encrypted backup — set BACKUP_ENCRYPTION_KEY to restore"); process.exit(1); }
+    raw = decryptBackup(raw, key);
+  }
+  const dump = JSON.parse(gunzipSync(raw).toString("utf8")) as BackupFile;
   console.log(`restoring ${file}`);
   console.log(`  created ${dump.manifest.createdAt} · schema ${dump.manifest.schemaVersion ?? "?"} · ${dump.manifest.tableOrder.length} tables`);
 

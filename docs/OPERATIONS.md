@@ -26,12 +26,14 @@ Forward migrations from here: add a new `NNNN_*.sql` (idempotent), run `db:migra
 
 - **Library:** `src/lib/backup/dump.ts` — a logical `to_jsonb`-per-table dump in FK-topological order with a manifest (schema version, row counts).
 - **On demand:** `npx tsx scripts/backup-dump.ts [outDir]` → `pursuitos-backup-<ts>.json.gz` (private; `backups/` is gitignored).
-- **Scheduled:** the worker writes a nightly gzip to `BACKUP_DIR` (default off — **set `BACKUP_DIR` for the pilot**), pruned to `BACKUP_KEEP` (14). Pilot prerequisites: an offsite copy and encryption at rest for the backup volume.
+- **Encryption at rest (OR-2):** set `BACKUP_ENCRYPTION_KEY` (a 64-char hex key, or any passphrase — stretched with scrypt) and the dump is written AES-256-GCM encrypted with a `.enc` suffix (`src/lib/backup/crypto.ts`). The envelope is authenticated, so a wrong key or a tampered file is rejected on restore. **Set this for the pilot** — a backup is a full copy of tenant data.
+- **Scheduled:** the worker writes a nightly gzip to `BACKUP_DIR` (default off — **set `BACKUP_DIR` for the pilot**), pruned to `BACKUP_KEEP` (14). Pilot prerequisites: an offsite copy and `BACKUP_ENCRYPTION_KEY` set.
 
 ## Restore
 
-- `TARGET_DATABASE_URL=postgres://… npx tsx scripts/backup-restore.ts <file.json.gz> [--force]`.
-- `TARGET_DATABASE_URL` is deliberately a **different** variable from `DATABASE_URL` so a restore can never hit prod by accident. Restore into a database that **already has the schema** (bootstrap + `db:migrate` on a fresh project), then restore data. Rehearsed: a dumped row reappears after restore and row counts match the source.
+- `TARGET_DATABASE_URL=postgres://… [BACKUP_ENCRYPTION_KEY=…] npx tsx scripts/backup-restore.ts <file.json.gz[.enc]> [--force]`.
+- `TARGET_DATABASE_URL` is deliberately a **different** variable from `DATABASE_URL` so a restore can never hit prod by accident. Restore into a database that **already has the schema** (bootstrap + `db:migrate` on a fresh project), then restore data. An encrypted (`.enc`) backup is auto-detected and requires `BACKUP_ENCRYPTION_KEY`.
+- **Recovery rehearsal (OR-2):** `scripts/recovery-rehearsal.ts` proves the whole path against throwaway databases — populate a source with the closed-loop hero scenarios, encrypted-dump it, restore it, then verify schema/tracker parity, RLS + FORCE RLS still on, runtime tenant isolation, per-substrate row parity (recovery-point coverage), and full operability by re-running the closed loop against the recovered database. It reports **rehearsal-measured** RTO and recovery-point coverage. Note: those figures are on a small local volume — **true production RTO/RPO are only established by the real backup/restore against the live deployment and data volume.**
 
 ## Rollback / recovery strategy
 
@@ -44,5 +46,5 @@ Migrations are **forward-only** (no down-path). Recovery is therefore restore-ba
 ## Pre-pilot checklist (release-blocking)
 
 - [ ] Reconcile the prod migration tracker per the safe procedure above (verify, then `db:migrate` or `--baseline`).
-- [ ] `BACKUP_DIR` set; a backup produced and its restore rehearsed into a throwaway target.
+- [ ] `BACKUP_DIR` and `BACKUP_ENCRYPTION_KEY` set; an encrypted backup produced and its restore rehearsed into a throwaway target (`recovery-rehearsal`), plus one real restore drill against the live deployment to establish true RTO/RPO.
 - [ ] External error tracking / alerting wired (the pre-pilot gate named in R1-G6/D3).
