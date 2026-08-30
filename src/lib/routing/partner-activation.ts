@@ -11,7 +11,7 @@ import { transactionScore } from "../transactions/features";
  * (which also weighs topology + readiness).
  */
 
-export interface Dimension { dimension: string; rawValue: number; normalizedValue: number; weight: number; contribution: number; source: string; featureObservedAt: Date | null; }
+export interface Dimension { dimension: string; rawValue: number | null; normalizedValue: number | null; weight: number; contribution: number; source: string; featureObservedAt: Date | null; }
 export interface Reason { reasonCode: string; polarity: 1 | -1; weight: number; detail: string; refType: string; refId: string | null; disclosureClass: string; }
 export interface Disqualifier { code: DisqualifierCode; severity: "HARD" | "SOFT"; refType: string; refId: string | null; detail: string; }
 
@@ -96,8 +96,10 @@ export async function scorePartnerActivation(db: PoolClient, ctx: PursuitCtx, pa
   let total = 0;
   for (const [dim, w] of Object.entries(ACTIVATION_WEIGHTS)) {
     const { v, source, obs } = values[dim];
-    const contribution = w * v * 100;
-    dims.push({ dimension: dim, rawValue: v * 100, normalizedValue: v, weight: w, contribution, source, featureObservedAt: obs });
+    const contribution = w * v * 100;               // a neutral prior still contributes to the score…
+    // …but the DISPLAYED dimension is UNKNOWN, not a fabricated value, when the signal is truly absent (§17).
+    const unknown = dim === "transaction_adjacency" && !tx.available;
+    dims.push({ dimension: dim, rawValue: unknown ? null : v * 100, normalizedValue: unknown ? null : v, weight: w, contribution, source, featureObservedAt: obs });
     total += contribution;
   }
 
