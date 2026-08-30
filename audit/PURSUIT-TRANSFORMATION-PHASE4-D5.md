@@ -137,3 +137,18 @@ WS-D.5: Playwright hero-flow E2E (15 assertions) against the running app
 ---
 
 **HALT — awaiting Workstream D.5 sign-off. Workstream E remains closed.**
+
+---
+
+## 8. Final polish pass (post-approval, §1–§5)
+
+Applied on the approved canonical system — no architecture change:
+
+- **§1 Presentation vocabulary** (`components/pursuit/vocab.ts`): raw enum/DB strings are humanized at render while the canonical values stay in the read-model payload for audit. Verified in the served page: `ACTIVE_RELATIONSHIP`, `SYSTEM_DETECTED`, `PARTNER_LED`, `select_partner_route` → **0 occurrences**; "Established active relationship", "$1.84M recent category activity through TD SYNNEX", "Executive direction", "Partner-led", "System detected" → present. Because the Pursuit components are **server components**, the raw confidential figure (`1840000`) never reaches the client at all — the internal view renders only the humanized `$1.84M`, the partner-safe view renders neither. The disclosure boundary now holds at the render layer in addition to the payload.
+- **§2 Mobile decision-first order**: the detail page is one flow reordered by `order` — mobile column (identity → Why Now → recommended/selected route → why/disclosure → team → facts → material changes), desktop 2-col grid unchanged. Confirmed on 430px and 1440px captures.
+- **§4 Today hierarchy**: the zero-state KPI strip steps back (smaller, dimmer, "At a glance") when the decision queue leads.
+- **§5 Honest actions**: every Today CTA navigates to a real governed surface (`/pursuits/[id]`, `/review`); the governed Skill is named in readable form. No dead buttons.
+- **§3/§6/§7/§8/§9/§10 preserved**: light-mode tokens/grammar unchanged; `RoutePath` remains N-hop (Vendor→Distributor→Reseller→Customer renders with the same grammar); route score / confidence / suitability / readiness remain separate in the payload; recommendation-vs-selection stays visually unmistakable with the override audit retained; uncertainty language ("Not yet established"/"Unknown") intact; the quiet demo badge persists.
+- **§11 tracked**: `notFound()` HTTP-200 status is a release-hardening item, not a demo blocker (isolation holds).
+
+E2E re-run: **15/15**. tsc clean.
