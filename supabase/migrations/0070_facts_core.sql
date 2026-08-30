@@ -106,6 +106,8 @@ create table if not exists facts (
   valid_until        timestamptz,
   occurred_at        timestamptz,
   observed_at        timestamptz not null,
+  observed_first_at  timestamptz not null,          -- earliest supporting observation
+  observed_last_at   timestamptz not null,          -- most recent supporting observation (freshness)
   ingested_at        timestamptz not null default now(),
   first_confirmed_at timestamptz,
   last_confirmed_at  timestamptz,
@@ -126,6 +128,7 @@ create table if not exists facts (
 
   -- Lineage (Workstream A contract).
   data_environment   text not null default 'PRODUCTION',
+  data_lineage       jsonb,
   is_simulated       boolean not null default false,
 
   created_by_actor_type text, created_by_actor_id uuid, created_via text,

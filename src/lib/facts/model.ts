@@ -89,11 +89,11 @@ export async function upsertFact(db: PoolClient, input: UpsertFactInput): Promis
        object_type, object_value, date_value, number_value, text_value, boolean_value, entity_ref,
        money_amount, money_currency, polarity, status, confidence, confidence_model_version,
        provenance_class, origin_kind, as_of, valid_from, valid_until, occurred_at, observed_at,
-       first_confirmed_at, last_confirmed_at, half_life_days, freshness_policy, family, supersedes,
-       fact_identity_key, fact_value_key, data_environment, data_lineage, is_simulated,
-       created_by_actor_type, created_by_actor_id, created_via
+       observed_first_at, observed_last_at, first_confirmed_at, last_confirmed_at, half_life_days,
+       freshness_policy, family, supersedes, fact_identity_key, fact_value_key, data_environment,
+       data_lineage, is_simulated, created_by_actor_type, created_by_actor_id, created_via
      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'CURRENT',$17,$18,$19,$20,
-       $21,$22,$23,$24,$25, now(), now(), $26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
+       $21,$22,$23,$24,$25,$25,$25, now(), now(), $26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
      returning id`,
     [
       input.orgId, input.subject.subjectScope, input.subject.subjectRef ?? null, input.subject.subjectLabel,

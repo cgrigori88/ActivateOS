@@ -50,7 +50,7 @@ export async function loadPredicates(db: PoolClient): Promise<Map<string, Predic
   const { rows } = await db.query(
     `select key, display_name, subject_type, object_type, default_half_life_days, freshness_policy,
             allowed_provenance_classes, supports_timing, supports_propensity, supports_solution_fit,
-            supports_partner_activation, supports_seller_activation, contradiction_strategy, signal_type
+            supports_partner_activation, supports_seller_activation, contradiction_strategy, signal_type, family
        from fact_predicates where status = 'active'`,
   );
   const m = new Map<string, PredicateDef>();
@@ -61,7 +61,7 @@ export async function loadPredicates(db: PoolClient): Promise<Map<string, Predic
       allowedProvenanceClasses: r.allowed_provenance_classes ?? [], supportsTiming: r.supports_timing,
       supportsPropensity: r.supports_propensity, supportsSolutionFit: r.supports_solution_fit,
       supportsPartnerActivation: r.supports_partner_activation, supportsSellerActivation: r.supports_seller_activation,
-      contradictionStrategy: r.contradiction_strategy, signalType: r.signal_type, family: null,
+      contradictionStrategy: r.contradiction_strategy, signalType: r.signal_type, family: r.family ?? null,
     });
   }
   predicateCache = m;

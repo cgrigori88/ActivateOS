@@ -30,6 +30,7 @@ create table if not exists fact_predicates (
   supports_seller_activation  boolean not null default false,
   contradiction_strategy    text not null default 'COMPETING_VALUE' check (contradiction_strategy in
                               ('NEGATION','COMPETING_VALUE','TEMPORAL_CONFLICT','SCOPE_CONFLICT','SOURCE_DISAGREEMENT')),
+  family                    text,                          -- convergence family (maps to scoring SignalFamily)
   signal_type               text,                          -- optional 1:1 map to a SIGNAL_DEFS type (deterministic promotion)
   version                   integer not null default 1,
   status                    text not null default 'active' check (status in ('draft','active','deprecated')),
@@ -75,7 +76,7 @@ values
   ('renewal_date','Renewal date','A contract/subscription renews on a specific date.',
      'CONTRACT','DATE',null,'VALID_UNTIL', true,true,false,false,false,'COMPETING_VALUE','CONTRACT_EXPIRING'),
   ('contract_expires','Contract expiry','A vendor contract expires on a specific date.',
-     'CONTRACT','DATE',null,'VALID_UNTIL', true,true,false,false,false,'COMPETING_VALUE','CONTRACT_EXPIRING'),
+     'CONTRACT','DATE',null,'VALID_UNTIL', true,true,false,false,false,'COMPETING_VALUE',null),
   ('migrating_from','Migrating away from technology','The account is migrating off a named technology.',
      'TECHNOLOGY','ENTITY_REF',270,'DECAYING', true,true,true,false,false,'NEGATION','MIGRATION_SIGNAL'),
   ('platform_evaluation_active','Platform evaluation active','The account is actively evaluating a platform/category.',
@@ -85,7 +86,7 @@ values
   ('is_hiring_for_role_category','Hiring for role category','The account is hiring for a role category.',
      'COMPANY','ENUM',90,'DECAYING', false,true,true,false,false,'COMPETING_VALUE','HIRING_ACCELERATION'),
   ('headcount_growth_direction','Headcount growth direction','Direction of headcount change in a function.',
-     'COMPANY','ENUM',120,'DECAYING', false,true,false,false,false,'COMPETING_VALUE','HIRING_ACCELERATION'),
+     'COMPANY','ENUM',120,'DECAYING', false,true,false,false,false,'COMPETING_VALUE',null),
   ('budget_reduction_target','Budget reduction target','The account has a cost/budget reduction target.',
      'COMPANY','PERCENTAGE',180,'DECAYING', true,true,false,false,false,'COMPETING_VALUE','COST_PRESSURE'),
   ('acquisition_completed','Acquisition completed','The account completed an acquisition (historical fact).',
@@ -99,6 +100,13 @@ values
   ('partner_relationship_exists','Partner relationship exists','A relationship exists between the account and a partner.',
      'RELATIONSHIP','ENTITY_REF',540,'STATIC', false,false,false,true,true,'NEGATION','PARTNER_RELATIONSHIP')
 on conflict (key) do nothing;
+
+-- Convergence family per predicate (maps to the scoring SignalFamily vocabulary).
+update fact_predicates set family = 'technology' where key in ('technology_in_use');
+update fact_predicates set family = 'trigger' where key in ('renewal_date','contract_expires','migrating_from','platform_evaluation_active','budget_reduction_target','acquisition_completed','funding_event','leadership_change','compliance_deadline');
+update fact_predicates set family = 'initiative' where key in ('strategic_initiative');
+update fact_predicates set family = 'momentum' where key in ('is_hiring_for_role_category','headcount_growth_direction');
+update fact_predicates set family = 'partner' where key in ('partner_relationship_exists');
 
 -- First-party / human predicates carry stricter allowed provenance.
 update fact_predicates set allowed_provenance_classes = array['FIRST_PARTY','CUSTOMER_DECLARED','HUMAN_ASSERTED','SECOND_PARTY']
