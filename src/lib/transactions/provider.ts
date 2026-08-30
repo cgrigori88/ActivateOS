@@ -7,7 +7,10 @@
  *               (present? recency? adjacency? relationship?) — never SKU/spend/invoice/margin.
  */
 
-export type ProviderMode = "RAW" | "DERIVED" | "FEDERATED";
+// Contribution modes (E3-C / R4/R5). RAW/DERIVED/FEDERATED plus ASSERTED (a human/
+// system assertion) and AGGREGATED (k-anonymous aggregate). FEDERATED/ASSERTED/
+// AGGREGATED do not require central custody of the source rows (R5).
+export type ProviderMode = "RAW" | "DERIVED" | "FEDERATED" | "ASSERTED" | "AGGREGATED";
 export type DataClassification = "PUBLIC" | "INTERNAL" | "PARTNER_SHARED" | "TRANSACTION_CONFIDENTIAL" | "PII" | "RESTRICTED";
 
 export interface TransactionFeatureOut {
