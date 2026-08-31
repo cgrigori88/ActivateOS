@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { withTenant } from "@/lib/db/tenant";
 import { clientIp, rateLimited } from "@/lib/security/rate-limit";
-import { classifyIntent } from "@/lib/search/query";
-import { resolveUtterance } from "@/lib/search/registry";
+import { answerQuestion, classifyForAnswer } from "@/lib/interpret/answer";
 import "@/lib/search/intents";   // registers every deterministic intent (side-effect import)
 import { resolveScope } from "@/lib/scope/server";
 import { parseScope, SCOPE_COOKIE } from "@/lib/scope/scope";
@@ -25,6 +24,9 @@ interface Hit {
   href: string;
 }
 
+/** Long enough for a multi-constraint question; short enough to stay a bounded input. */
+const MAX_QUERY_CHARS = 300;
+
 /** Escape ilike wildcards so "50%" searches for a literal percent sign. */
 function likePattern(q: string): string {
   return `%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
@@ -34,14 +36,24 @@ export async function GET(req: NextRequest) {
   if (rateLimited(`palette:${clientIp(req.headers)}`, 120, 60_000)) {
     return NextResponse.json({ results: [] }, { status: 429 });
   }
-  const q = (req.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 80);
+  // The cap was 80 characters, sized for an entity name. A compound question is legitimately
+  // longer than that: "show WWT pursuits over $500K renewing in 90 days without a verified
+  // economic buyer" is 82, and truncating it silently removed the stakeholder constraint — so the
+  // palette returned MORE pursuits than were asked for, with a read-back that did not mention the
+  // constraint it had dropped. A dropped filter that widens the answer is the worst shape of bug
+  // this surface can have. The cap is now 300, and truncation is stated rather than silent.
+  const raw = (req.nextUrl.searchParams.get("q") ?? "").trim();
+  const q = raw.slice(0, MAX_QUERY_CHARS);
+  const truncated = raw.length > MAX_QUERY_CHARS;
   if (q.length < 2) return NextResponse.json({ results: [] });
 
   const pat = likePattern(q);
   const results: Hit[] = [];
   // Unified retrieval intent (§5 / R6): GO TO (entity nav, below) · SHOW ME (structured query) ·
   // EXPLAIN (evidence-bound). All deterministic; unmatched fails honestly.
-  const intent = classifyIntent(q);
+  // Registry-aware classification (P2C-1): the P2C-0 token heuristic did not know about the
+  // intents added since, so "what should I focus on today" was treated as a name to navigate to.
+  const intent = classifyForAnswer(q);
   let interpreted: string | null = null;
   let explanation: unknown = null;
   let note: string | null = null;
@@ -49,6 +61,9 @@ export async function GET(req: NextRequest) {
   // surfaced so the resolution path is inspectable rather than implicit.
   let intentKey: string | null = null;
   let outcome: string | null = null;
+  // Which tier answered: GOTO · DETERMINISTIC · INTERPRETED (P2C-1 §11 — the path is part of the
+  // answer's provenance, so the palette can say so rather than implying every answer is parsed).
+  let path: string | null = null;
   let scopeRaw: string | null = null;
   try { scopeRaw = (await cookies()).get(SCOPE_COOKIE)?.value ?? null; } catch { /* no request cookies */ }
   const scope = parseScope(scopeRaw);
@@ -118,23 +133,29 @@ export async function GET(req: NextRequest) {
     for (const r of pursuits.rows)
       results.push({ group: "Joint pursuits", label: r.name, sub: r.status, href: `/joint/${r.id}` });
 
-    // SHOW ME / EXPLAIN — routed through the intent registry (P2C-0). Precedence is an explicit
-    // integer on each intent, never source order; an ambiguous or unmatched utterance returns an
-    // honest note rather than whichever parser happened to be checked first. Every registered
-    // intent resolves over canonical read-models under RLS with the narrowed company scope.
+    // SHOW ME / EXPLAIN — the shared answer stack (P2C-1 §10). Deterministic registry first; the
+    // LLM interpreter runs ONLY where the parsers found nothing, so no keystroke that resolves
+    // today can start costing a model round trip, and no model outage can take one offline.
+    // GO TO never reaches this branch at all — entity navigation is the five lookups above.
     if (intent === "showme" || intent === "explain") {
       const companyIds = scope.kind === "ALL" ? null : (await resolveScope(db, orgId, scope)).companyIds;
-      const r = await resolveUtterance({ db, orgId, companyIds }, q, intent);
-      intentKey = r.intentKey;
-      outcome = r.outcome;
-      if (r.interpreted) interpreted = r.interpreted;
-      if (r.explanation) explanation = r.explanation;
-      if (r.hits) for (const h of r.hits) results.push(h);
-      if (r.note) note = r.note;
+      const env = await answerQuestion(db, orgId, q, { intentClass: intent, companyIds });
+      intentKey = env.intentKey;
+      outcome = env.outcome;
+      path = env.path;
+      if (env.interpreted) interpreted = env.interpreted;
+      if (env.explanation) explanation = env.explanation;
+      for (const h of env.hits) results.push(h);
+      // AMBIGUOUS carries a clarification instead of an answer — one short question, never a guess.
+      if (env.clarification) note = env.clarification;
+      else if (env.outcome !== "MATCHED") note = env.answer;
     }
     });
   } catch {
     /* no tenant, or db unavailable — an empty palette beats a 500 mid-keystroke */
   }
-  return NextResponse.json({ intent, intentKey, outcome, interpreted, results, explanation, note });
+  if (truncated) {
+    note = `Only the first ${MAX_QUERY_CHARS} characters were read — the rest of the question was not applied.`;
+  }
+  return NextResponse.json({ intent, intentKey, outcome, path, interpreted, results, explanation, note, truncated });
 }

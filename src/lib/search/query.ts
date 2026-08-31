@@ -68,8 +68,13 @@ export function parseShowMe(q: string): { query: ParsedQuery; interpreted: strin
   else { for (const st of ["discovery", "qualification", "business_validation", "proposal", "negotiation"]) if (lower.includes(st.replace(/_/g, " ")) || lower.includes(st)) stages.push(st); }
   const partnerMatch = q.match(/(?:through|via)\s+([A-Za-z][\w& .-]{0,40})/i);
   const partner = partnerMatch ? partnerMatch[1].trim().replace(/\b(pursuits?|opportunit\w*|deals?)\b.*$/i, "").trim() : null;
-  const gtMatch = lower.match(/(?:over|above|>\s*|greater than\s*)\$?\s*([\d.,]+\s*[mk]?)/);
-  const ltMatch = lower.match(/(?:under|below|<\s*|less than\s*)\$?\s*([\d.,]+\s*[mk]?)/);
+  // The `\s*` before `\$?` matters: without it "over $500k" parsed to NO amount bound at all —
+  // the word, then an optional-and-skipped `$`, then digits that were actually a space. The filter
+  // was silently dropped, which returns MORE rows than asked for, and the read-back said nothing
+  // about an amount. Found by the P2C-1 compound-query suite; the bare-number form always worked,
+  // which is why it survived.
+  const gtMatch = lower.match(/(?:over|above|greater than|more than|>)\s*\$?\s*([\d.,]+\s*[mk]?)/);
+  const ltMatch = lower.match(/(?:under|below|less than|<)\s*\$?\s*([\d.,]+\s*[mk]?)/);
   const amountGt = gtMatch ? money(gtMatch[1]) : null;
   const amountLt = ltMatch ? money(ltMatch[1]) : null;
 
@@ -204,10 +209,23 @@ export async function resolveStakeholderShowMe(
 
 // ---- EXPLAIN: evidence-bound explanation of an existing record -------------
 /**
+ * Which facet of a record an EXPLAIN question is asking about. Derived from the utterance by
+ * default; supplied directly by the interpreter tier (P2C-1) so a paraphrase does not have to be
+ * re-matched by these regexes — the ASPECT is structured intent, which is exactly what the
+ * interpreter is allowed to produce. The record, the reasons and the evidence still come only
+ * from the canonical reads below.
+ */
+export type ExplainAspect = "route" | "timing" | "readiness" | "qualification" | "seller_path" | "stakeholder_role" | "coverage";
+export const EXPLAIN_ASPECTS: ExplainAspect[] = ["route", "timing", "readiness", "qualification", "seller_path", "stakeholder_role", "coverage"];
+
+/**
  * Resolve an EXPLAIN question to canonical facts + reasons, or an honest "not supported".
  * `orgId` grounds the Motion-funnel intents; the route/timing intents remain RLS-scoped reads.
+ * `aspect`, when given, replaces the keyword sniffing — nothing else about resolution changes.
  */
-export async function resolveExplain(db: PoolClient, q: string, orgId?: string): Promise<Explanation | { note: string }> {
+export async function resolveExplain(
+  db: PoolClient, q: string, orgId?: string, aspect?: ExplainAspect | null,
+): Promise<Explanation | { note: string }> {
   // Identify the subject account by name (the only entity EXPLAIN grounds against today). Leading
   // question words are stripped first so "Who is the economic buyer for Globex?" grounds against
   // Globex, not "Who".
@@ -230,13 +248,22 @@ export async function resolveExplain(db: PoolClient, q: string, orgId?: string):
   const pursuit = (await db.query<{ id: string; use_case: string | null; tim: number | null; why_now: unknown }>(
     `select id, use_case, current_timing_score tim, why_now from pursuits where account_id=$1 order by created_at asc limit 1`, [co.id])).rows[0];
 
-  const asksRoute = /route|through|partner|cdw|wwt|reseller|distributor/i.test(q);
-  const asksTiming = /timing|when|renewal|now|urgent/i.test(q);
-  const asksReady = /execution[- ]?ready|not\s+ready|isn'?t\s+ready/i.test(q);
-  const asksQualify = /qualif/i.test(q);
-  const asksSellerPath = /seller|strongest\s+path|who\s+(?:has|knows)/i.test(q);
-  const asksWhoRole = q.match(/who\s+is\s+(?:the\s+)?(economic\s+buyer|champion|technical\s+(?:buyer|validator))/i);
-  const asksCoverage = /stakeholder|coverage|buying\s+(?:team|authority)/i.test(q) && /why|block|missing|gap/i.test(q);
+  // A supplied aspect wins outright; otherwise the facet is sniffed from the words, as before.
+  const pin = (a: ExplainAspect) => aspect === a;
+  const asksRoute = aspect ? pin("route") : /route|through|partner|cdw|wwt|reseller|distributor/i.test(q);
+  const asksTiming = aspect ? pin("timing") : /timing|when|renewal|now|urgent/i.test(q);
+  const asksReady = aspect ? pin("readiness") : /execution[- ]?ready|not\s+ready|isn'?t\s+ready/i.test(q);
+  const asksQualify = aspect ? pin("qualification") : /qualif/i.test(q);
+  const asksSellerPath = aspect ? pin("seller_path") : /seller|strongest\s+path|who\s+(?:has|knows)/i.test(q);
+  // The role question needs the ROLE itself, which only the words carry. With `stakeholder_role`
+  // pinned but no role named, we fall through to the coverage decomposition rather than guessing
+  // which of the three roles was meant.
+  const asksWhoRole = aspect
+    ? (pin("stakeholder_role") ? q.match(/(economic\s+buyer|champion|technical\s+(?:buyer|validator))/i) : null)
+    : q.match(/who\s+is\s+(?:the\s+)?(economic\s+buyer|champion|technical\s+(?:buyer|validator))/i);
+  const asksCoverage = aspect
+    ? pin("coverage") || (pin("stakeholder_role") && !asksWhoRole)
+    : /stakeholder|coverage|buying\s+(?:team|authority)/i.test(q) && /why|block|missing|gap/i.test(q);
 
   // Stakeholder role intent (P1C §15) — assertion-state truth, never a probable person. "Who is
   // the economic buyer for Globex?" answers the VERIFIED assertion, lists proposals AS proposals,
@@ -351,6 +378,24 @@ export async function resolveExplain(db: PoolClient, q: string, orgId?: string):
     if (route && (route.rec || route.sel)) {
       const overridden = !!(route.sel && route.rec && route.sel !== route.rec);
       const lines: { label: string; value: string }[] = [];
+      // FALSE PREMISE. "Why is Globex routed through WWT?" asked of an account routed through CDW
+      // is not a question about CDW — it contains a claim that is wrong, and answering it with a
+      // bare statement of the real route lets the operator keep believing the wrong thing. If the
+      // question names one of our partners and that partner is neither the recommendation nor the
+      // selection, say so FIRST. (§6 lists "Why WWT instead of CDW?" as a supported question; this
+      // is what makes the answer to it true rather than merely responsive.)
+      if (orgId) {
+        const named = (await db.query<{ name: string }>(
+          `select name from partners where org_id = $1 and $2 ilike '%' || name || '%'
+            order by length(name) desc limit 3`, [orgId, q])).rows.map((r) => r.name);
+        const wrong = named.find((n) => n !== route.sel && n !== route.rec);
+        if (wrong) {
+          lines.push({
+            label: "Correction",
+            value: `${co.legal_name} is not routed through ${wrong}. ${route.sel ? `The selected route is ${route.sel}.` : `The recommendation is ${route.rec}.`}`,
+          });
+        }
+      }
       if (route.rec) lines.push({ label: "Recommended", value: route.rec });
       if (route.sel) lines.push({ label: "Selected", value: overridden ? `${route.sel} — human override, recommendation preserved` : route.sel });
       // The recommended candidate's own reasons (verbatim); confidential figures withheld from the search surface.

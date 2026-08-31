@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/db/client";
 import { rateLimited } from "@/lib/security/rate-limit";
 import { MCP_TOOLS, resolveKey } from "@/lib/agents/mcp-tools";
+import { decideToolScope } from "@/lib/agents/ask-scope";
+
+/**
+ * The authorized company set for an MCP key. API keys are org-scoped and carry no ecosystem
+ * narrowing, so this is `null` (no narrowing) — stated as a named function rather than a bare
+ * literal so the day a scoped key exists, there is exactly one place to change.
+ */
+const keyScopeCompanyIds = (): string[] | null => null;
 import { withTenantOrg } from "@/lib/db/tenant";
 import { dispatchSkill, type Actor } from "@/lib/pursuits/federation/skills";
 
@@ -82,7 +90,17 @@ async function handleMessage(msg: RpcRequest, key: ResolvedKey): Promise<Record<
           const payload = ok ? (disp.result ?? { status: disp.status }) : { status: disp.status, reason: disp.reason };
           return rpcResult(id, { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], isError: !ok });
         }
-        const result = await withTenantOrg(orgId, (db) => tool.run(db, orgId, args));
+        // P2C-1: the ecosystem-scope guard built in P2C-0 now lives HERE, at the one remaining
+        // boundary where raw tool payloads reach an external model. PursuitOS's own Ask surface no
+        // longer calls tools at all — its model never sees a record — so this is the tool boundary
+        // that still needs guarding. An MCP API key carries no ecosystem scope today, so `null`
+        // makes the guard a pass-through; it is wired at the boundary rather than at the eventual
+        // caller so a scoped key cannot be introduced without the check already standing.
+        const result = await withTenantOrg(orgId, async (db) => {
+          const decision = await decideToolScope(db, orgId, tool, args, keyScopeCompanyIds());
+          if (!decision.allowed) return decision.refusal;
+          return tool.run(db, orgId, args);
+        });
         return rpcResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], isError: false });
       } catch (err) {
         return rpcResult(id, {

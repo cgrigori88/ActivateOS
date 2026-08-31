@@ -31,6 +31,88 @@ export type IntentClass = "goto" | "showme" | "explain";
 export type SlotValue = string | number | boolean | null | string[];
 export type Slots = Record<string, SlotValue>;
 
+/**
+ * Slot types (P2C-1 §2). `account` and `partner` are ENTITY slots: the interpreter may propose the
+ * string a human typed, and canonical resolution happens afterwards inside the authorized set —
+ * the model never assigns an internal id. Everything else is a scalar the validator coerces.
+ */
+export type SlotType = "string" | "number" | "boolean" | "string[]" | "account" | "partner";
+
+export interface SlotSpec {
+  type: SlotType;
+  /** Shown to the interpreter. One line, no examples of real records. */
+  description: string;
+  /** Closed vocabulary. A value outside it is rejected, never coerced to the nearest member. */
+  enum?: string[];
+  min?: number;
+  max?: number;
+}
+
+export type SlotValidation =
+  | { ok: true; slots: Slots }
+  | { ok: false; error: string };
+
+const asString = (v: SlotValue): string | null => (typeof v === "string" ? v : v == null ? null : String(v));
+
+/**
+ * Validate and coerce a slot bag against an intent's declared contract (P2C-1 §2/§12).
+ *
+ * Strict in BOTH directions, because this is the door an interpreter tier comes through:
+ *   · an undeclared slot name is REJECTED — a model cannot smuggle an operator, a filter, an org
+ *     id, or a fragment of SQL into a resolver by inventing a parameter for it;
+ *   · a missing required slot is REJECTED;
+ *   · a value outside a declared enum is REJECTED, never snapped to the nearest member;
+ *   · a value that will not coerce to the declared type is REJECTED.
+ *
+ * An explicit `null` on an OPTIONAL slot is legal and means "absent" — deterministic parsers emit
+ * it routinely. On a required slot it is a missing slot, which is the honest reading.
+ */
+export function validateSlots(def: IntentDefinition, raw: Slots): SlotValidation {
+  const declared = new Set([...def.requiredSlots, ...def.optionalSlots]);
+  const out: Slots = {};
+
+  for (const [key, value] of Object.entries(raw)) {
+    if (!declared.has(key)) return { ok: false, error: `${def.intentKey} has no slot "${key}"` };
+    if (value === null || value === undefined) { out[key] = null; continue; }
+
+    const spec = def.slots?.[key];
+    const type = spec?.type ?? "string";
+    if (type === "number") {
+      const n = typeof value === "number" ? value : Number(asString(value));
+      if (!Number.isFinite(n)) return { ok: false, error: `slot "${key}" is not a number` };
+      if (spec?.min != null && n < spec.min) return { ok: false, error: `slot "${key}" is below its minimum` };
+      if (spec?.max != null && n > spec.max) return { ok: false, error: `slot "${key}" is above its maximum` };
+      out[key] = n;
+    } else if (type === "boolean") {
+      if (typeof value === "boolean") out[key] = value;
+      else {
+        const s = (asString(value) ?? "").toLowerCase();
+        if (s !== "true" && s !== "false") return { ok: false, error: `slot "${key}" is not a boolean` };
+        out[key] = s === "true";
+      }
+    } else if (type === "string[]") {
+      const arr = Array.isArray(value) ? value.map(String) : String(value).split(",").map((s) => s.trim()).filter(Boolean);
+      if (spec?.enum) {
+        const bad = arr.find((v) => !spec.enum!.includes(v));
+        if (bad != null) return { ok: false, error: `slot "${key}" does not accept "${bad}"` };
+      }
+      out[key] = arr;
+    } else {
+      // string / account / partner — entity slots stay strings here; canonical resolution is a
+      // separate, scope-bound step that this function deliberately does not perform.
+      const s = asString(value);
+      if (s == null || s.trim() === "") return { ok: false, error: `slot "${key}" is empty` };
+      if (spec?.enum && !spec.enum.includes(s)) return { ok: false, error: `slot "${key}" does not accept "${s}"` };
+      out[key] = s;
+    }
+  }
+
+  for (const req of def.requiredSlots) {
+    if (out[req] === undefined || out[req] === null) return { ok: false, error: `${def.intentKey} is missing a required slot` };
+  }
+  return { ok: true, slots: out };
+}
+
 /** What a resolver produces. `hits` for list answers, `explanation` for evidence-bound answers. */
 export interface IntentResult {
   hits?: QueryHit[];
@@ -61,6 +143,17 @@ export interface IntentDefinition {
   requiredSlots: string[];
   /** Slot names the resolver may use when present. */
   optionalSlots: string[];
+  /**
+   * Typed schema for each slot (P2C-1 §2). This is what an interpreter tier is shown and what its
+   * output is validated against — the registry stays the single source of supported intents, so
+   * there is no second catalog to drift. A slot with no spec validates as a plain string.
+   */
+  slots?: Record<string, SlotSpec>;
+  /**
+   * Constraint families this intent covers, for compound-query routing (P2C-1 §7). Declared so the
+   * compound resolver can say WHICH part of a multi-constraint request it could not represent.
+   */
+  families?: string[];
   /**
    * Does this intent read company-scoped data? Scope-bearing intents receive the narrowed
    * `companyIds`; scope-free intents (pure explanations of a named record) still run under RLS.
@@ -158,9 +251,15 @@ export async function resolveStructured(
 ): Promise<IntentResult & { intentKey: string | null; outcome: RoutingOutcome["kind"] }> {
   const def = REGISTRY.get(intentKey);
   if (!def) return { intentKey: null, outcome: "UNSUPPORTED", note: `Unsupported: unknown intent ${intentKey}.` };
-  if (!slotsValid(def, slots)) {
-    return { intentKey: null, outcome: "UNSUPPORTED", note: `Unsupported: ${intentKey} is missing a required slot.` };
+  // Full contract validation, not just presence: an undeclared slot name, an out-of-vocabulary
+  // enum value, or an uncoercible type is rejected here — before any resolver runs.
+  const checked = validateSlots(def, slots);
+  if (!checked.ok) {
+    const note = /missing a required slot/.test(checked.error)
+      ? `Unsupported: ${intentKey} is missing a required slot.`
+      : `Unsupported: ${checked.error}.`;
+    return { intentKey: null, outcome: "UNSUPPORTED", note };
   }
-  const result = await def.resolve(ctx, slots);
+  const result = await def.resolve(ctx, checked.slots);
   return { ...result, intentKey, outcome: "MATCHED" };
 }

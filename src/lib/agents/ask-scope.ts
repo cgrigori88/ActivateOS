@@ -2,10 +2,22 @@ import type { Pool, PoolClient } from "pg";
 import type { McpToolDef } from "./mcp-tools";
 
 /**
- * Ask scope guard (P2C-0 §2). Closes the invariant gap the P2 design audit found: `askTheRecord`
- * honored the authenticated principal and RLS, but NOT the persistent ecosystem scope that every
- * other surface honors — so a narrowed operator could ask the LLM a question and receive answers
- * drawn from the whole book.
+ * Tool-boundary scope guard (P2C-0 §2, relocated by P2C-1).
+ *
+ * ORIGINALLY this closed an invariant gap in `askTheRecord`: that surface honored the
+ * authenticated principal and RLS, but NOT the persistent ecosystem scope every other surface
+ * honors — so a narrowed operator could ask the LLM a question and receive answers drawn from the
+ * whole book.
+ *
+ * P2C-1 removed that consumer entirely. PursuitOS's own Ask surface no longer calls tools: its
+ * model receives the question and an intent catalog, never a record, so there is no payload to
+ * scope. The invariant is now STRUCTURAL there rather than enforced.
+ *
+ * This guard therefore moved to the one boundary where raw tool payloads still reach an external
+ * model — the BYO-bot MCP surface at /api/mcp. MCP keys carry no ecosystem scope today, so the
+ * guard is currently a pass-through (`companyIds = null` → allowed). It is wired at the boundary
+ * regardless, so a scoped key cannot later be introduced past a check that was never installed.
+ * The rules below are unchanged and remain the definition of the invariant.
  *
  * The fix is applied at the TOOL BOUNDARY, before any payload becomes model-visible context. That
  * ordering matters: filtering the final answer would still have placed out-of-scope (and possibly
@@ -90,12 +102,6 @@ export async function decideToolScope(
   };
 }
 
-/** A one-line statement of the active scope, prepended to the system prompt so the model says so. */
-export function scopeSystemNote(companyIds: string[] | null): string {
-  if (companyIds == null) return "";
-  if (companyIds.length === 0) {
-    return "\nSCOPE: the operator's active ecosystem scope contains no accounts. Answer that nothing is in scope.";
-  }
-  return `\nSCOPE: an ecosystem scope is active, narrowing this answer to ${companyIds.length} account(s). ` +
-    `Some tools will refuse with {"scoped_out":true} — relay that honestly as "outside the current scope"; never guess what they would have returned.`;
-}
+// `scopeSystemNote` lived here in P2C-0: a line telling a prose-writing model how to describe its
+// own refusals. P2C-1 removed it with the free-form answer agent — nothing narrates a refusal any
+// more, because the refusal payload IS the answer the caller receives.

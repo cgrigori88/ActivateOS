@@ -1,13 +1,24 @@
-import { registerIntent, type Slots } from "./registry";
+import { registerIntent, type Slots, type SlotSpec } from "./registry";
 import {
   parseShowMe, resolveShowMe,
   parseMotionShowMe, resolveMotionShowMe,
   parseStakeholderShowMe, resolveStakeholderShowMe,
-  resolveExplain,
+  resolveExplain, EXPLAIN_ASPECTS, type ExplainAspect,
   type ParsedQuery,
 } from "./query";
 import { parseLifecycleShowMe, resolveLifecycleShowMe, resolveLifecycleExplain } from "@/lib/lifecycle/intents";
 import { parseValueShowMe, parseValueExplain, resolveValueShowMe, resolveValueExplain, type ValueShowMode } from "@/lib/value/intents";
+import { parseAttention, resolveAttention, parseMotionConstrained, resolveMotionConstrained, type AttentionMode } from "./attention";
+import { parseChanges, resolveChanges } from "./changes";
+import { parseCompound, filtersFromSlots, resolveCompound, MISSING_ROLES, VALUE_STATES, CONDITIONS, STAGES } from "./compound";
+import { parsePartnerActivation, resolvePartnerActivation } from "./partner-activation";
+
+/** Reusable slot specs — declared once so the same concept reads identically to an interpreter. */
+const SLOT: Record<string, SlotSpec> = {
+  account: { type: "account", description: "The customer account named in the question, exactly as the user wrote it." },
+  partner: { type: "partner", description: "The partner/reseller named in the question, exactly as the user wrote it." },
+  days: { type: "number", description: "A time window in days.", min: 1, max: 3650 },
+};
 
 /**
  * Intent registrations (P2C-0). The three pre-existing deterministic intents migrated VERBATIM —
@@ -16,7 +27,14 @@ import { parseValueShowMe, parseValueExplain, resolveValueShowMe, resolveValueEx
  * `else if` inside the palette route.
  *
  * PRECEDENCE RATIONALE (higher wins; the previous chain's order is preserved exactly):
+ *   95  pursuit.compound           P2C-1 §7: only matches a request spanning TWO OR MORE families
+ *   93  motion.constrained_revenue narrower than attention: names Motions AND constraint
+ *   92  attention.today            narrow: names the operator's own attention
+ *   91  change.recent              narrow: names change over a window
  *   90  motion.execution_ready     was checked first  — a narrow, unambiguous phrase
+ *   88  value.no_case              narrow: names the absence of a Value Case
+ *   87  value.conflicting          narrow: names contested economics
+ *   86  value.confirmed            narrow: names evidenced economics
  *   85  lifecycle.horizon          narrow: an explicit time window over lifecycle events
  *   84  lifecycle.conflicting      narrow: names the conflicting state
  *   83  lifecycle.unknown_timing   narrow: names UNKNOWN lifecycle timing
@@ -27,6 +45,14 @@ import { parseValueShowMe, parseValueExplain, resolveValueShowMe, resolveValueEx
  * many lifecycle/stakeholder utterances incidentally (it recognises the bare token "renewal"), so a
  * tie would otherwise be decided by accident. No two intents share a precedence, so a genuine tie
  * (which `routeIntent` reports as AMBIGUOUS rather than guessing) signals a registry design error.
+ *
+ * `pursuit.compound` sits at the very top and is still safe, because its own parser DECLINES every
+ * single-family request — a specialist answers those with its own vocabulary. Precedence is what
+ * decides a contest; refusing to enter the contest is what prevents one.
+ *
+ * P2C-1: every intent below also declares a TYPED slot schema. That schema is what an interpreter
+ * tier is shown and what its output is validated against, so the registry remains the single
+ * source of supported intents and there is no second catalog to drift out of sync.
  */
 
 // ---- SHOW ME · Motion execution-readiness (P1A) — precedence 90 -------------------------------
@@ -37,6 +63,8 @@ registerIntent({
   description: "Accounts that pass every Motion funnel gate, optionally within one hypothesis.",
   requiredSlots: [],
   optionalSlots: ["hypothesis"],
+  slots: { hypothesis: { type: "string", description: "The Motion / solution hypothesis to narrow to, if the question names one." } },
+  families: ["motion"],
   scope: "COMPANY_SCOPED",
   match: (q) => {
     const parsed = parseMotionShowMe(q);
@@ -58,6 +86,14 @@ registerIntent({
   description: "Pursuits with a linked opportunity but no VERIFIED assertion for a buying role.",
   requiredSlots: ["role"],
   optionalSlots: ["partner"],
+  slots: {
+    role: { type: "string", description: "Which buying role has no verified assertion.", enum: ["economic_buyer", "champion", "technical_buyer"] },
+    partner: SLOT.partner,
+  },
+  // Declares BOTH families it can represent: this intent already narrows by partner, so a
+  // "WWT pursuits missing a champion" question is fully answered here and must not be handed to
+  // the compound resolver.
+  families: ["stakeholder", "partner"],
   scope: "COMPANY_SCOPED",
   match: (q) => {
     const parsed = parseStakeholderShowMe(q);
@@ -84,6 +120,18 @@ registerIntent({
   description: "The allowlisted opportunity grammar: condition, stage, partner, amount bounds.",
   requiredSlots: [],
   optionalSlots: ["conditions", "stages", "partner", "amountGt", "amountLt", "interpreted"],
+  slots: {
+    conditions: { type: "string[]", description: "Deal condition states to keep.", enum: [...CONDITIONS] },
+    stages: { type: "string[]", description: "Opportunity stages to keep.", enum: [...STAGES] },
+    partner: SLOT.partner,
+    amountGt: { type: "number", description: "Keep opportunities with an amount strictly above this many US dollars.", min: 0 },
+    amountLt: { type: "number", description: "Keep opportunities with an amount strictly below this many US dollars.", min: 0 },
+    // `interpreted` is the deterministic parser's own read-back. It is NOT offered to an
+    // interpreter tier (see the catalog builder, which withholds it) — a model-authored read-back
+    // would be prose about the answer, which is precisely what this architecture does not permit.
+    interpreted: { type: "string", description: "Internal: read-back text produced by the deterministic parser." },
+  },
+  families: ["condition", "stage", "partner", "amount"],
   scope: "COMPANY_SCOPED",
   match: (q) => {
     const parsed = parseShowMe(q);
@@ -122,7 +170,10 @@ registerIntent({
 const lifecycleShowMe = (intentKey: string, precedence: number, mode: "horizon" | "conflicting" | "unknown", description: string, examples: string[]) =>
   registerIntent({
     intentKey, intentClass: "showme", precedence, description,
-    requiredSlots: [], optionalSlots: ["days"], scope: "COMPANY_SCOPED",
+    requiredSlots: [], optionalSlots: ["days"],
+    slots: { days: { ...SLOT.days, description: "The lifecycle horizon in days (defaults to 90 when the question does not say)." } },
+    families: ["lifecycle"],
+    scope: "COMPANY_SCOPED",
     match: (q) => {
       const parsed = parseLifecycleShowMe(q);
       return parsed && parsed.mode === mode ? { days: parsed.days } : null;
@@ -147,7 +198,8 @@ lifecycleShowMe("lifecycle.unknown_timing", 83, "unknown",
 const valueShowMe = (intentKey: string, precedence: number, mode: ValueShowMode, description: string, examples: string[]) =>
   registerIntent({
     intentKey, intentClass: "showme", precedence, description,
-    requiredSlots: [], optionalSlots: [], scope: "COMPANY_SCOPED",
+    requiredSlots: [], optionalSlots: [], slots: {}, families: ["value"],
+    scope: "COMPANY_SCOPED",
     match: (q) => {
       const parsed = parseValueShowMe(q);
       return parsed && parsed.mode === mode ? {} : null;
@@ -174,6 +226,11 @@ registerIntent({
   description: "The Value Case for one account: the three economic truths, evidence quality, and what would strengthen it.",
   requiredSlots: ["account"],
   optionalSlots: ["strengthen"],
+  slots: {
+    account: SLOT.account,
+    strengthen: { type: "boolean", description: "True when the question asks what would STRENGTHEN or improve the case, rather than what it is." },
+  },
+  families: ["value"],
   scope: "COMPANY_SCOPED",
   match: (q) => {
     const parsed = parseValueExplain(q);
@@ -191,6 +248,8 @@ registerIntent({
   description: "Which lifecycle event is driving an account's timing, with its state and evidence.",
   requiredSlots: ["account"],
   optionalSlots: [],
+  slots: { account: SLOT.account },
+  families: ["lifecycle"],
   scope: "COMPANY_SCOPED",
   match: (q) => {
     if (!/lifecycle|renewal|contract|expir|end[- ]of[- ](life|support)|eol|eos/i.test(q)) return null;
@@ -206,16 +265,151 @@ registerIntent({
   intentKey: "record.explain",
   intentClass: "explain",
   precedence: 10,
-  description: "Evidence-bound explanation of an existing record: route, timing, readiness, coverage.",
+  description: "Evidence-bound explanation of an existing record: route, timing, readiness, qualification, seller path, stakeholder coverage.",
   requiredSlots: [],
-  optionalSlots: [],
+  // `q` is the deterministic parser's channel (the verbatim utterance, which the resolver still
+  // parses itself). `account` + `aspect` are the STRUCTURED channel an interpreter tier uses —
+  // structured intent is exactly what an interpreter may produce, and it removes the need for a
+  // paraphrase to survive the resolver's own keyword sniffing.
+  optionalSlots: ["q", "account", "aspect"],
+  slots: {
+    q: { type: "string", description: "Internal: the verbatim utterance, supplied by the deterministic parser." },
+    account: SLOT.account,
+    aspect: { type: "string", description: "Which facet of the record is being asked about.", enum: [...EXPLAIN_ASPECTS] },
+  },
   scope: "ORG_SCOPED",
   match: (q) => ({ q }),   // the existing resolver does its own subject resolution
   resolve: async (ctx, slots) => {
-    const ex = await resolveExplain(ctx.db, String(slots.q), ctx.orgId);
+    // With no verbatim utterance, the account NAME becomes the subject text — the resolver's own
+    // canonical company lookup runs on it exactly as before, so the record is still chosen by the
+    // resolver and never by the interpreter.
+    const subject = (slots.q as string | undefined) ?? (slots.account as string | undefined);
+    if (!subject) return { note: "This question needs a named account." };
+    const aspect = (slots.aspect as ExplainAspect | undefined) ?? null;
+    const ex = await resolveExplain(ctx.db, subject, ctx.orgId, aspect);
     return "note" in ex ? { note: ex.note } : { explanation: ex };
   },
-  examples: ["why is Globex routed through WWT", "why is Globex not execution-ready"],
+  examples: ["why is Globex routed through WWT", "why is Globex not execution-ready", "who is the economic buyer for Globex"],
+});
+
+// ---- SHOW ME · Compound multi-constraint filter (P2C-1 §7) — precedence 95 --------------------
+registerIntent({
+  intentKey: "pursuit.compound",
+  intentClass: "showme",
+  precedence: 95,
+  description:
+    "Pursuits satisfying SEVERAL constraints at once (partner, amount, lifecycle window, missing buying role, Value Case state, deal condition, stage). " +
+    "Use ONLY when the question constrains two or more of those; a single-constraint question belongs to its specialist intent.",
+  requiredSlots: [],
+  optionalSlots: ["partner", "amountGt", "amountLt", "renewalWithinDays", "missingRole", "valueState", "condition", "stages"],
+  slots: {
+    partner: SLOT.partner,
+    amountGt: { type: "number", description: "Opportunity amount strictly above this many US dollars.", min: 0 },
+    amountLt: { type: "number", description: "Opportunity amount strictly below this many US dollars.", min: 0 },
+    renewalWithinDays: { ...SLOT.days, description: "Keep pursuits whose lifecycle event (renewal / contract expiry / EOL) falls within this many days." },
+    missingRole: { type: "string", description: "Keep pursuits with NO verified assertion for this buying role.", enum: [...MISSING_ROLES] },
+    valueState: { type: "string", description: "Keep pursuits whose Value Case is in this state.", enum: [...VALUE_STATES] },
+    condition: { type: "string", description: "Keep pursuits whose open opportunity is in this condition.", enum: [...CONDITIONS] },
+    stages: { type: "string[]", description: "Keep pursuits whose open opportunity is at one of these stages.", enum: [...STAGES] },
+  },
+  families: ["partner", "amount", "lifecycle", "stakeholder", "value", "condition", "stage"],
+  scope: "COMPANY_SCOPED",
+  match: (q) => (parseCompound(q) as unknown as Slots | null),
+  resolve: async (ctx, slots) => resolveCompound(ctx, filtersFromSlots(slots)),
+  examples: [
+    "show WWT pursuits over $500K renewing in 90 days without a verified economic buyer",
+    "at-risk late-stage deals over $1M with no defensible value case",
+  ],
+});
+
+// ---- SHOW ME · Attention (P2C-1 §6) — precedence 92 -------------------------------------------
+registerIntent({
+  intentKey: "attention.today",
+  intentClass: "showme",
+  precedence: 92,
+  description: "What the operator should attend to: today's decision queue, revenue behind a gating constraint, or decisions awaiting them personally.",
+  requiredSlots: ["mode"],
+  optionalSlots: [],
+  slots: {
+    mode: {
+      type: "string",
+      enum: ["focus", "blocked", "waiting"],
+      description: "focus = today's queue in materiality order; blocked = revenue behind a gating Motion constraint; waiting = decisions the record is holding for this operator.",
+    },
+  },
+  families: ["attention"],
+  scope: "COMPANY_SCOPED",
+  match: (q) => {
+    const parsed = parseAttention(q);
+    return parsed ? { mode: parsed.mode } : null;
+  },
+  resolve: async (ctx, slots) => resolveAttention(ctx, slots.mode as AttentionMode),
+  examples: ["what should I focus on today", "where is revenue blocked", "what is waiting on me"],
+});
+
+// ---- SHOW ME · What changed (P2C-1 §9) — precedence 91 ----------------------------------------
+registerIntent({
+  intentKey: "change.recent",
+  intentClass: "showme",
+  precedence: 91,
+  description: "What changed over a window, from the append-only change ledger — ordered by materiality first, then time.",
+  requiredSlots: [],
+  optionalSlots: ["account", "days", "materialOnly"],
+  slots: {
+    account: SLOT.account,
+    days: { ...SLOT.days, description: "How far back to look, in days. Defaults to 7 when the question does not say.", max: 365 },
+    materialOnly: { type: "boolean", description: "True (the default) keeps only HIGH/CRITICAL changes; false includes every recorded change." },
+  },
+  families: ["change"],
+  scope: "COMPANY_SCOPED",
+  match: (q) => {
+    const parsed = parseChanges(q);
+    return parsed ? { account: parsed.account, days: parsed.days, materialOnly: parsed.materialOnly } : null;
+  },
+  resolve: async (ctx, slots) => resolveChanges(ctx, {
+    account: (slots.account as string | null) ?? null,
+    days: (slots.days as number | null) ?? 7,
+    materialOnly: slots.materialOnly !== false,
+  }),
+  examples: ["what changed on Globex this week", "what materially changed since Friday", "what changed in the last 30 days"],
+});
+
+// ---- SHOW ME · Constrained revenue by Motion (P2C-1 §6) — precedence 93 -----------------------
+registerIntent({
+  intentKey: "motion.constrained_revenue",
+  intentClass: "showme",
+  // ABOVE attention.today (92): "which motion has the most constrained revenue" contains the
+  // phrase "constrained revenue", which the attention parser also recognises. The question that
+  // NAMES Motions is the more specific one, so it wins — and the two never tie.
+  precedence: 93,
+  description: "Motions ranked by the expected value sitting behind a gating constraint.",
+  requiredSlots: [],
+  optionalSlots: [],
+  slots: {},
+  families: ["motion"],
+  scope: "COMPANY_SCOPED",
+  match: (q) => (parseMotionConstrained(q) ? {} : null),
+  resolve: async (ctx) => resolveMotionConstrained(ctx),
+  examples: ["which motion has the most constrained revenue", "which motions are most blocked"],
+});
+
+// ---- EXPLAIN · Partner activation (P2C-1 §6) — precedence 63 ----------------------------------
+registerIntent({
+  intentKey: "partner.activation",
+  intentClass: "explain",
+  precedence: 63,
+  description: "Where a named partner activates well — observed activation by category, with the sufficiency of each cell's evidence.",
+  requiredSlots: ["partner"],
+  optionalSlots: [],
+  slots: { partner: SLOT.partner },
+  families: ["partner"],
+  scope: "COMPANY_SCOPED",
+  match: (q) => {
+    const parsed = parsePartnerActivation(q);
+    return parsed ? { partner: parsed.partner } : null;
+  },
+  resolve: async (ctx, slots) => resolvePartnerActivation(ctx, String(slots.partner)),
+  examples: ["where does CDW activate well", "which categories does WWT execute well in"],
 });
 
 /**
