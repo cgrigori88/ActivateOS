@@ -35,7 +35,7 @@ function fixture(over: Partial<PursuitDetailView> = {}): PursuitDetailView {
     team: { members: [{ id: "m1", role: "PARTNER_ACCOUNT_MANAGER", side: "PARTNER", personLabel: null, partnerLabel: "CDW", status: "INVITED", fit: null, missing: false, required: true, nextGovernedAction: "accept", waiting: true }],
       activationReadiness: band, missingRequiredRoles: ["VENDOR_ACCOUNT_EXECUTIVE"], gapActions: [], sellerAlternatives: [] },
     timeline: { events: [] }, facts: [{ id: "f1", proposition: "Globex signed a cloud MSA in Q2", state: "ACCEPTED", trust: [], confidence: null }],
-    pendingDecisions: [], freshness: [], synthetic: false, demoBanner: null,
+    pendingDecisions: [], freshness: [], synthetic: false, demoBanner: null, stakeholders: null,
     ...over,
   };
 }

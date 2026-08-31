@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { withTenant } from "@/lib/db/tenant";
 import { clientIp, rateLimited } from "@/lib/security/rate-limit";
-import { classifyIntent, parseShowMe, resolveShowMe, resolveExplain, parseMotionShowMe, resolveMotionShowMe } from "@/lib/search/query";
+import { classifyIntent, parseShowMe, resolveShowMe, resolveExplain, parseMotionShowMe, resolveMotionShowMe, parseStakeholderShowMe, resolveStakeholderShowMe } from "@/lib/search/query";
 import { resolveScope } from "@/lib/scope/server";
 import { parseScope, SCOPE_COOKIE } from "@/lib/scope/scope";
 
@@ -118,11 +118,18 @@ export async function GET(req: NextRequest) {
       // Motion funnel query (P1A): "execution-ready pursuits [in <hypothesis>]" — same gates as
       // the Motions room; checked before the generic opportunity allowlist.
       const motionParsed = parseMotionShowMe(q);
+      // Stakeholder coverage query (P1C §15): "pursuits lacking a verified economic buyer".
+      const stakeholderParsed = parseStakeholderShowMe(q);
       if (motionParsed) {
         const { hits, interpreted: mi } = await resolveMotionShowMe(db, orgId, motionParsed, companyIds);
         interpreted = mi;
         for (const h of hits) results.push(h);
         if (hits.length === 0) note = "No execution-ready accounts in that cut.";
+      } else if (stakeholderParsed) {
+        const { hits, interpreted: si } = await resolveStakeholderShowMe(db, orgId, stakeholderParsed, companyIds);
+        interpreted = si;
+        for (const h of hits) results.push(h);
+        if (hits.length === 0) note = "No pursuits with that coverage gap — or coverage is not yet established (pre-opportunity pursuits are UNKNOWN, not gaps).";
       } else {
         const parsed = parseShowMe(q);
         if (!parsed) { note = "This question is not supported yet."; }

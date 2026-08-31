@@ -137,6 +137,15 @@ export const SKILL_REGISTRY: SkillDef[] = [
     eligibleActors: ["USER", "AGENT"], requiredPermission: "operator", actionFamily: "intro.request",
     authorize: async (db, actor, ctx) => warmIntroAuthorize(db, actor.orgId, ctx.args ?? {}),
     handler: async (db, actor, ctx) => requestWarmIntroImpl(db, actor.orgId, ctx.args ?? {}) },
+  // Stakeholder Intelligence (P1C) — the single authority for buying-role assertions. Agents may
+  // propose (inferred/unverified); only a human verifies; title alone can never establish a role;
+  // every assertion appends its history. The handler holds the transaction-local flag the 0097
+  // DB trigger requires, so no other code path can mutate role/assertion_state.
+  { skillId: "assert_stakeholder_role", version: 1, description: "Assert a stakeholder's buying role with state (verified/inferred/unverified) and evidence", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER", "AGENT"], requiredPermission: "operator",
+    precheck: async (db, actor, ctx) => (await import("../../stakeholders/assert")).stakeholderInOrg(db, actor.orgId, ctx.args),
+    handler: async (db, actor, ctx) => (await import("../../stakeholders/assert")).assertStakeholderRole(
+      db, actor, ctx.args ?? {}, (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION") },
 ];
 
 /**

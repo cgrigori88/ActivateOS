@@ -153,14 +153,66 @@ export async function resolveMotionShowMe(
   return { hits, interpreted: `Execution-ready accounts${parsed.hypothesis ? ` · ${parsed.hypothesis}` : ""} (Motion funnel gates)` };
 }
 
+// ---- SHOW ME (Stakeholder, P1C §15): pursuits lacking a verified buying role -------------------
+/**
+ * "which high-value pursuits lack an economic buyer" / "show WWT pursuits missing a verified
+ * champion" — deterministic: role from the canonical vocabulary, optional partner narrows to the
+ * SELECTED route, ranked by expected value. Never fills a blank with a probable person.
+ */
+export function parseStakeholderShowMe(q: string): { role: string; partner: string | null } | null {
+  if (!/\b(missing|lacks?|lacking|without|no verified)\b/i.test(q)) return null;
+  const role = /economic\s+buyer/i.test(q) ? "economic_buyer"
+    : /champion/i.test(q) ? "champion"
+    : /technical\s+(buyer|validator)/i.test(q) ? "technical_buyer" : null;
+  if (!role) return null;
+  // Partner narrows only on a genuinely capitalized token ("WWT pursuits") — no /i here, so
+  // "high-value pursuits" can never masquerade as a partner name.
+  const pm = q.match(/\b([A-Z][\w&.-]{1,20})\s+[Pp]ursuits/);
+  const partner = pm && !/^(Show|List|Which|The|All|High)$/.test(pm[1]) ? pm[1] : null;
+  return { role, partner };
+}
+
+export async function resolveStakeholderShowMe(
+  db: PoolClient, orgId: string, parsed: { role: string; partner: string | null }, companyIds: string[] | null,
+): Promise<{ hits: QueryHit[]; interpreted: string }> {
+  const scoped = companyIds != null;
+  const { rows } = await db.query<{ id: string; legal_name: string; ev: string | null; partner: string | null }>(
+    `select pu.id, c.legal_name, pu.expected_value_weighted ev, sp.name partner
+       from pursuits pu
+       join companies c on c.id = pu.account_id
+       left join pursuit_route_snapshots s on s.pursuit_id = pu.id and s.is_current
+       left join partners sp on sp.id = s.selected_partner_id
+      where pu.org_id = $1 and pu.status not in ('WON','LOST','DISQUALIFIED')
+        and exists (select 1 from opportunities o where o.pursuit_id = pu.id)
+        and not exists (select 1 from opportunities o join stakeholders st on st.opportunity_id = o.id
+                         where o.pursuit_id = pu.id and st.role = $2 and st.assertion_state = 'verified')
+        and ($4::boolean is false or pu.account_id = any($3))
+        and ($5::text is null or sp.name ilike '%' || $5 || '%')
+      order by pu.expected_value_weighted desc nulls last limit 15`,
+    [orgId, parsed.role, companyIds ?? [], scoped, parsed.partner]);
+  const roleWord = parsed.role.replace(/_/g, " ");
+  return {
+    hits: rows.map((r) => ({
+      group: `No verified ${roleWord}${parsed.partner ? ` · via ${parsed.partner}` : ""}`,
+      label: r.legal_name,
+      sub: `${r.ev != null ? `$${Math.round(Number(r.ev) / 1000)}k expected · ` : ""}${r.partner ? `via ${r.partner} · ` : ""}coverage gap`,
+      href: `/pursuits/${r.id}#stakeholders`,
+    })),
+    interpreted: `Pursuits with a linked opportunity but no VERIFIED ${roleWord}${parsed.partner ? `, routed via ${parsed.partner}` : ""} (assertion-state truth — inferred/unverified do not count)`,
+  };
+}
+
 // ---- EXPLAIN: evidence-bound explanation of an existing record -------------
 /**
  * Resolve an EXPLAIN question to canonical facts + reasons, or an honest "not supported".
  * `orgId` grounds the Motion-funnel intents; the route/timing intents remain RLS-scoped reads.
  */
 export async function resolveExplain(db: PoolClient, q: string, orgId?: string): Promise<Explanation | { note: string }> {
-  // Identify the subject account by name (the only entity EXPLAIN grounds against today).
-  const nameMatch = q.match(/\b(?:is|does|do|are|was)?\s*([A-Z][\w&.'-]+(?:\s+[A-Z][\w&.'-]+){0,3})/);
+  // Identify the subject account by name (the only entity EXPLAIN grounds against today). Leading
+  // question words are stripped first so "Who is the economic buyer for Globex?" grounds against
+  // Globex, not "Who".
+  const qBody = q.replace(/^\s*(who|whom|what|why|which|where|when|how|show|list|is|does|do)\b\s*/i, "");
+  const nameMatch = qBody.match(/\b(?:is|does|do|are|was|for|at|of|to)?\s*([A-Z][\w&.'-]+(?:\s+[A-Z][\w&.'-]+){0,3})/);
   const candidate = nameMatch ? nameMatch[1].trim() : null;
   if (!candidate) return { note: "This question is not supported yet — try \"why is <account> routed through <partner>?\"" };
   // Prefer a real commercial account (one with a pursuit or opportunity) over incidental name matches,
@@ -183,6 +235,52 @@ export async function resolveExplain(db: PoolClient, q: string, orgId?: string):
   const asksReady = /execution[- ]?ready|not\s+ready|isn'?t\s+ready/i.test(q);
   const asksQualify = /qualif/i.test(q);
   const asksSellerPath = /seller|strongest\s+path|who\s+(?:has|knows)/i.test(q);
+  const asksWhoRole = q.match(/who\s+is\s+(?:the\s+)?(economic\s+buyer|champion|technical\s+(?:buyer|validator))/i);
+  const asksCoverage = /stakeholder|coverage|buying\s+(?:team|authority)/i.test(q) && /why|block|missing|gap/i.test(q);
+
+  // Stakeholder role intent (P1C §15) — assertion-state truth, never a probable person. "Who is
+  // the economic buyer for Globex?" answers the VERIFIED assertion, lists proposals AS proposals,
+  // and says UNKNOWN when no verified assertion exists.
+  if ((asksWhoRole || asksCoverage) && orgId) {
+    const { getStakeholderCoverage, bestWarmPath, ROLE_WORD } = await import("@/lib/stakeholders/coverage");
+    const pu = (await db.query<{ id: string }>(`select id from pursuits where account_id = $1 and org_id = $2 order by created_at asc limit 1`, [co.id, orgId])).rows[0];
+    if (!pu) return { note: `${co.legal_name} has no canonical pursuit — stakeholder coverage lives on the Pursuit.` };
+    const cov = await getStakeholderCoverage(db, orgId, pu.id);
+    if (!cov) return { note: "No matching records." };
+    if (!cov.established) return { note: `Stakeholder coverage not established for ${co.legal_name} — no linked opportunity yet (pre-opportunity coverage is UNKNOWN in v1).` };
+
+    if (asksWhoRole) {
+      const roleKey = /economic/i.test(asksWhoRole[1]) ? "economic_buyer" : /champion/i.test(asksWhoRole[1]) ? "champion" : "technical_buyer";
+      const r = cov.roles.find((x) => x.role === roleKey)!;
+      const lines: { label: string; value: string }[] = [];
+      if (r.state === "VERIFIED" && r.person) {
+        lines.push({ label: "Verified", value: `${r.person.name ?? "unnamed"}${r.person.title ? ` — ${r.person.title}` : ""}${r.source ? ` · source: ${r.source}` : ""}` });
+      } else {
+        lines.push({ label: "Answer", value: `UNKNOWN — no verified ${ROLE_WORD(roleKey)} exists.` });
+        if (r.person) lines.push({ label: `Proposal (${r.state.toLowerCase()})`, value: `${r.person.name ?? "unnamed"}${r.person.title ? ` — ${r.person.title}` : ""} — not verified; a title is context, never authority.` });
+        lines.push({ label: "What would verify it", value: r.verifyingEvidence });
+      }
+      return {
+        title: `${ROLE_WORD(roleKey).replace(/^\w/, (c) => c.toUpperCase())} — ${co.legal_name}`,
+        subtitle: "Assertion-state truth: verified ≠ inferred ≠ unverified. Nothing is guessed.",
+        lines, grounding: ["stakeholders (assertion_state, governed assert_stakeholder_role)", "contacts"],
+      };
+    }
+
+    // Coverage-blocking decomposition.
+    const best = bestWarmPath(cov.warmPaths);
+    return {
+      title: `Stakeholder coverage — ${co.legal_name}`,
+      subtitle: cov.missingRoles.length > 0
+        ? `Missing: ${cov.missingRoles.map(ROLE_WORD).join(", ")}. Coverage never gates the funnel — it is informational risk.`
+        : "All coverage roles have assertions — states below.",
+      lines: [
+        ...cov.roles.map((r) => ({ label: ROLE_WORD(r.role), value: `${r.state}${r.person?.name ? ` — ${r.person.name}` : ""}${r.source ? ` (${r.source})` : ""}` })),
+        { label: "Best known path", value: best.tier === "UNKNOWN" ? "UNKNOWN" : best.text },
+      ],
+      grounding: ["stakeholders (assertion_state)", "warm-path evidence (warm_intro_requests · seller_account_relationships · partner_relationships)"],
+    };
+  }
 
   // Seller-path intent (P1B.5) — evidence-ranked paths into the account: the five relationship
   // tiers with temporal decay, UNKNOWN recency preserved. Ownership ≠ recommendation.

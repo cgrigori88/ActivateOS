@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWrite } from "@/lib/auth/org";
+import { currentRole, requireWrite } from "@/lib/auth/org";
 import { withTenant } from "@/lib/db/tenant";
+import { dispatchSkill } from "@/lib/pursuits/federation/skills";
 import { assignInitiative } from "@/lib/partnerships/initiatives";
 import { decideWriteback, draftWritebacks } from "@/lib/opportunities/writeback";
 import {
@@ -115,13 +116,25 @@ export async function setStakeholderAction(
 ): Promise<void> {
   const role = String(formData.get("role") ?? "influencer");
   const sentiment = String(formData.get("sentiment") ?? "unknown");
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    // Sentiment is an observation, freely editable. The ROLE is an authoritative buying-role
+    // assertion (P1C): it flows through the governed skill only — a bare pipeline edit carries no
+    // evidence, so it lands as an honest `unverified` assertion (verification happens on the
+    // Pursuit's stakeholder panel, with evidence). The 0097 trigger makes the old direct role
+    // UPDATE an error, not a convention.
     await db.query(
-      `update stakeholders set role = $3, sentiment = $4
-       where opportunity_id = $1 and contact_id = $2`,
-      [opportunityId, contactId, role, sentiment],
+      `update stakeholders set sentiment = $3 where opportunity_id = $1 and contact_id = $2`,
+      [opportunityId, contactId, sentiment],
     );
+    const current = (await db.query<{ role: string }>(
+      `select role from stakeholders where opportunity_id = $1 and contact_id = $2`, [opportunityId, contactId])).rows[0];
+    if (current && current.role !== role) {
+      const roleName = await currentRole(db);
+      await dispatchSkill(db, "assert_stakeholder_role", { type: "USER", id: null, orgId, role: roleName }, {
+        args: { opportunityId, contactId, role, assertionState: "unverified", source: "human:pipeline" },
+      });
+    }
   });
   revalidatePath("/pipeline");
 }

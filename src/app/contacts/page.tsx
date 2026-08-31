@@ -86,6 +86,8 @@ interface Row {
   location: string | null;
   engagementStatus: string | null;
   engagementScore: number | null;
+  /** P1C §14: lightweight link to the canonical assertion — role · state · pursuit. */
+  stakeholder: { role: string; state: string; pursuitId: string | null } | null;
 }
 
 export default async function ContactsPage({
@@ -119,15 +121,24 @@ export default async function ContactsPage({
       attributes: Record<string, unknown> | null;
       engagement_status: string;
       engagement_score: string | null;
+      sh_role: string | null;
+      sh_state: string | null;
+      sh_pursuit: string | null;
     }>(
       `select c.id, c.name, c.title, c.email, c.phone, c.contact_type,
               c.company_id, co.legal_name, co.primary_domain,
               p.name as partner_name, c.location, c.attributes, c.engagement_status,
               (select es.engagement_score from engagement_scores es
-                where es.contact_id = c.id order by es.computed_at desc limit 1) as engagement_score
+                where es.contact_id = c.id order by es.computed_at desc limit 1) as engagement_score,
+              sh.role sh_role, sh.assertion_state sh_state, sh.pursuit_id sh_pursuit
        from contacts c
        left join companies co on co.id = c.company_id
-       left join partners p on p.id = c.partner_id`,
+       left join partners p on p.id = c.partner_id
+       left join lateral (
+         select s.role, s.assertion_state, s.pursuit_id from stakeholders s
+          where s.contact_id = c.id
+          order by case s.assertion_state when 'verified' then 3 when 'inferred' then 2 else 1 end desc,
+                   s.asserted_at desc nulls last limit 1) sh on true`,
     );
 
     // Per-account context: HQ location (for end users) + the brand/solution in
@@ -191,6 +202,7 @@ export default async function ContactsPage({
       location: t.contact_type === "end_user" ? meta?.location ?? null : t.location ?? territory,
       engagementStatus: t.contact_type === "end_user" ? t.engagement_status : null,
       engagementScore: t.engagement_score == null ? null : Number(t.engagement_score),
+      stakeholder: t.sh_role ? { role: t.sh_role, state: t.sh_state ?? "unverified", pursuitId: t.sh_pursuit } : null,
     });
   }
   // discovered — only if not already an end-user contact of the same name at the company.
@@ -219,6 +231,7 @@ export default async function ContactsPage({
       location: companyMeta.get(d.company_id)?.location ?? null,
       engagementStatus: null,
       engagementScore: null,
+      stakeholder: null,
     });
   }
 
@@ -389,7 +402,17 @@ export default async function ContactsPage({
                         {g.items.map((r) => (
                           <tr key={r.id}>
                             <td>
-                              <div className="font-medium">{r.name}</div>
+                              <div className="font-medium">
+                                {r.name}
+                                {/* P1C §14: light indicator only — the interpretation lives on the Pursuit. */}
+                                {r.stakeholder && (
+                                  <Link href={r.stakeholder.pursuitId ? `/pursuits/${r.stakeholder.pursuitId}#stakeholders` : "/pipeline"}
+                                    className={`ml-1.5 rounded-full px-1.5 py-px text-[10px] font-semibold hover:underline ${r.stakeholder.state === "verified" ? "bg-emerald/12 text-emerald-700 dark:text-emerald-300" : r.stakeholder.state === "inferred" ? "bg-violet/12 text-violet-700 dark:text-violet-300" : "bg-neutral-500/10 text-neutral-500"}`}
+                                    title={`Buying-role assertion on the linked pursuit — ${r.stakeholder.state}`}>
+                                    {r.stakeholder.role.replace(/_/g, " ")} · {r.stakeholder.state}
+                                  </Link>
+                                )}
+                              </div>
                               <div className="text-label text-neutral-400">
                                 {r.title ?? "—"}
                                 {r.contactType === "end_user" && r.level !== "other" && <span className="ml-1 text-neutral-500">· {LEVEL_LABEL[r.level]}</span>}

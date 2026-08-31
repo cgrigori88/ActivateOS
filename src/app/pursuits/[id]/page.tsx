@@ -21,6 +21,7 @@ import { experienceEnabledFor, federationEnabledFor } from "@/lib/pursuits/tenan
 import { getPursuitFederation, getGovernedActions, getPursuitOutcomes } from "@/lib/pursuits/federation/read-models";
 import { buildFederationViewer } from "@/lib/pursuits/federation/grants";
 import { FederationBento } from "@/components/pursuit/federation";
+import { StakeholderPanel } from "@/components/pursuit/stakeholders";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -75,7 +76,12 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
       const outcomes = await getPursuitOutcomes(db, await buildFederationViewer(db, orgId, id), id);
       federation = { fed, actions, outcomes };
     }
-    return { kind: "sponsor" as const, detail, federation, canDecide, outcome, motion };
+    // Stakeholder assertion candidates (P1C): the account's captured contacts — the governed form
+    // only ever offers real people; nothing is synthesized.
+    const contacts = (await db.query<{ id: string; name: string | null; title: string | null }>(
+      `select id, name, title from contacts where company_id = $1 and (org_id is null or org_id = $2)
+        order by name nulls last limit 40`, [detail.accountId, orgId])).rows;
+    return { kind: "sponsor" as const, detail, federation, canDecide, outcome, motion, contacts };
   });
   if (!loaded) notFound();
 
@@ -197,6 +203,16 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
           <ExecutionPlan team={d.team} pursuitId={d.pursuitId} canDecide={loaded.canDecide} />
         </Panel>
         </div>
+
+        {/* Stakeholder Intelligence (P1C) — coverage and missing roles, never an address book.
+            `#stakeholders` is the deep-link anchor from Today, Motion overlays and constraint remedies. */}
+        {d.stakeholders && (
+          <div id="stakeholders" className="order-5 scroll-mt-6 lg:order-6">
+            <Panel eyebrow="Roles and coverage — verified ≠ inferred ≠ unverified" title="Stakeholders" accent="var(--color-accent-violet)">
+              <StakeholderPanel c={d.stakeholders} pursuitId={d.pursuitId} accountLabel={d.accountLabel} canDecide={loaded.canDecide} contacts={loaded.contacts} />
+            </Panel>
+          </div>
+        )}
 
         {/* Facts / evidence */}
         <Panel eyebrow="Trusted intelligence" title="Facts behind this" accent="var(--color-evidence)" tint className="order-6 lg:order-3">

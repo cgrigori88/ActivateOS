@@ -4,6 +4,7 @@ import { scoreView, freshness, type Caller } from "./helpers";
 import { isTimelineWorthy } from "./materiality";
 import { getRouteComparison } from "./route";
 import { buildPendingDecisions } from "./today";
+import { getStakeholderCoverage } from "@/lib/stakeholders/coverage";
 
 /**
  * Pursuit detail read model (Workstream D, §7/§8/§11-15). Page-shaped composite: decision band,
@@ -37,6 +38,9 @@ export async function getPursuitDetail(db: PoolClient, caller: Caller, pursuitId
   const timeline = await getPursuitTimeline(db, pursuitId);
   const facts = await getFacts(db, r.account_id);
   const pending = await buildPendingDecisions(db, caller, pursuitId);
+  // Stakeholder Intelligence (P1C) — coverage over the linked opportunities; a pre-opportunity
+  // pursuit comes back NOT ESTABLISHED (honest UNKNOWN), never synthesized.
+  const stakeholders = await getStakeholderCoverage(db, caller.orgId, pursuitId);
   const synthetic = r.data_environment !== "PRODUCTION" || route.recommended?.synthetic === true;
 
   const decisionBand: ScoreView[] = [
@@ -53,7 +57,7 @@ export async function getPursuitDetail(db: PoolClient, caller: Caller, pursuitId
     thesis: r.business_problem ?? r.use_case ?? "Untitled pursuit", solution: r.solution,
     lifecycle: r.status, expectedValue: numOrNull(r.expected_value_weighted), currency: r.currency,
     lastMaterialChange: r.last_material_change_at?.toISOString() ?? null,
-    decisionBand, whyNow, route, team, timeline, facts, pendingDecisions: pending,
+    decisionBand, whyNow, route, team, timeline, facts, pendingDecisions: pending, stakeholders,
     freshness: [freshness("Updated", r.updated_at)],
     synthetic, demoBanner: r.data_environment !== "PRODUCTION" ? DEMO_BANNER : null,
   };

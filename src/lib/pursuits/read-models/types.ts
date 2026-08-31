@@ -140,4 +140,6 @@ export interface PursuitDetailView {
   freshness: FreshnessView[];
   synthetic: boolean;
   demoBanner: string | null;
+  /** Stakeholder Intelligence (P1C) — canonical coverage projection; null only when the read fails. */
+  stakeholders: import("@/lib/stakeholders/coverage").StakeholderCoverage | null;
 }

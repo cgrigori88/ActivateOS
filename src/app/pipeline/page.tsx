@@ -179,7 +179,7 @@ export default async function PipelinePage({
     : allOpps;
 
   const { rows: stakeholderRows } = await db.query(
-    `select s.opportunity_id, s.contact_id, s.role, s.sentiment, ct.name, ct.email
+    `select s.opportunity_id, s.contact_id, s.role, s.sentiment, s.assertion_state, ct.name, ct.email
      from stakeholders s join contacts ct on ct.id = s.contact_id
      where s.opportunity_id = any($1)`,
     [opps.map((o) => o.id)],
@@ -1015,6 +1015,12 @@ export default async function PipelinePage({
                         {stakeholders.map((s) => (
                           <form key={s.contact_id} action={setStakeholderAction.bind(null, o.id, s.contact_id)} className="flex items-center gap-2 text-sm">
                             <span className="font-medium">{s.name ?? s.email}</span>
+                            {/* Assertion state (P1C): verified/inferred/unverified stay distinct. A role
+                                change here lands as an unverified proposal — verification happens on the
+                                Pursuit's stakeholder panel, with evidence, through the governed skill. */}
+                            <span className={`rounded-full px-1.5 py-px text-[10px] font-semibold ${s.assertion_state === "verified" ? "bg-emerald/12 text-emerald-700 dark:text-emerald-300" : s.assertion_state === "inferred" ? "bg-violet/12 text-violet-700 dark:text-violet-300" : "bg-neutral-500/10 text-neutral-500"}`}>
+                              {s.assertion_state}
+                            </span>
                             <select name="role" defaultValue={s.role} className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-xs dark:border-neutral-700">
                               {ROLES.map((r) => <option key={r} value={r}>{r.replace(/_/g, " ")}</option>)}
                             </select>

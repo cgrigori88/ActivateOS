@@ -129,6 +129,20 @@ export function MotionConstraintsPanel({ funnels, qs }: { funnels: MotionFunnelV
                 ))}
               </div>
             )}
+            {/* Informational overlays (P1C §12) — real canonical signals that never gate:
+                stakeholder coverage, weak evidence, contested routes. Kept visually apart from the
+                gating rows so the constrained-$ figure stays reconciled to the funnel cohorts. */}
+            {agg.overlays.length > 0 && (
+              <div className="mt-2 border-t border-neutral-200/70 pt-1.5 dark:border-neutral-800">
+                <span className="px-2.5 text-[10px] font-bold uppercase tracking-[0.05em] text-neutral-400">Informational — never gates</span>
+                <div className="mt-0.5 space-y-0.5">
+                  {agg.overlays.map((r) => (
+                    <ConstraintAggregateRow key={r.family} label={r.label} count={r.count} exposureUsd={r.exposureUsd}
+                      severity={r.severity} href={qs({ mdrawer: f.hypothesis.taxonomyNodeId, mstage: `family:${r.family}` })} />
+                  ))}
+                </div>
+              </div>
+            )}
             <p className="mt-2 text-[10.5px] text-neutral-400">Grouped by each pursuit&rsquo;s primary blocker — the first failing canonical gate. Click a row for the exact pursuits.</p>
           </div>
         );
@@ -217,7 +231,8 @@ const DRAWER_PAGE = 30;
 
 export function MotionConstraintDrawer({ funnel, stage, closeHref }: { funnel: MotionFunnelView; stage: string; closeHref: string }) {
   const accounts = accountsAtStage(funnel, stage);
-  const famLabel = stage.startsWith("family:") ? aggregateConstraints(funnel).rows.find((r) => r.family === stage.slice(7))?.label : null;
+  const famAgg = stage.startsWith("family:") ? aggregateConstraints(funnel) : null;
+  const famLabel = famAgg ? (famAgg.rows.find((r) => r.family === stage.slice(7)) ?? famAgg.overlays.find((r) => r.family === stage.slice(7)))?.label : null;
   const title = famLabel ? `${famLabel} — ${funnel.hypothesis.name}`
     : stage === "not_ready" ? `Why aren't ${accounts.length} accounts ready?`
     : COHORT_META[stage] ? `${COHORT_META[stage].label} — ${funnel.hypothesis.name}`

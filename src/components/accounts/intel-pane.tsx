@@ -108,13 +108,24 @@ export function AccountIntelPane({ intel, closeHref, flat }: { intel: AccountInt
             </Row>
           )}
           {t.conflict && <Row k="Note"><span style={{ color: "var(--color-accent-attention)" }}>{t.conflict}</span></Row>}
+          {/* Stakeholder coverage context (P1C §8) — one honest line, never a directory. */}
+          {intel.stakeholders && (
+            <Row k="Buying team">
+              {intel.stakeholders.established
+                ? <Link href={`/pursuits/${intel.stakeholders.pursuitId}#stakeholders`} className="hover:underline">{intel.stakeholders.note}</Link>
+                : <span className="text-neutral-400">{intel.stakeholders.note}</span>}
+            </Row>
+          )}
         </Section>
 
         <Section label="What next" accent="var(--color-readiness)">
           {intel.whatNext.motion && <Row k="Motion">{intel.whatNext.motion}</Row>}
           {intel.whatNext.governedAction && <Row k="Governed action">{intel.whatNext.governedAction}</Row>}
           {intel.whatNext.humanDecision && <Row k="Human decision"><b>{intel.whatNext.humanDecision}</b></Row>}
-          {!intel.whatNext.motion && !intel.whatNext.governedAction && !intel.whatNext.humanDecision && <span className="text-neutral-400">No pending action.</span>}
+          {intel.stakeholders?.gapNote && (
+            <Row k="Stakeholders"><span style={{ color: "var(--color-accent-attention)" }}>{intel.stakeholders.gapNote}</span></Row>
+          )}
+          {!intel.whatNext.motion && !intel.whatNext.governedAction && !intel.whatNext.humanDecision && !intel.stakeholders?.gapNote && <span className="text-neutral-400">No pending action.</span>}
           <div className="pt-1"><Link href={`/pursuits`} className="text-[11.5px] font-medium text-accent hover:underline dark:text-blue-400">Open in Pursuits →</Link></div>
         </Section>
       </div>

@@ -72,8 +72,14 @@ const FAMILY_LABEL: Record<string, string> = {
   ROUTE_DISQUALIFIED: "No viable route", NO_ROUTE_SNAPSHOT: "No route computed",
   NO_PURSUIT: "No canonical pursuit", MOTION_NOT_APPROVED: "Motion approval pending",
   NO_MOTION_INSTANCE: "Motion not drafted", BELOW_PROPENSITY_BAND: "Below qualifying band",
+  // Informational overlay families (never gate) — aggregated separately below.
+  STAKEHOLDER_GAP: "Economic buyer not verified", WEAK_EVIDENCE: "Evidence confidence low",
+  ROUTE_CONTESTED: "Route contested",
 };
-export function aggregateConstraints(view: MotionFunnelView): { totalUsd: number; rows: ConstraintAggregate[] } {
+/** Families whose constraints are informational overlays — they never gate a stage, so their
+ *  aggregation counts ANY account carrying them (they can never be a "primary blocker"). */
+export const INFORMATIONAL_FAMILIES = new Set(["STAKEHOLDER_GAP", "WEAK_EVIDENCE", "ROUTE_CONTESTED"]);
+export function aggregateConstraints(view: MotionFunnelView): { totalUsd: number; rows: ConstraintAggregate[]; overlays: ConstraintAggregate[] } {
   const by = new Map<string, ConstraintAggregate>();
   let totalUsd = 0;
   for (const a of view.accounts) {
@@ -86,7 +92,19 @@ export function aggregateConstraints(view: MotionFunnelView): { totalUsd: number
     if (!row) { row = { family, label: FAMILY_LABEL[family] ?? family.replace(/_/g, " ").toLowerCase(), severity: p.severity, count: 0, exposureUsd: 0, accounts: [] }; by.set(family, row); }
     row.count++; row.exposureUsd += a.expectedValue ?? 0; row.accounts.push(a);
   }
-  return { totalUsd, rows: [...by.values()].sort((x, y) => y.exposureUsd - x.exposureUsd) };
+  // Informational overlays (P1C §12): "Economic buyer not verified · 4 pursuits · $2.8M" — counted
+  // across ALL accounts carrying the overlay, kept apart from the gating rows so the funnel's
+  // reconciliation and the constrained-$ figure are untouched (overlays never gate; locked P1A).
+  const ov = new Map<string, ConstraintAggregate>();
+  for (const a of view.accounts) {
+    for (const fam of new Set(a.constraints.filter((c) => !c.gating).map((c) => c.code.split(":")[0]))) {
+      if (!INFORMATIONAL_FAMILIES.has(fam)) continue;
+      let row = ov.get(fam);
+      if (!row) { row = { family: fam, label: FAMILY_LABEL[fam] ?? fam.replace(/_/g, " ").toLowerCase(), severity: "UNKNOWN", count: 0, exposureUsd: 0, accounts: [] }; ov.set(fam, row); }
+      row.count++; row.exposureUsd += a.expectedValue ?? 0; row.accounts.push(a);
+    }
+  }
+  return { totalUsd, rows: [...by.values()].sort((x, y) => y.exposureUsd - x.exposureUsd), overlays: [...ov.values()].sort((x, y) => y.exposureUsd - x.exposureUsd) };
 }
 
 export interface MotionFunnelStage { key: string; label: string; count: number }
@@ -231,7 +249,8 @@ async function buildFunnel(
     // Stakeholder coverage where existing data supports it (linked opportunities' stakeholder map).
     const gaps = pursuitIds.length
       ? await db.query<{ pursuit_id: string; has_eb: boolean }>(
-          `select o.pursuit_id, bool_or(exists (select 1 from stakeholders st where st.opportunity_id = o.id and st.role = 'economic_buyer')) has_eb
+          `select o.pursuit_id, bool_or(exists (select 1 from stakeholders st where st.opportunity_id = o.id and st.role = 'economic_buyer'
+                    and st.assertion_state = 'verified')) has_eb
              from opportunities o where o.pursuit_id = any($1) group by o.pursuit_id`, [pursuitIds])
       : { rows: [] as { pursuit_id: string; has_eb: boolean }[] };
     const gapBy = new Map(gaps.rows.map((g) => [g.pursuit_id, g.has_eb]));
@@ -418,7 +437,8 @@ function decompose(r: GateRow): MotionConstraint[] {
     cs.push({ code: "ROUTE_CONTESTED", label: "Two partners within 6 relationship points — route contested", severity: "SOFT", gating: false, refType: "relationship", refId: null, remedy: r.pursuitId ? { label: "Compare routes", deepLink: `/pursuits/${r.pursuitId}#route` } : null });
   }
   for (const role of r.stakeholderGapRoles) {
-    cs.push({ code: `STAKEHOLDER_GAP:${role}`, label: `No verified ${ROLE(role)} on the linked opportunity`, severity: "UNKNOWN", gating: false, refType: "stakeholders", refId: r.pursuitId, remedy: null });
+    cs.push({ code: `STAKEHOLDER_GAP:${role}`, label: `No verified ${ROLE(role)} on the linked opportunity`, severity: "UNKNOWN", gating: false, refType: "stakeholders", refId: r.pursuitId,
+      remedy: r.pursuitId ? { label: "Verify role", skill: "assert_stakeholder_role", deepLink: `/pursuits/${r.pursuitId}#stakeholders` } : null });
   }
   return cs;
 }
@@ -436,8 +456,11 @@ function classify(constraints: MotionConstraint[]): Cohort {
 /** Accounts that PASS a given funnel stage (same predicates the stage counts use). */
 export function accountsAtStage(view: MotionFunnelView, stage: string): FunnelAccount[] {
   // Constraint-family drill (Constraints view): accounts whose PRIMARY blocker is this family.
+  // Informational families can never BE a primary blocker, so their drill matches any account
+  // carrying the overlay — the same membership the overlay aggregate counts.
   if (stage.startsWith("family:")) {
     const fam = stage.slice(7);
+    if (INFORMATIONAL_FAMILIES.has(fam)) return view.accounts.filter((a) => a.constraints.some((c) => !c.gating && c.code.split(":")[0] === fam));
     return view.accounts.filter((a) => primaryConstraint(a)?.code.split(":")[0] === fam);
   }
   const has = (a: FunnelAccount, code: string) => a.constraints.some((c) => c.gating && (c.code === code || c.code.startsWith(code + ":")));

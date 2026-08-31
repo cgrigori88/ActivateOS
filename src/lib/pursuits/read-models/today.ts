@@ -15,6 +15,9 @@ import { STAGE_PROBABILITY, type Stage } from "@/lib/opportunities/lifecycle";
 
 const DEMO_BANNER = "Demo environment — includes illustrative synthetic partner/distributor data.";
 
+/** P1C §11 materiality floor: stakeholder gaps surface on Today only above this expected value. */
+export const STAKEHOLDER_GAP_FLOOR_USD = 500_000;
+
 /**
  * Options (additive, back-compat): `companyIds` narrows the queue to an ecosystem scope
  * (scale-disclosure §1) — null/undefined = the full RLS-scoped set; `limit` caps the returned
@@ -102,6 +105,40 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
         [{ label: "Mark accepted", skill: "accept_team_member", sideEffect: "INTERNAL_WRITE" }],
         `/motions?mdrawer=${b.taxonomyNodeId}&mstage=not_ready`));
     }
+  }
+
+  // 2d) Material stakeholder gap (P1C §11) — exceptions only: a pursuit above the value floor
+  //     whose linked opportunity has NO VERIFIED economic buyer. One item per pursuit, and the
+  //     strongest KNOWN path is named ONLY when relationship evidence exists (a named seller with
+  //     an asserted account relationship). Overlap/ownership/selected-partner name nothing.
+  const ebGaps = await db.query<{ pursuit_id: string; company_id: string; account_label: string; ev: string | null; priority: string | null; synthetic: boolean; path_partner: string | null; path_seller: string | null }>(
+    `select pu.id pursuit_id, c.id company_id, c.legal_name account_label, pu.expected_value_weighted ev,
+            pu.current_priority_score priority, (pu.data_environment <> 'PRODUCTION') synthetic,
+            sp.partner_name path_partner, sp.seller_name path_seller
+       from pursuits pu
+       join companies c on c.id = pu.account_id
+       left join lateral (
+         select s.name seller_name, pn.name partner_name
+           from seller_account_relationships sar
+           join sellers s on s.id = sar.seller_id and s.org_id = $3
+           left join partners pn on pn.id = s.partner_id
+          where sar.company_id = pu.account_id and sar.strength > 0
+          order by sar.strength desc limit 1) sp on true
+      where pu.org_id = $3 and pu.status not in ('WON','LOST','DISQUALIFIED')
+        and coalesce(pu.expected_value_weighted, 0) >= ${STAKEHOLDER_GAP_FLOOR_USD}
+        and exists (select 1 from opportunities o where o.pursuit_id = pu.id)
+        and not exists (select 1 from opportunities o join stakeholders st on st.opportunity_id = o.id
+                         where o.pursuit_id = pu.id and st.role = 'economic_buyer' and st.assertion_state = 'verified')
+        and ($2::boolean is false or pu.account_id = any($1))`, [ids, scoped, caller.orgId]);
+  for (const g of ebGaps.rows) {
+    const evUsd = g.ev == null ? null : Number(g.ev);
+    items.push(mk("STAKEHOLDER_GAP", "ACTION_REQUIRED", "high", bandOf(n(g.priority)), g.pursuit_id, g.company_id, g.account_label,
+      `${evUsd != null ? `$${(evUsd / 1_000_000).toFixed(1)}M pursuit` : "Pursuit"} lacks a verified economic buyer`,
+      g.path_seller
+        ? `No verified buying authority. Strongest known path: ${g.path_partner ? `${g.path_partner} seller ` : ""}${g.path_seller} (account-level relationship).`
+        : "No verified buying authority, and no warm path is known — UNKNOWN, not zero.",
+      g.synthetic, new Date(), now,
+      [{ label: "Verify role", skill: "assert_stakeholder_role", sideEffect: "INTERNAL_WRITE" }], `/pursuits/${g.pursuit_id}#stakeholders`));
   }
 
   // 3) Material ledger changes (recent) → MATERIAL_CHANGE / RISK / OPPORTUNITY.

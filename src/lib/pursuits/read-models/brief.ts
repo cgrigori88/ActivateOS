@@ -56,10 +56,22 @@ export function buildPursuitBrief(
     if (c?.present) whyNow.push({ text: `${c.label}: ${c.detail ?? "present"}${c.commercialImplication ? ` — ${c.commercialImplication}` : ""}`, ref: c.refId ?? null });
   }
 
-  // WHO MATTERS — the confirmed/proposed team; a waiting or missing role is flagged.
+  // WHO MATTERS — the confirmed/proposed team; a waiting or missing role is flagged. Stakeholder
+  // Intelligence (P1C) adds the BUYING side from the same canonical projection the detail renders:
+  // names + roles + assertion states. Buying-side identity is confidential BY DEFAULT — every
+  // person-bearing line is withheld from the partner rendering.
   const who: BriefLine[] = d.team.members.map((m) => ({
     text: `${clean(m.role)}${m.partnerLabel ? ` — ${m.partnerLabel}` : m.personLabel ? ` — ${m.personLabel}` : ""} · ${clean(m.status).toLowerCase()}${m.waiting ? " (awaiting acceptance)" : ""}`,
   }));
+  const cov = d.stakeholders;
+  if (cov?.established) {
+    for (const r of cov.roles) {
+      if (r.person) who.push({ text: `${clean(r.role)} — ${r.person.name ?? "unnamed"} · ${r.state.toLowerCase()}${r.source ? ` (${r.source})` : ""}`, confidential: true });
+      else who.push({ text: `${clean(r.role)} — not identified.`, confidential: true });
+    }
+  } else if (cov) {
+    who.push({ text: "Buying-side stakeholder coverage not established yet (no linked opportunity).", confidential: true });
+  }
 
   // ROUTE — the recommendation and whether a human has decided (recommendation ≠ decision).
   const route: BriefLine[] = [];
@@ -83,7 +95,9 @@ export function buildPursuitBrief(
   const toSay: BriefLine[] = [{ text: d.thesis }, ...shareable.filter((s) => s.polarity >= 0).map((s) => ({ text: clean(s.text) }))];
 
   // WHAT TO ASK — the open questions (the read model's unknowns; asking is not claiming).
+  // Stakeholder coverage gaps drive their own questions ("Who owns final economic approval?").
   const toAsk: BriefLine[] = d.whyNow.unknowns.map((u) => ({ text: clean(u) }));
+  if (cov?.established) for (const q of cov.gapQuestions) toAsk.push({ text: q });
 
   // WHAT NOT TO CLAIM — the guardrail. Confidential figures that must not reach the partner, and
   // contested evidence that must not be asserted as settled.
@@ -91,10 +105,30 @@ export function buildPursuitBrief(
   for (const s of internal) if (isConfidentialFigure(s.text) && !shareText.has(clean(s.text))) notClaim.push({ text: `Do not share the confidential figure: ${clean(s.text)}.`, confidential: true, caution: true });
   if (ev) notClaim.push({ text: `Do not disclose expected value (${ev}) to the partner.`, confidential: true, caution: true });
   for (const c of d.whyNow.contradictions) notClaim.push({ text: `Contested — do not assert as settled: ${clean(c.text)}.`, caution: true });
+  // Unverified buying authority must never be presented as settled (P1C §9).
+  if (cov?.established) {
+    for (const r of cov.roles) {
+      if (r.state === "VERIFIED") continue;
+      notClaim.push({
+        text: r.state === "MISSING"
+          ? `${clean(r.role)} has not been identified — do not claim buying-side coverage there.`
+          : `${clean(r.role)} has not been verified (${r.state.toLowerCase()}) — do not present it as confirmed authority.`,
+        caution: true, confidential: true,
+      });
+    }
+  }
 
   // WHAT NEXT — the governed next steps: the route decision, waiting-on team, held roles, outcome.
   const next: BriefLine[] = [];
   if (rec && !r.decided) next.push({ text: `Make the governed route decision (approve ${rec.label} or override).` });
+  // Stakeholder gap as a next step (P1C §9) — with the best KNOWN path, or an honest UNKNOWN.
+  if (cov?.established) {
+    const gap = cov.roles.find((x) => x.role === "economic_buyer" && x.state !== "VERIFIED");
+    if (gap) {
+      const path = cov.warmPaths.find((p) => p.tier === "PERSON_VERIFIED") ?? cov.warmPaths.find((p) => p.tier === "SELLER_ACCOUNT");
+      next.push({ text: `Verify the economic buyer${path?.via ? ` — best known path via ${path.via}` : " — best known path UNKNOWN"}.`, confidential: true });
+    }
+  }
   for (const m of d.team.members.filter((m) => m.waiting)) next.push({ text: `Waiting on ${m.partnerLabel ?? clean(m.role)} to accept.` });
   for (const role of d.team.missingRequiredRoles) next.push({ text: `Confirm and staff the required role: ${clean(role)}.` });
   if (outcome?.latest) next.push({ text: `Outcome recorded: ${clean(outcome.latest.label)}${outcome.attribution ? ` · attribution ${outcome.attribution.effectiveClass}` : ""}.` });

@@ -16,6 +16,8 @@ export interface AccountIntel {
     /** Strongest seller path (P1B.5): tiered + decayed evidence; UNKNOWN recency stays UNKNOWN. */
     sellerPath: { name: string; partnerLabel: string | null; tier: string; recency: string; assigned: boolean } | null };
   whatNext: { motion: string | null; governedAction: string | null; humanDecision: string | null };
+  /** Stakeholder Intelligence (P1C §8): coverage context around the pursuit — null when no pursuit. */
+  stakeholders: { established: boolean; note: string; gapNote: string | null; pursuitId: string } | null;
 }
 
 export async function getAccountIntel(db: PoolClient, companyId: string): Promise<AccountIntel | null> {
@@ -61,6 +63,28 @@ export async function getAccountIntel(db: PoolClient, companyId: string): Promis
   const sellerPaths = orgRow?.org_id ? await getSellerPaths(db, orgRow.org_id, companyId) : [];
   const topSeller = sellerPaths[0] ?? null;
 
+  // Stakeholder coverage context (P1C §8) — the same canonical projection Pursuit Detail renders,
+  // reduced to two honest lines. No people are synthesized; pre-opportunity stays "not established".
+  let stakeholders: AccountIntel["stakeholders"] = null;
+  if (pursuit && orgRow?.org_id) {
+    const { getStakeholderCoverage, ROLE_WORD } = await import("@/lib/stakeholders/coverage");
+    const cov = await getStakeholderCoverage(db, orgRow.org_id, pursuit.id);
+    if (cov) {
+      if (!cov.established) {
+        stakeholders = { established: false, note: "Stakeholder coverage not established yet.", gapNote: null, pursuitId: pursuit.id };
+      } else {
+        const note = cov.roles.map((r) => `${ROLE_WORD(r.role)} ${r.state.toLowerCase()}`).join(" · ");
+        const eb = cov.roles.find((r) => r.role === "economic_buyer");
+        stakeholders = {
+          established: true, note, pursuitId: pursuit.id,
+          gapNote: eb && eb.state !== "VERIFIED"
+            ? `Economic buyer remains ${eb.state === "MISSING" ? "unidentified" : eb.state.toLowerCase()} — validate buying authority before an executive-value motion.`
+            : null,
+        };
+      }
+    }
+  }
+
   return {
     companyId, legalName: co.legal_name, industry: co.industry,
     hunt: {
@@ -91,5 +115,6 @@ export async function getAccountIntel(db: PoolClient, companyId: string): Promis
       governedAction: nextAction ? nextAction.action : null,
       humanDecision: overridden ? `Route overridden to ${route!.sel} — recommendation (${recName}) preserved` : (motion?.status === "draft" ? "Approve the drafted motion to activate" : null),
     },
+    stakeholders,
   };
 }

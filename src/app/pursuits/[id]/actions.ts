@@ -86,3 +86,37 @@ export async function decideTeamAction(
   }
   return result;
 }
+
+/**
+ * Governed stakeholder role assertion (P1C). The Stakeholder Intelligence panel calls this; it is
+ * the ONLY human entry point for buying-role assertions and runs through the single mutation
+ * authority (`dispatchSkill` → assert_stakeholder_role), never a bespoke write — the 0097 DB
+ * trigger makes any other path an error, not a convention.
+ */
+export async function assertStakeholderAction(pursuitId: string, formData: FormData): Promise<void> {
+  if (!pursuitExperienceEnabled()) return;
+  const opportunityId = String(formData.get("opportunityId") ?? "");
+  const contactId = String(formData.get("contactId") ?? "");
+  const role = String(formData.get("role") ?? "");
+  const assertionState = String(formData.get("assertionState") ?? "unverified");
+  const evidence = String(formData.get("evidence") ?? "").trim() || null;
+  if (!opportunityId || !contactId || !role) return;
+
+  const result = await withTenant(async (db, orgId) => {
+    if (!(await experienceEnabledFor(db, orgId))) return { ok: false as const };
+    const roleName = await currentRole(db);
+    if (roleName !== "owner" && roleName !== "operator") return { ok: false as const };
+    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1`, [pursuitId])).rows[0]?.data_environment ?? "PRODUCTION";
+    const dispatch = await dispatchSkill(db, "assert_stakeholder_role", { type: "USER", id: null, orgId, role: roleName }, {
+      pursuitId,
+      args: { opportunityId, contactId, role, assertionState, source: "human:pursuit-detail", evidence, basis: evidence ? ["human_statement"] : null },
+      dataEnvironment: env,
+    });
+    return { ok: dispatch.status === "EXECUTED" };
+  });
+
+  if (result.ok) {
+    revalidatePath(`/pursuits/${pursuitId}`);
+    revalidatePath("/");
+  }
+}
