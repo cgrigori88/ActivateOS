@@ -53,8 +53,15 @@ async function main() {
     if (!pick.rows[0]) { console.log("no CDW-recommended pursuit with alternatives — seed the demo first"); process.exit(1); }
     const { pursuit_id: pursuitId, org_id: orgA } = pick.rows[0];
 
-    // Clean start: recompute a fresh RECOMMENDED snapshot so the loop begins undecided (idempotent).
-    await tx(pool, orgA, (db) => recomputeRoute(db, pursuitId, new Date(), "DEMO"));
+    // Clean start: simulate a never-decided pursuit, then recompute a fresh RECOMMENDED snapshot.
+    // (A recompute now PRESERVES any human decision — the Part A invariant — so the reset must clear
+    // a prior test decision explicitly rather than rely on recompute to wipe it.)
+    await tx(pool, orgA, async (db) => {
+      await db.query(`update pursuit_route_snapshots set route_status='RECOMMENDED', selected_partner_id=null, selected_distributor_id=null where pursuit_id=$1 and is_current`, [pursuitId]);
+      await db.query(`update route_candidates set is_selected=false where route_snapshot_id in (select id from pursuit_route_snapshots where pursuit_id=$1 and is_current)`, [pursuitId]);
+      await db.query(`update pursuits set selected_partner_id=null where id=$1`, [pursuitId]);
+      await recomputeRoute(db, pursuitId, new Date(), "DEMO");
+    });
 
     // Identify recommended (CDW) + a non-recommended, non-disqualified alternative (prefer WWT).
     const before = await tx(pool, orgA, (db) => getRouteComparison(db, internal(orgA), pursuitId));

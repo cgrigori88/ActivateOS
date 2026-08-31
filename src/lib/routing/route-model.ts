@@ -25,25 +25,34 @@ export async function persistRoute(
 ): Promise<WriteRouteResult> {
   const top = candidates.find((c) => c.isRecommended) ?? null;
 
-  // Prior recommendation (for change detection).
-  const prior = await db.query<{ recommended_partner_id: string | null }>(
-    `select recommended_partner_id from pursuit_route_snapshots where pursuit_id = $1 and is_current`, [pursuitId],
+  // Prior snapshot: recommendation (for change detection) AND the authorized human selection.
+  // CANONICAL INVARIANT: a recompute may change the recommendation, but it MUST NOT erase a human
+  // decision. `recommended` is regenerated below; a prior SELECTED route is carried forward onto the
+  // new snapshot so recommendation ≠ decision survives the recompute. Only a subsequent governed
+  // decision (selectPartnerRoute) may change the selection — never this score/belief refresh.
+  const prior = await db.query<{ recommended_partner_id: string | null; selected_partner_id: string | null; selected_distributor_id: string | null; route_status: string | null }>(
+    `select recommended_partner_id, selected_partner_id, selected_distributor_id, route_status from pursuit_route_snapshots where pursuit_id = $1 and is_current`, [pursuitId],
   );
   const priorPartner = prior.rows[0]?.recommended_partner_id ?? null;
+  const wasSelected = prior.rows[0]?.route_status === "SELECTED" || prior.rows[0]?.selected_partner_id != null;
+  const carriedPartner = wasSelected ? (prior.rows[0]?.selected_partner_id ?? null) : null;
+  const carriedDistributor = wasSelected ? (prior.rows[0]?.selected_distributor_id ?? null) : null;
 
   const seqRow = await db.query<{ seq: number }>(`select coalesce(max(seq),0)+1 seq from pursuit_route_snapshots where pursuit_id = $1`, [pursuitId]);
   const seq = seqRow.rows[0].seq;
   await db.query(`update pursuit_route_snapshots set is_current = false where pursuit_id = $1 and is_current`, [pursuitId]);
 
-  const status = !top ? "REVIEW_REQUIRED" : "RECOMMENDED";
+  // A carried human decision keeps the snapshot SELECTED; otherwise the fresh recommendation stands.
+  const status = wasSelected ? "SELECTED" : !top ? "REVIEW_REQUIRED" : "RECOMMENDED";
   const snap = await db.query<{ id: string }>(
     `insert into pursuit_route_snapshots
        (org_id, pursuit_id, seq, is_current, as_of, route_topology, recommended_partner_id, recommended_distributor_id,
         route_score, route_confidence, route_status, route_model_version, partner_fit_version, seller_fit_version,
-        created_by_actor_type, data_environment)
-     values ($1,$2,$3,true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'system',$14) returning id`,
+        created_by_actor_type, data_environment, selected_partner_id, selected_distributor_id)
+     values ($1,$2,$3,true,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'system',$14,$15,$16) returning id`,
     [ctx.orgId, pursuitId, seq, asOf, top?.topology ?? "PARTNER_LED", top?.partnerId ?? null, top?.distributorId ?? null,
-     top?.totalScore ?? null, top?.candidateConfidence ?? null, status, ROUTE_MODEL_VERSION, PARTNER_FIT_VERSION, SELLER_FIT_VERSION, env],
+     top?.totalScore ?? null, top?.candidateConfidence ?? null, status, ROUTE_MODEL_VERSION, PARTNER_FIT_VERSION, SELLER_FIT_VERSION, env,
+     carriedPartner, carriedDistributor],
   );
   const snapshotId = snap.rows[0].id;
   let recommendedCandidateId: string | null = null;
@@ -79,6 +88,17 @@ export async function persistRoute(
         [candId, q.code, q.severity, q.refType, q.refId, q.detail],
       );
     }
+  }
+
+  // Carry the human selection onto the regenerated candidate set (recommendation ≠ decision).
+  // If the previously-selected route is still a candidate, mark it selected; the snapshot-level
+  // selected_partner_id is preserved regardless (set above), so the decision is never lost.
+  if (wasSelected) {
+    await db.query(
+      `update route_candidates set is_selected = true
+        where route_snapshot_id = $1 and (partner_id is not distinct from $2) and (distributor_id is not distinct from $3)`,
+      [snapshotId, carriedPartner, carriedDistributor],
+    );
   }
 
   // Participant path for the recommended topology.
