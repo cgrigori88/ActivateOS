@@ -13,6 +13,8 @@ import { TodayQueue } from "@/components/pursuit/today";
 import { SyntheticBadge } from "@/components/pursuit/parts";
 import type { TodayQueueView } from "@/lib/pursuits/read-models/types";
 import { getScopeContext, scopeParamFrom } from "@/lib/scope/server";
+import { getAccountIntel } from "@/lib/accounts/intel";
+import { IntelDrawer } from "@/components/intel/intel-drawer";
 
 export const dynamic = "force-dynamic";
 
@@ -133,6 +135,15 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const scope = await getScopeContext(scopeParamFrom(sp));
   const scopeIds = scope.companyIds;
 
+  // Contextual intelligence drawer (§4 / R7): fetched (and serialized) only when ?drawer= is present.
+  const drawerId = typeof sp.drawer === "string" ? sp.drawer : undefined;
+  const drawerIntel = drawerId ? await withTenant((db) => getAccountIntel(db, drawerId)) : null;
+  const preserved = new URLSearchParams();
+  for (const kk of ["scope", "today"]) { const v = sp[kk]; if (typeof v === "string") preserved.set(kk, v); }
+  const drawerHref = (companyId: string) => { const p = new URLSearchParams(preserved); p.set("drawer", companyId); const qs = p.toString(); return qs ? `/?${qs}` : "/"; };
+  const drawerCloseHref = preserved.toString() ? `/?${preserved.toString()}` : "/";
+  const drawerBase = preserved.toString();
+
   const nextActions = await loadNextActions();
 
   // Pursuit decision queue (D.5 §20): the operating queue — what needs my
@@ -228,7 +239,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           className="mb-6"
           aside={pursuitQueue.demoBanner ? <SyntheticBadge text="Demo environment" /> : undefined}
         >
-          <TodayQueue items={pursuitQueue.items} />
+          <TodayQueue items={pursuitQueue.items} drawerBase={drawerBase} />
           {!viewAll && decisionsTotal > pursuitQueue.items.length && (
             <div className="mt-3">
               <Link href={{ query: { ...cleanQuery(sp), today: "all" } }} className="text-[12.5px] font-semibold text-accent hover:underline dark:text-blue-400">
@@ -264,7 +275,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
               <li key={i} className="flex items-start gap-2.5 rounded-control px-2 py-1.5 text-sm transition-colors hover:bg-[var(--surface-inset)]">
                 <span className="mt-1 h-6 w-0.5 shrink-0 rounded-full" style={{ background: d.kind === "joint_vs_pipeline" ? "var(--color-accent-violet)" : "var(--color-accent-attention)" }} aria-hidden />
                 <span className="min-w-0 flex-1">
-                  <Link href={d.href} className="font-semibold hover:underline">{d.account}</Link>
+                  <Link href={drawerHref(d.companyId)} scroll={false} className="font-semibold hover:underline" title="Open account intelligence">{d.account}</Link>
                   <span className="text-neutral-500"> — {d.text}</span>
                 </span>
                 <span className="mt-0.5 shrink-0 text-[10px] font-semibold uppercase tracking-[0.04em] text-neutral-400">{d.kind.replace(/_/g, " ")}</span>
@@ -346,7 +357,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
             <ul className="space-y-2">
               {topRanked.map((r) => (
                 <li key={r.company_id} className="flex items-center justify-between text-sm">
-                  <Link href={`/accounts/${r.company_id}`} className="font-medium hover:underline">
+                  <Link href={drawerHref(r.company_id)} scroll={false} className="font-medium hover:underline" title="Open account intelligence">
                     {r.legal_name}
                   </Link>
                   <span className="flex items-center gap-2">
@@ -380,6 +391,8 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           </ul>
         )}
       </Card>
+
+      {drawerIntel && <IntelDrawer intel={drawerIntel} closeHref={drawerCloseHref} />}
     </main>
   );
 }

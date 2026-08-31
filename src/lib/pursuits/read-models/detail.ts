@@ -103,7 +103,7 @@ export async function getPursuitTeam(db: PoolClient, caller: Caller, pursuitId: 
     `select rc.activation_readiness_score from route_candidates rc join pursuit_route_snapshots sn on sn.id = rc.route_snapshot_id where sn.pursuit_id = $1 and sn.is_current and rc.is_recommended`, [pursuitId]);
   const gapActions: DecisionItem[] = missing.map((role) => ({
     id: `gap:${pursuitId}:${role}`, type: role.includes("SELLER") ? "SELLER_SELECTION" : "TEAM_REPLACEMENT", decisionClass: "ACTION_REQUIRED",
-    operationalUrgency: "high", commercialPriority: "high", pursuitId, accountLabel: "", title: `Assign ${role.replace(/_/g, " ").toLowerCase()}`,
+    operationalUrgency: "high", commercialPriority: "high", pursuitId, companyId: null, accountLabel: "", title: `Assign ${role.replace(/_/g, " ").toLowerCase()}`,
     reason: "Required role not yet accepted — lowers activation readiness.", allowedActions: [{ label: "Assign", skill: "assemble_pursuit_team", sideEffect: "INTERNAL_WRITE" }],
     deepLink: `/pursuits/${pursuitId}/route`, synthetic: false, at: new Date().toISOString(),
   }));

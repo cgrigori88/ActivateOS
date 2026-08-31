@@ -32,7 +32,12 @@ const condTone: Record<ConditionState, string> = {
   at_risk: "var(--color-accent-risk)", stalling: "var(--color-accent-attention)", healthy: "var(--color-route)", closed: "var(--color-neutral-400)",
 };
 
-export function PipelineAllTable({ rows }: { rows: AllRow[] }) {
+export function PipelineAllTable({ rows, drawerBase }: { rows: AllRow[]; drawerBase?: string }) {
+  const drawerHref = (companyId: string) => {
+    const p = new URLSearchParams(drawerBase ?? "");
+    p.set("drawer", companyId);
+    return `/pipeline?${p.toString()}`;
+  };
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortKey>("weightedUsd");
   const [dir, setDir] = useState<1 | -1>(-1);
@@ -100,7 +105,7 @@ export function PipelineAllTable({ rows }: { rows: AllRow[] }) {
               return (
                 <tr key={r.id} className="border-t hover:bg-[var(--surface-inset)]" style={{ borderColor: "var(--border-subtle)" }}>
                   <td className="px-3 py-1.5">
-                    <Link href={`/accounts/${r.companyId}`} className="font-medium hover:underline">{r.account}</Link>
+                    <Link href={drawerHref(r.companyId)} scroll={false} className="font-medium hover:underline" title="Open account intelligence">{r.account}</Link>
                     <span className="ml-1.5 text-[11px] text-neutral-400">{r.name}</span>
                   </td>
                   <td className="px-3 py-1.5 text-xs uppercase tracking-wide text-neutral-500">{r.stage.replace(/_/g, " ")}</td>

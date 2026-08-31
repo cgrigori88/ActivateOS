@@ -34,6 +34,7 @@ export interface DecisionItem {
   operationalUrgency: "critical" | "high" | "normal" | "low";   // distinct from commercial priority (§4)
   commercialPriority: Band;
   pursuitId: string | null;
+  companyId: string | null;    // account id for the contextual intelligence drawer (§4)
   accountLabel: string;
   title: string;
   reason: string;

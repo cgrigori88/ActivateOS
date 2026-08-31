@@ -34,8 +34,8 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
   const ids = opts.companyIds ?? [];
 
   // 1) Routes recommended but not yet selected → DECISION_REQUIRED.
-  const routes = await db.query<{ pursuit_id: string; account_label: string; priority: string | null; recommended: string | null; synthetic: boolean; at: Date }>(
-    `select sn.pursuit_id, c.legal_name account_label, pu.current_priority_score priority, p.name recommended,
+  const routes = await db.query<{ pursuit_id: string; company_id: string; account_label: string; priority: string | null; recommended: string | null; synthetic: boolean; at: Date }>(
+    `select sn.pursuit_id, c.id company_id, c.legal_name account_label, pu.current_priority_score priority, p.name recommended,
             (pu.data_environment <> 'PRODUCTION') synthetic, sn.calculated_at at
        from pursuit_route_snapshots sn
        join pursuits pu on pu.id = sn.pursuit_id
@@ -44,26 +44,26 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
       where sn.is_current and sn.route_status = 'RECOMMENDED' and sn.selected_partner_id is null
         and pu.status not in ('WON','LOST','DISQUALIFIED')
         and ($2::boolean is false or pu.account_id = any($1))`, [ids, scoped]);
-  for (const r of routes.rows) items.push(mk("ROUTE_APPROVAL", "DECISION_REQUIRED", "high", bandOf(n(r.priority)), r.pursuit_id, r.account_label,
+  for (const r of routes.rows) items.push(mk("ROUTE_APPROVAL", "DECISION_REQUIRED", "high", bandOf(n(r.priority)), r.pursuit_id, r.company_id, r.account_label,
     `Approve route${r.recommended ? ` via ${r.recommended}` : ""}`, "Recommended route is awaiting your approval.", r.synthetic, r.at, now,
     [{ label: "Approve", skill: "select_partner_route", sideEffect: "INTERNAL_WRITE" }, { label: "Override", skill: "override_partner_route", sideEffect: "INTERNAL_WRITE" }, { label: "Compare", skill: "explain_partner_route", sideEffect: "READ" }],
     `/pursuits/${r.pursuit_id}/route`));
 
   // 2) Fact reviews open → DECISION_REQUIRED (RISK operational when material predicate).
-  const reviews = await db.query<{ id: string; reason: string; created_at: Date; account_label: string | null; pursuit_id: string | null }>(
-    `select fr.id, fr.reason, fr.created_at, c.legal_name account_label, null::uuid pursuit_id
+  const reviews = await db.query<{ id: string; reason: string; created_at: Date; account_label: string | null; pursuit_id: string | null; company_id: string | null }>(
+    `select fr.id, fr.reason, fr.created_at, c.legal_name account_label, null::uuid pursuit_id, fc.company_id
        from fact_reviews fr
        left join fact_candidates fc on fc.id = fr.candidate_id
        left join companies c on c.id = fc.company_id
       where fr.human_decision is null and fr.system_recommendation = 'REVIEW'
         and ($2::boolean is false or fc.company_id = any($1))`, [ids, scoped]);
-  for (const rv of reviews.rows) items.push(mk("FACT_REVIEW", "DECISION_REQUIRED", "normal", "moderate", rv.pursuit_id, rv.account_label ?? "Account",
+  for (const rv of reviews.rows) items.push(mk("FACT_REVIEW", "DECISION_REQUIRED", "normal", "moderate", rv.pursuit_id, rv.company_id, rv.account_label ?? "Account",
     "Review a proposed fact", rv.reason, false, rv.created_at, now,
     [{ label: "Accept", skill: "review_fact", sideEffect: "INTERNAL_WRITE" }, { label: "Reject", skill: "review_fact", sideEffect: "INTERNAL_WRITE" }], `/review`));
 
   // 3) Material ledger changes (recent) → MATERIAL_CHANGE / RISK / OPPORTUNITY.
-  const changes = await db.query<{ id: string; pursuit_id: string; change_type: string; reason: string | null; before_state: Record<string, unknown> | null; after_state: Record<string, unknown> | null; materiality: string; recorded_at: Date; account_label: string; priority: string | null; synthetic: boolean }>(
-    `select cl.id, cl.pursuit_id, cl.change_type, cl.reason, cl.before_state, cl.after_state, cl.materiality, cl.recorded_at,
+  const changes = await db.query<{ id: string; pursuit_id: string; company_id: string; change_type: string; reason: string | null; before_state: Record<string, unknown> | null; after_state: Record<string, unknown> | null; materiality: string; recorded_at: Date; account_label: string; priority: string | null; synthetic: boolean }>(
+    `select cl.id, cl.pursuit_id, c.id company_id, cl.change_type, cl.reason, cl.before_state, cl.after_state, cl.materiality, cl.recorded_at,
             c.legal_name account_label, pu.current_priority_score priority, (cl.data_environment <> 'PRODUCTION') synthetic
        from change_ledger cl
        join pursuits pu on pu.id = cl.pursuit_id
@@ -74,7 +74,7 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
   for (const ch of changes.rows) {
     const cls = classifyChange(ch.change_type);
     if (!cls || !isMaterial(ch.materiality)) continue;
-    items.push(mk(ch.change_type, cls, cls === "RISK" ? "high" : "normal", bandOf(n(ch.priority)), ch.pursuit_id, ch.account_label,
+    items.push(mk(ch.change_type, cls, cls === "RISK" ? "high" : "normal", bandOf(n(ch.priority)), ch.pursuit_id, ch.company_id, ch.account_label,
       humanChange(ch.change_type), ch.reason ?? "", ch.synthetic, ch.recorded_at, now,
       [{ label: "Open", skill: "explain_partner_route", sideEffect: "READ" }], `/pursuits/${ch.pursuit_id}`, brief(ch.before_state), brief(ch.after_state)));
   }
@@ -139,9 +139,9 @@ async function orgHasSynthetic(db: PoolClient, orgId: string): Promise<boolean> 
   return Number(rows[0].n) > 0;
 }
 
-function mk(type: string, decisionClass: DecisionClass, urgency: OperationalUrgency, priority: DecisionItem["commercialPriority"], pursuitId: string | null, accountLabel: string, title: string, reason: string, synthetic: boolean, at: Date, now: number, allowedActions: DecisionItem["allowedActions"], deepLink: string, before: string | null = null, after: string | null = null): DecisionItem {
+function mk(type: string, decisionClass: DecisionClass, urgency: OperationalUrgency, priority: DecisionItem["commercialPriority"], pursuitId: string | null, companyId: string | null, accountLabel: string, title: string, reason: string, synthetic: boolean, at: Date, now: number, allowedActions: DecisionItem["allowedActions"], deepLink: string, before: string | null = null, after: string | null = null): DecisionItem {
   void now;
-  return { id: `${type}:${pursuitId ?? "x"}:${at.getTime()}`, type, decisionClass, operationalUrgency: urgency, commercialPriority: priority, pursuitId, accountLabel, title, reason, before, after, allowedActions, deepLink, synthetic, at: at.toISOString() };
+  return { id: `${type}:${pursuitId ?? "x"}:${at.getTime()}`, type, decisionClass, operationalUrgency: urgency, commercialPriority: priority, pursuitId, companyId, accountLabel, title, reason, before, after, allowedActions, deepLink, synthetic, at: at.toISOString() };
 }
 function humanChange(ct: string): string {
   return ({ ROUTE_RECOMMENDATION_CHANGED: "Recommended route changed", SCORE_CHANGED: "Score changed", FACT_PROMOTED: "New fact promoted", CONVERGENCE_CHANGED: "Signal convergence changed", WHY_NOW_CHANGED: "Why Now updated", CONTRADICTION_DETECTED: "Conflicting evidence detected", PARTNER_DECLINED: "Partner declined", CUSTOMER_ENGAGED: "Customer engaged", OPPORTUNITY_LINKED: "Opportunity created" } as Record<string, string>)[ct] ?? ct;

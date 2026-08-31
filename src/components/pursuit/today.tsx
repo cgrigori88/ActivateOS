@@ -39,10 +39,13 @@ function whyHere(item: DecisionItem): string[] {
   ];
 }
 
-export function TodayDecisionCard({ item }: { item: DecisionItem }) {
+export function TodayDecisionCard({ item, drawerBase }: { item: DecisionItem; drawerBase?: string }) {
   const hue = CLASS_HUE[item.decisionClass];
   const action = item.allowedActions[0];
   const factors = whyHere(item);
+  const drawerHref = item.companyId && drawerBase !== undefined
+    ? (() => { const p = new URLSearchParams(drawerBase); p.set("drawer", item.companyId!); const qs = p.toString(); return qs ? `/?${qs}` : "/"; })()
+    : null;
   return (
     <div
       className="pos-lift flex items-center gap-4 rounded-card p-4"
@@ -55,7 +58,9 @@ export function TodayDecisionCard({ item }: { item: DecisionItem }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[14.5px] font-bold">
-          <span className="truncate">{item.accountLabel}</span>
+          {drawerHref
+            ? <Link href={drawerHref} scroll={false} className="truncate hover:underline" title="Open account intelligence">{item.accountLabel}</Link>
+            : <span className="truncate">{item.accountLabel}</span>}
           <span className="truncate text-[12.5px] font-medium text-neutral-500">{item.title}</span>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-neutral-500">
@@ -86,7 +91,7 @@ export function TodayDecisionCard({ item }: { item: DecisionItem }) {
   );
 }
 
-export function TodayQueue({ items }: { items: DecisionItem[] }) {
+export function TodayQueue({ items, drawerBase }: { items: DecisionItem[]; drawerBase?: string }) {
   if (!items.length) return <p className="text-[13px] text-neutral-500">Nothing needs a decision right now.</p>;
-  return <div className="flex flex-col gap-2.5">{items.map((it) => <TodayDecisionCard key={it.id} item={it} />)}</div>;
+  return <div className="flex flex-col gap-2.5">{items.map((it) => <TodayDecisionCard key={it.id} item={it} drawerBase={drawerBase} />)}</div>;
 }

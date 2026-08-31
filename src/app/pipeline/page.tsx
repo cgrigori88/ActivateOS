@@ -41,6 +41,8 @@ import { opportunityCondition, type ConditionState } from "@/lib/opportunities/c
 import { buildPortfolio, availableDims, type PortfolioOpp, type RowDim, type ColDim } from "@/lib/opportunities/portfolio";
 import { PortfolioMatrix } from "@/components/pipeline/portfolio-matrix";
 import { PipelineAllTable } from "@/components/pipeline/all-table";
+import { getAccountIntel } from "@/lib/accounts/intel";
+import { IntelDrawer } from "@/components/intel/intel-drawer";
 
 const MEDDPICC_STATUSES: Status[] = ["unknown", "gap", "weak", "strong"];
 
@@ -397,6 +399,17 @@ export default async function PipelinePage({
     if (!cond.needsAttention) return false;
     return !condFilter || cond.state === condFilter;
   });
+
+  // Contextual intelligence drawer (§4 / R7): body fetched (and serialized) ONLY when ?drawer= is
+  // present — closed drawers leak nothing. Reuses getAccountIntel (the viewer's RLS-scoped projection).
+  const drawerId = qp("drawer");
+  const drawerIntel = drawerId ? await withTenant((db) => getAccountIntel(db, drawerId)) : null;
+  // Preserve the whole view (filters, scope, sort) across open/close — the drawer never navigates away.
+  const preserved = new URLSearchParams();
+  for (const k of ["view", "timeframe", "stage", "partner", "quote", "qual", "scope", "prow", "pcol", "cond"] as const) { const v = qp(k); if (v) preserved.set(k, v); }
+  const drawerHref = (companyId: string) => { const p = new URLSearchParams(preserved); p.set("drawer", companyId); return `/pipeline?${p.toString()}`; };
+  const drawerCloseHref = `/pipeline${preserved.toString() ? `?${preserved.toString()}` : ""}`;
+  const drawerBase = preserved.toString();
 
   return (
     <main>
@@ -781,6 +794,7 @@ export default async function PipelinePage({
       {/* ALL (§3.3 / R5): the exhaustive book as one dense, sortable, virtualized table. */}
       {view === "all" && visible.length > 0 && (
         <PipelineAllTable
+          drawerBase={drawerBase}
           rows={[...visible].map((o) => {
             const cond = opportunityCondition({ stage: o.stage, updatedAt: o.updated_at }, momentum.get(o.id));
             const amt = o.amount_usd != null ? Number(o.amount_usd) : null;
@@ -931,7 +945,7 @@ export default async function PipelinePage({
 
               {/* Header — identity, outcome/stage, materiality amount, route */}
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pl-1.5">
-                <Link href={`/accounts/${o.company_id}`} className="text-[15px] font-bold hover:underline">{o.name}</Link>
+                <Link href={drawerHref(o.company_id)} scroll={false} className="text-[15px] font-bold hover:underline" title="Open account intelligence">{o.name}</Link>
                 {closed
                   ? <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.04em]" style={won ? { background: "color-mix(in srgb, var(--color-accent-verified) 14%, transparent)", color: "var(--color-accent-verified)" } : { background: "var(--surface-inset)", color: "var(--color-neutral-500)" }}>{won ? "Closed won" : "Closed lost — no decision"}</span>
                   : <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-neutral-500">{o.stage.replace(/_/g, " ")}</span>}
@@ -1082,6 +1096,8 @@ export default async function PipelinePage({
         })}
       </div>
       )}
+
+      {drawerIntel && <IntelDrawer intel={drawerIntel} closeHref={drawerCloseHref} />}
     </main>
   );
 }
