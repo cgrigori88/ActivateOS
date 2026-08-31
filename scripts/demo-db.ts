@@ -151,7 +151,7 @@ async function seed(pool: Pool) {
   // R1-G2/G8 — enable the pursuit experience + federation per-tenant for every demo org
   // (vendor sponsor, distributor participant, guest outsider) so the R1-G8 pilot can view
   // the SAME canonical pursuit through the authenticated app from each viewpoint. The
-  // gates are env-master AND per-org; outcome_learning stays OFF (synthetic tenants).
+  // gates are env-master AND per-org.
   for (const org of [s.vendor, distributor, s.partnerOrg]) {
     await asOrg(org, async (db) => {
       for (const flag of ["pursuits", "facts", "routing", "pursuit_experience", "federation", "governed_action"] as const) {
@@ -159,6 +159,11 @@ async function seed(pool: Pool) {
       }
     });
   }
+  // The vendor SPONSOR also gets outcome_learning ON — it is the org that records commercial
+  // outcomes, so the Phase B closed learning half (outcome → honest attribution → recompute) and
+  // the disclosure-aware Brief's outcome line are demonstrable without a manual DB tweak. Kept to
+  // the sponsor; the participant/guest tenants stay OFF.
+  await asOrg(s.vendor, (db) => setOrgFeature(db, s.vendor, "outcome_learning", true, { reason: "demo sponsor — closed learning loop" }));
 
   return { vendor: s.vendor, partnerOrg: s.partnerOrg, hero, second, foreign };
 }
