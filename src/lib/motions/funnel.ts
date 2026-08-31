@@ -91,7 +91,8 @@ export async function getMotionFunnels(
 ): Promise<MotionFunnelView[]> {
   const hyps = await db.query<{ id: string; slug: string; name: string; thesis: string | null; statuses: string[] }>(
     `select n.id, n.slug, n.name,
-            (select m2.thesis from revenue_motions m2 where m2.taxonomy_node_id = n.id and m2.org_id = $1 order by m2.created_at desc limit 1) thesis,
+            (select m2.thesis from revenue_motions m2 where m2.taxonomy_node_id = n.id and m2.org_id = $1
+              order by (m2.status = 'active') desc, (m2.status = 'approved') desc, m2.created_at desc limit 1) thesis,
             array_agg(m.status) statuses
        from revenue_motions m join taxonomy_nodes n on n.id = m.taxonomy_node_id
       where m.org_id = $1 group by n.id, n.slug, n.name order by n.name`, [orgId]);

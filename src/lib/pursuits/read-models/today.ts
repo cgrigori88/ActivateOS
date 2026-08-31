@@ -96,8 +96,8 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
     const blockage = await motionAcceptanceBlockage(db, caller.orgId);
     for (const b of blockage) {
       items.push(mk("MOTION_ACCEPTANCE_BLOCKED", "ACTION_REQUIRED", "high", "high", null, null, b.name,
-        `$${(b.blockedUsd / 1_000_000).toFixed(1)}M of ${b.name} is blocked by partner acceptance`,
-        `${b.pursuits} pursuit${b.pursuits === 1 ? "" : "s"} on this hypothesis are waiting on a confirmed participant to accept.`,
+        `$${(b.blockedUsd / 1_000_000).toFixed(1)}M of ${b.name} is blocked by participant acceptance`,
+        `${b.pursuits} pursuit${b.pursuits === 1 ? "" : "s"} on this hypothesis are waiting on a confirmed participant (partner or vendor side) to accept.`,
         false, new Date(), now,
         [{ label: "Mark accepted", skill: "accept_team_member", sideEffect: "INTERNAL_WRITE" }],
         `/motions?mdrawer=${b.taxonomyNodeId}&mstage=not_ready`));
