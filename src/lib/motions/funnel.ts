@@ -40,6 +40,53 @@ export interface FunnelAccount {
   expectedValue: number | null;
   cohort: Cohort;
   constraints: MotionConstraint[];     // gating first, then informational
+  // Presentation fields (UX normalization) — read straight off the same canonical rows so the
+  // compact pursuits table needs no second fetch. Truth objects unchanged.
+  routeLabel: string | null;           // selected (or recommended) partner name
+  routeDecided: boolean;
+  team: { accepted: number; required: number; pending: number };
+  latestOutcome: string | null;        // latest terminal canonical outcome label, if any
+}
+
+/** The account's primary blocker: its first gating constraint (funnel-gate order). */
+export function primaryConstraint(a: FunnelAccount): MotionConstraint | null {
+  return a.constraints.find((c) => c.gating) ?? null;
+}
+
+/**
+ * Canonical blockers aggregated for the Constraints view (pure presentation — no stored table,
+ * no score): PRIMARY blocker per not-ready account, grouped by constraint family, with count and
+ * commercial exposure. "$2.1M currently constrained · Partner acceptance 3 pursuits · $1.2M".
+ */
+export interface ConstraintAggregate {
+  family: string;                      // code family (prefix before any ':<qualifier>')
+  label: string;
+  severity: ConstraintSeverity;
+  count: number;
+  exposureUsd: number;                 // Σ expected_value_weighted of the accounts it blocks
+  accounts: FunnelAccount[];           // the underlying pursuits (already ranked by value)
+}
+const FAMILY_LABEL: Record<string, string> = {
+  ACCEPTANCE_PENDING: "Participant acceptance", TIMING_UNKNOWN: "Timing UNKNOWN",
+  ROUTE_DECISION_PENDING: "Route decision pending", TEAM_ROLE_MISSING: "Team role not staffed",
+  ROUTE_DISQUALIFIED: "No viable route", NO_ROUTE_SNAPSHOT: "No route computed",
+  NO_PURSUIT: "No canonical pursuit", MOTION_NOT_APPROVED: "Motion approval pending",
+  NO_MOTION_INSTANCE: "Motion not drafted", BELOW_PROPENSITY_BAND: "Below qualifying band",
+};
+export function aggregateConstraints(view: MotionFunnelView): { totalUsd: number; rows: ConstraintAggregate[] } {
+  const by = new Map<string, ConstraintAggregate>();
+  let totalUsd = 0;
+  for (const a of view.accounts) {
+    if (a.cohort === "ready") continue;
+    const p = primaryConstraint(a);
+    if (!p) continue;
+    const family = p.code.split(":")[0];
+    totalUsd += a.expectedValue ?? 0;
+    let row = by.get(family);
+    if (!row) { row = { family, label: FAMILY_LABEL[family] ?? family.replace(/_/g, " ").toLowerCase(), severity: p.severity, count: 0, exposureUsd: 0, accounts: [] }; by.set(family, row); }
+    row.count++; row.exposureUsd += a.expectedValue ?? 0; row.accounts.push(a);
+  }
+  return { totalUsd, rows: [...by.values()].sort((x, y) => y.exposureUsd - x.exposureUsd) };
 }
 
 export interface MotionFunnelStage { key: string; label: string; count: number }
@@ -78,11 +125,13 @@ interface GateRow {
   companyId: string; name: string; band: string; score: number;
   pursuitId: string | null; pursuitType: string | null;
   timing: number | null; evidence: number | null; expectedValue: number | null;
-  snapshotId: string | null; routeStatus: string | null; viableCandidates: number; disqCodes: string[];
+  snapshotId: string | null; routeStatus: string | null; routeLabel: string | null;
+  viableCandidates: number; disqCodes: string[];
   acceptedRoles: string[]; invitedRoles: string[]; requiredRoles: string[];
   motionStatuses: string[];
   stakeholderGapRoles: string[];       // from linked opportunities' stakeholder map (informational)
   contested: boolean;                  // two partner relationship strengths within CONTESTED_WITHIN
+  latestOutcome: string | null;
 }
 
 /** All hypotheses (taxonomy nodes carrying motions) with their live funnels. */
@@ -135,9 +184,9 @@ async function buildFunnel(
   const rows: GateRow[] = evaluated.rows.map((r) => ({
     companyId: r.company_id, name: r.legal_name, band: r.band, score: Number(r.score),
     pursuitId: null, pursuitType: null, timing: null, evidence: null, expectedValue: null,
-    snapshotId: null, routeStatus: null, viableCandidates: 0, disqCodes: [],
+    snapshotId: null, routeStatus: null, routeLabel: null, viableCandidates: 0, disqCodes: [],
     acceptedRoles: [], invitedRoles: [], requiredRoles: [],
-    motionStatuses: [], stakeholderGapRoles: [], contested: false,
+    motionStatuses: [], stakeholderGapRoles: [], contested: false, latestOutcome: null,
   }));
   const byCompany = new Map(rows.map((r) => [r.companyId, r]));
 
@@ -148,16 +197,18 @@ async function buildFunnel(
     const pursuits = await db.query<{
       id: string; account_id: string; pursuit_type: string | null; status: string;
       timing: string | null; evidence: string | null; ev: string | null;
-      snapshot_id: string | null; route_status: string | null; viable: string | null; disq: string[] | null;
+      snapshot_id: string | null; route_status: string | null; route_label: string | null; viable: string | null; disq: string[] | null;
     }>(
       `select pu.id, pu.account_id, pu.pursuit_type, pu.status,
               pu.current_timing_score timing, pu.current_evidence_confidence_score evidence, pu.expected_value_weighted ev,
-              s.id snapshot_id, s.route_status,
+              s.id snapshot_id, s.route_status, coalesce(sp.name, rp.name) route_label,
               (select count(*) from route_candidates rc where rc.route_snapshot_id = s.id and not rc.disqualified)::text viable,
               (select array_agg(distinct d.code) from route_candidates rc join route_candidate_disqualifiers d on d.candidate_id = rc.id
                 where rc.route_snapshot_id = s.id) disq
          from pursuits pu
          left join pursuit_route_snapshots s on s.pursuit_id = pu.id and s.is_current
+         left join partners sp on sp.id = s.selected_partner_id
+         left join partners rp on rp.id = s.recommended_partner_id
         where pu.org_id = $1 and pu.product_category_id = $2 and pu.account_id = any($3)
           and pu.status not in ('WON','LOST','DISQUALIFIED') and pu.merged_into_pursuit_id is null`,
       [orgId, hyp.id, companyIds]);
@@ -185,6 +236,14 @@ async function buildFunnel(
       : { rows: [] as { pursuit_id: string; has_eb: boolean }[] };
     const gapBy = new Map(gaps.rows.map((g) => [g.pursuit_id, g.has_eb]));
 
+    // Latest terminal canonical outcome per pursuit (presentation column for the pursuits table).
+    const latestOutcomes = pursuitIds.length
+      ? await db.query<{ pursuit_id: string; outcome_label: string }>(
+          `select distinct on (pursuit_id) pursuit_id, outcome_label from pursuit_outcomes
+            where pursuit_id = any($1) and is_terminal order by pursuit_id, occurred_at desc`, [pursuitIds])
+      : { rows: [] as { pursuit_id: string; outcome_label: string }[] };
+    const outcomeBy = new Map(latestOutcomes.rows.map((o) => [o.pursuit_id, o.outcome_label]));
+
     // Pick each account's representative pursuit = most gates passed (deterministic tiebreak by id).
     for (const p of pursuits.rows) {
       const row = byCompany.get(p.account_id);
@@ -197,10 +256,11 @@ async function buildFunnel(
         timing: p.timing == null ? null : Number(p.timing),
         evidence: p.evidence == null ? null : Number(p.evidence),
         expectedValue: p.ev == null ? null : Number(p.ev),
-        snapshotId: p.snapshot_id, routeStatus: p.route_status,
+        snapshotId: p.snapshot_id, routeStatus: p.route_status, routeLabel: p.route_label,
         viableCandidates: Number(p.viable ?? 0), disqCodes: p.disq ?? [],
         acceptedRoles: team?.accepted ?? [], invitedRoles: team?.invited ?? [], requiredRoles: required,
         stakeholderGapRoles: gapBy.has(p.id) && !gapBy.get(p.id) ? ["economic_buyer"] : [],
+        latestOutcome: outcomeBy.get(p.id) ?? null,
       };
       const passes = (c: typeof cand) =>
         (c.snapshotId && c.viableCandidates > 0 ? 1 : 0) + (c.routeStatus === "SELECTED" ? 1 : 0) +
@@ -233,10 +293,19 @@ async function buildFunnel(
   // ---- Assemble constraints + cohorts (pure derivation) ----------------------------------------
   const accounts: FunnelAccount[] = rows.map((r) => {
     const constraints = decompose(r);
+    const acceptedSet = new Set(r.acceptedRoles);
+    const invitedSet = new Set(r.invitedRoles);
     return {
       companyId: r.companyId, name: r.name, band: r.band, score: r.score,
       pursuitId: r.pursuitId, expectedValue: r.expectedValue,
       cohort: classify(constraints), constraints,
+      routeLabel: r.routeLabel, routeDecided: r.routeStatus === "SELECTED",
+      team: {
+        accepted: r.requiredRoles.filter((role) => acceptedSet.has(role)).length,
+        required: r.requiredRoles.length,
+        pending: r.requiredRoles.filter((role) => invitedSet.has(role)).length,
+      },
+      latestOutcome: r.latestOutcome,
     };
   });
   accounts.sort((a, b) => (b.expectedValue ?? -1) - (a.expectedValue ?? -1));
@@ -366,6 +435,11 @@ function classify(constraints: MotionConstraint[]): Cohort {
 
 /** Accounts that PASS a given funnel stage (same predicates the stage counts use). */
 export function accountsAtStage(view: MotionFunnelView, stage: string): FunnelAccount[] {
+  // Constraint-family drill (Constraints view): accounts whose PRIMARY blocker is this family.
+  if (stage.startsWith("family:")) {
+    const fam = stage.slice(7);
+    return view.accounts.filter((a) => primaryConstraint(a)?.code.split(":")[0] === fam);
+  }
   const has = (a: FunnelAccount, code: string) => a.constraints.some((c) => c.gating && (c.code === code || c.code.startsWith(code + ":")));
   const qualified = (a: FunnelAccount) => QUALIFYING_BANDS.has(a.band);
   const routeViable = (a: FunnelAccount) => qualified(a) && !has(a, "NO_PURSUIT") && !has(a, "NO_ROUTE_SNAPSHOT") && !has(a, "ROUTE_DISQUALIFIED");

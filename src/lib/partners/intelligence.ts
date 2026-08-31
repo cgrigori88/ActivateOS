@@ -281,6 +281,84 @@ export async function getSellerPaths(db: PoolClient, orgId: string, companyId: s
 }
 
 /**
+ * "Where should I use this partner?" (UX normalization §5) — the OBSERVED activation pattern.
+ * Groups this partner's existing route/execution evidence by category × asserted relationship
+ * state and reports, per cell: pursuits where they appeared as a candidate, where the governed
+ * decision selected them, where they accepted, and the terminal canonical outcomes — each with
+ * its sample size. NOT a composite score, NOT a route-scoring input (fit-v2 stays deferred);
+ * cells below the calibrated-sample floor say "insufficient evidence", and a partner with no
+ * evidence at all is UNKNOWN — never fabricated.
+ */
+const MIN_CALIBRATED_SAMPLE = 5;   // below this, render observations, never conclusions (same floor as motions/funnel.ts)
+
+export interface ObservedActivationRow {
+  taxonomyNodeId: string | null; category: string;
+  relationshipState: "ACTIVE_RELATIONSHIP" | "ACCOUNT_OVERLAP" | "NONE";
+  segments: string[];                                   // industries observed in this cell — descriptor, not a dimension claim
+  candidate: number; selected: number; accepted: number;
+  outcomes: { won: number; lost: number; sample: number };   // terminal canonical outcomes on selected pursuits
+  sufficient: boolean;                                  // outcomes.sample ≥ calibrated floor
+}
+export interface ObservedActivationPattern {
+  rows: ObservedActivationRow[];
+  evidencePursuits: number;                             // distinct pursuits behind the whole pattern
+  status: "OBSERVED" | "INSUFFICIENT" | "UNKNOWN";      // UNKNOWN = no evidence at all, honestly
+}
+
+export async function getObservedActivationPattern(
+  db: PoolClient, orgId: string, partnerId: string,
+): Promise<ObservedActivationPattern> {
+  const { rows } = await db.query<{
+    node_id: string | null; category: string; rel: string; segs: string[] | null;
+    cand: string; sel: string; acc: string; won: string; lost: string; osample: string;
+  }>(
+    `with pp as (
+       select pu.id, pu.product_category_id, pu.account_id,
+              (pu.selected_partner_id = $2) as selected
+         from pursuits pu
+        where pu.org_id = $1
+          and (pu.selected_partner_id = $2
+               or exists (select 1 from pursuit_route_snapshots s
+                            join route_candidates rc on rc.route_snapshot_id = s.id
+                           where s.pursuit_id = pu.id and s.is_current and rc.partner_id = $2)))
+     select n.id node_id, coalesce(n.name, 'Uncategorized') category,
+            case when pr.strength >= 60 then 'ACTIVE_RELATIONSHIP'
+                 when pr.strength > 0 then 'ACCOUNT_OVERLAP' else 'NONE' end rel,
+            array_agg(distinct c.industry) filter (where c.industry is not null) segs,
+            count(*)::text cand,
+            count(*) filter (where pp.selected)::text sel,
+            count(*) filter (where exists (select 1 from pursuit_team_members tm
+                                            where tm.pursuit_id = pp.id and tm.partner_id = $2
+                                              and tm.status in ('ACCEPTED','ACTIVE')))::text acc,
+            count(*) filter (where pp.selected and exists (select 1 from pursuit_outcomes po
+                               where po.pursuit_id = pp.id and po.is_terminal and po.outcome_label = 'CLOSED_WON'))::text won,
+            count(*) filter (where pp.selected and exists (select 1 from pursuit_outcomes po
+                               where po.pursuit_id = pp.id and po.is_terminal and po.outcome_label = 'CLOSED_LOST'))::text lost,
+            count(*) filter (where pp.selected and exists (select 1 from pursuit_outcomes po
+                               where po.pursuit_id = pp.id and po.is_terminal))::text osample
+       from pp
+       join companies c on c.id = pp.account_id
+       left join taxonomy_nodes n on n.id = pp.product_category_id
+       left join partner_relationships pr on pr.partner_id = $2 and pr.company_id = pp.account_id
+      group by 1, 2, 3
+      order by count(*) desc, 2`, [orgId, partnerId]);
+
+  const out: ObservedActivationRow[] = rows.map((r) => ({
+    taxonomyNodeId: r.node_id, category: r.category,
+    relationshipState: r.rel as ObservedActivationRow["relationshipState"],
+    segments: r.segs ?? [],
+    candidate: Number(r.cand), selected: Number(r.sel), accepted: Number(r.acc),
+    outcomes: { won: Number(r.won), lost: Number(r.lost), sample: Number(r.osample) },
+    sufficient: Number(r.osample) >= MIN_CALIBRATED_SAMPLE,
+  }));
+  const evidencePursuits = out.reduce((s, r) => s + r.candidate, 0);
+  return {
+    rows: out, evidencePursuits,
+    status: evidencePursuits === 0 ? "UNKNOWN" : out.some((r) => r.sufficient) ? "OBSERVED" : "INSUFFICIENT",
+  };
+}
+
+/**
  * Execution-history EVIDENCE for a route candidate (P1B.2). Displayed beside the existing
  * dimensions on the compare — explicitly NOT an input to any score. Canonical outcomes +
  * attribution only; INTERNAL disclosure with a GENERALIZED substitute so the partner rendering

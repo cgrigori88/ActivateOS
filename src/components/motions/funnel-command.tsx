@@ -1,18 +1,19 @@
 import Link from "next/link";
-import type { MotionFunnelView, FunnelAccount, MotionConstraint } from "@/lib/motions/funnel";
-import { accountsAtStage } from "@/lib/motions/funnel";
+import type { MotionFunnelView, FunnelAccount } from "@/lib/motions/funnel";
+import { accountsAtStage, aggregateConstraints, primaryConstraint } from "@/lib/motions/funnel";
+import { ConstraintLine, ConstraintAggregateRow, usd, severityHue } from "@/components/intel/constraint-language";
 import { DrawerKeys } from "@/components/intel/drawer-keys";
 
 /**
- * Motion command view (Intelligence Wave P1A.1/P1A.5). The first viewport of a Motion: the
- * commercial funnel derived at read time from canonical records, cohorts, the canonical outcome
- * rollup with an explicit small-sample caveat, and the signature interaction — "why aren't the
- * other accounts ready?" — opening the constraint decomposition drawer. Every number is a link;
- * every chip is a canonical constraint with a governed remedy or deep link. Calm surface, dense
- * intelligence: one compact card per hypothesis, no card walls.
+ * Motion command surfaces (Intelligence Wave P1A, normalized in the UX pass). Simple by default,
+ * complete on demand:
+ *   Overview    — the hypothesis funnel, cohorts, $, honest outcome summary. Nothing else.
+ *   Constraints — canonical blockers aggregated by family × count × commercial exposure.
+ *   Pursuits    — the whole cut as ONE compact scale-native table (no card walls).
+ *   (Manage — the pre-existing motion-instance operations — lives on the page, off the default.)
+ * All derived at read time from the same funnel read-model; the drawer is the shared drill-in.
  */
 
-const money = (n: number | null) => (n == null ? null : n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : `$${Math.round(n / 1000)}k`);
 const COHORT_META: Record<string, { label: string; hue: string }> = {
   ready: { label: "execution-ready", hue: "var(--color-accent-verified)" },
   nearly_ready: { label: "nearly ready", hue: "var(--color-timing)" },
@@ -35,8 +36,8 @@ export function MotionFunnelCommand({ funnels, qs }: { funnels: MotionFunnelView
               <span className="text-xs text-neutral-400">{f.hypothesis.slug}</span>
               {f.addressableUsd != null && (
                 <span className="ml-auto text-[12.5px] tnum">
-                  <b>{money(f.addressableUsd)}</b> <span className="text-neutral-500">addressable</span>
-                  {f.readyUsd != null && <> · <b style={{ color: "var(--color-accent-verified)" }}>{money(f.readyUsd)}</b> <span className="text-neutral-500">ready</span></>}
+                  <b>{usd(f.addressableUsd)}</b> <span className="text-neutral-500">addressable</span>
+                  {f.readyUsd != null && <> · <b style={{ color: "var(--color-accent-verified)" }}>{usd(f.readyUsd)}</b> <span className="text-neutral-500">ready</span></>}
                 </span>
               )}
             </div>
@@ -74,7 +75,8 @@ export function MotionFunnelCommand({ funnels, qs }: { funnels: MotionFunnelView
               )}
             </div>
 
-            {/* Canonical outcome rollup — conservative with small samples (P1A.4). */}
+            {/* Canonical outcome rollup — conservative with small samples (P1A.4). Depth lives in
+                Insights (the analytical destination) — deliberately not duplicated here. */}
             <p className="mt-2.5 text-[11.5px] text-neutral-500">
               {o.pursuitsActivated > 0 && <>{o.pursuitsActivated} motion{o.pursuitsActivated === 1 ? "" : "s"} active · </>}
               {o.opportunitiesCreated > 0 && <>{o.opportunitiesCreated} opportunities (canonical linkage) · </>}
@@ -86,6 +88,7 @@ export function MotionFunnelCommand({ funnels, qs }: { funnels: MotionFunnelView
                     <> · attribution {Object.entries(o.byAttributionClass).map(([k, v]) => `${v} ${k}`).join(", ")}</>
                   )}
                   {!o.calibrated && <span className="text-neutral-400"> — sample too small for calibrated performance conclusions.</span>}
+                  {" · "}<Link href="/insights" className="hover:underline" style={{ color: "var(--color-route)" }}>calibration in Insights →</Link>
                 </>
               ) : (
                 <span className="text-neutral-400">No terminal outcomes observed yet.</span>
@@ -99,16 +102,124 @@ export function MotionFunnelCommand({ funnels, qs }: { funnels: MotionFunnelView
 }
 
 /**
- * Constraint decomposition drawer (P1A.2) — the "why aren't they ready" answer. Server-rendered
- * only when open (nothing serialized while closed); reuses the standard drawer shell so scope,
- * filters and scroll survive. Each account lists its gating constraints as canonical chips with
- * the governed remedy, then informational overlays dimmed beneath.
+ * Constraints view — the canonical blockers as commercial exposure, aggregated by family (pure
+ * presentation over the funnel; PRIMARY blocker per account, so figures reconcile to the cohort
+ * counts). Clicking a family opens the drawer scoped to exactly those pursuits.
+ */
+export function MotionConstraintsPanel({ funnels, qs }: { funnels: MotionFunnelView[]; qs: (extra: Record<string, string | null>) => string }) {
+  return (
+    <section className="mb-6 space-y-3">
+      {funnels.map((f) => {
+        const agg = aggregateConstraints(f);
+        return (
+          <div key={f.hypothesis.taxonomyNodeId} className="pos-card rounded-card p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-[15px] font-extrabold tracking-[-0.01em]">{f.hypothesis.name}</h2>
+              <span className="tnum text-[13px]">
+                {agg.totalUsd > 0 ? <><b>{usd(agg.totalUsd)}</b> <span className="text-neutral-500">currently constrained</span></> : <span className="text-neutral-500">nothing constrained</span>}
+              </span>
+            </div>
+            {agg.rows.length === 0 ? (
+              <p className="mt-2 text-[12.5px] text-neutral-500">Every evaluated account is execution-ready.</p>
+            ) : (
+              <div className="mt-2 space-y-0.5">
+                {agg.rows.map((r) => (
+                  <ConstraintAggregateRow key={r.family} label={r.label} count={r.count} exposureUsd={r.exposureUsd}
+                    severity={r.severity} href={qs({ mdrawer: f.hypothesis.taxonomyNodeId, mstage: `family:${r.family}` })} />
+                ))}
+              </div>
+            )}
+            <p className="mt-2 text-[10.5px] text-neutral-400">Grouped by each pursuit&rsquo;s primary blocker — the first failing canonical gate. Click a row for the exact pursuits.</p>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+/**
+ * Pursuits view — the whole cut as ONE compact scale-native table (Account · readiness · primary
+ * constraint · route · team · value · outcome). No card walls; rows deep-link; capped with an
+ * honest remainder note (scope/filters narrow further).
+ */
+const TABLE_CAP = 60;
+export function MotionPursuitsTable({ funnels, qs }: { funnels: MotionFunnelView[]; qs: (extra: Record<string, string | null>) => string }) {
+  return (
+    <section className="mb-6 space-y-3">
+      {funnels.map((f) => (
+        <div key={f.hypothesis.taxonomyNodeId} className="pos-card rounded-card p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-[15px] font-extrabold tracking-[-0.01em]">{f.hypothesis.name}</h2>
+            <span className="text-[11.5px] text-neutral-500">{f.accounts.length} evaluated · ranked by expected value</span>
+          </div>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse text-[12.5px]">
+              <thead>
+                <tr className="text-left text-[10px] font-bold uppercase tracking-[0.04em] text-neutral-500">
+                  <th className="px-2 py-1.5">Account</th><th className="px-2 py-1.5">Readiness</th>
+                  <th className="px-2 py-1.5">Primary constraint</th><th className="px-2 py-1.5">Route</th>
+                  <th className="px-2 py-1.5">Team</th><th className="px-2 py-1.5 text-right">Value</th><th className="px-2 py-1.5">Outcome</th>
+                </tr>
+              </thead>
+              <tbody>
+                {f.accounts.slice(0, TABLE_CAP).map((a) => {
+                  const p = primaryConstraint(a);
+                  const hue = COHORT_META[a.cohort].hue;
+                  return (
+                    <tr key={a.companyId} style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                      <td className="px-2 py-1.5">
+                        <Link href={a.pursuitId ? `/pursuits/${a.pursuitId}` : `/accounts/${a.companyId}`} className="font-semibold hover:underline">{a.name}</Link>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <span className="rounded-full px-1.5 py-px text-[10.5px] font-semibold" style={{ color: hue, background: `color-mix(in srgb, ${hue} 12%, transparent)` }}>{COHORT_META[a.cohort].label}</span>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {p ? (
+                          <Link href={qs({ mdrawer: f.hypothesis.taxonomyNodeId, mstage: `family:${p.code.split(":")[0]}` })} scroll={false}
+                            className="inline-flex max-w-[260px] items-center gap-1.5 hover:underline" title={p.label}>
+                            <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: severityHue(p.severity) }} />
+                            <span className="min-w-0 truncate">{p.label}</span>
+                          </Link>
+                        ) : <span style={{ color: "var(--color-accent-verified)" }}>all gates pass</span>}
+                      </td>
+                      <td className="px-2 py-1.5 text-neutral-600 dark:text-neutral-300">
+                        {a.routeLabel ? <>{a.routeLabel}{a.routeDecided ? "" : <span className="text-neutral-400"> · undecided</span>}</> : <span className="text-neutral-400">—</span>}
+                      </td>
+                      <td className="tnum px-2 py-1.5 text-neutral-600 dark:text-neutral-300">
+                        {a.team.required > 0 ? <>{a.team.accepted}/{a.team.required}{a.team.pending > 0 && <span style={{ color: "var(--color-timing)" }}> · {a.team.pending} pending</span>}</> : "—"}
+                      </td>
+                      <td className="tnum px-2 py-1.5 text-right font-semibold">{usd(a.expectedValue) ?? "—"}</td>
+                      <td className="px-2 py-1.5 text-[11.5px]">
+                        {a.latestOutcome ? <span className={a.latestOutcome === "CLOSED_WON" ? "font-semibold" : "text-neutral-500"} style={a.latestOutcome === "CLOSED_WON" ? { color: "var(--color-accent-verified)" } : undefined}>{a.latestOutcome.replace(/_/g, " ").toLowerCase()}</span> : <span className="text-neutral-400">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {f.accounts.length > TABLE_CAP && (
+            <p className="mt-2 text-[11.5px] text-neutral-400">Showing the top {TABLE_CAP} by expected value — narrow the scope to see a specific cut.</p>
+          )}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/**
+ * Constraint decomposition drawer (P1A.2, compressed in the UX pass). Two-second rule: each entry
+ * defaults to account · value · readiness + the PRIMARY blocker with its evidence-grounded line,
+ * then "+N additional constraints" expands to the full decomposition with governed remedies and
+ * informational overlays. Nothing removed — re-layered. Server-rendered only when open.
  */
 const DRAWER_PAGE = 30;
 
 export function MotionConstraintDrawer({ funnel, stage, closeHref }: { funnel: MotionFunnelView; stage: string; closeHref: string }) {
   const accounts = accountsAtStage(funnel, stage);
-  const title = stage === "not_ready" ? `Why aren't ${accounts.length} accounts ready?`
+  const famLabel = stage.startsWith("family:") ? aggregateConstraints(funnel).rows.find((r) => r.family === stage.slice(7))?.label : null;
+  const title = famLabel ? `${famLabel} — ${funnel.hypothesis.name}`
+    : stage === "not_ready" ? `Why aren't ${accounts.length} accounts ready?`
     : COHORT_META[stage] ? `${COHORT_META[stage].label} — ${funnel.hypothesis.name}`
     : `${funnel.stages.find((s) => s.key === stage)?.label ?? stage} — ${funnel.hypothesis.name}`;
   return (
@@ -124,15 +235,15 @@ export function MotionConstraintDrawer({ funnel, stage, closeHref }: { funnel: M
           </div>
           <Link href={closeHref} scroll={false} aria-label="Close" className="rounded-control px-2 py-0.5 text-sm text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200" style={{ boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}>✕</Link>
         </div>
-        <p className="mb-3 text-[11px] text-neutral-400">Ranked by expected value. Every chip is a canonical constraint — timing UNKNOWN stays unknown, nothing is inferred.</p>
+        <p className="mb-3 text-[11px] text-neutral-400">Ranked by expected value. The primary blocker leads; expand for the full canonical decomposition. UNKNOWN stays unknown — nothing is inferred.</p>
 
         {accounts.length === 0 ? (
           <p className="text-[13px] italic text-neutral-500">No accounts in this cut.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {accounts.slice(0, DRAWER_PAGE).map((a) => <AccountRow key={a.companyId} a={a} />)}
             {accounts.length > DRAWER_PAGE && (
-              <p className="text-[11.5px] text-neutral-400">+ {accounts.length - DRAWER_PAGE} more — narrow the scope or open the account list.</p>
+              <p className="text-[11.5px] text-neutral-400">+ {accounts.length - DRAWER_PAGE} more — narrow the scope or open the Pursuits view.</p>
             )}
           </div>
         )}
@@ -144,47 +255,44 @@ export function MotionConstraintDrawer({ funnel, stage, closeHref }: { funnel: M
 function AccountRow({ a }: { a: FunnelAccount }) {
   const gating = a.constraints.filter((c) => c.gating);
   const info = a.constraints.filter((c) => !c.gating);
+  const p = primaryConstraint(a);
+  const rest = gating.length - (p ? 1 : 0);
   const hue = COHORT_META[a.cohort].hue;
   return (
     <div className="rounded-card p-3" style={{ background: "var(--surface-inset)", boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}>
+      {/* Line 1 — account · value · readiness state (the two-second read). */}
       <div className="flex items-baseline justify-between gap-2">
         <Link href={a.pursuitId ? `/pursuits/${a.pursuitId}` : `/accounts/${a.companyId}`} className="min-w-0 truncate text-[13px] font-semibold hover:underline">{a.name}</Link>
         <span className="flex shrink-0 items-center gap-2 text-[11px]">
-          {a.expectedValue != null && <span className="tnum font-semibold">{money(a.expectedValue)}</span>}
+          {a.expectedValue != null && <span className="tnum font-semibold">{usd(a.expectedValue)}</span>}
           <span className="rounded-full px-1.5 py-px font-semibold" style={{ color: hue, background: `color-mix(in srgb, ${hue} 12%, transparent)` }}>{COHORT_META[a.cohort].label}</span>
         </span>
       </div>
-      {gating.length === 0 ? (
-        <p className="mt-1 text-[12px]" style={{ color: "var(--color-accent-verified)" }}>All gates pass — execution-ready.</p>
+      {/* Line 2 — the PRIMARY blocker, evidence-grounded, with its governed remedy. */}
+      {p ? (
+        <div className="mt-1.5">
+          <span className="text-[9.5px] font-bold uppercase tracking-[0.06em]" style={{ color: severityHue(p.severity) }}>Primary blocker</span>
+          <ConstraintLine c={{ blockedBy: p.label, severity: p.severity, action: p.remedy ? { label: p.remedy.label, deepLink: p.remedy.deepLink } : null }} />
+        </div>
       ) : (
-        <ul className="mt-1.5 space-y-1">
-          {gating.map((c, i) => <ConstraintChip key={i} c={c} />)}
-        </ul>
+        <p className="mt-1 text-[12px]" style={{ color: "var(--color-accent-verified)" }}>All gates pass — execution-ready.</p>
       )}
-      {info.length > 0 && (
-        <ul className="mt-1 space-y-0.5">
-          {info.map((c, i) => (
-            <li key={i} className="text-[11px] text-neutral-400">◦ {c.label}{c.remedy && <> · <Link href={c.remedy.deepLink} className="hover:underline">{c.remedy.label}</Link></>}</li>
-          ))}
-        </ul>
+      {/* Expand on demand — the complete decomposition, nothing removed. */}
+      {(rest > 0 || info.length > 0) && (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-[11px] font-medium text-neutral-500 hover:underline">
+            +{rest + info.length} additional constraint{rest + info.length === 1 ? "" : "s"}
+          </summary>
+          <ul className="mt-1.5 space-y-1">
+            {gating.filter((c) => c !== p).map((c, i) => (
+              <li key={i}><ConstraintLine dense c={{ blockedBy: c.label, severity: c.severity, action: c.remedy ? { label: c.remedy.label, deepLink: c.remedy.deepLink } : null }} /></li>
+            ))}
+            {info.map((c, i) => (
+              <li key={`i${i}`} className="text-[11px] text-neutral-400">◦ {c.label}{c.remedy && <> · <Link href={c.remedy.deepLink} className="hover:underline">{c.remedy.label}</Link></>}</li>
+            ))}
+          </ul>
+        </details>
       )}
     </div>
-  );
-}
-
-function ConstraintChip({ c }: { c: MotionConstraint }) {
-  const hue = c.severity === "HARD" ? "var(--color-accent-risk)" : c.severity === "UNKNOWN" ? "var(--color-neutral-500, #737373)" : "var(--color-accent-attention)";
-  return (
-    <li className="flex items-start gap-1.5 text-[12px]">
-      <span aria-hidden className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: hue }} />
-      <span className="min-w-0">
-        {c.label}
-        {c.remedy && (
-          <Link href={c.remedy.deepLink} className="ml-1.5 font-medium hover:underline" style={{ color: "var(--color-route)" }}>
-            {c.remedy.label} →
-          </Link>
-        )}
-      </span>
-    </li>
   );
 }

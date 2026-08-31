@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { PartnerActivationProfile } from "@/lib/partners/intelligence";
+import type { ObservedActivationPattern, PartnerActivationProfile } from "@/lib/partners/intelligence";
 
 /**
  * Partner Activation Profile (Intelligence Wave P1B.1/P1B.3). Presence, relationship, activation,
@@ -12,7 +12,55 @@ const TIER_LABEL: Record<string, string> = {
   ACTIVE_RELATIONSHIP: "active relationship", ACCOUNT_OVERLAP: "account overlap", NONE: "none asserted",
 };
 
-export function ActivationProfile({ p }: { p: PartnerActivationProfile }) {
+const REL_LABEL: Record<string, string> = {
+  ACTIVE_RELATIONSHIP: "active-relationship accounts", ACCOUNT_OVERLAP: "overlap-only accounts", NONE: "no asserted relationship",
+};
+
+/**
+ * "Where should I use this partner?" (UX normalization §5) — the observed activation pattern,
+ * rendered as evidence, never as a score: each row is category × relationship state with the
+ * candidate → selected → accepted → outcome trail and its sample size. Cells under the
+ * calibrated floor say so; a partner with no evidence is UNKNOWN.
+ */
+function ObservedPattern({ pattern, name }: { pattern: ObservedActivationPattern; name: string }) {
+  return (
+    <div className="mt-3 border-t border-neutral-200/70 pt-2.5 dark:border-neutral-800">
+      <span className="text-[10px] font-bold uppercase tracking-[0.05em] text-neutral-400">Where to activate · observed pattern</span>
+      {pattern.status === "UNKNOWN" ? (
+        <p className="mt-0.5 text-[12.5px] text-neutral-500">
+          UNKNOWN — {name} has no route or execution evidence yet. The pattern appears once they are candidates on routed pursuits; nothing is inferred in the meantime.
+        </p>
+      ) : (
+        <>
+          <ul className="mt-1 space-y-0.5 text-[12.5px]">
+            {pattern.rows.slice(0, 6).map((r, i) => (
+              <li key={i} className="flex flex-wrap items-baseline gap-x-1.5">
+                <span className="font-medium">{r.category}</span>
+                <span className="text-neutral-500">· {REL_LABEL[r.relationshipState]}</span>
+                <span className="tnum text-neutral-500">
+                  — candidate {r.candidate} · selected {r.selected} · accepted {r.accepted}
+                  {r.outcomes.sample > 0 && <> · <b style={{ color: "var(--color-accent-verified)" }}>{r.outcomes.won}W</b>/{r.outcomes.lost}L (n={r.outcomes.sample})</>}
+                </span>
+                {r.sufficient ? (
+                  <span className="rounded-full px-1.5 py-px text-[10px] font-bold" style={{ background: "color-mix(in srgb, var(--color-accent-verified) 12%, transparent)", color: "var(--color-accent-verified)" }}>observed</span>
+                ) : (
+                  <span className="rounded-full bg-neutral-500/10 px-1.5 py-px text-[10px] font-semibold text-neutral-500">insufficient evidence</span>
+                )}
+                {r.segments.length > 0 && <span className="text-[11px] text-neutral-400">segments: {r.segments.slice(0, 3).join(", ")}</span>}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-[11px] text-neutral-400">
+            {pattern.evidencePursuits} pursuit{pattern.evidencePursuits === 1 ? "" : "s"} of evidence · observations, not a score — nothing here feeds route scoring
+            {pattern.status === "INSUFFICIENT" && <> · every cell is below the calibrated floor (n≥5), so this reads as early observation only</>}.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function ActivationProfile({ p, pattern }: { p: PartnerActivationProfile; pattern?: ObservedActivationPattern }) {
   const asked = p.activation.askedToAccept;
   const activationGap = p.presence.overlapAccounts >= 5 && p.activation.selectedIn + p.activation.jointRoomsActive > 0
     ? Math.round(((p.activation.selectedIn + p.activation.jointRoomsActive) / p.presence.overlapAccounts) * 100)
@@ -93,6 +141,8 @@ export function ActivationProfile({ p }: { p: PartnerActivationProfile }) {
           )}
         </div>
       </div>
+
+      {pattern && <ObservedPattern pattern={pattern} name={p.name} />}
     </div>
   );
 }

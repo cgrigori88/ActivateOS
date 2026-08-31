@@ -16,7 +16,12 @@ import {
 import { initiativeOptions } from "@/lib/partnerships/initiatives";
 import { getScopeContext } from "@/lib/scope/server";
 import { getMotionFunnels } from "@/lib/motions/funnel";
-import { MotionFunnelCommand, MotionConstraintDrawer } from "@/components/motions/funnel-command";
+import {
+  MotionFunnelCommand,
+  MotionConstraintsPanel,
+  MotionPursuitsTable,
+  MotionConstraintDrawer,
+} from "@/components/motions/funnel-command";
 
 export const dynamic = "force-dynamic";
 // AI drafting actions invoked from this segment can run tens of seconds —
@@ -24,6 +29,17 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const STATUS_ORDER = ["draft", "approved", "active", "completed", "abandoned"];
+
+// View modes (UX normalization): simple by default, complete on demand. Overview is the
+// command picture; Constraints aggregates what blocks value; Pursuits is the scale-native
+// table; Manage carries the full administration surface (drafting, filters, lifecycle).
+const VIEW_SEGMENTS = [
+  { key: "overview", label: "Overview", hint: "Each hypothesis as a funnel — what can move now" },
+  { key: "constraints", label: "Constraints", hint: "What blocks value, aggregated by cause" },
+  { key: "pursuits", label: "Pursuits", hint: "Every account in the funnel, one row each" },
+  { key: "manage", label: "Manage", hint: "Draft, approve, edit, and complete motions" },
+] as const;
+type ViewKey = (typeof VIEW_SEGMENTS)[number]["key"];
 
 interface MotionRow {
   id: string;
@@ -73,6 +89,7 @@ export default async function MotionsPage({
     more?: string;
     notice?: string;
     scope?: string;
+    view?: string;
     mdrawer?: string;
     mstage?: string;
   }>;
@@ -85,7 +102,7 @@ export default async function MotionsPage({
   // URL builder preserving room state (filters, scope, drawer) — drawer opens with scroll intact.
   const qs = (extra: Record<string, string | null>) => {
     const p = new URLSearchParams();
-    for (const [k, v] of Object.entries({ status: sp.status, partner: sp.partner, goal: sp.goal, group: sp.group, scope: sp.scope, mdrawer: sp.mdrawer, mstage: sp.mstage })) if (v) p.set(k, v);
+    for (const [k, v] of Object.entries({ status: sp.status, partner: sp.partner, goal: sp.goal, group: sp.group, scope: sp.scope, view: sp.view, mdrawer: sp.mdrawer, mstage: sp.mstage })) if (v) p.set(k, v);
     for (const [k, v] of Object.entries(extra)) { if (v == null) p.delete(k); else p.set(k, v); }
     const s = p.toString(); return `/motions${s ? `?${s}` : ""}`;
   };
@@ -143,6 +160,13 @@ export default async function MotionsPage({
     )).rows,
   }));
   const draftedN = sp.drafted !== undefined ? Number(sp.drafted) : null;
+  // Draft runs and the composer deep-link land on Manage so their results are visible;
+  // otherwise the first viewport is the Overview command picture.
+  const view: ViewKey = VIEW_SEGMENTS.some((v) => v.key === sp.view)
+    ? (sp.view as ViewKey)
+    : draftedN !== null || sp.compose === "1"
+      ? "manage"
+      : "overview";
 
   const justApproved = sp.approved ? all.find((m) => m.id === sp.approved && m.status === "approved") : undefined;
   const partnerOptions = [...new Set(all.map((m) => m.partner_name).filter(Boolean) as string[])];
@@ -182,8 +206,32 @@ export default async function MotionsPage({
     <main>
       <PageHeader title="Motions" subtitle="Each commercial hypothesis as a live funnel — where it qualifies, through whom, what can move now, and exactly what blocks the rest." />
 
+      {/* ── View modes (UX normalization): one surface, four densities ── */}
+      <div className="mb-5 inline-flex rounded-lg p-0.5" style={{ background: "var(--surface-inset)" }}>
+        {VIEW_SEGMENTS.map((v) => (
+          <Link
+            key={v.key}
+            href={qs({ view: v.key === "overview" ? null : v.key })}
+            title={v.hint}
+            className={`rounded-md px-3 py-1.5 text-[13px] font-semibold transition-colors ${
+              view === v.key
+                ? "bg-white text-neutral-900 shadow-[var(--shadow-low)] dark:bg-neutral-700 dark:text-white"
+                : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+            }`}
+          >
+            {v.label}
+          </Link>
+        ))}
+      </div>
+
       {/* ── Motion command (P1A.1): the hypothesis funnel is the first viewport ── */}
-      <MotionFunnelCommand funnels={funnels} qs={qs} />
+      {view === "overview" && <MotionFunnelCommand funnels={funnels} qs={qs} />}
+
+      {/* Constraints (UX normalization §1): blocked value aggregated by cause — click through to accounts. */}
+      {view === "constraints" && <MotionConstraintsPanel funnels={funnels} qs={qs} />}
+
+      {/* Pursuits (UX normalization §1): the scale-native table — one row per account in the funnel. */}
+      {view === "pursuits" && <MotionPursuitsTable funnels={funnels} qs={qs} />}
 
       {/* Next-step pull (#79): the just-approved play flows straight into outreach. */}
       {justApproved && (
@@ -218,6 +266,11 @@ export default async function MotionsPage({
         </div>
       )}
 
+      {/* ── Manage (UX normalization §1): the complete administration surface — drafting,
+          rollups, filters, grouping, and the full motion lifecycle. Everything that used to
+          be the default page lives here verbatim; nothing was removed. ── */}
+      {view === "manage" && (
+        <>
       {/* ── Draft motions (task #83): scalable targeting — a list or a pick ── */}
       <details className="pos-card glass mb-6 rounded-card p-5" open={sp.compose === "1" || draftedN !== null}>
         <summary className="cursor-pointer text-sm font-semibold">
@@ -418,6 +471,8 @@ export default async function MotionsPage({
               </div>
             </section>
           ))}
+        </>
+      )}
         </>
       )}
 

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { withTenant } from "@/lib/db/tenant";
 import { BackLink, Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { partnerRoom } from "@/lib/partners/hub";
-import { getPartnerActivationProfile } from "@/lib/partners/intelligence";
+import { getObservedActivationPattern, getPartnerActivationProfile } from "@/lib/partners/intelligence";
 import { ActivationProfile } from "@/components/partners/activation-profile";
 import { OVERLAP_LEVELS, LEVEL_LABEL, type RungState } from "@/lib/partnerships/overlap";
 import { createInitiativeAction, decideEvidenceShareAction, decideIntroAction, decideSkillShareAction, offerEvidenceShareAction, offerSkillShareAction, requestIntroAction, revokeEvidenceShareAction, revokeSkillShareAction, savePlaybookAction, setInitiativeStatusAction } from "../actions";
@@ -58,13 +58,15 @@ export default async function PartnerRoomPage({
   const { id } = await params;
   const sp = (await searchParams) ?? {};
 
-  const { room, profile, playbook, initiatives, skillShares, evidenceShares, offerableClaims, shareableSkills } = await withTenant(async (db, orgId) => {
+  const { room, profile, pattern, playbook, initiatives, skillShares, evidenceShares, offerableClaims, shareableSkills } = await withTenant(async (db, orgId) => {
     const room = await partnerRoom(db, orgId, id);
     if (!room) notFound();
     return {
       room,
       // Activation intelligence (P1B) — presence/relationship/activation/execution as separate truths.
       profile: await getPartnerActivationProfile(db, orgId, id),
+      // "Where should I use this partner?" (§5) — observed pattern from existing evidence only.
+      pattern: await getObservedActivationPattern(db, orgId, id),
       playbook: await loadPartnerPlaybook(db, orgId, id),
       initiatives: await listInitiatives(db, orgId, { partnerId: id }),
       // Skill sharing (task #85): both directions on this partnership, plus the
@@ -90,6 +92,16 @@ export default async function PartnerRoomPage({
   const otherIntros = intros.filter((w) => !w.awaitingYou);
   const encName = encodeURIComponent(partner.name);
 
+  // Decisions waiting inside partnership operations — counted on the Manage summary and
+  // auto-opening it, so progressive disclosure never hides something awaiting a human.
+  const pendingDecisions =
+    awaitingIntros.length +
+    skillShares.filter((s) => s.direction === "incoming" && s.status === "offered").length +
+    evidenceShares.filter((s) => s.direction === "incoming" && s.status === "offered").length +
+    pursuits.filter((x) => x.awaitingYou).length +
+    (ladder ? OVERLAP_LEVELS.filter((l) => ladder.rungs[l].state === "awaiting_you").length : 0);
+  const manageOpen = pendingDecisions > 0 || sp.intro != null || sp.playbook != null || sp.initiative != null;
+
   const meta = [
     partner.partnerType,
     partner.industries?.length ? partner.industries.slice(0, 3).join(", ") : null,
@@ -105,8 +117,10 @@ export default async function PartnerRoomPage({
       </div>
       <PageHeader title={partner.name} subtitle={meta || undefined} />
 
-      {/* ── Activation intelligence (P1B): where they are vs where they act vs what followed ── */}
-      {profile && <ActivationProfile p={profile} />}
+      {/* ── Commercial intelligence first (UX normalization §4): the viewport answers
+          presence, activation, responsiveness, execution, outcomes, what's waiting, and
+          where to activate — before any administration. ── */}
+      {profile && <ActivationProfile p={profile} pattern={pattern} />}
 
       {/* ── Scorecard v1: settlement truth, not self-reporting ── */}
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Scorecard</h2>
@@ -134,6 +148,33 @@ export default async function PartnerRoomPage({
           subs={[`your motions with ${partner.name}`]}
         />
       </div>
+
+      {/* ── Execution with this partner (your tenant's own work) — intelligence, so it stays in the first tier ── */}
+      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Execution</h2>
+      <div className="mb-6 flex flex-wrap gap-3">
+        <Bento label="motions" value={hub.motionsTotal} subs={[`${hub.motionsActive} active`]} href={`/motions?partner=${encName}`} />
+        <Bento label="campaigns" value={hub.campaignsTotal} subs={[`${hub.campaignsLive} live`]} href={`/campaigns?partner=${encName}`} />
+        <Bento label="touches sent" value={hub.touchesSent} href="/analytics" />
+        <Bento label="open pipeline" value={money(hub.pipelineUsd)} subs={[`${hub.oppsOpen} opportunities`]} href="/pipeline" />
+        <Bento label="won" value={money(hub.wonUsd)} subs={[`${hub.oppsWon} closed-won`]} href="/pipeline" />
+        <Bento label="accounts" value={hub.populations} subs={["approved lists"]} href={`/accounts?partner=${encName}`} />
+      </div>
+
+      {/* ── Partnership operations (UX normalization §4): everything you administer — targets,
+          disclosure, sharing, playbook, settlement — under one progressive disclosure. Every
+          capability is intact; it opens itself whenever a decision is waiting. ── */}
+      <details open={manageOpen} className="mb-6">
+        <summary className="pos-card mb-4 flex cursor-pointer items-baseline gap-3 rounded-card px-4 py-3 text-sm font-semibold">
+          Manage partnership
+          <span className="min-w-0 flex-1 truncate text-xs font-normal text-neutral-500">
+            initiatives · trust ladder · their book · shared lists · joint rooms · intros · playbook · evidence &amp; skills · settlement
+          </span>
+          {pendingDecisions > 0 && (
+            <span className="shrink-0 rounded-full bg-accent/12 px-2.5 py-0.5 text-label font-bold text-accent dark:text-blue-300">
+              {pendingDecisions} decision{pendingDecisions === 1 ? "" : "s"} waiting
+            </span>
+          )}
+        </summary>
 
       {/* ── Initiatives (task #83): named targets that real activity rolls up
           into. The anti-pattern this replaces: the partner-plan document whose
@@ -701,17 +742,7 @@ export default async function PartnerRoomPage({
           )}
         </Card>
       )}
-
-      {/* ── Execution with this partner (your tenant's own work) ── */}
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Execution</h2>
-      <div className="mb-2 flex flex-wrap gap-3">
-        <Bento label="motions" value={hub.motionsTotal} subs={[`${hub.motionsActive} active`]} href={`/motions?partner=${encName}`} />
-        <Bento label="campaigns" value={hub.campaignsTotal} subs={[`${hub.campaignsLive} live`]} href={`/campaigns?partner=${encName}`} />
-        <Bento label="touches sent" value={hub.touchesSent} href="/analytics" />
-        <Bento label="open pipeline" value={money(hub.pipelineUsd)} subs={[`${hub.oppsOpen} opportunities`]} href="/pipeline" />
-        <Bento label="won" value={money(hub.wonUsd)} subs={[`${hub.oppsWon} closed-won`]} href="/pipeline" />
-        <Bento label="accounts" value={hub.populations} subs={["approved lists"]} href={`/accounts?partner=${encName}`} />
-      </div>
+      </details>
     </main>
   );
 }
