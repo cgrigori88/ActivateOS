@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import type { TodayQueueView, DecisionItem, DecisionClass } from "./types";
 import { bandOf, type Caller } from "./helpers";
 import { classifyChange, isMaterial, todaySort, type OperationalUrgency } from "./materiality";
+import { STAGE_PROBABILITY, type Stage } from "@/lib/opportunities/lifecycle";
 
 /**
  * Today decision-queue read model (Workstream D, §2/§3/§4/§54). Builds typed DecisionItems from
@@ -13,9 +14,24 @@ import { classifyChange, isMaterial, todaySort, type OperationalUrgency } from "
 
 const DEMO_BANNER = "Demo environment — includes illustrative synthetic partner/distributor data.";
 
-export async function getTodayQueue(db: PoolClient, caller: Caller): Promise<TodayQueueView> {
+/**
+ * Options (additive, back-compat): `companyIds` narrows the queue to an ecosystem scope
+ * (scale-disclosure §1) — null/undefined = the full RLS-scoped set; `limit` caps the returned
+ * items for the Today command center's top-N cut (§2), with `total` reporting the full count for
+ * the "View all (N)" affordance. Materiality order is unchanged.
+ */
+export interface TodayQueueOpts {
+  companyIds?: string[] | null;
+  limit?: number;
+}
+
+export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQueueOpts = {}): Promise<TodayQueueView> {
   const items: DecisionItem[] = [];
   const now = Date.now();
+  // Scope narrowing (§1): an empty array is a valid "nothing in scope" set → no items. `null`/absent
+  // = no restriction. Applied as an additional company_id predicate; never widens the RLS-scoped set.
+  const scoped = opts.companyIds != null;
+  const ids = opts.companyIds ?? [];
 
   // 1) Routes recommended but not yet selected → DECISION_REQUIRED.
   const routes = await db.query<{ pursuit_id: string; account_label: string; priority: string | null; recommended: string | null; synthetic: boolean; at: Date }>(
@@ -26,7 +42,8 @@ export async function getTodayQueue(db: PoolClient, caller: Caller): Promise<Tod
        join companies c on c.id = pu.account_id
        left join partners p on p.id = sn.recommended_partner_id
       where sn.is_current and sn.route_status = 'RECOMMENDED' and sn.selected_partner_id is null
-        and pu.status not in ('WON','LOST','DISQUALIFIED')`, []);
+        and pu.status not in ('WON','LOST','DISQUALIFIED')
+        and ($2::boolean is false or pu.account_id = any($1))`, [ids, scoped]);
   for (const r of routes.rows) items.push(mk("ROUTE_APPROVAL", "DECISION_REQUIRED", "high", bandOf(n(r.priority)), r.pursuit_id, r.account_label,
     `Approve route${r.recommended ? ` via ${r.recommended}` : ""}`, "Recommended route is awaiting your approval.", r.synthetic, r.at, now,
     [{ label: "Approve", skill: "select_partner_route", sideEffect: "INTERNAL_WRITE" }, { label: "Override", skill: "override_partner_route", sideEffect: "INTERNAL_WRITE" }, { label: "Compare", skill: "explain_partner_route", sideEffect: "READ" }],
@@ -38,7 +55,8 @@ export async function getTodayQueue(db: PoolClient, caller: Caller): Promise<Tod
        from fact_reviews fr
        left join fact_candidates fc on fc.id = fr.candidate_id
        left join companies c on c.id = fc.company_id
-      where fr.human_decision is null and fr.system_recommendation = 'REVIEW'`, []);
+      where fr.human_decision is null and fr.system_recommendation = 'REVIEW'
+        and ($2::boolean is false or fc.company_id = any($1))`, [ids, scoped]);
   for (const rv of reviews.rows) items.push(mk("FACT_REVIEW", "DECISION_REQUIRED", "normal", "moderate", rv.pursuit_id, rv.account_label ?? "Account",
     "Review a proposed fact", rv.reason, false, rv.created_at, now,
     [{ label: "Accept", skill: "review_fact", sideEffect: "INTERNAL_WRITE" }, { label: "Reject", skill: "review_fact", sideEffect: "INTERNAL_WRITE" }], `/review`));
@@ -51,7 +69,8 @@ export async function getTodayQueue(db: PoolClient, caller: Caller): Promise<Tod
        join pursuits pu on pu.id = cl.pursuit_id
        join companies c on c.id = pu.account_id
       where cl.pursuit_id is not null and cl.recorded_at > now() - interval '14 days'
-      order by cl.recorded_at desc limit 60`, []);
+        and ($2::boolean is false or pu.account_id = any($1))
+      order by cl.recorded_at desc limit 60`, [ids, scoped]);
   for (const ch of changes.rows) {
     const cls = classifyChange(ch.change_type);
     if (!cls || !isMaterial(ch.materiality)) continue;
@@ -66,8 +85,47 @@ export async function getTodayQueue(db: PoolClient, caller: Caller): Promise<Tod
 
   const counts = { DECISION_REQUIRED: 0, MATERIAL_CHANGE: 0, ACTION_REQUIRED: 0, RISK: 0, OPPORTUNITY: 0, FYI: 0 } as Record<DecisionClass, number>;
   for (const it of items) counts[it.decisionClass]++;
+  const total = items.length;
   const anySynthetic = items.some((i) => i.synthetic) || await orgHasSynthetic(db, caller.orgId);
-  return { generatedAt: new Date().toISOString(), items, counts, demoBanner: anySynthetic ? DEMO_BANNER : null };
+  const cut = opts.limit != null ? items.slice(0, opts.limit) : items;
+  return { generatedAt: new Date().toISOString(), items: cut, counts, total, demoBanner: anySynthetic ? DEMO_BANNER : null };
+}
+
+/**
+ * Today revenue-exposure summary (§2). One aggregate over the canonical opportunities set, scoped
+ * to the ecosystem (§1). Pure read — no new score, no schema. Weighted uses the declared stage
+ * probability curve (STAGE_PROBABILITY), the same canonical curve Pipeline starts from.
+ */
+export interface TodayExposure {
+  openUsd: number;
+  weightedUsd: number;
+  openCount: number;
+  wonUsdPeriod: number;
+  wonCountPeriod: number;
+}
+
+export async function getTodayExposure(db: PoolClient, companyIds?: string[] | null): Promise<TodayExposure> {
+  const scoped = companyIds != null;
+  const ids = companyIds ?? [];
+  // Per-stage open sums + won-in-period, aggregated once; weighting applied in JS against the
+  // canonical STAGE_PROBABILITY curve so the number never drifts from the shared definition.
+  const { rows } = await db.query<{ stage: string; usd: string; n: string }>(
+    `select stage, coalesce(sum(amount_usd), 0) usd, count(*) n
+       from opportunities
+      where ($2::boolean is false or company_id = any($1))
+        and (stage not in ('closed_won','closed_lost') or (stage = 'closed_won' and closed_at >= now() - interval '90 days'))
+      group by stage`,
+    [ids, scoped],
+  );
+  let openUsd = 0, weightedUsd = 0, openCount = 0, wonUsdPeriod = 0, wonCountPeriod = 0;
+  for (const r of rows) {
+    const usd = Number(r.usd), nn = Number(r.n);
+    if (r.stage === "closed_won") { wonUsdPeriod += usd; wonCountPeriod += nn; continue; }
+    if (r.stage === "closed_lost") continue;
+    openUsd += usd; openCount += nn;
+    weightedUsd += usd * (STAGE_PROBABILITY[r.stage as Stage] ?? 0);
+  }
+  return { openUsd, weightedUsd, openCount, wonUsdPeriod, wonCountPeriod };
 }
 
 /** The pending decisions attached to a single pursuit (used by the detail page). */

@@ -45,7 +45,7 @@ export interface DecisionItem {
   at: string;
 }
 export interface DecisionAction { label: string; skill: string; sideEffect: "READ" | "INTERNAL_WRITE" | "CROSS_TENANT_ACTION"; }
-export interface TodayQueueView { generatedAt: string; items: DecisionItem[]; counts: Record<DecisionClass, number>; demoBanner: string | null; }
+export interface TodayQueueView { generatedAt: string; items: DecisionItem[]; counts: Record<DecisionClass, number>; total?: number; demoBanner: string | null; }
 
 // ---- Portfolio (§5/§6) -----------------------------------------------------
 export interface PortfolioRow {
