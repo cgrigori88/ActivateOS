@@ -20,6 +20,9 @@ import { Pool, type PoolClient } from "pg";
 import { dispatchSkill, type Actor } from "../src/lib/pursuits/federation/skills";
 import { requiredRolesMet } from "../src/lib/routing/team";
 import { drainRecomputeQueue } from "../src/lib/pursuits/federation/events";
+import { getPursuitTeam } from "../src/lib/pursuits/read-models/detail";
+import { getTodayQueue } from "../src/lib/pursuits/read-models/today";
+import { callerFor } from "../src/lib/pursuits/read-models/caller";
 
 const URL = process.env.DEMO_URL ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
 let pass = 0, fail = 0;
@@ -70,6 +73,14 @@ async function main() {
     ok("confirm_team_member EXECUTED (RECOMMENDED → INVITED)", confirm.status === "EXECUTED", confirm.reason);
     ok("confirmed member is now INVITED (the human team decision)", (await one<{ status: string }>(`select status from pursuit_team_members where id=$1`, [pam.id])).status === "INVITED");
     ok("ledger recorded TEAM_MEMBER_INVITED", await num(`select count(*)::text n from change_ledger where pursuit_id=$1 and change_type='TEAM_MEMBER_INVITED'`, [pursuitId]) >= 1);
+
+    // C3 execution-plan projection: the read-model exposes the governed next step + waiting state.
+    const teamView = await tx(pool, org, async (db) => getPursuitTeam(db, await callerFor(db, org), pursuitId));
+    const pamView = teamView.members.find((m) => m.id === pam.id);
+    ok("execution-plan read-model marks the INVITED member 'waiting' with next step 'accept'", !!pamView && pamView.waiting === true && pamView.nextGovernedAction === "accept");
+    // C6 Today: a confirmed-but-unaccepted role surfaces as a "waiting on this participant" item.
+    const today = await tx(pool, org, async (db) => getTodayQueue(db, await callerFor(db, org), { limit: 500 }));
+    ok("Today surfaces a 'waiting on participant' item for the confirmed role", today.items.some((it) => it.type === "TEAM_WAITING" && it.pursuitId === pursuitId));
 
     // request_team_acceptance is now REAL — needs a confirmed (INVITED) role.
     const reqAccept = await tx(pool, org, (db) => dispatchSkill(db, "request_team_acceptance", actor, {

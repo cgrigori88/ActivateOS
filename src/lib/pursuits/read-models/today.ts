@@ -64,6 +64,26 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
     "Review a proposed fact", rv.reason, false, rv.created_at, now,
     [{ label: "Accept", skill: "review_fact", sideEffect: "INTERNAL_WRITE" }, { label: "Reject", skill: "review_fact", sideEffect: "INTERNAL_WRITE" }], `/review`));
 
+  // 2b) Confirmed team roles awaiting acceptance → ACTION_REQUIRED. A member the operator confirmed
+  //     (INVITED) but who has not yet accepted is a participant the pursuit is WAITING ON — the
+  //     Multi-Party Execution Plan surfaced in the decision queue. Accept is the one governed step.
+  const waitingTeam = await db.query<{ id: string; role: string; pursuit_id: string; company_id: string; account_label: string; partner_name: string | null; priority: string | null; synthetic: boolean; invited_at: Date | null }>(
+    `select tm.id, tm.role, tm.pursuit_id, c.id company_id, c.legal_name account_label, pn.name partner_name,
+            pu.current_priority_score priority, (pu.data_environment <> 'PRODUCTION') synthetic, tm.invited_at
+       from pursuit_team_members tm
+       join pursuits pu on pu.id = tm.pursuit_id
+       join companies c on c.id = pu.account_id
+       left join partners pn on pn.id = tm.partner_id
+      where tm.status = 'INVITED' and pu.status not in ('WON','LOST','DISQUALIFIED')
+        and ($2::boolean is false or pu.account_id = any($1))`, [ids, scoped]);
+  for (const w of waitingTeam.rows) {
+    const who = w.partner_name ?? w.role.replace(/_/g, " ").toLowerCase();
+    items.push(mk("TEAM_WAITING", "ACTION_REQUIRED", "normal", bandOf(n(w.priority)), w.pursuit_id, w.company_id, w.account_label,
+      `Waiting on ${who} to accept`, `A confirmed ${w.role.replace(/_/g, " ").toLowerCase()} role has not yet been accepted — activation readiness is held.`,
+      w.synthetic, w.invited_at ?? new Date(), now,
+      [{ label: "Mark accepted", skill: "accept_team_member", sideEffect: "INTERNAL_WRITE" }], `/pursuits/${w.pursuit_id}#team`));
+  }
+
   // 3) Material ledger changes (recent) → MATERIAL_CHANGE / RISK / OPPORTUNITY.
   const changes = await db.query<{ id: string; pursuit_id: string; company_id: string; change_type: string; reason: string | null; before_state: Record<string, unknown> | null; after_state: Record<string, unknown> | null; materiality: string; recorded_at: Date; account_label: string; priority: string | null; synthetic: boolean }>(
     `select cl.id, cl.pursuit_id, c.id company_id, cl.change_type, cl.reason, cl.before_state, cl.after_state, cl.materiality, cl.recorded_at,

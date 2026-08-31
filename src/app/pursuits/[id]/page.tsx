@@ -5,9 +5,10 @@ import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
 import { getPursuitDetail } from "@/lib/pursuits/read-models/detail";
 import { callerFor } from "@/lib/pursuits/read-models/caller";
 import { Panel } from "@/components/pursuit/panel";
-import { PursuitHero, MetricBand, WhyNowBento, FactsBento, TeamBento, MaterialChangeTimeline } from "@/components/pursuit/surfaces";
+import { PursuitHero, MetricBand, WhyNowBento, FactsBento, MaterialChangeTimeline } from "@/components/pursuit/surfaces";
 import { RoutePath, RecommendationChange, RouteCandidateTable } from "@/components/pursuit/route";
 import { RouteDecision } from "@/components/pursuit/route-decision";
+import { ExecutionPlan } from "@/components/pursuit/team-decision";
 import { OutcomePanel } from "@/components/pursuit/outcome-panel";
 import { getPursuitOutcomeSummary } from "@/lib/pursuits/read-models/outcome-summary";
 import { currentRole } from "@/lib/auth/org";
@@ -167,11 +168,14 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
           </Panel>
         )}
 
-        {/* Team readiness */}
-        <Panel title="Pursuit team" accent="var(--color-readiness)" className="order-5 lg:order-6"
+        {/* Pursuit team — the Multi-Party Execution Plan. `#team` is the Today deep-link anchor for a
+            "waiting on this participant" item. Governed confirm/accept lives inline (operators only). */}
+        <div id="team" className="order-5 scroll-mt-6 lg:order-6">
+        <Panel title="Pursuit team" accent="var(--color-readiness)"
           aside={<span className="inline-flex items-center gap-1.5 text-[11.5px] text-neutral-500">Readiness <BandPill band={d.team.activationReadiness.band} /></span>}>
-          <TeamBento team={d.team} />
+          <ExecutionPlan team={d.team} pursuitId={d.pursuitId} canDecide={loaded.canDecide} />
         </Panel>
+        </div>
 
         {/* Facts / evidence */}
         <Panel eyebrow="Trusted intelligence" title="Facts behind this" accent="var(--color-evidence)" tint className="order-6 lg:order-3">

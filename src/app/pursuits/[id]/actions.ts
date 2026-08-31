@@ -54,3 +54,35 @@ export async function decideRouteAction(
   }
   return { ...result, correlationId };
 }
+
+/**
+ * Governed team decision (Phase C2). The Pursuit team panel calls this; like the route decision it
+ * is the ONLY human entry point for moving a team member off its recommendation, and it runs through
+ * the single mutation authority (`dispatchSkill`), never a bespoke write. `confirm` is the human
+ * team decision (RECOMMENDED → INVITED); `accept` records acceptance (INVITED → ACCEPTED) which
+ * feeds readiness; `decline` records a decline. A recompute may change the recommended team, but
+ * only these governed decisions move a confirmed assignment — the boundary enforces it.
+ */
+export async function decideTeamAction(
+  pursuitId: string, memberId: string, action: "confirm" | "accept" | "decline",
+): Promise<{ ok: boolean; status?: string; error?: string }> {
+  if (!pursuitId || !memberId) return { ok: false, error: "Missing pursuit or team member." };
+  if (!pursuitExperienceEnabled()) return { ok: false, error: "Pursuit experience is not enabled." };
+  const skillId = action === "confirm" ? "confirm_team_member" : action === "accept" ? "accept_team_member" : "decline_team_member";
+
+  const result = await withTenant(async (db, orgId) => {
+    if (!(await experienceEnabledFor(db, orgId))) return { ok: false as const, error: "Not enabled for this tenant." };
+    const role = await currentRole(db);
+    if (role !== "owner" && role !== "operator") return { ok: false as const, error: "Read-only access — ask an owner to make you an operator." };
+    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1`, [pursuitId])).rows[0]?.data_environment ?? "PRODUCTION";
+    const dispatch = await dispatchSkill(db, skillId, { type: "USER", id: null, orgId, role }, {
+      pursuitId, args: { memberId }, dataEnvironment: env });
+    return { ok: dispatch.status === "EXECUTED", status: dispatch.status, error: dispatch.status === "EXECUTED" ? undefined : (dispatch.reason ?? "Team decision was not accepted.") };
+  });
+
+  if (result.ok) {
+    revalidatePath(`/pursuits/${pursuitId}`);
+    revalidatePath("/");
+  }
+  return result;
+}

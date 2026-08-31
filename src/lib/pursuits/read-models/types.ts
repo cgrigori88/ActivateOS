@@ -104,7 +104,15 @@ export interface RouteComparisonView {
 }
 
 // ---- Team (§21/§22) --------------------------------------------------------
-export interface TeamMemberView { role: string; side: string; personLabel: string | null; status: string; fit: ScoreView | null; missing: boolean; }
+export interface TeamMemberView {
+  id: string; role: string; side: string; personLabel: string | null; partnerLabel: string | null;
+  status: string; fit: ScoreView | null; missing: boolean; required: boolean;
+  // The governed next step an operator can take on this member (Phase C2): a recommended member is
+  // confirmed, a confirmed (invited) member is marked accepted. null when there's nothing to decide.
+  nextGovernedAction: "confirm" | "accept" | null;
+  // A confirmed-but-not-yet-accepted role — the pursuit is waiting on this participant.
+  waiting: boolean;
+}
 export interface PursuitTeamView { members: TeamMemberView[]; activationReadiness: ScoreView; missingRequiredRoles: string[]; gapActions: DecisionItem[]; sellerAlternatives: { sellerId: string; label: string; fit: ScoreView }[]; }
 
 // ---- Timeline + evidence (§23/§25/§26) -------------------------------------

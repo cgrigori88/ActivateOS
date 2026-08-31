@@ -90,13 +90,23 @@ export async function getPursuitWhyNow(db: PoolClient, pursuitId: string): Promi
 export async function getPursuitTeam(db: PoolClient, caller: Caller, pursuitId: string): Promise<PursuitTeamView> {
   const p = await db.query<{ org_id: string; pursuit_type: string | null; account_id: string }>(`select org_id, pursuit_type, account_id from pursuits where id = $1`, [pursuitId]);
   const orgId = p.rows[0]?.org_id;
-  const members = await db.query<{ role: string; side: string; status: string; person_ref: string | null; fit_score: string | null }>(
-    `select role, side, status, person_ref, fit_score from pursuit_team_members where pursuit_id = $1 and status <> 'SUPERSEDED' order by side, role`, [pursuitId]);
-  const memberViews: TeamMemberView[] = members.rows.map((m) => ({ role: m.role, side: m.side, personLabel: m.person_ref, status: m.status, fit: m.fit_score != null ? scoreView("seller_fit", Number(m.fit_score)) : null, missing: false }));
+  const members = await db.query<{ id: string; role: string; side: string; status: string; person_ref: string | null; fit_score: string | null; partner_name: string | null }>(
+    `select tm.id, tm.role, tm.side, tm.status, tm.person_ref, tm.fit_score, pn.name partner_name
+       from pursuit_team_members tm left join partners pn on pn.id = tm.partner_id
+      where tm.pursuit_id = $1 and tm.status <> 'SUPERSEDED' order by tm.side, tm.role`, [pursuitId]);
+  const reqRoles = new Set((await db.query<{ role: string }>(`select role from pursuit_team_requirements where required = true and (org_id is null or org_id = $1) and (pursuit_type is null or pursuit_type = $2)`, [orgId, p.rows[0]?.pursuit_type])).rows.map((r) => r.role));
+  const memberViews: TeamMemberView[] = members.rows.map((m) => ({
+    id: m.id, role: m.role, side: m.side, personLabel: m.person_ref, partnerLabel: m.partner_name,
+    status: m.status, fit: m.fit_score != null ? scoreView("seller_fit", Number(m.fit_score)) : null, missing: false,
+    required: reqRoles.has(m.role),
+    // Recommendation ≠ decision: a recommended member is CONFIRMED (the human team decision); a
+    // confirmed (invited) one is then marked ACCEPTED. Terminal states offer no further governed step.
+    nextGovernedAction: m.status === "RECOMMENDED" ? "confirm" : m.status === "INVITED" ? "accept" : null,
+    waiting: m.status === "INVITED",
+  }));
 
-  const req = await db.query<{ role: string }>(`select role from pursuit_team_requirements where required = true and (org_id is null or org_id = $1) and (pursuit_type is null or pursuit_type = $2)`, [orgId, p.rows[0]?.pursuit_type]);
   const accepted = new Set(members.rows.filter((m) => m.status === "ACCEPTED" || m.status === "ACTIVE").map((m) => m.role));
-  const missing = req.rows.map((r) => r.role).filter((r) => !accepted.has(r));
+  const missing = [...reqRoles].filter((r) => !accepted.has(r));
 
   // Readiness from the current route snapshot's recommended candidate.
   const rd = await db.query<{ activation_readiness_score: string | null }>(
