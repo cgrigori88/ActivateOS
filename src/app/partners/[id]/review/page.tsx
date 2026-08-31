@@ -4,6 +4,7 @@ import { withTenant } from "@/lib/db/tenant";
 import { partnerRoom } from "@/lib/partners/hub";
 import { listInitiatives } from "@/lib/partnerships/initiatives";
 import { loadPartnerPlaybook } from "@/lib/playbooks/playbooks";
+import { renewalProjection } from "@/lib/lifecycle/projection";
 import { PrintButton } from "./print-button";
 
 export const dynamic = "force-dynamic";
@@ -51,19 +52,10 @@ export default async function PartnershipReviewPage({ params }: { params: Promis
       room,
       initiatives: await listInitiatives(db, orgId, { partnerId: id, includeArchived: false }),
       playbook: (await loadPartnerPlaybook(db, orgId, id)) ?? { positioning: "", strengths: "", rules: "" },
-      // The renewal clock on this partner's approved lists — the co-sell homework.
-      renewals: (await db.query<{ legal_name: string; renewal: string; list_name: string }>(
-        `select distinct on (pm.company_id) c.legal_name,
-            pm.attributes->>'renewal_date' as renewal, ap.name as list_name
-     from population_members pm
-     join account_populations ap on ap.id = pm.population_id
-       and ap.org_id = $1 and ap.partner_id = $2 and ap.status = 'approved'
-     join companies c on c.id = pm.company_id
-     where pm.attributes ? 'renewal_date'
-       and (pm.attributes->>'renewal_date')::date between now()::date and (now() + interval '180 days')::date
-     order by pm.company_id, (pm.attributes->>'renewal_date')::date asc`,
-        [orgId, id],
-      )).rows,
+      // The renewal clock on this partner's approved lists — the co-sell homework. P2A §5: the
+      // LIST decides which accounts this sheet is about; the canonical fact graph decides what the
+      // date is and how certain it is. An inferred window prints as a window, not as a promise.
+      renewals: await renewalProjection(db, orgId, { days: 180, partnerId: id }),
     };
   });
   const { partner, book, partnership, ladder, grants, pursuits, settlement, scorecard } = room;
@@ -161,9 +153,9 @@ export default async function PartnershipReviewPage({ params }: { params: Promis
         <Section title="Renewal clock" note="next 180 days on this partner's lists">
           <ul className="text-sm">
             {renewals.map((r) => (
-              <li key={r.legal_name} className="flex justify-between gap-2 border-b border-neutral-100 py-1 dark:border-neutral-800 print:border-neutral-200">
-                <span>{r.legal_name} <span className="text-xs text-neutral-400">· from “{r.list_name}”</span></span>
-                <span className="tnum text-neutral-500">{r.renewal}</span>
+              <li key={r.companyId} className="flex justify-between gap-2 border-b border-neutral-100 py-1 dark:border-neutral-800 print:border-neutral-200">
+                <span>{r.legalName}{r.listName && <span className="text-xs text-neutral-400"> · on “{r.listName}”</span>}</span>
+                <span className="tnum text-neutral-500">{r.label} {r.phrase} <span className="text-xs text-neutral-400">· {r.sourceNote}</span></span>
               </li>
             ))}
           </ul>

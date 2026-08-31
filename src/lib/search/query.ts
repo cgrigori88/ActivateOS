@@ -41,7 +41,7 @@ export function classifyIntent(q: string): Intent {
 }
 
 // ---- SHOW ME: allowlisted structured query --------------------------------
-interface ParsedQuery {
+export interface ParsedQuery {
   entity: "opportunity";
   conditions: ConditionState[];
   stages: string[];

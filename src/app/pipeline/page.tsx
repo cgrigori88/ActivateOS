@@ -2,6 +2,8 @@ import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
 import { loadStageWeights } from "@/lib/opportunities/stage-weights";
 import { enabledTriggers } from "@/lib/triggers/catalog";
+import { renewalProjection } from "@/lib/lifecycle/projection";
+import { loadLifecycleFacts, eventsForAccount, primaryLifecycleEvent, STATE_LABEL, type LifecycleEvent } from "@/lib/lifecycle/state";
 import {
   STAGE_PROBABILITY,
   STAGES,
@@ -118,27 +120,14 @@ export default async function PipelinePage({
   );
   const ecoByCompany = new Map(ecoRows.map((r) => [r.company_id, { seller: r.seller, vendor: r.vendor, territory: r.territory }]));
 
-  // Renewal radar (B+3): every account on an approved list whose renewal_date
-  // sits inside 120 days — the co-sell clock. Engagement quiet = decay risk;
-  // partners on the account = who to attach before it runs out.
+  // Renewal radar (B+3, RECONCILED in P2A §5): the co-sell clock, now read from the canonical
+  // fact graph through the one-way projection instead of re-interpreting the import JSON. It
+  // therefore sees customer-confirmed dates, inferred windows and contradictions — and it states
+  // which it is rather than printing every row as a confirmed day. Engagement quiet = decay risk;
+  // the partners column is who to attach before the clock runs out.
   const radarOn = (await enabledTriggers(db, orgId)).has("renewal_window");
-  const { rows: renewalRows } = radarOn
-    ? await db.query<{ company_id: string; legal_name: string; renewal: string; list_name: string }>(
-        `select distinct on (pm.company_id)
-                pm.company_id, c.legal_name,
-                pm.attributes->>'renewal_date' as renewal, ap.name as list_name
-         from population_members pm
-         join account_populations ap on ap.id = pm.population_id
-           and ap.org_id = $1 and ap.status = 'approved'
-         join companies c on c.id = pm.company_id
-         where pm.attributes ? 'renewal_date'
-           and (pm.attributes->>'renewal_date')::date
-               between now()::date and (now() + interval '120 days')::date
-         order by pm.company_id, (pm.attributes->>'renewal_date')::date asc`,
-        [orgId],
-      )
-    : { rows: [] };
-  const renewalIds = renewalRows.map((r) => r.company_id);
+  const renewalRows = radarOn ? await renewalProjection(db, orgId, { days: 120, limit: 12 }) : [];
+  const renewalIds = renewalRows.map((r) => r.companyId);
   const engagementByCompany = new Map<string, number>();
   const partnersByRenewal = new Map<string, string[]>();
   if (renewalIds.length) {
@@ -159,18 +148,14 @@ export default async function PipelinePage({
     );
     for (const r of pns) partnersByRenewal.set(r.company_id, r.partners);
   }
-  const renewals = renewalRows
-    .map((r) => ({
-      ...r,
-      daysOut: Math.max(0, Math.ceil((new Date(r.renewal).getTime() - Date.now()) / 86_400_000)),
-      openUsd: allOpps
-        .filter((o) => o.company_id === r.company_id && !["closed_won", "closed_lost"].includes(o.stage))
-        .reduce((s, o) => s + Number(o.amount_usd ?? 0), 0),
-      engagement: engagementByCompany.get(r.company_id) ?? null,
-      partners: partnersByRenewal.get(r.company_id) ?? [],
-    }))
-    .sort((a, b) => a.daysOut - b.daysOut)
-    .slice(0, 12);
+  const renewals = renewalRows.map((r) => ({
+    ...r,
+    openUsd: allOpps
+      .filter((o) => o.company_id === r.companyId && !["closed_won", "closed_lost"].includes(o.stage))
+      .reduce((s, o) => s + Number(o.amount_usd ?? 0), 0),
+    engagement: engagementByCompany.get(r.companyId) ?? null,
+    partners: partnersByRenewal.get(r.companyId) ?? [],
+  }));
 
   // Timeframe filter: opportunities whose expected close falls within N days.
   const horizon = timeframe ? Date.now() + timeframe * 86_400_000 : null;
@@ -243,12 +228,41 @@ export default async function PipelinePage({
   // full timeframe set so the totals don't move as you slice).
   const partnerOptions = [...new Set(allOpps.map((o) => o.partner_name).filter(Boolean) as string[])];
   const qualOf = (id: string) => (scoreOf(id) >= 70 ? "strong" : scoreOf(id) < 40 ? "risk" : "ok");
+
+  // Lifecycle filter (P2A §8) — deliberately RESTRAINED: three states an operator actually acts on,
+  // slotted in beside the existing atomic filters. No new dashboard, no new score, no new column.
+  // UNKNOWN is not offered here on purpose: Accounts already answers "where do we know nothing",
+  // and a pipeline view of deals-with-no-lifecycle-evidence is noise, not an action.
+  const lifecycleByCompany = new Map<string, LifecycleEvent>();
+  const lifeIds = [...new Set(opps.map((o) => o.company_id).filter(Boolean))] as string[];
+  if (lifeIds.length) {
+    for (const [cid, rows] of await loadLifecycleFacts(db, orgId, lifeIds)) {
+      const primary = primaryLifecycleEvent(eventsForAccount(rows));
+      if (primary && primary.state !== "UNKNOWN") lifecycleByCompany.set(cid, primary);
+    }
+  }
+  const lifeOf = (companyId: string | null) => (companyId ? lifecycleByCompany.get(companyId) ?? null : null);
+  const lifeMatch = (companyId: string | null) => {
+    const f = qp("life");
+    if (!f || f === "all") return true;
+    const e = lifeOf(companyId);
+    if (!e) return false;
+    if (f === "renew90") {
+      return (e.state === "VERIFIED_DATE" || e.state === "INFERRED_WINDOW")
+        && e.daysUntil != null && e.daysUntil >= 0 && e.daysUntil <= 90;
+    }
+    if (f === "conflicting") return e.state === "CONFLICTING_DATE";
+    if (f === "stale") return e.state === "STALE_DATE";
+    return true;
+  };
+
   const visible = opps.filter(
     (o) =>
       (!qp("stage") || qp("stage") === "all" || o.stage === qp("stage")) &&
       (!qp("partner") || qp("partner") === "all" || (o.partner_name ?? "Direct") === qp("partner")) &&
       (!qp("quote") || qp("quote") === "all" || (qp("quote") === "yes" ? quoteOf(o.id).delivered : !quoteOf(o.id).delivered)) &&
-      (!qp("qual") || qp("qual") === "all" || qualOf(o.id) === qp("qual")),
+      (!qp("qual") || qp("qual") === "all" || qualOf(o.id) === qp("qual")) &&
+      lifeMatch(o.company_id),
   );
 
   const open = opps.filter((o) => !o.stage.startsWith("closed"));
@@ -408,7 +422,7 @@ export default async function PipelinePage({
   const drawerIntel = drawerId ? await withTenant((db) => getAccountIntel(db, drawerId)) : null;
   // Preserve the whole view (filters, scope, sort) across open/close — the drawer never navigates away.
   const preserved = new URLSearchParams();
-  for (const k of ["view", "timeframe", "stage", "partner", "quote", "qual", "scope", "prow", "pcol", "cond"] as const) { const v = qp(k); if (v) preserved.set(k, v); }
+  for (const k of ["view", "timeframe", "stage", "partner", "quote", "qual", "scope", "prow", "pcol", "cond", "life"] as const) { const v = qp(k); if (v) preserved.set(k, v); }
   const drawerHref = (companyId: string) => { const p = new URLSearchParams(preserved); p.set("drawer", companyId); return `/pipeline?${p.toString()}`; };
   const drawerCloseHref = `/pipeline${preserved.toString() ? `?${preserved.toString()}` : ""}`;
   const drawerBase = preserved.toString();
@@ -586,25 +600,34 @@ export default async function PipelinePage({
               <Card tone="amber" className="mb-3">
                 <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Renewal radar</h2>
                 <p className="mb-3 text-xs text-neutral-500">
-                  Renewals inside 120 days across your approved lists. Quiet engagement is decay risk; the partners
+                  Lifecycle dates inside 120 days, from the canonical record. Each row says what kind of date it is —
+                  a confirmed day, an inferred window, or a contradiction. Quiet engagement is decay risk; the partners
                   column is who to attach before the clock runs out.
                 </p>
                 <ul className="space-y-1.5">
                   {renewals.map((r) => (
-                    <li key={r.company_id} className="flex flex-wrap items-center gap-2 text-sm">
-                      <Link href={`/accounts/${r.company_id}`} className="min-w-0 font-medium hover:underline">
-                        {r.legal_name}
+                    <li key={r.companyId} className="flex flex-wrap items-center gap-2 text-sm">
+                      <Link href={`/accounts/${r.companyId}`} className="min-w-0 font-medium hover:underline">
+                        {r.legalName}
                       </Link>
                       <span
                         className={`tnum rounded-full px-2 py-0.5 text-label font-bold ${
-                          r.daysOut <= 30
+                          r.state === "CONFLICTING_DATE"
                             ? "bg-rose/12 text-rose dark:text-rose-300"
-                            : "bg-amber/14 text-amber dark:text-amber-300"
+                            : r.daysOut <= 30
+                              ? "bg-rose/12 text-rose dark:text-rose-300"
+                              : "bg-amber/14 text-amber dark:text-amber-300"
                         }`}
                       >
-                        in {r.daysOut}d
+                        {r.state === "CONFLICTING_DATE" ? "conflicting" : r.precise ? `in ${r.daysOut}d` : `~${r.daysOut}d`}
                       </span>
-                      <span className="text-label text-neutral-400">{r.renewal} · from “{r.list_name}”</span>
+                      <span
+                        className="min-w-0 flex-1 truncate text-label text-neutral-400"
+                        title={`${r.label} ${r.phrase} · ${r.sourceNote}${r.listName ? ` · on “${r.listName}”` : ""}`}
+                      >
+                        {r.label} {r.phrase} · {r.sourceNote}
+                        {r.listName ? ` · on “${r.listName}”` : ""}
+                      </span>
                       <span className="ml-auto flex items-center gap-2 text-[11.5px]">
                         {r.partners.length > 0 && (
                           <span className="text-violet dark:text-violet-300">{r.partners.join(", ")}</span>
@@ -744,7 +767,7 @@ export default async function PipelinePage({
         const viewHref = (v: string) => {
           const qs = new URLSearchParams();
           qs.set("view", v);
-          for (const k of ["timeframe", "stage", "partner", "quote", "qual", "scope"] as const) { const val = qp(k); if (val) qs.set(k, val); }
+          for (const k of ["timeframe", "stage", "partner", "quote", "qual", "scope", "life"] as const) { const val = qp(k); if (val) qs.set(k, val); }
           return `/pipeline?${qs.toString()}`;
         };
         const seg: { key: typeof view; label: string; hint: string }[] = [
@@ -771,12 +794,36 @@ export default async function PipelinePage({
                 )}
                 <QuerySelect param="quote" value={qp("quote") ?? "all"} label="Quote" options={[{ value: "all", label: "Any" }, { value: "yes", label: "Quote sent" }, { value: "no", label: "No quote" }]} />
                 <QuerySelect param="timeframe" value={qp("timeframe") ?? "all"} label="Closing within" options={[{ value: "all", label: "Any time" }, { value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }]} />
+                {/* Lifecycle (P2A §8) — three states, no fourth. */}
+                <QuerySelect param="life" value={qp("life") ?? "all"} label="Lifecycle" options={[{ value: "all", label: "Any lifecycle" }, { value: "renew90", label: "Renewing in 90 days" }, { value: "conflicting", label: "Conflicting timing" }, { value: "stale", label: "Stale evidence" }]} />
               </>
             )}
             <span className="ml-auto text-xs text-neutral-500">{visible.length} of {opps.length}</span>
           </div>
         );
       })()}
+
+      {/* Lifecycle filter context (P2A §8): the filter says WHAT it selected on, and — because a
+          lifecycle state is a claim about evidence — how certain that selection is. Progressive
+          disclosure: the first line is the state, the detail sits one click away on the account. */}
+      {qp("life") && qp("life") !== "all" && (view === "all" || view === "review") && (
+        <p className="mb-3 text-xs text-neutral-500">
+          {visible.length === 0
+            ? "No open deal sits on an account in this lifecycle state."
+            : <>
+                {visible.length} deal{visible.length === 1 ? "" : "s"} on{" "}
+                {new Set(visible.map((o) => o.company_id)).size} account
+                {new Set(visible.map((o) => o.company_id)).size === 1 ? "" : "s"} where the lifecycle date reads{" "}
+                <b>{qp("life") === "renew90" ? "verified or inferred inside 90 days"
+                  : qp("life") === "conflicting" ? STATE_LABEL.CONFLICTING_DATE : STATE_LABEL.STALE_DATE}</b>.{" "}
+                {qp("life") === "conflicting"
+                  ? "Sources disagree — the date is not settled by choosing one."
+                  : qp("life") === "stale"
+                    ? "We knew this once; it is past its validity, not unknown."
+                    : "Windows are ranges, not days — open an account for its evidence."}
+              </>}
+        </p>
+      )}
 
       {opps.length === 0 && (
         <p className="text-sm text-neutral-500">

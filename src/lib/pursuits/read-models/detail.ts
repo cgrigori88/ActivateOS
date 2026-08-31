@@ -5,6 +5,7 @@ import { isTimelineWorthy } from "./materiality";
 import { getRouteComparison } from "./route";
 import { buildPendingDecisions } from "./today";
 import { getStakeholderCoverage } from "@/lib/stakeholders/coverage";
+import { loadLifecycleFacts, eventsForAccount } from "@/lib/lifecycle/state";
 
 /**
  * Pursuit detail read model (Workstream D, §7/§8/§11-15). Page-shaped composite: decision band,
@@ -64,10 +65,16 @@ export async function getPursuitDetail(db: PoolClient, caller: Caller, pursuitId
 }
 
 export async function getPursuitWhyNow(db: PoolClient, pursuitId: string): Promise<WhyNowView> {
-  const { rows } = await db.query<{ why_now: Record<string, unknown> | null }>(`select why_now from pursuits where id = $1`, [pursuitId]);
+  const { rows } = await db.query<{ why_now: Record<string, unknown> | null; org_id: string; account_id: string }>(
+    `select why_now, org_id, account_id from pursuits where id = $1`, [pursuitId]);
   const wn = rows[0]?.why_now as WhyNowRaw | null;
+  // Lifecycle Intelligence (P2A): derived from canonical facts, independent of whether a structured
+  // Why Now has been assembled — an account can have a renewal on the clock and no Why Now yet.
+  const lifecycle = rows[0]
+    ? eventsForAccount((await loadLifecycleFacts(db, rows[0].org_id, [rows[0].account_id])).get(rows[0].account_id) ?? [])
+    : [];
   if (!wn || typeof wn !== "object") {
-    return { present: false, businessTrigger: null, technologyCondition: null, timingAnchor: null, signalConvergence: null, routeRelevance: null, contradictions: [], unknowns: ["No structured Why Now assembled yet."], renderedSummary: null, asOf: null };
+    return { present: false, businessTrigger: null, technologyCondition: null, timingAnchor: null, signalConvergence: null, routeRelevance: null, contradictions: [], unknowns: ["No structured Why Now assembled yet."], renderedSummary: null, asOf: null, lifecycle };
   }
   const comp = (kind: string, label: string, o: { fact_id?: string; predicate?: string; label?: string; date?: string | null } | null | undefined, implication: string | null = null): WhyNowComponent | null =>
     o ? { kind, label, present: true, detail: o.label ?? o.predicate ?? o.date ?? null, commercialImplication: implication, refType: "fact", refId: o.fact_id ?? null } : null;
@@ -88,6 +95,7 @@ export async function getPursuitWhyNow(db: PoolClient, pursuitId: string): Promi
     unknowns,
     renderedSummary: null,
     asOf: wn.as_of ?? null,
+    lifecycle,
   };
 }
 

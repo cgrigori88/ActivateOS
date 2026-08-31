@@ -96,18 +96,29 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
   }
 
   // 4. Renewal on the clock, nothing covering it.
-  const { rows: uncovered } = on.has("renewal_window") ? await db.query<{ company_id: string; legal_name: string; renewal: string }>(
-    `select distinct on (pm.company_id) pm.company_id, c.legal_name, pm.attributes->>'renewal_date' as renewal
-     from population_members pm
-     join account_populations ap on ap.id = pm.population_id and ap.org_id = $1 and ap.status = 'approved'
-     join companies c on c.id = pm.company_id
-     where pm.attributes ? 'renewal_date'
-       and (pm.attributes->>'renewal_date')::date between now()::date and (now() + interval '60 days')::date
-       and not exists (select 1 from opportunities o where o.company_id = pm.company_id
+  //
+  // P2A §5 — RECONCILED. This previously read `population_members.attributes->>'renewal_date'`
+  // directly, which made the import JSON a SECOND independently-interpreted renewal truth beside
+  // the canonical fact graph. It now reads the graph, which the one-way import bridge
+  // (lifecycle/bridge.ts) promotes those attributes into with their provenance and uncertainty
+  // intact. One renewal truth; the import is an input to it, never a parallel display source.
+  // Both precise dates and inferred windows qualify — a window's NEAR edge is the clock.
+  const { rows: uncovered } = on.has("renewal_window") ? await db.query<{ company_id: string; legal_name: string; renewal: string; state: string }>(
+    `select distinct on (f.company_id) f.company_id, c.legal_name,
+            to_char(coalesce(f.date_value, f.valid_from), 'YYYY-MM-DD') as renewal,
+            case when f.date_value is not null
+                   and f.provenance_class in ('FIRST_PARTY','SECOND_PARTY','THIRD_PARTY_VERIFIED','CUSTOMER_DECLARED','HUMAN_ASSERTED')
+                 then 'confirmed' else 'an inferred window' end as state
+     from facts f
+     join companies c on c.id = f.company_id
+     where f.org_id = $1 and f.status = 'CURRENT'
+       and f.predicate_key in ('renewal_date','contract_expires','subscription_term_end','renewal_window')
+       and coalesce(f.date_value, f.valid_from) between now() and now() + interval '60 days'
+       and not exists (select 1 from opportunities o where o.company_id = f.company_id
                        and o.stage not in ('closed_won', 'closed_lost'))
-       and not exists (select 1 from revenue_motions m where m.company_id = pm.company_id
+       and not exists (select 1 from revenue_motions m where m.company_id = f.company_id
                        and m.status in ('draft', 'approved', 'active'))
-     order by pm.company_id, (pm.attributes->>'renewal_date')::date asc limit 5`,
+     order by f.company_id, coalesce(f.date_value, f.valid_from) asc limit 5`,
     [orgId],
   ) : { rows: [] };
   for (const r of uncovered) {
@@ -115,7 +126,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
       kind: "renewal_uncovered",
       companyId: r.company_id,
       account: r.legal_name,
-      text: `Renewal due ${r.renewal} with no open opportunity and no motion — the book knows a date your execution doesn't.`,
+      text: `Renewal ${r.state === "confirmed" ? `due ${r.renewal}` : `expected around ${r.renewal} (${r.state})`} with no open opportunity and no motion — the book knows a date your execution doesn't.`,
       href: `/accounts/${r.company_id}`,
     });
   }

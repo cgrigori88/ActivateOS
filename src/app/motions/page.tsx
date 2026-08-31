@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
+import { getLifecycleHorizon } from "@/lib/lifecycle/horizon";
 import { Bento, Card, MiniBar, NextStep, PageHeader, StatusBadge } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
@@ -107,9 +108,14 @@ export default async function MotionsPage({
     const s = p.toString(); return `/motions${s ? `?${s}` : ""}`;
   };
 
-  const { all, goals, initiativeOpts, draftLists, draftCandidates, funnels } = await withTenant(async (db, orgId) => ({
+  const { all, goals, initiativeOpts, draftLists, draftCandidates, funnels, lifecycle } = await withTenant(async (db, orgId) => ({
     // Motion Intelligence (P1A): the command funnel, derived from canonical records at read time.
     funnels: await getMotionFunnels(db, orgId, { companyIds: scope.companyIds }),
+    // Lifecycle context (P2A §8): CONTEXT ONLY. It is rendered as one line beside the funnel and
+    // deliberately does NOT participate in any gate — a renewal date is not readiness, and letting
+    // a date silently open or close a motion gate would be exactly the hidden composite this
+    // programme exists to prevent.
+    lifecycle: await getLifecycleHorizon(db, orgId, { days: 90, companyIds: scope.companyIds }),
     all: (await db.query<MotionRow>(
       `select m.id, m.status, m.thesis, m.trigger_summary, m.cta, m.confidence, m.operator_notes,
             m.company_id, c.legal_name, n.slug, c.industry, m.outcome,
@@ -225,7 +231,22 @@ export default async function MotionsPage({
       </div>
 
       {/* ── Motion command (P1A.1): the hypothesis funnel is the first viewport ── */}
-      {view === "overview" && <MotionFunnelCommand funnels={funnels} qs={qs} />}
+      {view === "overview" && (
+        <>
+          {(lifecycle.items.length > 0 || lifecycle.counts.CONFLICTING_DATE > 0) && (
+            <p className="mb-3 text-xs text-neutral-500">
+              <span className="font-semibold uppercase tracking-[0.06em] text-neutral-400">Lifecycle context</span>{" "}
+              · {lifecycle.items.length} account{lifecycle.items.length === 1 ? "" : "s"} in this scope carry a
+              material lifecycle date inside 90 days
+              {lifecycle.counts.CONFLICTING_DATE > 0 && <>, {lifecycle.counts.CONFLICTING_DATE} of them contradicted</>}
+              {lifecycle.unknownAccounts > 0 && <>; {lifecycle.unknownAccounts} account{lifecycle.unknownAccounts === 1 ? " has" : "s have"} no lifecycle evidence at all</>}.{" "}
+              <Link href="/pipeline?view=all&life=renew90" className="text-accent hover:underline dark:text-blue-400">See the deals</Link>.{" "}
+              <span className="text-neutral-400">Context only — timing does not gate a motion.</span>
+            </p>
+          )}
+          <MotionFunnelCommand funnels={funnels} qs={qs} />
+        </>
+      )}
 
       {/* Constraints (UX normalization §1): blocked value aggregated by cause — click through to accounts. */}
       {view === "constraints" && <MotionConstraintsPanel funnels={funnels} qs={qs} />}

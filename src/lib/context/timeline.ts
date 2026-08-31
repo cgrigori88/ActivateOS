@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { sharedInEvidence } from "@/lib/partnerships/evidence-shares";
+import { renewalProjection } from "@/lib/lifecycle/projection";
 
 type Db = Pool | PoolClient;
 
@@ -244,23 +245,17 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
     });
   }
 
-  // 8. Renewal signals from approved lists (upcoming inside 180 days).
-  const { rows: renewals } = await db.query<{ renewal: string; list: string }>(
-    `select distinct on (ap.id) pm.attributes->>'renewal_date' as renewal, ap.name as list
-     from population_members pm
-     join account_populations ap on ap.id = pm.population_id and ap.org_id = $2 and ap.status = 'approved'
-     where pm.company_id = $1 and pm.attributes ? 'renewal_date'
-       and (pm.attributes->>'renewal_date')::date between now()::date and (now() + interval '180 days')::date
-     order by ap.id limit 3`,
-    [companyId, orgId],
-  );
+  // 8. Lifecycle signals inside 180 days. P2A §5: read from the canonical fact graph, not from the
+  // import JSON — so the timeline can say "expected 10 Feb → 28 Mar" or "contradicted" instead of
+  // asserting a day it does not actually know.
+  const renewals = await renewalProjection(db, orgId, { days: 180, companyIds: [companyId], limit: 3 });
   for (const r of renewals) {
     events.push({
-      at: iso(r.renewal),
+      at: iso(r.clockDate),
       kind: "renewal",
-      title: `Renewal due ${r.renewal}`,
-      detail: `from "${r.list}"`,
-      source: "partner book",
+      title: `${r.label} ${r.phrase}`,
+      detail: r.listName ? `${r.event.because} Account is on "${r.listName}".` : r.event.because,
+      source: `canonical record · ${r.sourceNote}`,
       href: "/pipeline",
     });
   }

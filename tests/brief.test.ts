@@ -29,7 +29,7 @@ function fixture(over: Partial<PursuitDetailView> = {}): PursuitDetailView {
     whyNow: { present: true, businessTrigger: { kind: "business_trigger", label: "Business trigger", present: true, detail: "New CIO mandate", commercialImplication: "Budget unlocked" },
       technologyCondition: null, timingAnchor: null, signalConvergence: null, routeRelevance: null,
       contradictions: [{ text: "Vendor incumbency unclear", supporting: 1, contradicting: 1 }],
-      unknowns: ["Budget authority not confirmed"], renderedSummary: null, asOf: null },
+      unknowns: ["Budget authority not confirmed"], renderedSummary: null, asOf: null, lifecycle: [] },
     route: { path: [], recommended: rec, selected: null, selectionMatchesRecommendation: false, overrideReason: null, overrideCategory: null,
       alternatives: [], changeEvents: [], dimensionKeys: [], decided: false, selectedKey: null, recomputePending: false },
     team: { members: [{ id: "m1", role: "PARTNER_ACCOUNT_MANAGER", side: "PARTNER", personLabel: null, partnerLabel: "CDW", status: "INVITED", fit: null, missing: false, required: true, nextGovernedAction: "accept", waiting: true }],
@@ -86,7 +86,7 @@ test("what-next surfaces the governed decision and the waiting-on participant", 
 
 test("evidence-bound: empty inputs yield honest empty notes, never invented content", () => {
   const empty = fixture({
-    whyNow: { present: false, businessTrigger: null, technologyCondition: null, timingAnchor: null, signalConvergence: null, routeRelevance: null, contradictions: [], unknowns: [], renderedSummary: null, asOf: null },
+    whyNow: { present: false, businessTrigger: null, technologyCondition: null, timingAnchor: null, signalConvergence: null, routeRelevance: null, contradictions: [], unknowns: [], renderedSummary: null, asOf: null, lifecycle: [] },
     route: { path: [], recommended: null, selected: null, selectionMatchesRecommendation: true, overrideReason: null, overrideCategory: null, alternatives: [], changeEvents: [], dimensionKeys: [], decided: false, selectedKey: null, recomputePending: false },
     facts: [], expectedValue: null,
   });

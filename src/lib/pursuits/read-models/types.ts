@@ -72,6 +72,12 @@ export interface WhyNowView {
   unknowns: string[];                // "what we don't know" (§14)
   renderedSummary: string | null;    // derivative prose (§11)
   asOf: string | null;
+  /**
+   * Lifecycle Intelligence (P2A) — the account's lifecycle events with their derived state
+   * (VERIFIED_DATE / INFERRED_WINDOW / STALE_DATE / CONFLICTING_DATE), never flattened into a
+   * point date. Empty array = UNKNOWN, which is displayed as such rather than hidden.
+   */
+  lifecycle: import("@/lib/lifecycle/state").LifecycleEvent[];
 }
 
 // ---- Route comparison (§15/§16/§17/§18) ------------------------------------

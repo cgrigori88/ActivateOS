@@ -11,7 +11,9 @@ export interface AccountIntel {
   legalName: string;
   industry: string | null;
   hunt: { score: number | null; band: string | null; priority: number | null; propensity: number | null; useCase: string | null; problem: string | null; expectedValue: number | null; openOpps: number; pipelineUsd: number };
-  whyNow: { compellingEvent: string | null; timingKnown: boolean; timingScore: number | null; convergence: number | null; materialChange: string | null; evidence: Array<{ claim: string; confidence: number; firstParty: boolean }>; missingEvidence: string | null };
+  whyNow: { compellingEvent: string | null; timingKnown: boolean; timingScore: number | null; convergence: number | null; materialChange: string | null; evidence: Array<{ claim: string; confidence: number; firstParty: boolean }>; missingEvidence: string | null;
+    /** Lifecycle Intelligence (P2A): the account's primary lifecycle event with its derived state. */
+    lifecycle: { label: string; state: string; when: string; because: string } | null };
   throughWhom: { recommended: string | null; selected: string | null; overridden: boolean; partners: Array<{ name: string; strength: number | null; tenure: number | null; recommended: boolean }>; overlapLists: string[]; conflict: string | null;
     /** Strongest seller path (P1B.5): tiered + decayed evidence; UNKNOWN recency stays UNKNOWN. */
     sellerPath: { name: string; partnerLabel: string | null; tier: string; recency: string; assigned: boolean } | null };
@@ -85,6 +87,24 @@ export async function getAccountIntel(db: PoolClient, companyId: string): Promis
     }
   }
 
+  // Lifecycle Intelligence (P2A §8) — the primary event with its derived state. Never a bare date:
+  // an inferred window renders as a range and a conflict renders as a conflict.
+  let lifecycleSummary: AccountIntel["whyNow"]["lifecycle"] = null;
+  if (orgRow?.org_id) {
+    const { loadLifecycleFacts, eventsForAccount, primaryLifecycleEvent, STATE_LABEL } = await import("@/lib/lifecycle/state");
+    const events = eventsForAccount((await loadLifecycleFacts(db, orgRow.org_id, [companyId])).get(companyId) ?? []);
+    const primary = primaryLifecycleEvent(events);
+    if (primary && primary.state !== "UNKNOWN") {
+      const day = (x: string | null) => (x ? x.slice(0, 10) : "—");
+      const when = primary.state === "CONFLICTING_DATE"
+        ? primary.competing.map((c) => day(c.date)).join(" vs ")
+        : primary.state === "INFERRED_WINDOW"
+          ? `${day(primary.window?.from ?? null)} → ${day(primary.window?.to ?? null)}`
+          : day(primary.date);
+      lifecycleSummary = { label: primary.label, state: STATE_LABEL[primary.state], when, because: primary.because };
+    }
+  }
+
   return {
     companyId, legalName: co.legal_name, industry: co.industry,
     hunt: {
@@ -102,6 +122,7 @@ export async function getAccountIntel(db: PoolClient, companyId: string): Promis
       materialChange: materialChange ? (materialChange.reason ?? materialChange.change_type.replace(/_/g, " ")) : null,
       evidence: evidence.map((e) => ({ claim: e.claim, confidence: Number(e.confidence), firstParty: e.first_party })),
       missingEvidence: wn.evidence_gap ?? (pursuit?.tim == null ? "A verified renewal or contract-end date would materially raise timing and priority." : null),
+      lifecycle: lifecycleSummary,
     },
     throughWhom: {
       recommended: recName, selected: route?.sel ?? null, overridden,

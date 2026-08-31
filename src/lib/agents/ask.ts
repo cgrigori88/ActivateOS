@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from "pg";
 import { getAnthropic } from "@/lib/ai/client";
 import { MCP_TOOLS } from "@/lib/agents/mcp-tools";
 import { resolveOrgAnthropicKey } from "@/lib/ai/org-keys";
+import { decideToolScope, scopeSystemNote } from "./ask-scope";
 
 /**
  * Ask-the-record: a conversational answer over the org's OWN MCP tool surface.
@@ -31,7 +32,17 @@ export interface AskResult {
   model: string;
 }
 
-export async function askTheRecord(pool: Pool | PoolClient, orgId: string, question: string): Promise<AskResult> {
+/**
+ * P2C-0 §2: the ecosystem scope is now a REQUIRED input, not an optional nicety. `companyIds`
+ * null = no narrowing (scope ALL); an array = the authorized set, enforced at the tool boundary
+ * before anything becomes model-visible context. See ask-scope.ts.
+ */
+export interface AskOptions { companyIds?: string[] | null }
+
+export async function askTheRecord(
+  pool: Pool | PoolClient, orgId: string, question: string, opts: AskOptions = {},
+): Promise<AskResult> {
+  const companyIds = opts.companyIds ?? null;
   const tools = MCP_TOOLS.filter((t) => !t.write);
   const anthropic = getAnthropic(await resolveOrgAnthropicKey(pool, orgId));
 
@@ -50,7 +61,7 @@ export async function askTheRecord(pool: Pool | PoolClient, orgId: string, quest
     const response = await anthropic.messages.create({
       model: ASK_MODEL,
       max_tokens: 1500,
-      system: SYSTEM,
+      system: SYSTEM + scopeSystemNote(companyIds),
       tools: apiTools,
       // The SDK's message types are stricter than our accumulating array.
       messages: messages as never,
@@ -79,7 +90,14 @@ export async function askTheRecord(pool: Pool | PoolClient, orgId: string, quest
       toolCalls.push({ tool: block.name, args });
       let payload: unknown;
       try {
-        payload = tool ? await tool.run(pool, orgId, args) : { error: "unknown tool" };
+        if (!tool) {
+          payload = { error: "unknown tool" };
+        } else {
+          // Scope is enforced BEFORE the tool runs — a refused call never produces out-of-scope
+          // rows, so nothing outside the authorized set can reach the model's context window.
+          const decision = await decideToolScope(pool, orgId, tool, args, companyIds);
+          payload = decision.allowed ? await tool.run(pool, orgId, args) : decision.refusal;
+        }
       } catch (err) {
         payload = { error: err instanceof Error ? err.message : "tool failed" };
       }

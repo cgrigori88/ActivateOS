@@ -5,6 +5,9 @@ import { redirect } from "next/navigation";
 import { requireWrite } from "@/lib/auth/org";
 import { withTenant } from "@/lib/db/tenant";
 import { askTheRecord } from "@/lib/agents/ask";
+import { resolveScope } from "@/lib/scope/server";
+import { parseScope, SCOPE_COOKIE } from "@/lib/scope/scope";
+import { cookies } from "next/headers";
 
 /**
  * One ask = one grounded answer. Errors become a notice, never a black page
@@ -18,7 +21,14 @@ export async function askAction(formData: FormData): Promise<void> {
   try {
     await withTenant(async (db, orgId) => {
       await requireWrite(db); // asking spends AI budget — viewers read past answers only
-      await askTheRecord(db, orgId, question);
+      // P2C-0 §2: the persistent ecosystem scope now reaches the Ask surface. It is resolved to
+      // the authorized company set and enforced at the tool boundary, so a narrowed operator can
+      // never receive whole-book answers. Scope ALL resolves to null (no narrowing).
+      let scopeRaw: string | null = null;
+      try { scopeRaw = (await cookies()).get(SCOPE_COOKIE)?.value ?? null; } catch { /* no request cookies */ }
+      const scope = parseScope(scopeRaw);
+      const companyIds = scope.kind === "ALL" ? null : (await resolveScope(db, orgId, scope)).companyIds;
+      await askTheRecord(db, orgId, question, { companyIds });
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "The ask surface hit an error.";

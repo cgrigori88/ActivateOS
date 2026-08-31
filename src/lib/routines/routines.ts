@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from "pg";
 import { ResendProvider, resendConfigured } from "../comms/resend";
 import { commsConfig } from "../comms/provider";
 import { enabledTriggers } from "../triggers/catalog";
+import { renewalProjection } from "../lifecycle/projection";
 
 type Db = Pool | PoolClient;
 
@@ -265,16 +266,19 @@ export async function runAccountDigests(
       });
     }
 
-    const { rows: renewals } = triggersOn.has("renewal_window") ? await db.query<{ renewal: string; list: string }>(
-      `select pm.attributes->>'renewal_date' as renewal, ap.name as list
-       from population_members pm join account_populations ap on ap.id = pm.population_id
-       where pm.company_id = $1 and ap.org_id = $2 and ap.status = 'approved'
-         and pm.attributes ? 'renewal_date'
-         and (pm.attributes->>'renewal_date')::date between now()::date and (now() + interval '90 days')::date
-       limit 2`,
-      [acct.company_id, orgId],
-    ) : { rows: [] };
-    for (const r of renewals) items.push({ type: "renewal", text: `Renewal within 90 days (${r.renewal}, from "${r.list}")`, at: r.renewal });
+    // P2A §5 — the digest reads the canonical fact graph, not the import JSON. A digest line that
+    // says "Renewal due 4 March" when the evidence is an unverified vendor signal is the exact
+    // false confidence lifecycle intelligence exists to remove.
+    const renewals = triggersOn.has("renewal_window")
+      ? await renewalProjection(db, orgId, { days: 90, companyIds: [acct.company_id], limit: 2 })
+      : [];
+    for (const r of renewals) {
+      items.push({
+        type: "renewal",
+        text: `${r.label} within 90 days — ${r.phrase} (${r.sourceNote})${r.listName ? `, account on "${r.listName}"` : ""}`,
+        at: r.clockDate,
+      });
+    }
 
     const { rows: meetings } = await db.query<{ met_at: string; title: string | null }>(
       `select met_at::text, title from meeting_notes

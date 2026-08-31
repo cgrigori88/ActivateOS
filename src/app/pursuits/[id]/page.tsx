@@ -22,6 +22,7 @@ import { getPursuitFederation, getGovernedActions, getPursuitOutcomes } from "@/
 import { buildFederationViewer } from "@/lib/pursuits/federation/grants";
 import { FederationBento } from "@/components/pursuit/federation";
 import { StakeholderPanel } from "@/components/pursuit/stakeholders";
+import { LifecycleBento } from "@/components/pursuit/lifecycle";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -157,10 +158,17 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
           </div>
         </Panel>
 
-        {/* Why Now (carries unknowns + contradictions) */}
-        <Panel eyebrow="Assembled from the fact & signal graph — traceable" title="Why now" accent="var(--color-priority)" className="order-2 lg:order-2">
+        {/* Why Now (carries unknowns + contradictions) + lifecycle timing (P2A).
+            `#whynow` is the deep-link anchor from Today, the horizon and ⌘K. */}
+        <div id="whynow" className="order-2 scroll-mt-6 lg:order-2">
+        <Panel eyebrow="Assembled from the fact & signal graph — traceable" title="Why now" accent="var(--color-priority)">
           <WhyNowBento w={d.whyNow} />
+          <div className="mt-3 border-t border-neutral-200/70 pt-2.5 dark:border-neutral-800">
+            <span className="text-[10px] font-bold uppercase tracking-[0.05em] text-neutral-400">Lifecycle timing</span>
+            <div className="mt-1"><LifecycleBento events={d.whyNow.lifecycle} /></div>
+          </div>
         </Panel>
+        </div>
 
         {/* Route decision — recommended + human selection above the dense compare. `#route` is the
             Today deep-link anchor; scroll-mt keeps it clear of the sticky chrome. The governed

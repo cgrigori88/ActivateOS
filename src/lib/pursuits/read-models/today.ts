@@ -3,6 +3,7 @@ import type { TodayQueueView, DecisionItem, DecisionClass } from "./types";
 import { bandOf, type Caller } from "./helpers";
 import { classifyChange, isMaterial, todaySort, type OperationalUrgency } from "./materiality";
 import { motionAcceptanceBlockage } from "@/lib/motions/funnel";
+import { getLifecycleHorizon } from "@/lib/lifecycle/horizon";
 import { STAGE_PROBABILITY, type Stage } from "@/lib/opportunities/lifecycle";
 
 /**
@@ -17,6 +18,10 @@ const DEMO_BANNER = "Demo environment — includes illustrative synthetic partne
 
 /** P1C §11 materiality floor: stakeholder gaps surface on Today only above this expected value. */
 export const STAKEHOLDER_GAP_FLOOR_USD = 500_000;
+/** P2A §8: an approaching lifecycle window is an opportunity only above this value... */
+export const LIFECYCLE_FLOOR_USD = 500_000;
+/** ...while a CONFLICTING date is a risk at a lower bar — disagreeing with ourselves is cheap to fix. */
+export const LIFECYCLE_CONFLICT_FLOOR_USD = 250_000;
 
 /**
  * Options (additive, back-compat): `companyIds` narrows the queue to an ecosystem scope
@@ -139,6 +144,36 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
         : "No verified buying authority, and no warm path is known — UNKNOWN, not zero.",
       g.synthetic, new Date(), now,
       [{ label: "Verify role", skill: "assert_stakeholder_role", sideEffect: "INTERNAL_WRITE" }], `/pursuits/${g.pursuit_id}#stakeholders`));
+  }
+
+  // 2e) Material lifecycle windows (P2A §8) — exceptions only. A pursuit above the value floor whose
+  //     lifecycle event enters the horizon, or whose lifecycle dates CONFLICT. Verified dates that
+  //     are simply approaching are informational, not an action; a conflict always is.
+  {
+    const horizon = await getLifecycleHorizon(db, caller.orgId, { days: 90, companyIds: scoped ? ids : null });
+    for (const it of horizon.items) {
+      const ev = it.expectedValue ?? 0;
+      const conflicting = it.event.state === "CONFLICTING_DATE";
+      if (!conflicting && ev < LIFECYCLE_FLOOR_USD) continue;   // approaching dates need materiality
+      if (conflicting && ev < LIFECYCLE_CONFLICT_FLOOR_USD) continue;
+      const money = ev >= 1_000_000 ? `$${(ev / 1_000_000).toFixed(1)}M` : `$${Math.round(ev / 1000)}k`;
+      items.push(mk(
+        conflicting ? "LIFECYCLE_CONFLICT" : "LIFECYCLE_WINDOW",
+        conflicting ? "RISK" : "OPPORTUNITY",
+        conflicting ? "high" : "normal",
+        bandOf(ev >= 1_000_000 ? 85 : 60),
+        it.pursuitId, it.companyId, it.accountLabel,
+        // The row already names the account, and several predicate labels already end in "window"
+        // ("Renewal window") — appending another produces "renewal window window".
+        conflicting
+          ? `${it.event.label} timing is conflicting across sources`
+          : `${money} Pursuit enters ${/\bwindow$/i.test(it.event.label)
+              ? `a ${it.event.label.toLowerCase()}`
+              : `a ${it.event.label.toLowerCase()} window`} in ${it.event.daysUntil} days`,
+        it.whyItMatters, false, new Date(), now,
+        [{ label: it.nextAction?.label ?? "Open", skill: "explain_partner_route", sideEffect: "READ" }],
+        it.nextAction?.deepLink ?? (it.pursuitId ? `/pursuits/${it.pursuitId}#whynow` : `/accounts/${it.companyId}`)));
+    }
   }
 
   // 3) Material ledger changes (recent) → MATERIAL_CHANGE / RISK / OPPORTUNITY.

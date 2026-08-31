@@ -63,6 +63,14 @@ export function AccountIntelPane({ intel, closeHref, flat }: { intel: AccountInt
               ? <b>{intel.whyNow.timingScore}</b>
               : <span style={{ color: "var(--color-accent-attention)" }}>UNKNOWN — preserved, not assumed</span>}
           </Row>
+          {/* Lifecycle Intelligence (P2A §8) — state-bearing, never a bare date: an inferred window
+              renders as a range and a conflict renders as a conflict. */}
+          {intel.whyNow.lifecycle && (
+            <Row k={intel.whyNow.lifecycle.label}>
+              <b>{intel.whyNow.lifecycle.when}</b>
+              <span className="text-neutral-400"> · {intel.whyNow.lifecycle.state}</span>
+            </Row>
+          )}
           {intel.whyNow.convergence != null && <Row k="Convergence">{intel.whyNow.convergence} independent signal famil{intel.whyNow.convergence === 1 ? "y" : "ies"}</Row>}
           {intel.whyNow.materialChange && <Row k="Latest change">{intel.whyNow.materialChange}</Row>}
           {intel.whyNow.evidence.length > 0 && (

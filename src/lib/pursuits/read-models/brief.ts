@@ -55,6 +55,19 @@ export function buildPursuitBrief(
   for (const c of [d.whyNow.businessTrigger, d.whyNow.technologyCondition, d.whyNow.timingAnchor, d.whyNow.signalConvergence]) {
     if (c?.present) whyNow.push({ text: `${c.label}: ${c.detail ?? "present"}${c.commercialImplication ? ` — ${c.commercialImplication}` : ""}`, ref: c.refId ?? null });
   }
+  // Lifecycle Intelligence (P2A): WHY NOW inherits the state AND its uncertainty. A window is never
+  // narrowed to a day, and a conflict is stated as a conflict rather than resolved by picking.
+  for (const e of d.whyNow.lifecycle) {
+    if (e.state === "UNKNOWN") continue;
+    const when = e.state === "CONFLICTING_DATE"
+      ? e.competing.map((c) => c.date?.slice(0, 10) ?? "—").join(" vs ")
+      : e.date ? e.date.slice(0, 10)
+      : e.window ? `${e.window.from?.slice(0, 10) ?? "—"} → ${e.window.to?.slice(0, 10) ?? "—"}`
+      : "—";
+    whyNow.push({
+      text: `${e.label}: ${when} — ${e.state.replace(/_/g, " ").toLowerCase()}${e.daysUntil != null && e.state !== "CONFLICTING_DATE" ? ` (${e.daysUntil}d)` : ""}. ${e.because}`,
+    });
+  }
 
   // WHO MATTERS — the confirmed/proposed team; a waiting or missing role is flagged. Stakeholder
   // Intelligence (P1C) adds the BUYING side from the same canonical projection the detail renders:
@@ -105,6 +118,17 @@ export function buildPursuitBrief(
   for (const s of internal) if (isConfidentialFigure(s.text) && !shareText.has(clean(s.text))) notClaim.push({ text: `Do not share the confidential figure: ${clean(s.text)}.`, confidential: true, caution: true });
   if (ev) notClaim.push({ text: `Do not disclose expected value (${ev}) to the partner.`, confidential: true, caution: true });
   for (const c of d.whyNow.contradictions) notClaim.push({ text: `Contested — do not assert as settled: ${clean(c.text)}.`, caution: true });
+  // Lifecycle uncertainty is a claims guardrail: an inferred window or a conflicting date must
+  // never be spoken as a confirmed date (P2A — avoid fake exactness).
+  for (const e of d.whyNow.lifecycle) {
+    if (e.state === "INFERRED_WINDOW") {
+      notClaim.push({ text: `The ${e.label.toLowerCase()} is an inferred window, not a confirmed date — do not state a specific day.`, caution: true });
+    } else if (e.state === "CONFLICTING_DATE") {
+      notClaim.push({ text: `The ${e.label.toLowerCase()} is contradicted across sources — do not assert either date until it is verified.`, caution: true });
+    } else if (e.state === "STALE_DATE") {
+      notClaim.push({ text: `The ${e.label.toLowerCase()} on record is past its validity — do not present it as current.`, caution: true });
+    }
+  }
   // Unverified buying authority must never be presented as settled (P1C §9).
   if (cov?.established) {
     for (const r of cov.roles) {
