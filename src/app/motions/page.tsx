@@ -3,7 +3,7 @@ import { withTenant } from "@/lib/db/tenant";
 import { getLifecycleHorizon } from "@/lib/lifecycle/horizon";
 import { aggregateValue } from "@/lib/value/aggregate";
 import { bounds as vcBounds } from "@/lib/value/case";
-import { Bento, Card, MiniBar, NextStep, PageHeader, StatusBadge } from "@/components/ui";
+import { Bento, Card, MiniBar, NextStep, PageHeader, StatusBadge, Disclosure } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
 import {
@@ -216,7 +216,7 @@ export default async function MotionsPage({
 
   return (
     <main>
-      <PageHeader title="Motions" subtitle="Each commercial hypothesis as a live funnel — where it qualifies, through whom, what can move now, and exactly what blocks the rest." />
+      <PageHeader title="Motions" subtitle="Each commercial hypothesis as a live funnel — and exactly what blocks the rest." />
 
       {/* ── View modes (UX normalization): one surface, four densities ── */}
       <div className="mb-5 inline-flex rounded-lg p-0.5" style={{ background: "var(--surface-inset)" }}>
@@ -225,7 +225,7 @@ export default async function MotionsPage({
             key={v.key}
             href={qs({ view: v.key === "overview" ? null : v.key })}
             title={v.hint}
-            className={`rounded-md px-3 py-1.5 text-[13px] font-semibold transition-colors ${
+            className={`rounded-md px-3 py-1.5 text-copy font-semibold transition-colors ${
               view === v.key
                 ? "bg-white text-neutral-900 shadow-[var(--shadow-low)] dark:bg-neutral-700 dark:text-white"
                 : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
@@ -239,24 +239,41 @@ export default async function MotionsPage({
       {/* ── Motion command (P1A.1): the hypothesis funnel is the first viewport ── */}
       {view === "overview" && (
         <>
-          {(lifecycle.items.length > 0 || lifecycle.counts.CONFLICTING_DATE > 0) && (
-            <p className="mb-3 text-xs text-neutral-500">
-              <span className="font-semibold uppercase tracking-[0.06em] text-neutral-400">Lifecycle context</span>{" "}
-              · {lifecycle.items.length} account{lifecycle.items.length === 1 ? "" : "s"} in this scope carry a
-              material lifecycle date inside 90 days
-              {lifecycle.counts.CONFLICTING_DATE > 0 && <>, {lifecycle.counts.CONFLICTING_DATE} of them contradicted</>}
-              {lifecycle.unknownAccounts > 0 && <>; {lifecycle.unknownAccounts} account{lifecycle.unknownAccounts === 1 ? " has" : "s have"} no lifecycle evidence at all</>}.{" "}
-              <Link href="/pipeline?view=all&life=renew90" className="text-accent hover:underline dark:text-blue-400">See the deals</Link>.{" "}
-              <span className="text-neutral-400">Context only — timing does not gate a motion.</span>
-            </p>
-          )}
-          {value.accountsWithAnyCase > 0 && (
-            <p className="mb-3 text-xs text-neutral-500">
-              <span className="font-semibold uppercase tracking-[0.06em] text-neutral-400">Modeled customer impact</span>
-              {" "}· {value.total ? <b>{vcBounds(value.total)}</b> : <b>not yet defensible anywhere in scope</b>}
-              {" "}across {value.accountsCounted} account{value.accountsCounted === 1 ? "" : "s"}.{" "}
-              <span className="text-neutral-400">{value.basis}</span>
-            </p>
+          {/* Context strip (§1, §5). These were two dense analytical paragraphs sitting on the
+              page background with no container — the exact orphan-text case the normalization
+              brief names. They are now one context surface with the headline fact stated in a
+              clause and every qualifier moved into disclosure, which is where the caveats
+              belong: they matter when you interrogate the number, not when you scan it. */}
+          {(lifecycle.items.length > 0 || lifecycle.counts.CONFLICTING_DATE > 0 || value.accountsWithAnyCase > 0) && (
+            <Card className="mb-4">
+              <dl className="grid gap-3 sm:grid-cols-2">
+                {(lifecycle.items.length > 0 || lifecycle.counts.CONFLICTING_DATE > 0) && (
+                  <div>
+                    <dt className="text-label font-semibold uppercase tracking-[0.05em] ink-faint">Lifecycle context</dt>
+                    <dd className="mt-1 text-copy ink">
+                      {lifecycle.items.length} account{lifecycle.items.length === 1 ? "" : "s"} · material date inside 90 days
+                      {lifecycle.counts.CONFLICTING_DATE > 0 && <> · {lifecycle.counts.CONFLICTING_DATE} contradicted</>}
+                      {" "}
+                      <Link href="/pipeline?view=all&life=renew90" className="text-accent hover:underline dark:text-blue-400">See the deals →</Link>
+                    </dd>
+                    <Disclosure summary="What this does and does not mean" className="mt-1.5">
+                      {lifecycle.unknownAccounts > 0 && <>{lifecycle.unknownAccounts} account{lifecycle.unknownAccounts === 1 ? " has" : "s have"} no lifecycle evidence at all — UNKNOWN, not zero. </>}
+                      Context only: timing does not gate a motion.
+                    </Disclosure>
+                  </div>
+                )}
+                {value.accountsWithAnyCase > 0 && (
+                  <div>
+                    <dt className="text-label font-semibold uppercase tracking-[0.05em] ink-faint">Modeled customer impact</dt>
+                    <dd className="mt-1 text-copy ink">
+                      {value.total ? <b>{vcBounds(value.total)}</b> : <b>not yet defensible anywhere in scope</b>}
+                      {" "}· {value.accountsCounted} account{value.accountsCounted === 1 ? "" : "s"}
+                    </dd>
+                    <Disclosure summary="How this total is built" className="mt-1.5">{value.basis}</Disclosure>
+                  </div>
+                )}
+              </dl>
+            </Card>
           )}
           <MotionFunnelCommand funnels={funnels} qs={qs} />
         </>

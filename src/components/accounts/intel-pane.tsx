@@ -11,9 +11,9 @@ function Section({ label, accent, children }: { label: string; accent: string; c
     <div>
       <div className="mb-1.5 flex items-center gap-1.5">
         <span className="h-3 w-0.5 rounded-full" style={{ background: accent }} aria-hidden />
-        <span className="text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: accent }}>{label}</span>
+        <span className="text-micro font-bold uppercase tracking-[0.06em]" style={{ color: accent }}>{label}</span>
       </div>
-      <div className="space-y-1.5 pl-2.5 text-[12.5px]">{children}</div>
+      <div className="space-y-1.5 pl-2.5 text-body">{children}</div>
     </div>
   );
 }
@@ -39,10 +39,10 @@ export function AccountIntelPane({ intel, closeHref, flat }: { intel: AccountInt
     >
       <div className="mb-3 flex items-start justify-between gap-2">
         <div>
-          <Link href={`/accounts/${intel.companyId}`} className="text-[15px] font-bold hover:underline">{intel.legalName}</Link>
-          <div className="text-[11.5px] text-neutral-500">{intel.industry ?? "—"}</div>
+          <Link href={`/accounts/${intel.companyId}`} className="text-title font-bold hover:underline">{intel.legalName}</Link>
+          <div className="text-label text-neutral-500">{intel.industry ?? "—"}</div>
         </div>
-        <Link href={closeHref} className="rounded-control px-1.5 py-0.5 text-[11px] text-neutral-400 hover:bg-[var(--surface-inset)]" aria-label="Close">✕</Link>
+        <Link href={closeHref} className="rounded-control px-1.5 py-0.5 text-label text-neutral-400 hover:bg-[var(--surface-inset)]" aria-label="Close">✕</Link>
       </div>
 
       <div className="space-y-4">
@@ -112,7 +112,7 @@ export function AccountIntelPane({ intel, closeHref, flat }: { intel: AccountInt
               <span className="space-y-0.5">
                 {t.partners.slice(0, 3).map((p) => (
                   <span key={p.name} className="block">
-                    <b>{p.name}</b>{p.recommended && <span className="ml-1 text-[10px] font-bold uppercase" style={{ color: "var(--color-route)" }}> rec</span>}
+                    <b>{p.name}</b>{p.recommended && <span className="ml-1 text-micro font-bold uppercase" style={{ color: "var(--color-route)" }}> rec</span>}
                     <span className="text-neutral-400"> · relationship {p.strength ?? "—"}{p.tenure != null ? ` · ${p.tenure}mo` : ""}</span>
                   </span>
                 ))}
@@ -147,7 +147,7 @@ export function AccountIntelPane({ intel, closeHref, flat }: { intel: AccountInt
             <Row k="Stakeholders"><span style={{ color: "var(--color-accent-attention)" }}>{intel.stakeholders.gapNote}</span></Row>
           )}
           {!intel.whatNext.motion && !intel.whatNext.governedAction && !intel.whatNext.humanDecision && !intel.stakeholders?.gapNote && <span className="text-neutral-400">No pending action.</span>}
-          <div className="pt-1"><Link href={`/pursuits`} className="text-[11.5px] font-medium text-accent hover:underline dark:text-blue-400">Open in Pursuits →</Link></div>
+          <div className="pt-1"><Link href={`/pursuits`} className="text-label font-medium text-accent hover:underline dark:text-blue-400">Open in Pursuits →</Link></div>
         </Section>
       </div>
     </aside>

@@ -27,7 +27,7 @@ export default async function SourcesPage() {
     <main>
       <PageHeader
         title="Sources"
-        subtitle="Every source earns its trust. Verification outcomes, audit history, and current sampling — per source."
+        subtitle="Verification outcomes, audit history and sampling, per source."
       />
       <RoomTabs tabs={[{ href: "/sources", label: "Sources" }, { href: "/provider-health", label: "Provider health" }]} />
       {sources.length === 0 && (
@@ -45,22 +45,22 @@ export default async function SourcesPage() {
               </div>
               <div className="mb-3 flex items-baseline gap-4">
                 <div>
-                  <div className="pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em]">{Number(s.trust_score).toFixed(2)}</div>
+                  <div className="pos-metric-fig">{Number(s.trust_score).toFixed(2)}</div>
                   <div className="text-xs text-neutral-500">earned trust</div>
                 </div>
                 <div>
-                  <div className="pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em]">
+                  <div className="pos-metric-fig">
                     {Math.round(Number(s.audit_sample_rate) * 100)}%
                   </div>
                   <div className="text-xs text-neutral-500">audit sampling</div>
                 </div>
                 <div>
-                  <div className="pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em]">{verifiedPct}%</div>
+                  <div className="pos-metric-fig">{verifiedPct}%</div>
                   <div className="text-xs text-neutral-500">verified rate</div>
                 </div>
                 {s.predictive_value != null && (
                   <div>
-                    <div className="pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em]">
+                    <div className="pos-metric-fig">
                       {Number(s.predictive_value).toFixed(2)}
                     </div>
                     <div className="text-xs text-neutral-500">predictive value</div>

@@ -37,11 +37,11 @@ export default async function LoginPage({
 
   const field =
     "w-full rounded-input border border-neutral-300/80 bg-white/70 px-3.5 py-2.5 text-title backdrop-blur transition-colors duration-[140ms] placeholder:text-neutral-400 hover:border-neutral-400 focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/15 dark:border-white/15 dark:bg-white/[0.06] dark:hover:border-white/30";
-  const label = "mb-1.5 block text-[12.5px] font-semibold text-neutral-600 dark:text-neutral-300";
+  const label = "mb-1.5 block text-body font-semibold text-neutral-600 dark:text-neutral-300";
   const primary =
-    "inline-flex min-h-[44px] w-full items-center justify-center rounded-full bg-accent px-5 text-[14.5px] font-bold text-white transition-colors duration-[140ms] hover:bg-accent-strong";
+    "inline-flex min-h-[44px] w-full items-center justify-center rounded-full bg-accent px-5 text-copy font-bold text-white transition-colors duration-[140ms] hover:bg-accent-strong";
   const secondary =
-    "inline-flex min-h-[44px] items-center justify-center rounded-full border border-neutral-300/80 px-5 text-[14.5px] font-semibold transition-colors duration-[140ms] hover:bg-neutral-900/[0.04] dark:border-white/15 dark:hover:bg-white/10";
+    "inline-flex min-h-[44px] items-center justify-center rounded-full border border-neutral-300/80 px-5 text-copy font-semibold transition-colors duration-[140ms] hover:bg-neutral-900/[0.04] dark:border-white/15 dark:hover:bg-white/10";
 
   return (
     <main className="grid min-h-screen lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
@@ -54,13 +54,13 @@ export default async function LoginPage({
                 <path d="M4 24 A20 20 0 1 1 44 24 A20 20 0 1 1 4 24 Z M29 26 A10 10 0 1 0 9 26 A10 10 0 1 0 29 26 Z M39 17 A4 4 0 1 0 31 17 A4 4 0 1 0 39 17 Z" />
               </svg>
             </span>
-            <span className="text-[19px] font-extrabold tracking-[-0.03em]">PursuitOS</span>
+            <span className="text-section font-extrabold tracking-[-0.03em]">PursuitOS</span>
           </a>
 
           {sp.error && (
             <div
               role="alert"
-              className="mb-6 flex items-start gap-2.5 rounded-input bg-rose/12 px-4 py-3 text-[13.5px] font-medium text-rose"
+              className="mb-6 flex items-start gap-2.5 rounded-input bg-rose/12 px-4 py-3 text-copy font-medium text-rose"
             >
               <svg viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                 <circle cx="8" cy="8" r="6" />
@@ -113,7 +113,7 @@ export default async function LoginPage({
                       placeholder="At least 12 characters"
                       className={field}
                     />
-                    <p className="mt-1.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">12 characters minimum.</p>
+                    <p className="mt-1.5 text-body text-neutral-500 dark:text-neutral-400">12 characters minimum.</p>
                   </div>
                   <button className={`${primary} !w-auto`}>Update password</button>
                 </form>
@@ -146,8 +146,8 @@ export default async function LoginPage({
                     <span className="h-px flex-1 bg-neutral-900/10 dark:bg-white/10" />
                   </div>
 
-                  <h2 className="text-[17px] font-bold tracking-[-0.02em]">Create the owner account</h2>
-                  <p className="mt-1.5 text-[13.5px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+                  <h2 className="text-section font-bold tracking-[-0.02em]">Create the owner account</h2>
+                  <p className="mt-1.5 text-copy leading-relaxed text-neutral-500 dark:text-neutral-400">
                     Available only until the first owner exists; this form then disappears permanently.
                   </p>
 
@@ -159,9 +159,9 @@ export default async function LoginPage({
                     <div>
                       <label htmlFor="owner-password" className={label}>Password</label>
                       <input id="owner-password" name="password" type="password" required minLength={12} autoComplete="new-password" placeholder="At least 12 characters" className={field} />
-                      <p className="mt-1.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">12 characters minimum.</p>
+                      <p className="mt-1.5 text-body text-neutral-500 dark:text-neutral-400">12 characters minimum.</p>
                     </div>
-                    <button className="inline-flex min-h-[44px] w-full items-center justify-center rounded-full bg-emerald px-5 text-[14.5px] font-bold text-white transition-colors duration-[140ms] hover:brightness-95">
+                    <button className="inline-flex min-h-[44px] w-full items-center justify-center rounded-full bg-emerald px-5 text-copy font-bold text-white transition-colors duration-[140ms] hover:brightness-95">
                       Create owner &amp; sign in
                     </button>
                   </form>
@@ -184,10 +184,10 @@ export default async function LoginPage({
             <p className="text-label font-bold uppercase tracking-[0.14em] text-blue-300/70">
               The partner-context gap
             </p>
-            <p className="mt-3 max-w-[22ch] text-[34px] font-extrabold leading-[1.08] tracking-[-0.03em] text-white">
+            <p className="mt-3 max-w-[22ch] text-hero font-extrabold leading-[1.08] tracking-[-0.03em] text-white">
               Your CRM ends at your company&apos;s wall. Revenue doesn&apos;t.
             </p>
-            <p className="mt-4 max-w-[46ch] text-[14px] leading-relaxed text-white/55">
+            <p className="mt-4 max-w-[46ch] text-copy leading-relaxed text-white/55">
               PursuitOS holds the whole deal — your context and your partner&apos;s consented half —
               then runs the motion and settles the outcome on a ledger both sides trust.
             </p>

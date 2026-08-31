@@ -113,7 +113,7 @@ export function ScopeSelector({ options, active, collapsed }: { options: ScopeOp
         >
           <MenuItem opt={allOpt} active={scopesEqual(active, { kind: "ALL", id: null })} onPick={apply} />
           {groups.length === 0 && (
-            <p className="px-3 py-2 text-[11.5px] text-rail-ink-soft/70">No narrower scopes in this tenant yet.</p>
+            <p className="px-3 py-2 text-label text-rail-ink-soft/70">No narrower scopes in this tenant yet.</p>
           )}
           {groups.map(([group, items]) => (
             <div key={group} className="mt-1">
@@ -136,7 +136,7 @@ function MenuItem({ opt, active, onPick }: { opt: ScopeOption; active: boolean; 
       role="option"
       aria-selected={active}
       onClick={() => onPick(opt)}
-      className={`flex w-full items-center gap-2 rounded-full px-3 py-1.5 text-left text-[13px] transition-colors duration-[100ms] ${
+      className={`flex w-full items-center gap-2 rounded-full px-3 py-1.5 text-left text-copy transition-colors duration-[100ms] ${
         active ? "bg-accent font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]" : "text-rail-ink-soft hover:bg-[var(--rail-pop-hover)] hover:text-rail-ink"
       }`}
     >

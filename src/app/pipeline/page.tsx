@@ -11,7 +11,7 @@ import {
   weightedPipelineValue,
   type Stage,
 } from "@/lib/opportunities/lifecycle";
-import { Bento, Card, MiniBar, PageHeader, StatusBadge } from "@/components/ui";
+import { Bento, Card, MiniBar, PageHeader, StatusBadge, SectionHeading, Disclosure, SummaryBand, buttonClass } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import {
   ELEMENTS,
@@ -456,7 +456,7 @@ export default async function PipelinePage({
     <main>
       <PageHeader
         title="Pipeline"
-        subtitle="Opportunities advanced from motions. Weighted by declared stage probabilities until outcomes calibrate them."
+        subtitle="Opportunities advanced from motions, weighted by declared stage probability."
       />
 
       {(() => {
@@ -474,14 +474,14 @@ export default async function PipelinePage({
         const lostQual = avg(opps.filter((o) => o.stage === "closed_lost"));
         return (
           <>
-            <div className="mb-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+            <SummaryBand className="mb-3">
               <Bento label="open opportunities" value={open.length} href="/pipeline" />
               <Bento label="total pipeline" value={`$${Math.round(total / 1000)}k`} />
               <Bento label="weighted" value={`$${Math.round(weighted / 1000)}k`} subs={["by stage probability"]} />
               <Bento label="avg qualification" value={avgQual == null ? "—" : `${avgQual}`} subs={["MEDDPICC health"]} />
-              <Bento label="won" value={wonCount} subs={[`$${Math.round(wonUsd / 1000)}k`]} href="/pipeline?stage=closed_won" />
+              <Bento label="won" value={wonCount} intent="positive" subs={[`$${Math.round(wonUsd / 1000)}k`]} href="/pipeline?stage=closed_won" />
               <Bento label="reg'd deals" value={regRows.length} href="/pipeline?view=review" />
-            </div>
+            </SummaryBand>
 
             {/* ── Tie-out (task #87): one place where the numbers reconcile ── */}
             {tieOut && (
@@ -623,12 +623,14 @@ export default async function PipelinePage({
             {/* ── Renewal radar (B+3): the co-sell clock ── */}
             {renewals.length > 0 && (
               <Card tone="amber" className="mb-3">
-                <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Renewal radar</h2>
-                <p className="mb-3 text-xs text-neutral-500">
-                  Lifecycle dates inside 120 days, from the canonical record. Each row says what kind of date it is —
-                  a confirmed day, an inferred window, or a contradiction. Quiet engagement is decay risk; the partners
-                  column is who to attach before the clock runs out.
-                </p>
+                <SectionHeading hint="Lifecycle dates inside 120 days, from the canonical record.">
+                  Renewal radar
+                </SectionHeading>
+                <Disclosure summary="How to read a row" className="mb-3">
+                  Each row says what KIND of date it is — a confirmed day, an inferred window, or a
+                  contradiction. Quiet engagement is decay risk; the partners column is who to attach
+                  before the clock runs out.
+                </Disclosure>
                 <ul className="space-y-1.5">
                   {renewals.map((r) => (
                     <li key={r.companyId} className="flex flex-wrap items-center gap-2 text-sm">
@@ -653,7 +655,7 @@ export default async function PipelinePage({
                         {r.label} {r.phrase} · {r.sourceNote}
                         {r.listName ? ` · on “${r.listName}”` : ""}
                       </span>
-                      <span className="ml-auto flex items-center gap-2 text-[11.5px]">
+                      <span className="ml-auto flex items-center gap-2 text-label">
                         {r.partners.length > 0 && (
                           <span className="text-violet dark:text-violet-300">{r.partners.join(", ")}</span>
                         )}
@@ -725,7 +727,7 @@ export default async function PipelinePage({
             {stageRows.length > 0 && (
               <Card className="mb-3">
                 <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Open opportunities by stage</h2>
-                <MiniBar rows={stageRows} />
+                <MiniBar rows={stageRows} series="ordered" />
               </Card>
             )}
 
@@ -806,7 +808,7 @@ export default async function PipelinePage({
             <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--surface-inset)" }}>
               {seg.map((v) => (
                 <Link key={v.key} href={viewHref(v.key)} title={v.hint}
-                  className={`rounded-md px-3 py-1.5 text-[13px] font-semibold transition-colors ${view === v.key ? "bg-white text-neutral-900 shadow-[var(--shadow-low)] dark:bg-neutral-700 dark:text-white" : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"}`}>
+                  className={`rounded-md px-3 py-1.5 text-copy font-semibold transition-colors ${view === v.key ? "bg-white text-neutral-900 shadow-[var(--shadow-low)] dark:bg-neutral-700 dark:text-white" : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"}`}>
                   {v.label}
                 </Link>
               ))}
@@ -1016,22 +1018,27 @@ export default async function PipelinePage({
             : { fg: "var(--color-accent-attention)", bg: "color-mix(in srgb, var(--color-accent-attention) 9%, transparent)" };
           return (
             <Card key={o.id} className={`relative overflow-hidden ${material === "high" && attention ? "shadow-[var(--shadow-mid)]" : ""}`}>
-              {/* Materiality + attention accent rail */}
-              <div aria-hidden className="absolute inset-y-0 left-0" style={{ width: material === "high" ? 4 : material === "mid" ? 3 : 2, background: railColor }} />
+              {/* Materiality + attention. This was a 2–4px coloured rail down the card's left
+                  edge, with the WIDTH encoding materiality on top of the colour — two variables
+                  on one decoration, neither labelled. A card already states its condition in a
+                  chip and its value in the figure; the rail is now a 1px hairline that tints
+                  with the same signal, so the edge reads as the card's own material rather than
+                  as a second, louder status system. */}
+              <div aria-hidden className="absolute inset-y-0 left-0 w-px" style={{ background: railColor }} />
 
               {/* Header — identity, outcome/stage, materiality amount, route */}
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pl-1.5">
-                <Link href={drawerHref(o.company_id)} scroll={false} className="text-[15px] font-bold hover:underline" title="Open account intelligence">{o.name}</Link>
+                <Link href={drawerHref(o.company_id)} scroll={false} className="text-title font-bold hover:underline" title="Open account intelligence">{o.name}</Link>
                 {closed
-                  ? <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.04em]" style={won ? { background: "color-mix(in srgb, var(--color-accent-verified) 14%, transparent)", color: "var(--color-accent-verified)" } : { background: "var(--surface-inset)", color: "var(--color-neutral-500)" }}>{won ? "Closed won" : "Closed lost — no decision"}</span>
-                  : <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-neutral-500">{o.stage.replace(/_/g, " ")}</span>}
+                  ? <span className="rounded-full px-2 py-0.5 text-micro font-bold uppercase tracking-[0.04em]" style={won ? { background: "color-mix(in srgb, var(--color-accent-verified) 14%, transparent)", color: "var(--color-accent-verified)" } : { background: "var(--surface-inset)", color: "var(--color-neutral-500)" }}>{won ? "Closed won" : "Closed lost — no decision"}</span>
+                  : <span className="text-label font-semibold uppercase tracking-[0.04em] text-neutral-500">{o.stage.replace(/_/g, " ")}</span>}
                 {amt != null && (
                   <span className="tnum" style={{ fontSize: material === "high" ? 17 : material === "mid" ? 15 : 13.5, fontWeight: 800 }}>
                     ${Math.round(amt / 1000)}k
-                    {weighted != null && <span className="ml-1 text-[11.5px] font-medium text-neutral-400">· ${weighted}k weighted</span>}
+                    {weighted != null && <span className="ml-1 text-label font-medium text-neutral-400">· ${weighted}k weighted</span>}
                   </span>
                 )}
-                {o.partner_name && <span className="text-[11.5px] text-neutral-500">route <b className="text-neutral-600 dark:text-neutral-300">{o.partner_name}</b></span>}
+                {o.partner_name && <span className="text-label text-neutral-500">route <b className="text-neutral-600 dark:text-neutral-300">{o.partner_name}</b></span>}
                 {mo && !closed && (
                   <span title={mo.reasons.join(" · ") || "observed behavior over the last 14 days"} className="rounded-full px-2 py-0.5 text-micro font-bold"
                     style={mo.verdict === "advancing" ? { background: "color-mix(in srgb, var(--color-route) 12%, transparent)", color: "var(--color-route)" }
@@ -1041,8 +1048,8 @@ export default async function PipelinePage({
                     {mo.jointActive ? "◆ " : ""}{MOMENTUM_LABEL[mo.verdict]}
                   </span>
                 )}
-                {o.expected_close_date && <span className="text-[11px] text-neutral-400">close {new Date(o.expected_close_date).toISOString().slice(0, 10)}</span>}
-                {o.motion_id && <Link href={`/briefs/${o.motion_id}`} className="ml-auto text-[11.5px] font-medium text-accent hover:underline dark:text-blue-400">Brief →</Link>}
+                {o.expected_close_date && <span className="text-label text-neutral-400">close {new Date(o.expected_close_date).toISOString().slice(0, 10)}</span>}
+                {o.motion_id && <Link href={`/briefs/${o.motion_id}`} className="ml-auto text-label font-medium text-accent hover:underline dark:text-blue-400">Brief →</Link>}
               </div>
 
               {/* One clean stage rail */}
@@ -1054,7 +1061,7 @@ export default async function PipelinePage({
                   return (
                     <div key={s} className="flex-1" title={s.replace(/_/g, " ")}>
                       <div className={`h-1 rounded-full ${tone}`} />
-                      <div className={`mt-0.5 hidden text-[9px] uppercase tracking-wide sm:block ${isCurrent ? "font-semibold text-accent dark:text-blue-400" : "text-neutral-400"}`}>{s.replace(/_/g, " ")}</div>
+                      <div className={`mt-0.5 hidden text-micro uppercase tracking-wide sm:block ${isCurrent ? "font-semibold text-accent dark:text-blue-400" : "text-neutral-400"}`}>{s.replace(/_/g, " ")}</div>
                     </div>
                   );
                 })}
@@ -1062,7 +1069,7 @@ export default async function PipelinePage({
 
               {/* PRIMARY: what is actually happening + the next intervention (materiality-gated) */}
               {attention && (
-                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-2.5 py-2 pl-2.5 text-[12.5px]" style={{ background: attTone(attention.tone).bg }}>
+                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-2.5 py-2 pl-2.5 text-body" style={{ background: attTone(attention.tone).bg }}>
                   <span className="font-semibold" style={{ color: attTone(attention.tone).fg }}>{attention.label}.</span>
                   <span className="text-neutral-500">Next: <b className="text-neutral-700 dark:text-neutral-200">{attention.next}</b></span>
                 </div>
@@ -1071,7 +1078,7 @@ export default async function PipelinePage({
               {/* Manage — CRM detail behind progressive disclosure (native <details>, robust) */}
               {!closed && (
                 <details className="mt-2 pl-1.5">
-                  <summary className="inline-flex cursor-pointer list-none items-center gap-2 text-[11.5px] font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
+                  <summary className="inline-flex cursor-pointer list-none items-center gap-2 text-label font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
                     <span className="uppercase tracking-[0.04em]">Manage</span>
                     {(() => { const m = meddpicc.get(o.id)!; const sc = meddpiccScore(m); const mg = meddpiccGaps(m);
                       const t = sc >= 70 ? "var(--color-accent-verified)" : sc >= 40 ? "var(--color-accent-attention)" : "var(--color-accent-risk)";
@@ -1082,7 +1089,7 @@ export default async function PipelinePage({
 
                   <div className="mt-2.5 space-y-2.5">
                     {gaps.length > 0 && (
-                      <p className="text-[12px] font-medium" style={{ color: "var(--color-accent-attention)" }}>Buyer-role gaps: {gaps.join(" · ")}</p>
+                      <p className="text-body font-medium" style={{ color: "var(--color-accent-attention)" }}>Buyer-role gaps: {gaps.join(" · ")}</p>
                     )}
                     {stakeholders.length > 0 && (
                       <div className="space-y-1">
@@ -1092,7 +1099,7 @@ export default async function PipelinePage({
                             {/* Assertion state (P1C): verified/inferred/unverified stay distinct. A role
                                 change here lands as an unverified proposal — verification happens on the
                                 Pursuit's stakeholder panel, with evidence, through the governed skill. */}
-                            <span className={`rounded-full px-1.5 py-px text-[10px] font-semibold ${s.assertion_state === "verified" ? "bg-emerald/12 text-emerald-700 dark:text-emerald-300" : s.assertion_state === "inferred" ? "bg-violet/12 text-violet-700 dark:text-violet-300" : "bg-neutral-500/10 text-neutral-500"}`}>
+                            <span className={`rounded-full px-1.5 py-px text-micro font-semibold ${s.assertion_state === "verified" ? "bg-emerald/12 text-emerald-700 dark:text-emerald-300" : s.assertion_state === "inferred" ? "bg-violet/12 text-violet-700 dark:text-violet-300" : "bg-neutral-500/10 text-neutral-500"}`}>
                               {s.assertion_state}
                             </span>
                             <select name="role" defaultValue={s.role} className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-xs dark:border-neutral-700">
@@ -1124,7 +1131,7 @@ export default async function PipelinePage({
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-1">
                                       <span className="truncate text-label font-medium">{e.label}</span>
-                                      {st.source === "ai_assist" && <span className="rounded bg-blue-100 px-1 text-[8px] font-bold uppercase text-accent dark:bg-blue-900 dark:text-blue-300" title="AI-drafted, unconfirmed">AI</span>}
+                                      {st.source === "ai_assist" && <span className="rounded bg-blue-100 px-1 text-micro font-bold uppercase text-accent dark:bg-blue-900 dark:text-blue-300" title="AI-drafted, unconfirmed">AI</span>}
                                     </div>
                                     <input name="notes" defaultValue={st.notes ?? ""} placeholder="notes" className="mt-0.5 w-full rounded border border-transparent bg-transparent text-label text-neutral-500 hover:border-neutral-200 focus:border-neutral-300 focus:outline-none dark:hover:border-neutral-700" />
                                   </div>
@@ -1146,7 +1153,19 @@ export default async function PipelinePage({
                         .filter((s) => { const idx = STAGES.indexOf(s as (typeof STAGES)[number]); if (s === "closed_won" || s === "closed_lost") return true; return idx > stageIdx || idx === stageIdx - 1; })
                         .map((s) => (
                           <form key={s} action={advanceOpportunityAction.bind(null, o.id, s as Stage)}>
-                            <button type="submit" className={s === "closed_won" ? "rounded-md bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800" : s === "closed_lost" ? "rounded-md px-3 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-300 hover:bg-red-50 dark:text-red-400 dark:ring-red-800 dark:hover:bg-red-950" : "rounded-md px-3 py-1 text-xs font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"}>{s.replace(/_/g, " ")}</button>
+                            {/* One row of stage-advance controls, so one geometry. These hand-wrote their
+                                own padding, height and text size — the exact drift `buttonClass` exists to
+                                stop — and filled the won button solid green, making one option in a row of
+                                equals look like the recommended one. Outcome is carried by ink now. */}
+                            <button
+                              type="submit"
+                              className={`${buttonClass("ghost", "sm")} ${
+                                s === "closed_won" ? "text-emerald dark:text-emerald"
+                                : s === "closed_lost" ? "text-rose dark:text-rose" : ""
+                              }`}
+                            >
+                              {s.replace(/_/g, " ")}
+                            </button>
                           </form>
                         ))}
                       {initiativeOpts.length > 0 && (
@@ -1166,7 +1185,7 @@ export default async function PipelinePage({
               {/* Closed — the outcome + its autopsy, read as an outcome not a stage */}
               {closed && autopsies.has(o.id) && (
                 <details className="mt-2 pl-1.5">
-                  <summary className="cursor-pointer text-[11.5px] font-medium text-accent hover:underline dark:text-blue-400">Autopsy — what the record says happened</summary>
+                  <summary className="cursor-pointer text-label font-medium text-accent hover:underline dark:text-blue-400">Autopsy — what the record says happened</summary>
                   <ul className="mt-1.5 space-y-0.5 text-sm text-neutral-600 dark:text-neutral-300">
                     {autopsies.get(o.id)!.lines.map((l, i) => <li key={i}>{l}</li>)}
                   </ul>

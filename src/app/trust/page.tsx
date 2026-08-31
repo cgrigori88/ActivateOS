@@ -37,7 +37,7 @@ export default async function TrustPage() {
     <main>
       <PageHeader
         title="Trust center"
-        subtitle="Where your data goes, which models see it, what is retained, and what is auditable — the live figures, not a policy PDF."
+        subtitle="Where your data goes and what is auditable — the live figures."
       />
 
       <div className="mb-6 flex flex-wrap gap-3">

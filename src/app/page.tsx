@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
 import { rankNextActions, type NextAction, type PortfolioState } from "@/lib/portfolio/next-best";
-import { BandBadge, Card, CountChip, PageHeader, StatusBadge } from "@/components/ui";
+import { BandBadge, Card, CountChip, PageHeader, StatusBadge, Metric, SummaryBand } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { accountDivergences } from "@/lib/context/divergence";
 import { enabledTriggers } from "@/lib/triggers/catalog";
@@ -28,15 +28,6 @@ function cleanQuery(sp: Record<string, string | string[] | undefined>): Record<s
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(sp)) if (k !== "today" && typeof v === "string") out[k] = v;
   return out;
-}
-
-function ExposureFigure({ value, label, strong, accent }: { value: string; label: string; strong?: boolean; accent?: string }) {
-  return (
-    <span className="flex flex-col">
-      <span className="tnum font-extrabold leading-none" style={{ fontSize: strong ? 24 : 19, color: accent }}>{value}</span>
-      <span className="mt-1 text-[11px] text-neutral-500">{label}</span>
-    </span>
-  );
 }
 
 async function loadNextActions() {
@@ -213,29 +204,26 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       />
       <RoomTabs tabs={[{ href: "/", label: "Today" }, { href: "/queue", label: "Queue" }]} />
 
-      {/* Revenue exposure band (§2): one calm row — where the revenue is, in the active scope. */}
+      {/* Revenue exposure (§2). Today used to draw its own summary — inline figures at
+          19/24px with hand-picked accent colours — while Pipeline, Partners and Motions used
+          tiles. Same job, two treatments, and the brief names this divergence first. It is now
+          the standard band, so the only thing Today decides is WHICH numbers to show and what
+          they mean. Decisions and conditions keep a hue because they are states you act on;
+          pipeline and weighted are facts and stay neutral. */}
       {exposure && (
-        <Card className="mb-6">
-          <div className="mb-2 flex items-baseline justify-between gap-2">
-            <h2 className="text-[10px] font-bold uppercase tracking-[0.08em] text-neutral-400">
-              Exposure{scope.scope.kind !== "ALL" ? ` · ${scope.label}` : ""}
-            </h2>
-            <span className="text-label text-neutral-400">open pipeline, weighted, and what needs deciding</span>
-          </div>
-          <div className="flex flex-wrap items-baseline gap-x-7 gap-y-2">
-            <ExposureFigure value={usdShort(exposure.openUsd)} label="open pipeline" strong />
-            <ExposureFigure value={usdShort(exposure.weightedUsd)} label="weighted" />
-            <ExposureFigure value={String(decisionsTotal)} label={`decision${decisionsTotal === 1 ? "" : "s"} to make`} accent="var(--color-priority)" />
-            <ExposureFigure value={String(allDivergences.length)} label={`condition${allDivergences.length === 1 ? "" : "s"}`} accent="var(--color-accent-attention)" />
-            <ExposureFigure value={usdShort(exposure.wonUsdPeriod)} label={`won · 90d (${exposure.wonCountPeriod})`} accent="var(--color-accent-verified)" />
-          </div>
-        </Card>
+        <SummaryBand className="mb-6">
+          <Metric label={`open pipeline${scope.scope.kind !== "ALL" ? ` · ${scope.label}` : ""}`} value={usdShort(exposure.openUsd)} />
+          <Metric label="weighted" value={usdShort(exposure.weightedUsd)} subs={["by stage probability"]} />
+          <Metric label={`decision${decisionsTotal === 1 ? "" : "s"} to make`} value={decisionsTotal} intent="info" />
+          <Metric label={`condition${allDivergences.length === 1 ? "" : "s"}`} value={allDivergences.length} intent="warning" />
+          <Metric label="won · 90d" value={usdShort(exposure.wonUsdPeriod)} intent="positive" subs={[`${exposure.wonCountPeriod} deal${exposure.wonCountPeriod === 1 ? "" : "s"}`]} />
+        </SummaryBand>
       )}
 
       {pursuitQueue && pursuitQueue.items.length > 0 && (
         <Panel
-          eyebrow="What can materially change revenue — ordered by materiality, not arrival"
           title="Decisions that move revenue"
+          eyebrow="Ordered by materiality, not arrival — what can materially change revenue"
           accent="var(--color-priority)"
           className="mb-6"
           aside={pursuitQueue.demoBanner ? <SyntheticBadge text="Demo environment" /> : undefined}
@@ -243,16 +231,16 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           <TodayQueue items={pursuitQueue.items} drawerBase={drawerBase} />
           {!viewAll && decisionsTotal > pursuitQueue.items.length && (
             <div className="mt-3">
-              <Link href={{ query: { ...cleanQuery(sp), today: "all" } }} className="text-[12.5px] font-semibold text-accent hover:underline dark:text-blue-400">
+              <Link href={{ query: { ...cleanQuery(sp), today: "all" } }} className="text-body font-semibold text-accent hover:underline dark:text-blue-400">
                 View all {decisionsTotal} decisions →
               </Link>
             </div>
           )}
           {viewAll && (
             <div className="mt-3 flex items-center gap-4">
-              <Link href={{ query: cleanQuery(sp) }} className="text-[12.5px] font-medium text-neutral-500 hover:underline">← Back to command center</Link>
+              <Link href={{ query: cleanQuery(sp) }} className="text-body font-medium text-neutral-500 hover:underline">← Back to command center</Link>
               {decisionsTotal > TODAY_VIEWALL_CAP && (
-                <span className="text-[11.5px] text-neutral-400">Showing the top {TODAY_VIEWALL_CAP} of {decisionsTotal} — the full dated worklist is in <Link href="/queue" className="font-medium text-accent hover:underline dark:text-blue-400">Queue →</Link></span>
+                <span className="text-label text-neutral-400">Showing the top {TODAY_VIEWALL_CAP} of {decisionsTotal} — the full dated worklist is in <Link href="/queue" className="font-medium text-accent hover:underline dark:text-blue-400">Queue →</Link></span>
               )}
             </div>
           )}
@@ -265,7 +253,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       {divergences.length > 0 && (
         <Card tone="amber" className="mb-6">
           <div className="mb-2.5 flex items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--color-accent-attention)" }}>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
               Where your systems disagree
             </h2>
             {!viewAll && allDivergences.length > divergences.length ? (
@@ -277,12 +265,12 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           <ul className="space-y-px">
             {divergences.map((d, i) => (
               <li key={i} className="flex items-start gap-2.5 rounded-control px-2 py-1.5 text-sm transition-colors hover:bg-[var(--surface-inset)]">
-                <span className="mt-1 h-6 w-0.5 shrink-0 rounded-full" style={{ background: d.kind === "joint_vs_pipeline" ? "var(--color-accent-violet)" : "var(--color-accent-attention)" }} aria-hidden />
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: d.kind === "joint_vs_pipeline" ? "var(--color-accent-violet)" : "var(--color-accent-attention)" }} aria-hidden />
                 <span className="min-w-0 flex-1">
                   <Link href={drawerHref(d.companyId)} scroll={false} className="font-semibold hover:underline" title="Open account intelligence">{d.account}</Link>
                   <span className="text-neutral-500"> — {d.text}</span>
                 </span>
-                <span className="mt-0.5 shrink-0 text-[10px] font-semibold uppercase tracking-[0.04em] text-neutral-400">{d.kind.replace(/_/g, " ")}</span>
+                <span className="mt-0.5 shrink-0 text-micro font-semibold uppercase tracking-[0.04em] text-neutral-400">{d.kind.replace(/_/g, " ")}</span>
               </li>
             ))}
           </ul>
@@ -294,7 +282,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           is dominated by what needs acting on, not empty counters. */}
       <div className={pursuitQueue && pursuitQueue.items.length > 0 ? "mb-6" : "mb-6"}>
         {pursuitQueue && pursuitQueue.items.length > 0 && (
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.06em] text-neutral-400">At a glance</div>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">At a glance</h2>
         )}
         <div className={`flex flex-wrap gap-2 ${pursuitQueue && pursuitQueue.items.length > 0 ? "scale-[0.92] origin-left opacity-75" : ""}`}>
           <CountChip label="Awaiting approval" value={c.draft_motions} href="/motions" tone={Number(c.draft_motions) > 0 ? "amber" : "neutral"} />

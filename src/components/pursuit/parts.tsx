@@ -51,7 +51,7 @@ export const DIMENSION_VAR: Record<string, string> = {
 /** Small band label with a leading dot — the at-a-glance qualitative read. */
 export function BandPill({ band, word }: { band: Band; word?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: BAND_VAR[band] }}>
+    <span className="inline-flex items-center gap-1.5 text-body font-bold" style={{ color: BAND_VAR[band] }}>
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: "currentColor" }} aria-hidden />
       {word ?? BAND_WORD[band]}
     </span>
@@ -72,19 +72,19 @@ export function MetricCell({ s, tone }: { s: ScoreView; tone?: string }) {
       className="pos-lift relative flex flex-col gap-2 rounded-card p-3.5"
       style={{ background: `color-mix(in srgb, ${hue} 5%, var(--surface-primary))`, boxShadow: "var(--shadow-low)" }}
     >
-      <div className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.04em] text-neutral-500">
+      <div className="flex items-center gap-1.5 text-micro font-bold uppercase tracking-[0.04em] text-neutral-500">
         <span className="truncate">{SHORT_LABEL[s.key] ?? s.label}</span>
         {s.definition && (
           <span
             title={s.definition}
-            className="grid h-3.5 w-3.5 flex-none cursor-help place-items-center rounded-full text-[9px] text-neutral-400"
+            className="grid h-3.5 w-3.5 flex-none cursor-help place-items-center rounded-full text-micro text-neutral-400"
             style={{ border: "1px solid var(--border-subtle)" }}
           >?</span>
         )}
       </div>
       <div className="flex items-baseline gap-2">
-        <span className="text-[15px] font-extrabold tracking-[-0.01em]" style={{ color: hue }}>{BAND_WORD[s.band]}</span>
-        {s.known && <span className="tnum text-[11px] text-neutral-400">{s.value}</span>}
+        <span className="text-title font-extrabold tracking-[-0.01em]" style={{ color: hue }}>{BAND_WORD[s.band]}</span>
+        {s.known && <span className="tnum text-label text-neutral-400">{s.value}</span>}
       </div>
       <div className="h-1 overflow-hidden rounded-full" style={{ background: "var(--surface-inset)" }}>
         <span
@@ -116,7 +116,7 @@ export function TrustTag({ label }: { label: string }) {
   };
   const t = tone[label] ?? tone.SUPERSEDED;
   return (
-    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ color: t.fg, background: t.bg }}>
+    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-micro font-bold" style={{ color: t.fg, background: t.bg }}>
       {label.replace(/_/g, " ").toLowerCase()}
     </span>
   );
@@ -126,7 +126,7 @@ export function TrustTag({ label }: { label: string }) {
 export function SyntheticBadge({ text = "synthetic" }: { text?: string }) {
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold"
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-micro font-bold"
       style={{ color: "var(--color-accent-violet)", background: "color-mix(in srgb, var(--color-accent-violet) 12%, transparent)" }}
     >
       <span aria-hidden>◇</span>{text}
@@ -136,7 +136,7 @@ export function SyntheticBadge({ text = "synthetic" }: { text?: string }) {
 
 /** A deliberately-neutral "we don't know this" cell — unknown ≠ zero, ≠ broken. */
 export function UnknownState({ children }: { children: React.ReactNode }) {
-  return <span className="text-[12.5px] italic text-neutral-400">{children}</span>;
+  return <span className="text-body italic text-neutral-400">{children}</span>;
 }
 
 /** Team acceptance status — dot + word, on a tinted pill. */
@@ -147,7 +147,7 @@ export function TeamStatusBadge({ status }: { status: string }) {
     : s === "INVITED" ? "var(--color-band-high)"
     : "var(--color-accent-attention)"; // RECOMMENDED / pending
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10.5px] font-bold" style={{ color: tone, background: `color-mix(in srgb, ${tone} 12%, transparent)` }}>
+    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-micro font-bold" style={{ color: tone, background: `color-mix(in srgb, ${tone} 12%, transparent)` }}>
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: tone }} aria-hidden />
       {status.replace(/_/g, " ").toLowerCase()}
     </span>

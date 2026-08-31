@@ -304,7 +304,7 @@ export default async function ContactsPage({
     <main>
       <PageHeader
         title="Contacts"
-        subtitle="The full co-sell committee, typed and filterable — end users we're moving and the partner reps who own each account, captured straight from the mapped lists."
+        subtitle="The full co-sell committee — end users and the partner reps who own each account."
       />
 
       {/* Bentos */}
@@ -407,7 +407,7 @@ export default async function ContactsPage({
                                 {/* P1C §14: light indicator only — the interpretation lives on the Pursuit. */}
                                 {r.stakeholder && (
                                   <Link href={r.stakeholder.pursuitId ? `/pursuits/${r.stakeholder.pursuitId}#stakeholders` : "/pipeline"}
-                                    className={`ml-1.5 rounded-full px-1.5 py-px text-[10px] font-semibold hover:underline ${r.stakeholder.state === "verified" ? "bg-emerald/12 text-emerald-700 dark:text-emerald-300" : r.stakeholder.state === "inferred" ? "bg-violet/12 text-violet-700 dark:text-violet-300" : "bg-neutral-500/10 text-neutral-500"}`}
+                                    className={`ml-1.5 rounded-full px-1.5 py-px text-micro font-semibold hover:underline ${r.stakeholder.state === "verified" ? "bg-emerald/12 text-emerald-700 dark:text-emerald-300" : r.stakeholder.state === "inferred" ? "bg-violet/12 text-violet-700 dark:text-violet-300" : "bg-neutral-500/10 text-neutral-500"}`}
                                     title={`Buying-role assertion on the linked pursuit — ${r.stakeholder.state}`}>
                                     {r.stakeholder.role.replace(/_/g, " ")} · {r.stakeholder.state}
                                   </Link>

@@ -47,9 +47,9 @@ export default async function JoinPage({
 
   const field =
     "w-full rounded-input border border-neutral-300/80 bg-white/70 px-3.5 py-2.5 text-title backdrop-blur transition-colors duration-[140ms] placeholder:text-neutral-400 hover:border-neutral-400 focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/15 dark:border-white/15 dark:bg-white/[0.06] dark:hover:border-white/30";
-  const label = "mb-1.5 block text-[12.5px] font-semibold text-neutral-600 dark:text-neutral-300";
+  const label = "mb-1.5 block text-body font-semibold text-neutral-600 dark:text-neutral-300";
   const primary =
-    "inline-flex min-h-[44px] w-full items-center justify-center rounded-full bg-accent px-5 text-[14.5px] font-bold text-white transition-colors duration-[140ms] hover:bg-accent-strong";
+    "inline-flex min-h-[44px] w-full items-center justify-center rounded-full bg-accent px-5 text-copy font-bold text-white transition-colors duration-[140ms] hover:bg-accent-strong";
 
   return (
     <main className="grid min-h-screen lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
@@ -61,11 +61,11 @@ export default async function JoinPage({
                 <path d="M4 24 A20 20 0 1 1 44 24 A20 20 0 1 1 4 24 Z M29 26 A10 10 0 1 0 9 26 A10 10 0 1 0 29 26 Z M39 17 A4 4 0 1 0 31 17 A4 4 0 1 0 39 17 Z" />
               </svg>
             </span>
-            <span className="text-[19px] font-extrabold tracking-[-0.03em]">PursuitOS</span>
+            <span className="text-section font-extrabold tracking-[-0.03em]">PursuitOS</span>
           </a>
 
           {sp.error && (
-            <div role="alert" className="mb-6 rounded-input bg-rose/12 px-4 py-3 text-[13.5px] font-medium text-rose">
+            <div role="alert" className="mb-6 rounded-input bg-rose/12 px-4 py-3 text-copy font-medium text-rose">
               {sp.error}
             </div>
           )}
@@ -108,7 +108,7 @@ export default async function JoinPage({
                     <input id="password" name="password" type="password" required minLength={12} className={field} />
                   </div>
                   <button className={primary}>Claim your free workspace</button>
-                  <p className="text-[12px] text-neutral-400">
+                  <p className="text-body text-neutral-400">
                     Already have a PursuitOS account?{" "}
                     <a href="/login" className="text-accent hover:underline dark:text-blue-300">Sign in</a> and reopen
                     this link.
@@ -118,7 +118,7 @@ export default async function JoinPage({
 
               {configured && signedInAs && !memberOrgName && (
                 <form action={claimWorkspaceAction.bind(null, code)} className="mt-8 space-y-4">
-                  <p className="text-[13.5px] text-neutral-500">
+                  <p className="text-copy text-neutral-500">
                     Signed in as <span className="font-semibold">{signedInAs}</span> — name your workspace to claim
                     the seat.
                   </p>
@@ -132,7 +132,7 @@ export default async function JoinPage({
 
               {((configured && signedInAs && memberOrgName) || !configured) && (
                 <form action={connectExistingAction.bind(null, code)} className="mt-8 space-y-4">
-                  <p className="text-[13.5px] text-neutral-500">
+                  <p className="text-copy text-neutral-500">
                     {configured
                       ? <>Signed in as <span className="font-semibold">{signedInAs}</span> with workspace{" "}
                           <span className="font-semibold">{memberOrgName}</span>.</>
@@ -155,10 +155,10 @@ export default async function JoinPage({
           <div className="absolute inset-x-0 bottom-0 h-[60%] bg-gradient-to-t from-[#04070f] via-[#04070f]/70 to-transparent" />
           <div className="absolute inset-x-0 bottom-0 p-10">
             <p className="text-label font-bold uppercase tracking-[0.14em] text-blue-300/70">Co-sell, consented</p>
-            <p className="mt-3 max-w-[22ch] text-[34px] font-extrabold leading-[1.08] tracking-[-0.03em] text-white">
+            <p className="mt-3 max-w-[22ch] text-hero font-extrabold leading-[1.08] tracking-[-0.03em] text-white">
               The space between companies.
             </p>
-            <p className="mt-4 max-w-[46ch] text-[14px] leading-relaxed text-white/55">
+            <p className="mt-4 max-w-[46ch] text-copy leading-relaxed text-white/55">
               Overlap discovered blind, one rung at a time. Joint rooms both sides see identically. A settlement
               ledger neither side has to argue with.
             </p>

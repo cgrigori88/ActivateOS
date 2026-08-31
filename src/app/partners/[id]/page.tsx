@@ -317,7 +317,7 @@ export default async function PartnerRoomPage({
             </ol>
           )}
           {ladder && ladder.rungs.named.state === "approved" && (
-            <p className="mt-3 text-[11.5px] text-neutral-500">
+            <p className="mt-3 text-label text-neutral-500">
               Named overlap approved — joint rooms can open on any shared account.{" "}
               <Link href="/joint" className="text-accent hover:underline dark:text-blue-300">Propose one →</Link>
             </p>
@@ -402,7 +402,7 @@ export default async function PartnerRoomPage({
                     {x.accountName}
                   </Link>
                   {x.awaitingYou && (
-                    <span className="rounded-full bg-accent/12 px-2 py-0.5 text-[10.5px] font-bold text-accent dark:text-blue-300">
+                    <span className="rounded-full bg-accent/12 px-2 py-0.5 text-micro font-bold text-accent dark:text-blue-300">
                       awaiting you
                     </span>
                   )}
@@ -481,7 +481,7 @@ export default async function PartnerRoomPage({
                     <p className="mt-1 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-body text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
                       Meet <span className="font-semibold">{w.revealedContact.name}</span>
                       {w.revealedContact.title ? ` — ${w.revealedContact.title}` : ""} ·{" "}
-                      <span className="font-mono text-[12px]">{w.revealedContact.email}</span>
+                      <span className="font-mono text-body">{w.revealedContact.email}</span>
                     </p>
                   )}
                 </li>
@@ -646,7 +646,7 @@ export default async function PartnerRoomPage({
               <p className="mb-1 text-sm">
                 <span className="font-semibold">{s.fromOrgName}</span> offers the skill{" "}
                 <span className="font-semibold">&ldquo;{s.skillName}&rdquo;</span>{" "}
-                <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-neutral-500">{s.kind}</span>
+                <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-micro font-semibold text-neutral-500">{s.kind}</span>
               </p>
               <p className="mb-2 text-xs text-neutral-500">{s.body.slice(0, 240)}{s.body.length > 240 ? "…" : ""}</p>
               <div className="flex gap-2">
@@ -668,7 +668,7 @@ export default async function PartnerRoomPage({
                 .filter((s) => s.status === "accepted" || s.direction === "outgoing")
                 .map((s) => (
                   <li key={s.id} className="flex items-center gap-2 text-sm">
-                    <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-neutral-500">
+                    <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-micro font-semibold uppercase text-neutral-500">
                       {s.direction === "outgoing" ? "yours" : "theirs"}
                     </span>
                     <span className="min-w-0 flex-1 truncate font-medium">{s.skillName}</span>
@@ -730,7 +730,7 @@ export default async function PartnerRoomPage({
                 {settlement.settled.slice(0, 8).map((e, i) => (
                   <li key={i} className="flex items-center gap-2 text-sm">
                     <span className="min-w-0 flex-1 truncate">{e.account}</span>
-                    <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-neutral-500">
+                    <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-micro font-semibold text-neutral-500">
                       {e.attribution}
                     </span>
                     <span className="text-xs text-neutral-400">{e.quarter}</span>

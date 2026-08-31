@@ -149,7 +149,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Go to a name · show me at-risk deals through WWT · why is Globex routed through CDW?"
-            className="w-full bg-transparent py-3.5 pl-11 pr-14 text-[14.5px] outline-none placeholder:text-neutral-400"
+            className="w-full bg-transparent py-3.5 pl-11 pr-14 text-copy outline-none placeholder:text-neutral-400"
             aria-label="Search"
           />
           <kbd className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md border border-neutral-300/70 px-1.5 py-0.5 font-mono text-micro text-neutral-400 dark:border-white/15">
@@ -159,29 +159,29 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         {q.trim().length >= 2 && (meta.interpreted || meta.explanation || meta.note || meta.intent !== "goto") && (
           <div className="border-b border-neutral-950/[0.06] px-3 py-2 dark:border-white/10">
             <div className="mb-1 flex items-center gap-1.5">
-              <span className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
+              <span className="rounded px-1.5 py-0.5 text-micro font-bold uppercase tracking-[0.08em]"
                 style={{ background: "color-mix(in srgb, var(--color-accent) 12%, transparent)", color: "var(--color-accent)" }}>
                 {meta.intent === "explain" ? "Explain" : meta.intent === "showme" ? "Show me" : "Go to"}
               </span>
-              {meta.interpreted && <span className="text-[11.5px] text-neutral-500">{meta.interpreted}</span>}
+              {meta.interpreted && <span className="text-label text-neutral-500">{meta.interpreted}</span>}
             </div>
             {meta.explanation && (
               <div className="rounded-lg p-2.5" style={{ background: "var(--surface-inset)" }}>
-                <div className="text-[13px] font-bold">{meta.explanation.title}</div>
-                <div className="mb-1.5 text-[11px] text-neutral-500">{meta.explanation.subtitle}</div>
+                <div className="text-copy font-bold">{meta.explanation.title}</div>
+                <div className="mb-1.5 text-label text-neutral-500">{meta.explanation.subtitle}</div>
                 <dl className="space-y-0.5">
                   {meta.explanation.lines.map((l, i) => (
-                    <div key={i} className="flex gap-2 text-[12px]">
+                    <div key={i} className="flex gap-2 text-body">
                       <dt className="w-[92px] shrink-0 text-neutral-400">{l.label}</dt>
                       <dd className="min-w-0 flex-1 text-neutral-700 dark:text-neutral-200">{l.value}</dd>
                     </div>
                   ))}
                 </dl>
-                <div className="mt-1.5 text-[10px] text-neutral-400">Grounded in: {meta.explanation.grounding.join(" · ")}</div>
+                <div className="mt-1.5 text-micro text-neutral-400">Grounded in: {meta.explanation.grounding.join(" · ")}</div>
               </div>
             )}
             {meta.note && !meta.explanation && (
-              <p className="text-[12px] text-neutral-500">{meta.note}</p>
+              <p className="text-body text-neutral-500">{meta.note}</p>
             )}
           </div>
         )}
@@ -203,7 +203,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                 data-idx={i}
                 onClick={() => go(hit)}
                 onMouseMove={() => setSel(i)}
-                className={`flex w-full items-baseline gap-2.5 rounded-xl px-3 py-2 text-left text-[13.5px] transition-colors duration-[100ms] ${
+                className={`flex w-full items-baseline gap-2.5 rounded-xl px-3 py-2 text-left text-copy transition-colors duration-[100ms] ${
                   i === sel
                     ? "bg-accent text-white"
                     : "text-neutral-800 dark:text-neutral-200"
@@ -211,7 +211,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
               >
                 <span className="truncate font-semibold">{hit.label}</span>
                 {hit.sub && (
-                  <span className={`truncate text-[11.5px] ${i === sel ? "text-white/70" : "text-neutral-400"}`}>
+                  <span className={`truncate text-label ${i === sel ? "text-white/70" : "text-neutral-400"}`}>
                     {hit.sub}
                   </span>
                 )}

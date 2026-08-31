@@ -226,7 +226,7 @@ function FragmentRow({
             <Link href={`/accounts/${r.companyId}`} className="font-medium hover:underline">{r.name}</Link>
             {r.conflict && (
               <span
-                className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300"
+                className="rounded bg-amber-100 px-1.5 py-0.5 text-micro font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300"
                 title={`Channel conflict — both actively claim this account: ${claimantSummary(r, partners).full}`}
               >
                 ⚠ {claimantSummary(r, partners).short}

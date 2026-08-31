@@ -347,7 +347,7 @@ export default async function AccountsPage({
                   <td>
                     <span className="flex items-center gap-1.5">
                       <Link href={`/accounts${buildQS(params, { sel: selected ? undefined : r.company_id })}`} scroll={false} className={`font-medium hover:underline ${selected ? "text-blue-900 dark:text-blue-200" : "text-blue-800 dark:text-blue-300"}`} title="Show intelligence">{r.legal_name}</Link>
-                      <Link href={`/accounts/${r.company_id}`} className="text-[11px] text-neutral-300 hover:text-neutral-500 dark:text-neutral-600" title="Open account room" aria-label="Open account room">↗</Link>
+                      <Link href={`/accounts/${r.company_id}`} className="text-label text-neutral-300 hover:text-neutral-500 dark:text-neutral-600" title="Open account room" aria-label="Open account room">↗</Link>
                     </span>
                   </td>
                   {show("industry") && <td className="text-neutral-500">{r.industry ?? "—"}</td>}

@@ -63,7 +63,7 @@ export default async function GoalsPage({
     <main>
       <PageHeader
         title="Goals"
-        subtitle="S.M.A.R.T. targets — Specific, Measurable, Achievable, Relevant, Time-bound. Progress is computed from the motions and campaigns linked to each goal, so it never drifts from reality."
+        subtitle="Targets with progress computed from the linked motions and campaigns."
       />
 
       {/* Bentos */}

@@ -32,7 +32,7 @@ export const usd = (n: number | null | undefined) =>
 /** One constraint as a single readable line: dot · blocked-by (· why) (· exposure) (· action). */
 export function ConstraintLine({ c, dense }: { c: ConstraintView; dense?: boolean }) {
   return (
-    <span className={`flex items-start gap-1.5 ${dense ? "text-[12px]" : "text-[12.5px]"}`}>
+    <span className={`flex items-start gap-1.5 ${dense ? "text-body" : "text-body"}`}>
       <span aria-hidden className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: severityHue(c.severity) }} />
       <span className="min-w-0">
         <span className={c.severity === "UNKNOWN" ? "text-neutral-500" : "font-medium"}>{c.blockedBy}</span>
@@ -57,9 +57,9 @@ export function ConstraintAggregateRow({ label, count, exposureUsd, severity, hr
       className="flex items-baseline justify-between gap-3 rounded-control px-2.5 py-1.5 hover:bg-neutral-900/[0.04] dark:hover:bg-white/[0.06]">
       <span className="flex min-w-0 items-center gap-2">
         <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: severityHue(severity) }} />
-        <span className="truncate text-[13px] font-medium">{label}</span>
+        <span className="truncate text-copy font-medium">{label}</span>
       </span>
-      <span className="tnum shrink-0 text-[12.5px] text-neutral-500">
+      <span className="tnum shrink-0 text-body text-neutral-500">
         {count} pursuit{count === 1 ? "" : "s"}{usd(exposureUsd) && <> · <b className="text-neutral-700 dark:text-neutral-200">{usd(exposureUsd)}</b></>}
       </span>
     </Link>

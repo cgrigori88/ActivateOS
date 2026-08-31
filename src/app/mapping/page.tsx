@@ -92,7 +92,7 @@ export default async function MappingPage({
       <main>
         <PageHeader
           title="Pending review"
-          subtitle="Lists pushed by a partner land here. Open one, inspect its fields against yours, choose what maps, then accept — all inside the app."
+          subtitle="Lists a partner pushed. Inspect the fields against yours, then accept."
         />
         <ViewTabs view={view} pendingCount={pendingCount} />
         {sp.notice && (
@@ -111,7 +111,7 @@ export default async function MappingPage({
       <main>
         <PageHeader
           title="AI recommendations"
-          subtitle="The system reviews every account across all connected partners and ranks the strongest co-sell — then turns it into target lists and motions."
+          subtitle="Every account across every connected partner, ranked by co-sell strength."
         />
         <ViewTabs view={view} pendingCount={pendingCount} />
         {sp.notice && (
@@ -130,7 +130,7 @@ export default async function MappingPage({
       <main>
         <PageHeader
           title="Account mapping"
-          subtitle="Cross your lists with a partner's — every cell is the accounts you share, rolled up with propensity. Click a cell to drill in."
+          subtitle="Your lists crossed with a partner's. Each cell is the accounts you share."
         />
         <ViewTabs view={view} pendingCount={pendingCount} />
         {sp.notice && (
@@ -270,7 +270,7 @@ export default async function MappingPage({
     <main>
       <PageHeader
         title="Overlap & motions"
-        subtitle="Every co-sell account crossed with every partner — with the play to run, why the propensity says so, and channel conflicts made explicit. Select accounts, name the list, draft the motions."
+        subtitle="Every co-sell account crossed with every partner, with the play to run."
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">

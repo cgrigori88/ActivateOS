@@ -23,7 +23,7 @@ const STATE_META: Record<string, { label: string; hue: string }> = {
 function StateChip({ state }: { state: string }) {
   const m = STATE_META[state] ?? STATE_META.UNVERIFIED;
   return (
-    <span className="rounded-full px-2 py-px text-[10.5px] font-bold" style={{ color: m.hue, background: `color-mix(in srgb, ${m.hue} 12%, transparent)` }}>
+    <span className="rounded-full px-2 py-px text-micro font-bold" style={{ color: m.hue, background: `color-mix(in srgb, ${m.hue} 12%, transparent)` }}>
       {m.label}
     </span>
   );
@@ -34,7 +34,7 @@ function PathLine({ p }: { p: WarmPathStatement }) {
     : p.tier === "PERSON_VERIFIED" ? "Verified person-level path"
     : p.tier === "SELLER_ACCOUNT" ? "Strongest known path" : "Overlap only";
   return (
-    <p className="text-[12px] text-neutral-600 dark:text-neutral-300">
+    <p className="text-body text-neutral-600 dark:text-neutral-300">
       <span className="font-semibold">{head}</span>
       <span className="text-neutral-500"> — {p.text}</span>
     </p>
@@ -46,30 +46,30 @@ function AssertForm({ pursuitId, opportunityId, role, contacts, canDecide }: {
   contacts: { id: string; name: string | null; title: string | null }[]; canDecide: boolean;
 }) {
   if (!canDecide) return null;
-  if (contacts.length === 0) return <p className="text-[11.5px] text-neutral-400">No captured contacts on this account yet — Contacts is where people come from; nothing is invented here.</p>;
+  if (contacts.length === 0) return <p className="text-label text-neutral-400">No captured contacts on this account yet — Contacts is where people come from; nothing is invented here.</p>;
   return (
     <form action={assertStakeholderAction.bind(null, pursuitId)} className="mt-1.5 flex flex-wrap items-end gap-2">
       <input type="hidden" name="opportunityId" value={opportunityId} />
       <input type="hidden" name="role" value={role} />
-      <label className="text-[11px] text-neutral-500">
+      <label className="text-label text-neutral-500">
         <span className="mb-0.5 block">Person</span>
-        <select name="contactId" className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[12px] dark:border-neutral-700 dark:bg-neutral-900">
+        <select name="contactId" className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-body dark:border-neutral-700 dark:bg-neutral-900">
           {contacts.map((c) => <option key={c.id} value={c.id}>{c.name ?? "—"}{c.title ? ` · ${c.title}` : ""}</option>)}
         </select>
       </label>
-      <label className="text-[11px] text-neutral-500">
+      <label className="text-label text-neutral-500">
         <span className="mb-0.5 block">Assertion</span>
-        <select name="assertionState" defaultValue="unverified" className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[12px] dark:border-neutral-700 dark:bg-neutral-900">
+        <select name="assertionState" defaultValue="unverified" className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-body dark:border-neutral-700 dark:bg-neutral-900">
           <option value="verified">verified — evidence confirms it</option>
           <option value="inferred">inferred — signals suggest it</option>
           <option value="unverified">unverified — a proposal</option>
         </select>
       </label>
-      <label className="min-w-52 flex-1 text-[11px] text-neutral-500">
+      <label className="min-w-52 flex-1 text-label text-neutral-500">
         <span className="mb-0.5 block">Evidence (required to verify — a title alone is never enough)</span>
-        <input name="evidence" placeholder="e.g. confirmed budget ownership on the 14 Mar call" className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-[12px] dark:border-neutral-700 dark:bg-neutral-900" />
+        <input name="evidence" placeholder="e.g. confirmed budget ownership on the 14 Mar call" className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-body dark:border-neutral-700 dark:bg-neutral-900" />
       </label>
-      <button className="rounded-md bg-neutral-900 px-3 py-1 text-[12px] font-medium text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900">
+      <button className="rounded-md bg-neutral-900 px-3 py-1 text-body font-medium text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900">
         Assert role
       </button>
     </form>
@@ -84,14 +84,14 @@ function RoleRow({ r, c, pursuitId, canDecide, contacts }: {
   return (
     <details className="group rounded-card" style={{ background: r.state === "MISSING" ? "color-mix(in srgb, var(--color-accent-risk) 5%, transparent)" : undefined }}>
       <summary className="flex cursor-pointer items-baseline gap-2.5 rounded-card px-2.5 py-1.5 hover:bg-neutral-900/[0.03] dark:hover:bg-white/[0.05]">
-        <span className="w-36 shrink-0 text-[12.5px] font-semibold capitalize">{ROLE_WORD(r.role)}</span>
+        <span className="w-36 shrink-0 text-body font-semibold capitalize">{ROLE_WORD(r.role)}</span>
         <StateChip state={r.state} />
-        <span className="min-w-0 flex-1 truncate text-[12.5px] text-neutral-600 dark:text-neutral-300">
-          {r.person ? <>{r.person.name}{r.person.title && <span className="text-neutral-400"> · {r.person.title} <span className="text-[10px]">(title = context, not authority)</span></span>}</> : <span className="text-neutral-400">no one identified</span>}
+        <span className="min-w-0 flex-1 truncate text-body text-neutral-600 dark:text-neutral-300">
+          {r.person ? <>{r.person.name}{r.person.title && <span className="text-neutral-400"> · {r.person.title} <span className="text-micro">(title = context, not authority)</span></span>}</> : <span className="text-neutral-400">no one identified</span>}
         </span>
       </summary>
       {/* The contextual drawer (§16): why it matters, candidates, path, evidence, governed action. */}
-      <div className="space-y-1.5 px-2.5 pb-2.5 pt-1 text-[12px]">
+      <div className="space-y-1.5 px-2.5 pb-2.5 pt-1 text-body">
         <p className="text-neutral-500"><b className="text-neutral-700 dark:text-neutral-200">Why this matters:</b> {r.whyItMatters}</p>
         {r.source && <p className="text-neutral-500"><b className="text-neutral-700 dark:text-neutral-200">Source:</b> {r.source}{r.assertedAt && ` · ${r.assertedAt.slice(0, 10)}`}</p>}
         {r.candidates.length > 0 && (
@@ -116,7 +116,7 @@ export function StakeholderPanel({ c, pursuitId, accountLabel, canDecide, contac
   if (!c.established) {
     return (
       <div className="space-y-2">
-        <p className="text-[12.5px] text-neutral-500">{c.notEstablishedReason}</p>
+        <p className="text-body text-neutral-500">{c.notEstablishedReason}</p>
         {/* Warm-path intelligence still renders — it is account-level evidence, not stakeholder state. */}
         <PathLine p={bestWarmPath(c.warmPaths)} />
       </div>
@@ -132,12 +132,12 @@ export function StakeholderPanel({ c, pursuitId, accountLabel, canDecide, contac
       {/* ── The signature moment (§17): who are we missing, and what changes it ── */}
       {missing.length > 0 && (
         <div className="rounded-card p-3" style={{ background: "color-mix(in srgb, var(--color-accent-risk) 6%, transparent)", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-accent-risk) 20%, transparent)" }}>
-          <p className="text-[13px]">
+          <p className="text-copy">
             <b>{accountLabel} is missing {missing.map((r) => ROLE_WORD(r.role)).join(" and ")}</b>
             {c.expectedValue != null && <span className="text-neutral-500"> — {usd(c.expectedValue)} in play without verified buying authority.</span>}
           </p>
           <div className="mt-1.5"><PathLine p={best} /></div>
-          <p className="mt-1 text-[12px] text-neutral-500">
+          <p className="mt-1 text-body text-neutral-500">
             <b className="text-neutral-700 dark:text-neutral-200">Next:</b>{" "}
             {/* A partner is named ONLY when the tier is an actual relationship. Overlap (and the
                 absence of evidence) is discovery — naming a partner there would be exactly the
@@ -159,23 +159,23 @@ export function StakeholderPanel({ c, pursuitId, accountLabel, canDecide, contac
       </div>
 
       {c.activeBlocker && (
-        <p className="text-[12px]" style={{ color: "var(--color-accent-risk)" }}>
+        <p className="text-body" style={{ color: "var(--color-accent-risk)" }}>
           Active blocker: <b>{c.activeBlocker.name}</b>{c.activeBlocker.title && <span className="text-neutral-500"> · {c.activeBlocker.title}</span>} — sentiment {c.activeBlocker.sentiment}.
         </p>
       )}
 
       {uncertain.length > 0 && missing.length === 0 && (
-        <p className="text-[11.5px] text-neutral-500">
+        <p className="text-label text-neutral-500">
           {uncertain.length} role{uncertain.length === 1 ? "" : "s"} below verified — expand a row for what would verify it.
         </p>
       )}
 
       {c.others.length > 0 && (
         <details>
-          <summary className="cursor-pointer text-[11.5px] font-medium text-neutral-500 hover:underline">
+          <summary className="cursor-pointer text-label font-medium text-neutral-500 hover:underline">
             {c.others.length} further stakeholder{c.others.length === 1 ? "" : "s"} on record
           </summary>
-          <ul className="mt-1 space-y-0.5 text-[12px] text-neutral-500">
+          <ul className="mt-1 space-y-0.5 text-body text-neutral-500">
             {c.others.map((o, i) => (
               <li key={i}>{o.person.name ?? "—"} — {ROLE_WORD(o.role)} · {o.state.toLowerCase()}{o.person.title && ` · ${o.person.title}`}</li>
             ))}
@@ -186,8 +186,8 @@ export function StakeholderPanel({ c, pursuitId, accountLabel, canDecide, contac
       {/* Assertion history — append-only; a superseded assertion stays visible forever. */}
       {c.history.length > 0 && (
         <details>
-          <summary className="cursor-pointer text-[11.5px] font-medium text-neutral-500 hover:underline">Assertion history ({c.history.length})</summary>
-          <ul className="mt-1 space-y-0.5 text-[11.5px] text-neutral-500">
+          <summary className="cursor-pointer text-label font-medium text-neutral-500 hover:underline">Assertion history ({c.history.length})</summary>
+          <ul className="mt-1 space-y-0.5 text-label text-neutral-500">
             {c.history.map((h, i) => (
               <li key={i}><span className="tnum text-neutral-400">{h.at.slice(0, 10)}</span> · {h.reason ?? "assertion"}</li>
             ))}
@@ -195,7 +195,7 @@ export function StakeholderPanel({ c, pursuitId, accountLabel, canDecide, contac
         </details>
       )}
 
-      <p className="text-[10.5px] text-neutral-400">
+      <p className="text-micro text-neutral-400">
         Coverage reads the canonical stakeholder assertions on this pursuit&rsquo;s linked opportunit{c.opportunityIds.length === 1 ? "y" : "ies"} — verified / inferred / unverified stay distinct, and{" "}
         <Link href="/contacts" className="hover:underline">Contacts</Link> remains the directory. Assertions are governed (assert_stakeholder_role); titles are context, never authority.
       </p>

@@ -120,7 +120,7 @@ export default async function ReviewPage({
     <main>
       <PageHeader
         title="Evidence review"
-        subtitle="A prioritized triage queue — only what needs a human, grouped by account. Each verdict tunes source trust and banks a golden example."
+        subtitle="Only what needs a human, grouped by account."
       />
 
       {/* Bentos */}

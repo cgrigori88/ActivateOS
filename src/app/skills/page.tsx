@@ -83,7 +83,7 @@ export default async function SkillsPage({
     <main>
       <PageHeader
         title="Skills"
-        subtitle="Reusable instructions your AI agents follow — typed, scoped, and attributed to the runs they grounded"
+        subtitle="Typed instructions your agents follow, attributed to the runs they grounded."
       />
 
       {sp.notice && (
@@ -126,10 +126,10 @@ export default async function SkillsPage({
                 <details>
                   <summary className="flex cursor-pointer flex-wrap items-center gap-2">
                     <span className="text-sm font-medium">{s.name}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ${KIND_STYLE[s.kind]}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-micro font-bold ${KIND_STYLE[s.kind]}`}>
                       {kindLabel(s.kind).label.toLowerCase()}
                     </span>
-                    <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-neutral-500">
+                    <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-micro font-semibold text-neutral-500">
                       {s.scopeLabel}
                     </span>
                     <span className="ml-auto text-xs text-neutral-400">
@@ -210,10 +210,10 @@ export default async function SkillsPage({
                 <details>
                   <summary className="flex cursor-pointer flex-wrap items-center gap-2">
                     <span className="text-sm font-medium">{s.name}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ${KIND_STYLE[s.kind]}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-micro font-bold ${KIND_STYLE[s.kind]}`}>
                       {kindLabel(s.kind).label.toLowerCase()}
                     </span>
-                    <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10.5px] font-semibold text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">
+                    <span className="rounded-full bg-violet-50 px-2 py-0.5 text-micro font-semibold text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">
                       from {s.fromOrgName}
                     </span>
                     <span className="ml-auto text-xs text-neutral-400">

@@ -24,7 +24,7 @@ const day = (iso: string | null) => (iso ? iso.slice(0, 10) : "—");
 function StateChip({ state }: { state: LifecycleState }) {
   const hue = STATE_HUE[state];
   return (
-    <span className="rounded-full px-2 py-px text-[10.5px] font-bold"
+    <span className="rounded-full px-2 py-px text-micro font-bold"
       style={{ color: hue, background: `color-mix(in srgb, ${hue} 12%, transparent)` }}>
       {STATE_LABEL[state]}
     </span>
@@ -35,7 +35,7 @@ function StateChip({ state }: { state: LifecycleState }) {
 function When({ e }: { e: LifecycleEvent }) {
   if (e.state === "CONFLICTING_DATE") {
     return (
-      <span className="text-[12.5px]">
+      <span className="text-body">
         {e.competing.map((c, i) => (
           <span key={c.factId}>
             {i > 0 && <span className="text-neutral-400"> vs </span>}
@@ -48,14 +48,14 @@ function When({ e }: { e: LifecycleEvent }) {
   if (e.state === "INFERRED_WINDOW") {
     // A window is a window. Never collapsed to a day.
     return (
-      <span className="text-[12.5px]">
+      <span className="text-body">
         <b>{day(e.window?.from ?? null)} → {day(e.window?.to ?? null)}</b>
         {e.daysUntil != null && <span className="text-neutral-500"> · opens in ~{e.daysUntil}d</span>}
       </span>
     );
   }
   return (
-    <span className="text-[12.5px]">
+    <span className="text-body">
       <b>{day(e.date)}</b>
       {e.daysUntil != null && (
         <span className="text-neutral-500"> · {e.daysUntil >= 0 ? `in ${e.daysUntil}d` : `${Math.abs(e.daysUntil)}d ago`}</span>
@@ -67,7 +67,7 @@ function When({ e }: { e: LifecycleEvent }) {
 export function LifecycleBento({ events }: { events: LifecycleEvent[] }) {
   if (events.length === 0) {
     return (
-      <p className="text-[12.5px] text-neutral-500">
+      <p className="text-body text-neutral-500">
         Lifecycle timing <b>UNKNOWN</b> — no renewal, contract or support-lifecycle evidence on this account.
         A customer-confirmed date or a first-party contract record would establish it.
       </p>
@@ -79,12 +79,12 @@ export function LifecycleBento({ events }: { events: LifecycleEvent[] }) {
         <details key={e.predicateKey} className="rounded-card">
           {/* Compact first view: label · state · when. Two-second read. */}
           <summary className="flex cursor-pointer flex-wrap items-baseline gap-2 rounded-card px-2 py-1.5 hover:bg-neutral-900/[0.03] dark:hover:bg-white/[0.05]">
-            <span className="text-[12.5px] font-semibold">{e.label}</span>
+            <span className="text-body font-semibold">{e.label}</span>
             <StateChip state={e.state} />
             <When e={e} />
           </summary>
           {/* Progressive disclosure: the evidence ledger, only on demand. */}
-          <div className="space-y-1 px-2 pb-2 pt-1 text-[12px] text-neutral-500">
+          <div className="space-y-1 px-2 pb-2 pt-1 text-body text-neutral-500">
             <p><b className="text-neutral-700 dark:text-neutral-200">Why:</b> {e.because}</p>
             {e.whatWouldChangeIt && (
               <p><b className="text-neutral-700 dark:text-neutral-200">What changes it:</b> {e.whatWouldChangeIt}</p>
@@ -115,7 +115,7 @@ export function LifecycleBento({ events }: { events: LifecycleEvent[] }) {
                 </li>
               ))}
             </ul>
-            <p className="text-[11px] text-neutral-400">
+            <p className="text-label text-neutral-400">
               {e.evidenceCount} cited source{e.evidenceCount === 1 ? "" : "s"} · derived from canonical facts; no date is inferred beyond its evidence.
             </p>
           </div>

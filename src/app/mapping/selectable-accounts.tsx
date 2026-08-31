@@ -131,7 +131,7 @@ export function SelectableAccounts({
                 </td>
                 <td>
                   <span className="text-xs text-neutral-600 dark:text-neutral-300">{a.partners.join(", ")}</span>
-                  {a.partnerCount >= 2 && <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300">×{a.partnerCount}</span>}
+                  {a.partnerCount >= 2 && <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-micro font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300">×{a.partnerCount}</span>}
                 </td>
                 <td className="text-xs text-neutral-500">{a.motion}</td>
                 <td className="text-right text-label text-neutral-400">{a.hasMotion ? "has motion" : ""}</td>

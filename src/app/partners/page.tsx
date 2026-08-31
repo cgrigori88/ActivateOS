@@ -38,7 +38,7 @@ export default async function PartnersPage({
     <main>
       <PageHeader
         title="Partners"
-        subtitle="One room per partner — their book, the trust ladder, shared lists, joint rooms, and what has actually settled."
+        subtitle="One room per partner — their book, the ladder, and what has settled."
       />
       <RoomTabs tabs={[{ href: "/partners", label: "Partners" }, { href: "/joint", label: "Joint pursuits" }]} />
 
@@ -95,15 +95,15 @@ export default async function PartnersPage({
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div>
                   <div className="tnum text-lg font-extrabold leading-none">{p.bookAccounts}</div>
-                  <div className="mt-1 text-[10.5px] font-semibold text-neutral-500">book accounts</div>
+                  <div className="mt-1 text-micro font-semibold text-neutral-500">book accounts</div>
                 </div>
                 <div>
                   <div className="tnum text-lg font-extrabold leading-none">{p.openPursuits}</div>
-                  <div className="mt-1 text-[10.5px] font-semibold text-neutral-500">joint rooms</div>
+                  <div className="mt-1 text-micro font-semibold text-neutral-500">joint rooms</div>
                 </div>
                 <div>
                   <div className="tnum text-lg font-extrabold leading-none">{money(p.settledUsd)}</div>
-                  <div className="mt-1 text-[10.5px] font-semibold text-neutral-500">settled</div>
+                  <div className="mt-1 text-micro font-semibold text-neutral-500">settled</div>
                 </div>
               </div>
               <p className="mt-3 text-label text-neutral-400">

@@ -488,7 +488,7 @@ export function Shell({
           <Link
             href="/admin"
             title="Guest workspace — a free seat riding your partnership. Admin explains what's included."
-            className="ml-auto rounded-full bg-amber/20 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-amber-300 hover:bg-amber/30"
+            className="ml-auto rounded-full bg-amber/20 px-2 py-0.5 text-micro font-bold uppercase tracking-[0.1em] text-amber-300 hover:bg-amber/30"
           >
             Guest
           </Link>
@@ -542,7 +542,7 @@ export function Shell({
               {user ? user.slice(0, 2) : "OP"}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12.5px] font-semibold text-rail-ink">{user ?? "Operator"}</span>
+              <span className="block truncate text-body font-semibold text-rail-ink">{user ?? "Operator"}</span>
               {user && signOut ? (
                 <form action={signOut}>
                   <button className="block truncate text-label text-rail-ink-soft hover:text-rail-ink hover:underline">Sign out</button>

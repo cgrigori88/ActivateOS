@@ -29,7 +29,7 @@ const ladderHue = (l: Ladder): string =>
 
 function Chip({ text, hue }: { text: string; hue: string }) {
   return (
-    <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.04em]"
+    <span className="rounded-full px-1.5 py-0.5 text-micro font-bold uppercase tracking-[0.04em]"
       style={{ color: hue, background: `color-mix(in srgb, ${hue} 12%, transparent)` }}>
       {text}
     </span>
@@ -50,13 +50,13 @@ function ThreeTruths({ vc }: { vc: ValueCase }) {
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
       {cells.map((c) => (
         <div key={c.key} className="rounded-card px-2.5 py-2" style={{ background: "var(--surface-inset)" }}>
-          <div className="text-[10px] font-bold uppercase tracking-[0.06em] text-neutral-400">
+          <div className="text-micro font-bold uppercase tracking-[0.06em] text-neutral-400">
             {ECONOMIC_TRUTH_LABEL[c.key]}
           </div>
-          <div className="text-[15px] font-bold tnum">
-            {c.value ?? <span className="text-[13px] font-semibold text-neutral-400">UNKNOWN</span>}
+          <div className="text-title font-bold tnum">
+            {c.value ?? <span className="text-copy font-semibold text-neutral-400">UNKNOWN</span>}
           </div>
-          <div className="mt-0.5 text-[10.5px] leading-snug text-neutral-500">{ECONOMIC_TRUTH_MEANING[c.key]}</div>
+          <div className="mt-0.5 text-micro leading-snug text-neutral-500">{ECONOMIC_TRUTH_MEANING[c.key]}</div>
         </div>
       ))}
     </div>
@@ -67,9 +67,9 @@ function DriverRow({ d }: { d: Driver }) {
   return (
     <details className="rounded-card">
       <summary className="flex cursor-pointer flex-wrap items-baseline gap-2 rounded-card px-2 py-1.5 hover:bg-neutral-900/[0.03] dark:hover:bg-white/[0.05]">
-        <span className="text-[12.5px] font-semibold">{d.label}</span>
+        <span className="text-body font-semibold">{d.label}</span>
         <Chip text={d.conflicting ? "conflicting" : LADDER_LABEL[d.ladder]} hue={d.conflicting ? "var(--color-accent-attention)" : ladderHue(d.ladder)} />
-        <span className="text-[12.5px] tnum">
+        <span className="text-body tnum">
           {d.conflicting
             /* Every competing figure, never an average (§17). */
             ? d.values.map((v, i) => (
@@ -80,9 +80,9 @@ function DriverRow({ d }: { d: Driver }) {
               ))
             : d.value && <b>{d.value.low === d.value.high ? usd(d.value.low) : `${usd(d.value.low)}–${usd(d.value.high)}`}</b>}
         </span>
-        <span className="ml-auto text-[10px] uppercase tracking-[0.05em] text-neutral-400">{d.role.toLowerCase()}</span>
+        <span className="ml-auto text-micro uppercase tracking-[0.05em] text-neutral-400">{d.role.toLowerCase()}</span>
       </summary>
-      <div className="space-y-1 px-2 pb-2 pt-1 text-[12px] text-neutral-500">
+      <div className="space-y-1 px-2 pb-2 pt-1 text-body text-neutral-500">
         <ul className="space-y-0.5">
           {d.values.map((v) => (
             <li key={v.factId}>
@@ -91,7 +91,7 @@ function DriverRow({ d }: { d: Driver }) {
               {v.sourceLabel && <span className="text-neutral-400"> · {v.sourceLabel}</span>}
               {v.evidenceCount > 0 && <span className="text-neutral-400"> · {v.evidenceCount} evidence</span>}
               {!v.disclosureClass || v.disclosureClass !== "PARTNER_SHARED"
-                ? <span className="ml-1 text-[10px] font-bold uppercase" style={{ color: "var(--color-accent-attention)" }}>sponsor only</span>
+                ? <span className="ml-1 text-micro font-bold uppercase" style={{ color: "var(--color-accent-attention)" }}>sponsor only</span>
                 : null}
             </li>
           ))}
@@ -111,7 +111,7 @@ export function ValueCaseCard({ vc }: { vc: ValueCase }) {
 
   if (vc.state === "NOT_ESTABLISHED") {
     return (
-      <p className="text-[12.5px] text-neutral-500">
+      <p className="text-body text-neutral-500">
         Value case <b>not established</b> — no economic facts on this account. What is at stake, and what changing
         it would be worth, has not been captured. A customer-confirmed cost figure would start it.
       </p>
@@ -123,18 +123,18 @@ export function ValueCaseCard({ vc }: { vc: ValueCase }) {
       <ThreeTruths vc={vc} />
 
       {/* The honest headline. A case that cannot be defended says so instead of printing a range. */}
-      <div className="flex flex-wrap items-baseline gap-2 text-[12.5px]">
+      <div className="flex flex-wrap items-baseline gap-2 text-body">
         <Chip text={STATE_LABEL[vc.state]} hue={stateHue(vc.state)} />
         <span className="text-neutral-600 dark:text-neutral-300">{vc.because}</span>
       </div>
 
       {!vc.defensible && (
-        <p className="text-[12.5px] font-semibold" style={{ color: "var(--color-accent-attention)" }}>
+        <p className="text-body font-semibold" style={{ color: "var(--color-accent-attention)" }}>
           Value case not yet defensible — no modeled range is stated.
         </p>
       )}
 
-      <div className="space-y-1 text-[12.5px]">
+      <div className="space-y-1 text-body">
         <div className="flex gap-2">
           <span className="w-[118px] shrink-0 text-neutral-400">Evidence quality</span>
           <span className="min-w-0 flex-1">{qualityLine(vc.quality)}</span>
@@ -168,19 +168,19 @@ export function ValueCaseCard({ vc }: { vc: ValueCase }) {
       {/* ── The signature interaction (§6). Progressive disclosure: the arithmetic on demand. ── */}
       {vc.sensitivity.length > 0 && (
         <details className="rounded-card border" style={{ borderColor: "var(--border-subtle)" }}>
-          <summary className="cursor-pointer rounded-card px-2.5 py-1.5 text-[12.5px] font-semibold text-accent hover:bg-neutral-900/[0.03] dark:text-blue-400 dark:hover:bg-white/[0.05]">
+          <summary className="cursor-pointer rounded-card px-2.5 py-1.5 text-body font-semibold text-accent hover:bg-neutral-900/[0.03] dark:text-blue-400 dark:hover:bg-white/[0.05]">
             What would strengthen this Value Case?
           </summary>
           <div className="space-y-2 px-2.5 pb-2.5 pt-1">
             {vc.modeledImpact && vc.defensible && (
-              <p className="text-[12px] text-neutral-500">
+              <p className="text-body text-neutral-500">
                 Current modeled range <b className="tnum">{bounds(vc.modeledImpact)}</b>
                 {" "}(width <b className="tnum">{usd(vc.modeledImpact.high - vc.modeledImpact.low)}</b>).
               </p>
             )}
             <ol className="space-y-1.5">
               {vc.sensitivity.slice(0, 5).map((s, i) => (
-                <li key={s.predicateKey} className="text-[12px]">
+                <li key={s.predicateKey} className="text-body">
                   <span className="mr-1 text-neutral-400">{i + 1}.</span>
                   <b>{s.label}</b>
                   <Chip text={s.conflicting ? "conflicting" : LADDER_LABEL[s.ladder]} hue={s.conflicting ? "var(--color-accent-attention)" : ladderHue(s.ladder)} />
@@ -199,7 +199,7 @@ export function ValueCaseCard({ vc }: { vc: ValueCase }) {
                 </li>
               ))}
             </ol>
-            <p className="text-[11px] text-neutral-400">
+            <p className="text-label text-neutral-400">
               Range widths are interval arithmetic over the drivers below. No confidence percentage is
               claimed, because no calibrated model for one exists.
             </p>
@@ -210,13 +210,13 @@ export function ValueCaseCard({ vc }: { vc: ValueCase }) {
       {/* Drivers, provenance, contradictions, supersession — one click down. */}
       {vc.drivers.length > 0 && (
         <details className="rounded-card border" style={{ borderColor: "var(--border-subtle)" }}>
-          <summary className="cursor-pointer rounded-card px-2.5 py-1.5 text-[12.5px] font-semibold hover:bg-neutral-900/[0.03] dark:hover:bg-white/[0.05]">
+          <summary className="cursor-pointer rounded-card px-2.5 py-1.5 text-body font-semibold hover:bg-neutral-900/[0.03] dark:hover:bg-white/[0.05]">
             Economic drivers <span className="font-normal text-neutral-400">({vc.drivers.length})</span>
           </summary>
           <div className="space-y-0.5 px-1 pb-2">
             {vc.drivers.map((d) => <DriverRow key={d.predicateKey} d={d} />)}
             {vc.missing.length > 0 && (
-              <p className="px-2 pt-1 text-[11.5px] text-neutral-400">
+              <p className="px-2 pt-1 text-label text-neutral-400">
                 No figure at all for: {vc.missing.map((m) => m.replace(/_/g, " ")).join(", ")} — preserved as UNKNOWN, not assumed to be zero.
               </p>
             )}
@@ -230,10 +230,10 @@ export function ValueCaseCard({ vc }: { vc: ValueCase }) {
 /** The partner-facing statement — never the internal total (§10, §16). */
 export function PartnerValueLine({ summary, confidential }: { summary: string; confidential: boolean }) {
   return (
-    <div className="space-y-1 text-[12.5px]">
+    <div className="space-y-1 text-body">
       <div>{summary}</div>
       {confidential && (
-        <div className="text-[11.5px] text-neutral-400">
+        <div className="text-label text-neutral-400">
           Additional sponsor-confidential economic context exists and is not included here.
         </div>
       )}

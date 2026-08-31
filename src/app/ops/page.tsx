@@ -37,15 +37,15 @@ export default async function OpsPage() {
         <HealthCard title="Action outbox" counts={health.outbox} />
       </div>
       <div className="mt-6">
-        <h2 className="mb-2 text-[12px] font-semibold uppercase tracking-[0.04em] text-neutral-400">Needs attention ({dead.length})</h2>
+        <h2 className="mb-2 text-body font-semibold uppercase tracking-[0.04em] text-neutral-400">Needs attention ({dead.length})</h2>
         {dead.length === 0 ? (
           <Card><p className="text-sm text-neutral-500">No failed, compensated, or dead-lettered work. The loop is clean.</p></Card>
         ) : (
           <Card>
             <div className="overflow-x-auto">
-              <table className="w-full text-[12.5px]">
+              <table className="w-full text-body">
                 <thead>
-                  <tr className="text-left text-[11px] uppercase tracking-[0.03em] text-neutral-400">
+                  <tr className="text-left text-label uppercase tracking-[0.03em] text-neutral-400">
                     <th className="py-1 pr-3">Kind</th><th className="py-1 pr-3">What</th><th className="py-1 pr-3">Status</th>
                     <th className="py-1 pr-3">Attempts</th><th className="py-1 pr-3">Reason</th><th className="py-1">When</th>
                   </tr>
@@ -76,11 +76,11 @@ function HealthCard({ title, counts }: { title: string; counts: GovernanceHealth
   const total = entries.reduce((s, [, n]) => s + n, 0);
   return (
     <Card>
-      <div className="text-[11px] font-semibold uppercase tracking-[0.04em] text-neutral-400">{title}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums">{total}</div>
+      <div className="text-label font-semibold uppercase tracking-[0.04em] text-neutral-400">{title}</div>
+      <div className="mt-1 pos-metric-fig">{total}</div>
       <ul className="mt-2 space-y-0.5">
-        {entries.length === 0 ? <li className="text-[12px] text-neutral-400">none</li> : entries.map(([k, n]) => (
-          <li key={k} className="flex items-center justify-between text-[12px]"><StatusPill status={k} /><span className="tabular-nums text-neutral-500">{n}</span></li>
+        {entries.length === 0 ? <li className="text-body text-neutral-400">none</li> : entries.map(([k, n]) => (
+          <li key={k} className="flex items-center justify-between text-body"><StatusPill status={k} /><span className="tabular-nums text-neutral-500">{n}</span></li>
         ))}
       </ul>
     </Card>
@@ -90,5 +90,5 @@ function HealthCard({ title, counts }: { title: string; counts: GovernanceHealth
 const BAD = /FAIL|REJECT|COMPENSAT|SUPPRESS/;
 function StatusPill({ status }: { status: string }) {
   const bad = BAD.test(status);
-  return <span className="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium" style={{ background: bad ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)", color: bad ? "#ef4444" : "#059669" }}>{status.toLowerCase()}</span>;
+  return <span className="inline-block rounded px-1.5 py-0.5 text-label font-medium" style={{ background: bad ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)", color: bad ? "#ef4444" : "#059669" }}>{status.toLowerCase()}</span>;
 }

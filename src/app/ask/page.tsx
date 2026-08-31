@@ -126,7 +126,7 @@ function Meta({ ex }: { ex: Exchange }) {
       {slots.length > 0 && row("Understood as",
         <span className="flex flex-wrap gap-1">
           {slots.map(([k, v]) => (
-            <code key={k} className="rounded bg-neutral-200 px-1.5 py-0.5 font-mono text-[11px] dark:bg-neutral-800">
+            <code key={k} className="rounded bg-neutral-200 px-1.5 py-0.5 font-mono text-label dark:bg-neutral-800">
               {k}: {String(v)}
             </code>
           ))}
@@ -136,7 +136,7 @@ function Meta({ ex }: { ex: Exchange }) {
         <span className="flex flex-wrap gap-1">
           {ex.record_hrefs.map((h, i) => (
             <a key={`${h}-${i}`} href={h} title={h}
-               className="rounded border border-neutral-200 px-1.5 py-0.5 font-mono text-[11px] text-accent hover:border-accent dark:border-neutral-800">
+               className="rounded border border-neutral-200 px-1.5 py-0.5 font-mono text-label text-accent hover:border-accent dark:border-neutral-800">
               {linkLabel(h)}
             </a>
           ))}
@@ -165,7 +165,7 @@ function AnswerBody({ ex, hero }: { ex: Exchange; hero: boolean }) {
       {ex.significance && (
         <div className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
           <span className="text-label text-neutral-400">{ex.significance.label}</span>
-          <span className="font-mono text-xl tabular-nums text-neutral-900 dark:text-neutral-50">{ex.significance.value}</span>
+          <span className="pos-metric-fig font-mono">{ex.significance.value}</span>
           <span className="w-full text-xs text-neutral-500">{ex.significance.basis}</span>
         </div>
       )}
@@ -224,7 +224,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
     <main>
       <PageHeader
         title="Ask"
-        subtitle="Questions resolved against the verified record. The question is interpreted; the answer is retrieved — never written."
+        subtitle="The question is interpreted; the answer is retrieved from the record — never written."
       />
 
       {sp.notice && (
@@ -268,7 +268,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
           {/* ── The hero: the latest answer, visually dominant ───────────────────────────── */}
           <Card className="mb-6 border-neutral-300 dark:border-neutral-700">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className={`rounded-full border px-2 py-0.5 text-[11px] leading-4 ${(OUTCOME[latest.outcome ?? "MATCHED"] ?? OUTCOME.MATCHED).tone}`}>
+              <span className={`rounded-full border px-2 py-0.5 text-label leading-4 ${(OUTCOME[latest.outcome ?? "MATCHED"] ?? OUTCOME.MATCHED).tone}`}>
                 {(OUTCOME[latest.outcome ?? "MATCHED"] ?? OUTCOME.MATCHED).label}
               </span>
               <span className="text-label text-neutral-400">Latest</span>
@@ -287,7 +287,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
                   return (
                     <details key={ex.id} className="group bg-white dark:bg-neutral-950">
                       <summary className="flex cursor-pointer list-none items-baseline gap-3 px-4 py-2.5 hover:bg-neutral-50 dark:hover:bg-neutral-900">
-                        <span className={`shrink-0 rounded-full border px-1.5 py-0 text-[10px] leading-4 ${o.tone}`}>{o.label}</span>
+                        <span className={`shrink-0 rounded-full border px-1.5 py-0 text-micro leading-4 ${o.tone}`}>{o.label}</span>
                         <span className="min-w-0 flex-1 truncate text-sm text-neutral-800 dark:text-neutral-200" title={ex.question}>
                           {ex.question}
                         </span>

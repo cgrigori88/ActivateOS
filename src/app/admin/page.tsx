@@ -232,7 +232,7 @@ export default async function AdminPage({
     <main>
       <PageHeader
         title="Admin"
-        subtitle="Platform operations, owners only — who has access, and what the AI layer is doing. User-facing screens stay clean; the machinery is watched from here."
+        subtitle="Access and AI operations. Owners only."
       />
 
       {sp.notice && (
@@ -579,7 +579,7 @@ export default async function AdminPage({
                         const r = rung.results as CountsResults;
                         return (
                           <div className="mt-2 flex items-baseline gap-3 pl-6">
-                            <span className="pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em]">{r.overlap}</span>
+                            <span className="pos-metric-fig">{r.overlap}</span>
                             <span className="text-xs text-neutral-500">
                               overlapping accounts{myBookSize > 0 ? ` · ${Math.round((r.overlap / myBookSize) * 100)}% of your book` : ""}
                             </span>
@@ -626,9 +626,9 @@ export default async function AdminPage({
                                       {icp && (
                                         <td>
                                           {fit === "fit" ? (
-                                            <span className="rounded-full bg-emerald/12 px-2 py-0.5 text-[10.5px] font-bold text-emerald dark:text-emerald-300">fit</span>
+                                            <span className="rounded-full bg-emerald/12 px-2 py-0.5 text-micro font-bold text-emerald dark:text-emerald-300">fit</span>
                                           ) : fit === "off_profile" ? (
-                                            <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-neutral-500">off-profile</span>
+                                            <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-micro font-semibold text-neutral-500">off-profile</span>
                                           ) : (
                                             <span className="text-xs text-neutral-400">—</span>
                                           )}

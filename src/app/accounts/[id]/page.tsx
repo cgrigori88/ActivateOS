@@ -376,7 +376,7 @@ export default async function AccountPage({
                   )}
                   {ev.detail && <span className="text-neutral-400"> — {ev.detail}</span>}
                 </span>
-                <span className="shrink-0 font-mono text-[10.5px] text-neutral-400" title="provenance">
+                <span className="shrink-0 font-mono text-micro text-neutral-400" title="provenance">
                   {ev.source}
                 </span>
               </li>

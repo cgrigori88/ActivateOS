@@ -40,7 +40,7 @@ export default async function RoutinesPage() {
     <main>
       <PageHeader
         title="Routines"
-        subtitle="Your standing staff — scheduled jobs from a known catalog, each with a visible guardrail. Digests summarize and surface; nothing here sends outreach or changes revenue state."
+        subtitle="Scheduled jobs from a known catalog, each with a visible guardrail."
       />
 
       <div className="space-y-4">

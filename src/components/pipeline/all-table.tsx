@@ -73,7 +73,7 @@ export function PipelineAllTable({ rows, drawerBase }: { rows: AllRow[]; drawerB
   const Th = ({ label, k: key, right }: { label: string; k: SortKey; right?: boolean }) => (
     <th className={`px-3 py-2 font-semibold text-neutral-500 ${right ? "text-right" : "text-left"}`}>
       <button type="button" onClick={() => onSort(key)} className="inline-flex items-center gap-1 hover:text-neutral-800 dark:hover:text-neutral-200">
-        {label}{sort === key && <span className="text-[9px]">{dir === 1 ? "▲" : "▼"}</span>}
+        {label}{sort === key && <span className="text-micro">{dir === 1 ? "▲" : "▼"}</span>}
       </button>
     </th>
   );
@@ -82,11 +82,11 @@ export function PipelineAllTable({ rows, drawerBase }: { rows: AllRow[]; drawerB
     <div>
       <div className="mb-2 flex items-center gap-2">
         <input value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }} placeholder="Filter by account, opportunity, or partner…"
-          className="w-full max-w-sm rounded-lg border bg-transparent px-3 py-1.5 text-[13px] outline-none placeholder:text-neutral-400" style={{ borderColor: "var(--border-subtle)" }} />
+          className="w-full max-w-sm rounded-lg border bg-transparent px-3 py-1.5 text-copy outline-none placeholder:text-neutral-400" style={{ borderColor: "var(--border-subtle)" }} />
         <span className="text-label text-neutral-400">{filtered.length} row{filtered.length === 1 ? "" : "s"}</span>
       </div>
       <div className="overflow-x-auto rounded-xl border scroll-thin" style={{ borderColor: "var(--border-subtle)" }}>
-        <table className="w-full border-collapse text-[13px]">
+        <table className="w-full border-collapse text-copy">
           <thead>
             <tr style={{ background: "var(--surface-inset)" }}>
               <Th label="Account · opportunity" k="account" />
@@ -106,12 +106,12 @@ export function PipelineAllTable({ rows, drawerBase }: { rows: AllRow[]; drawerB
                 <tr key={r.id} className="border-t hover:bg-[var(--surface-inset)]" style={{ borderColor: "var(--border-subtle)" }}>
                   <td className="px-3 py-1.5">
                     <Link href={drawerHref(r.companyId)} scroll={false} className="font-medium hover:underline" title="Open account intelligence">{r.account}</Link>
-                    <span className="ml-1.5 text-[11px] text-neutral-400">{r.name}</span>
+                    <span className="ml-1.5 text-label text-neutral-400">{r.name}</span>
                   </td>
                   <td className="px-3 py-1.5 text-xs uppercase tracking-wide text-neutral-500">{r.stage.replace(/_/g, " ")}</td>
                   <td className="px-3 py-1.5">
-                    {closed ? <span className="text-[11px] text-neutral-400">—</span> : (
-                      <span className="inline-flex items-center gap-1 text-[11.5px] font-medium" style={{ color: condTone[r.condition] }}>
+                    {closed ? <span className="text-label text-neutral-400">—</span> : (
+                      <span className="inline-flex items-center gap-1 text-label font-medium" style={{ color: condTone[r.condition] }}>
                         <span className="h-1.5 w-1.5 rounded-full" style={{ background: condTone[r.condition] }} />{CONDITION_LABEL[r.condition]}
                       </span>
                     )}
@@ -131,7 +131,7 @@ export function PipelineAllTable({ rows, drawerBase }: { rows: AllRow[]; drawerB
       </div>
       {filtered.length > shown.length && (
         <div className="mt-2 text-center">
-          <button type="button" onClick={() => setLimit((l) => l + PAGE)} className="rounded-lg px-4 py-1.5 text-[12.5px] font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900">
+          <button type="button" onClick={() => setLimit((l) => l + PAGE)} className="rounded-lg px-4 py-1.5 text-body font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900">
             Show {Math.min(PAGE, filtered.length - shown.length)} more · {filtered.length - shown.length} remaining
           </button>
         </div>

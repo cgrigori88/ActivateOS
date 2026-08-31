@@ -107,18 +107,37 @@
   --radius-card: 18px;
   --radius-panel: 22px;
 
-  /* Named type scale (design-pass DRIFT-3 fix). Codifies the sizes the app
-     already uses most so surfaces stop reinventing arbitrary text-[Npx].
-     These are 1:1 with the values they replace — pure aliases, no visual
-     change. One-off sizes (9/19/34px) stay arbitrary by design; codifying
-     them would be premature. text-{name} resolves to font-size because none
-     of these names is a color. */
-  --text-micro: 10px;   /* dense meta / dot labels */
-  --text-label: 11px;   /* the dominant micro-label */
-  --text-body: 13px;    /* compact body copy in cards/rows */
-  --text-title: 15px;   /* section subheads / lead paragraphs */
-  --text-display: 26px; /* bento figures */
-  --text-hero: 32px;    /* hero figures */
+  /* ---- Type scale: EIGHT steps serving SIX roles ---------------------------
+     The previous six-token scale was a partial codification, and an audit found
+     377 arbitrary `text-[Npx]` across TWENTY distinct sizes still in the pages —
+     including seven half-pixel sizes. The tell was which sizes dominated:
+     12.5px (63 uses) and 12px (44) were the single most common size in the app
+     and had NO token at all, while 13px carried the `body` name. The scale was
+     wrong, not just the pages, so a page reaching for 12.5px was making a
+     reasonable choice with nothing to reach for.
+
+     Eight steps, each with a job. Half-pixel sizes are gone: nobody designs on
+     a 0.5px grid across 192 instances on purpose, and the fractional values are
+     exactly what made the product read as assembled rather than designed.
+
+       ROLE (§3)          TOKEN      SIZE
+       Page title         hero       30   (matches what PageHeader already drew)
+       Section heading    section    19
+       Primary metric     display    26
+       Primary body       copy       13
+       Secondary label    body       12   the dense workhorse: rows, cards, chips
+                          label      11   uppercase micro-labels
+       Metadata           micro      10   evidence, timestamps, provenance
+
+     `text-{name}` resolves to font-size because none of these names is a color. */
+  --text-micro: 10px;
+  --text-label: 11px;
+  --text-body: 12px;
+  --text-copy: 13px;
+  --text-title: 15px;
+  --text-section: 19px;
+  --text-display: 26px;
+  --text-hero: 30px;
 
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-jbmono), ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -164,6 +183,36 @@
   --shadow-low: 0 1px 2px rgba(11, 18, 32, 0.05), 0 1px 3px rgba(11, 18, 32, 0.06);
   --shadow-medium: var(--shadow-pop);
 
+  /* ---- Ink ramp: FOUR roles, not nine levels ------------------------------
+     An audit counted nine distinct `text-neutral-*` levels across 1,567 uses,
+     with 500 (727×) and 400 (456×) dominating. Nine levels is not a hierarchy —
+     it is what happens when each surface picks a grey by eye, and it produces
+     the grey-on-grey wash where a primary statement and its metadata are one
+     step apart and neither reads as primary.
+
+     Four roles, each answering "how loud is this?":
+       ink        a statement the operator is meant to read and act on
+       ink-soft   supporting prose that must stay comfortably legible
+       ink-muted  labels naming a field — present, quiet, ≥4.5:1
+       ink-faint  metadata and provenance: findable, never competing
+
+     Both themes are tuned independently so a role means the same LOUDNESS in
+     each, rather than the same swatch. */
+  --ink: var(--color-neutral-900);
+  --ink-soft: var(--color-neutral-600);
+  --ink-muted: var(--color-neutral-500);
+  --ink-faint: var(--color-neutral-400);
+
+  /* ---- Metric intent: colour that MEANS something -------------------------
+     §7: colour communicates state, severity or category — never "this tile is
+     next to that tile". These five are the only intents a summary metric may
+     carry, and `neutral` is the default because most numbers are just numbers. */
+  --intent-positive: var(--color-accent-verified);
+  --intent-risk: var(--color-accent-risk);
+  --intent-warning: var(--color-accent-attention);
+  --intent-info: var(--color-accent);
+  --intent-neutral: var(--color-neutral-500);
+
   --dur-react: 140ms;
   --dur-move: 220ms;
   --ease-move: cubic-bezier(0.2, 0, 0, 1);
@@ -191,6 +240,16 @@ html.dark {
   --shadow-low: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
   /* Opaque sheet in dark mode: solid slate, brighter than the near-black ground. */
   --surface-sheet: #131c2e;
+
+  /* The ink ramp inverts, and is retuned rather than mirrored: on a near-black
+     ground a mid-grey reads far quieter than the same step does on white, so
+     dark's muted and faint steps sit HIGHER on the ramp to hold their contrast.
+     A role means the same loudness in both themes, not the same swatch. */
+  --ink: var(--color-neutral-50);
+  --ink-soft: var(--color-neutral-300);
+  --ink-muted: var(--color-neutral-400);
+  --ink-faint: var(--color-neutral-500);
+  --intent-neutral: var(--color-neutral-400);
 }
 
 html {
@@ -297,12 +356,27 @@ summary:focus-visible {
    no hierarchy — everything is a label and nothing is a title. Retuned here so
    no feature page has to change.
    --------------------------------------------------------------------------- */
-:where(h2, h3).uppercase.text-neutral-500 {
+:where(h2, h3).uppercase.text-neutral-500,
+:where(h2, h3).uppercase.text-neutral-400,
+:where(h2, h3).uppercase.text-blue-800,
+:where(h2, h3).uppercase.ink-muted,
+:where(h2, h3).uppercase.ink-faint {
   text-transform: none;
   letter-spacing: -0.015em;
-  font-size: 15px;
+  font-size: var(--text-title);
   font-weight: 700;
-  color: var(--color-neutral-900);
+  color: var(--ink);
+}
+/* The dark override the original rule never had: pinning neutral-900 made every
+   panel heading in dark mode resolve to the DARKEST ink on a near-black ground.
+   The 91 headings that use this were legible only because Tailwind's own
+   `dark:` utility happened to win on some of them and not others. */
+html.dark :where(h2, h3).uppercase.text-neutral-500,
+html.dark :where(h2, h3).uppercase.text-neutral-400,
+html.dark :where(h2, h3).uppercase.text-blue-800,
+html.dark :where(h2, h3).uppercase.ink-muted,
+html.dark :where(h2, h3).uppercase.ink-faint {
+  color: var(--ink);
 }
 .dark :where(h2, h3).uppercase.text-neutral-500 {
   color: var(--color-neutral-100);
@@ -469,28 +543,29 @@ select:not([multiple]) {
 }
 
 /* ---------------------------------------------------------------------------
-   Bento figures take the categorical order by position. A summary row is a set
-   of different measures, so rendering it as identical dark numbers throws that
-   away. An explicit tone still wins, and a zero stays grey — a count of nothing
-   should never wear a hue.
+   Metric figures: SEMANTIC intent, never position.
+
+   This block used to colour each figure by `nth-child(7n + N)` — seven hues
+   cycling by DOM position, with a matching tile wash. The stated intent was
+   that a summary row is a set of different measures and identical dark numbers
+   throw that away. In practice it produced the rainbow dashboard §7 names: the
+   third tile was cyan because it was third, and moving a tile changed its
+   colour while its meaning stayed identical. Colour that changes when nothing
+   about the data changed is decoration wearing a semantic costume, and it was
+   the single largest source of the assembled-by-committee feel.
+
+   Colour now means one of five things, or nothing at all. The default is ink:
+   most numbers are just numbers, and a figure earns a hue only when its VALUE
+   carries state the operator should react to.
    --------------------------------------------------------------------------- */
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: var(--color-cat-1); }
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: var(--color-cat-2); }
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 3) .pos-bento-fig { color: var(--color-cat-3); }
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 4) .pos-bento-fig { color: var(--color-cat-4); }
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: var(--color-cat-5); }
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: var(--color-cat-6); }
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: var(--color-cat-7); }
-.dark {
-  /* The solids are tuned for a light ground; on dark they lift so they read. */
-  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 1) .pos-bento-fig { color: #60a5fa; }
-  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 2) .pos-bento-fig { color: #a78bfa; }
-  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 3) .pos-bento-fig { color: #22d3ee; }
-  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 4) .pos-bento-fig { color: #fbbf24; }
-  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 5) .pos-bento-fig { color: #34d399; }
-  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 6) .pos-bento-fig { color: #fb7185; }
-  .pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 7) .pos-bento-fig { color: #818cf8; }
-}
+.pos-bento-fig { color: var(--ink); }
+.pos-bento[data-intent="positive"] .pos-bento-fig { color: var(--intent-positive); }
+.pos-bento[data-intent="risk"]     .pos-bento-fig { color: var(--intent-risk); }
+.pos-bento[data-intent="warning"]  .pos-bento-fig { color: var(--intent-warning); }
+.pos-bento[data-intent="info"]     .pos-bento-fig { color: var(--intent-info); }
+.pos-bento[data-intent="neutral"]  .pos-bento-fig { color: var(--ink); }
+/* A count of nothing never wears a hue, whatever its intent says. */
+.pos-bento[data-empty="true"] .pos-bento-fig { color: var(--ink-faint); }
 
 /* ---------------------------------------------------------------------------
    Glass takes colour from what sits behind it. (Ported from design PR #7.)
@@ -522,46 +597,47 @@ html.dark .glass {
   );
 }
 
-/* Bento tiles: the hue of the figure, washed across the surface. */
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 1) { --tile-hue: var(--color-cat-1); }
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 2) { --tile-hue: var(--color-cat-2); }
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 3) { --tile-hue: var(--color-cat-3); }
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 4) { --tile-hue: var(--color-cat-4); }
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 5) { --tile-hue: var(--color-cat-5); }
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 6) { --tile-hue: var(--color-cat-6); }
-.pos-bento:not([data-tone]):not([data-active="true"]):not([data-empty="true"]):nth-child(7n + 7) { --tile-hue: var(--color-cat-7); }
+/* Tile wash follows the same rule as the figure: a tile is tinted only when it
+   carries an intent. An untinted tile is the DEFAULT and is not a failure —
+   most summary rows should read as one calm material with the numbers doing the
+   talking. `data-tone` remains supported for the filter chips that genuinely
+   encode a category (a selected Pipeline cut), mapped onto the intent hues so
+   there is one palette rather than two. */
+.pos-bento[data-intent="positive"] { --tile-hue: var(--intent-positive); }
+.pos-bento[data-intent="risk"]     { --tile-hue: var(--intent-risk); }
+.pos-bento[data-intent="warning"]  { --tile-hue: var(--intent-warning); }
+.pos-bento[data-intent="info"]     { --tile-hue: var(--intent-info); }
+.pos-bento[data-tone="sky"]     { --tile-hue: var(--intent-info); }
+.pos-bento[data-tone="green"]   { --tile-hue: var(--intent-positive); }
+.pos-bento[data-tone="amber"]   { --tile-hue: var(--intent-warning); }
+.pos-bento[data-tone="red"]     { --tile-hue: var(--intent-risk); }
+.pos-bento[data-tone="neutral"] { --tile-hue: var(--color-neutral-400); }
 
-.pos-bento.glass[data-tone]:not([data-active="true"]),
-.pos-bento.glass:not([data-active="true"]):not([data-empty="true"]) {
+/* Only a tile that HAS a hue gets the wash. Everything else keeps plain glass. */
+.pos-bento.glass[data-tone]:not([data-active="true"]):not([data-empty="true"]),
+.pos-bento.glass[data-intent]:not([data-intent="neutral"]):not([data-active="true"]):not([data-empty="true"]) {
   background-image:
     linear-gradient(
       152deg,
-      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 16%, transparent) 0%,
-      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 5%, transparent) 46%,
+      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 14%, transparent) 0%,
+      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 4%, transparent) 46%,
       transparent 72%
     ),
     linear-gradient(168deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 70%);
-  border-color: color-mix(in srgb, var(--tile-hue, var(--color-accent)) 22%, var(--glass-edge));
+  border-color: color-mix(in srgb, var(--tile-hue, var(--color-accent)) 20%, var(--glass-edge));
 }
-html.dark .pos-bento.glass[data-tone]:not([data-active="true"]),
-html.dark .pos-bento.glass:not([data-active="true"]):not([data-empty="true"]) {
+html.dark .pos-bento.glass[data-tone]:not([data-active="true"]):not([data-empty="true"]),
+html.dark .pos-bento.glass[data-intent]:not([data-intent="neutral"]):not([data-active="true"]):not([data-empty="true"]) {
   background-image:
     linear-gradient(
       152deg,
-      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 30%, transparent) 0%,
-      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 10%, transparent) 46%,
+      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 26%, transparent) 0%,
+      color-mix(in srgb, var(--tile-hue, var(--color-accent)) 8%, transparent) 46%,
       transparent 74%
     ),
     linear-gradient(168deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 70%);
-  border-color: color-mix(in srgb, var(--tile-hue, var(--color-accent)) 34%, var(--glass-edge));
+  border-color: color-mix(in srgb, var(--tile-hue, var(--color-accent)) 30%, var(--glass-edge));
 }
-/* A filter chip sets its own hue, so it inherits from its tone rather than its
-   position — and the selected one keeps the solid accent fill. */
-.pos-bento[data-tone="sky"] { --tile-hue: var(--color-accent); }
-.pos-bento[data-tone="green"] { --tile-hue: var(--color-emerald); }
-.pos-bento[data-tone="amber"] { --tile-hue: var(--color-amber); }
-.pos-bento[data-tone="red"] { --tile-hue: var(--color-rose); }
-.pos-bento[data-tone="neutral"] { --tile-hue: var(--color-neutral-400); }
 
 /* Panels get the faintest lift off the ground so a stack of them has depth. */
 .pos-card.glass {
@@ -841,4 +917,77 @@ html.dark main :is(div, section, li, article).rounded-2xl.border:not(.pos-card):
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Ink utilities. Four roles, both themes, one place.
+
+   Written as utilities rather than left to `text-neutral-500 dark:text-neutral-400`
+   pairs at every call site, because the pair is where the drift came from: nine
+   grey levels appeared precisely because each surface picked its own light/dark
+   combination by eye. A role resolves to the right value in both themes with no
+   `dark:` variant at the call site at all.
+   --------------------------------------------------------------------------- */
+.ink       { color: var(--ink); }
+.ink-soft  { color: var(--ink-soft); }
+.ink-muted { color: var(--ink-muted); }
+.ink-faint { color: var(--ink-faint); }
+
+/* ---------------------------------------------------------------------------
+   Browser surfaces. The parts we did not draw still carry the design — these
+   ship with defaults that belong to no design system, and they are the cheapest
+   tell that a page was assembled rather than built.
+   --------------------------------------------------------------------------- */
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  color: var(--ink);
+}
+html.dark ::selection {
+  background: color-mix(in srgb, var(--color-accent-tint) 30%, transparent);
+  color: var(--color-neutral-50);
+}
+input, textarea, [contenteditable] { caret-color: var(--color-accent); }
+
+/* Scrollbars on dense panes take the palette instead of the platform's grey. */
+.scroll-thin::-webkit-scrollbar-track { background: transparent; }
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-neutral-500) 32%, transparent);
+  border-radius: 999px;
+}
+.scroll-thin::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-neutral-500) 52%, transparent);
+}
+.scroll-thin { scrollbar-color: color-mix(in srgb, var(--color-neutral-500) 32%, transparent) transparent; }
+
+/* ---------------------------------------------------------------------------
+   Summary band: ONE metric row treatment for every room (§2).
+
+   Container height, radius, padding, label position, figure size, annotation
+   and border are settled here rather than per page, so Today and Pipeline and
+   Partners and Motions cannot drift apart again. `align-items: stretch` is the
+   part that matters visually: tiles with a one-line label and tiles with two
+   used to end up different heights on the same row.
+   --------------------------------------------------------------------------- */
+.pos-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+.pos-summary > * { min-height: 92px; }
+@media (max-width: 640px) {
+  .pos-summary { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 8px; }
+  .pos-summary > * { min-height: 82px; }
+}
+
+/* The metric figure, declared once. Nine call sites had this exact string
+   copy-pasted from the component's internals and one had invented its own
+   `text-2xl font-semibold`; both now reference this. */
+.pos-metric-fig {
+  font-size: var(--text-display);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }

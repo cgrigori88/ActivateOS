@@ -39,7 +39,7 @@ export function ExecutionPlan({ team, pursuitId, canDecide }: { team: PursuitTea
     <div>
       {/* Waiting-on band — the pursuit is held on these participants' acceptance. */}
       {waiting.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-card px-3 py-2 text-[11.5px]"
+        <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-card px-3 py-2 text-label"
           style={{ background: "color-mix(in srgb, var(--color-timing) 9%, transparent)", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-timing) 24%, transparent)" }}>
           <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: "var(--color-timing)" }} aria-hidden />
           <span className="font-semibold" style={{ color: "var(--color-timing, #b45309)" }}>Waiting on</span>
@@ -53,14 +53,14 @@ export function ExecutionPlan({ team, pursuitId, canDecide }: { team: PursuitTea
         ))}
       </div>
 
-      {error && <p className="mt-2 text-[11.5px]" style={{ color: "var(--color-accent-risk)" }}>{error}</p>}
+      {error && <p className="mt-2 text-label" style={{ color: "var(--color-accent-risk)" }}>{error}</p>}
 
       {team.missingRequiredRoles.length > 0 && (
-        <div className="mt-2.5 rounded-card p-3 text-[12px]" style={{ background: "color-mix(in srgb, var(--color-accent-attention) 9%, transparent)" }}>
+        <div className="mt-2.5 rounded-card p-3 text-body" style={{ background: "color-mix(in srgb, var(--color-accent-attention) 9%, transparent)" }}>
           <b style={{ color: "var(--color-accent-attention)" }}>Readiness held.</b> Required role(s) not yet accepted: {team.missingRequiredRoles.map(ROLE).join(", ")}.
         </div>
       )}
-      <p className="mt-2 text-[10.5px] text-neutral-400">
+      <p className="mt-2 text-micro text-neutral-400">
         Confirm and accept are governed decisions — a recompute may change the recommended team, never a confirmed assignment.
       </p>
     </div>
@@ -71,23 +71,23 @@ function MemberRow({ m, canDecide, busy, onAct }: { m: TeamMemberView; canDecide
   return (
     <div className="flex items-center justify-between gap-2 rounded-card px-3.5 py-2.5" style={{ background: "var(--surface-inset)" }}>
       <div className="min-w-0">
-        <div className="flex items-center gap-1.5 text-[12.5px] font-semibold">
+        <div className="flex items-center gap-1.5 text-body font-semibold">
           <span className="truncate">{m.personLabel ?? m.partnerLabel ?? ROLE(m.role)}</span>
-          {m.required && <span className="rounded px-1 py-px text-[9px] font-bold uppercase tracking-[0.04em] text-neutral-400" style={{ boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}>req</span>}
+          {m.required && <span className="rounded px-1 py-px text-micro font-bold uppercase tracking-[0.04em] text-neutral-400" style={{ boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}>req</span>}
         </div>
-        <div className="text-[11px] text-neutral-400">{m.personLabel || m.partnerLabel ? ROLE(m.role) : `${m.side.toLowerCase()} side`}</div>
+        <div className="text-label text-neutral-400">{m.personLabel || m.partnerLabel ? ROLE(m.role) : `${m.side.toLowerCase()} side`}</div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {m.fit && <BandPill band={m.fit.band} />}
         <TeamStatusBadge status={m.status} />
         {canDecide && m.nextGovernedAction === "confirm" && (
           <button type="button" disabled={busy} onClick={() => onAct(m.id, "confirm")}
-            className="rounded-control px-2.5 py-1 text-[11.5px] font-semibold text-white disabled:opacity-50"
+            className="rounded-control px-2.5 py-1 text-label font-semibold text-white disabled:opacity-50"
             style={{ background: "var(--color-readiness)" }}>{busy ? "…" : "Confirm"}</button>
         )}
         {canDecide && m.nextGovernedAction === "accept" && (
           <button type="button" disabled={busy} onClick={() => onAct(m.id, "accept")}
-            className="rounded-control px-2.5 py-1 text-[11.5px] font-semibold text-white disabled:opacity-50"
+            className="rounded-control px-2.5 py-1 text-label font-semibold text-white disabled:opacity-50"
             style={{ background: "var(--color-accent-verified)" }}>{busy ? "…" : "Mark accepted"}</button>
         )}
       </div>

@@ -5,7 +5,7 @@ import { calibrateStages, editIntensity } from "@/lib/insights/calibration";
 import { computeFunnel } from "@/lib/insights/funnel";
 import { STAGES, type Stage } from "@/lib/opportunities/lifecycle";
 import { loadStageWeights } from "@/lib/opportunities/stage-weights";
-import { Bento, Card, PageHeader } from "@/components/ui";
+import { Bento, Card, PageHeader, SectionHeading, Disclosure, SummaryBand } from "@/components/ui";
 import { sourceOutcomeAttribution } from "@/lib/opportunities/autopsy";
 import { QuerySelect } from "@/components/query-select";
 import { saveStageWeightsAction, setTriggerEnabledAction } from "./actions";
@@ -106,15 +106,15 @@ export default async function InsightsPage({
     <main>
       <PageHeader
         title="Insights"
-        subtitle="AI calibration — what the outcome log says. Declared assumptions stay visibly declared until observed data earns the right to replace them."
+        subtitle="What the outcome log says. Declared assumptions stay declared until data replaces them."
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <SummaryBand className="mb-6">
         <Bento label="closed deals" value={closedN} href="/pipeline" />
         <Bento label="win rate" value={winRate == null ? "—" : `${winRate}%`} subs={[`${wonN} won`]} />
-        <Bento label="deals won" value={wonN} href="/pipeline?stage=closed_won" />
+        <Bento label="deals won" value={wonN} intent="positive" href="/pipeline?stage=closed_won" />
         <Bento label="edit intensity" value={intensity ?? "—"} subs={["0 sent as-is · 1 rewritten"]} />
-      </div>
+      </SummaryBand>
 
       {/* Canonical outcome rollup (Phase B): terminal pursuit_outcomes by attribution class. */}
       {canonicalTotal > 0 && (
@@ -133,7 +133,10 @@ export default async function InsightsPage({
               </span>
             ))}
           </div>
-          <p className="mt-2 text-xs text-neutral-400">Outcome ≠ Attribution — the count is what happened; the class is PursuitOS’s evidence-bound claim about who moved it. UNKNOWN is preserved where no partner route was selected.</p>
+          <Disclosure summary="Outcome ≠ Attribution" className="mt-2">
+            The count is what happened; the class is PursuitOS’s evidence-bound claim about who moved
+            it. UNKNOWN is preserved where no partner route was selected.
+          </Disclosure>
         </Card>
       )}
 
@@ -146,9 +149,9 @@ export default async function InsightsPage({
             <span className="text-xs text-neutral-400">separate truths — presence, activation, acceptance, canonical outcomes</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] border-collapse text-[12.5px]">
+            <table className="w-full min-w-[560px] border-collapse text-body">
               <thead>
-                <tr className="text-left text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                <tr className="text-left text-micro font-bold uppercase tracking-wide text-neutral-500">
                   <th className="px-2 py-1.5">Partner</th><th className="px-2 py-1.5">Overlap</th><th className="px-2 py-1.5">Selected routes</th>
                   <th className="px-2 py-1.5">Teams accepted</th><th className="px-2 py-1.5">Pending</th><th className="px-2 py-1.5">Median accept</th><th className="px-2 py-1.5">Canonical wins</th>
                 </tr>
@@ -214,12 +217,12 @@ export default async function InsightsPage({
             ]}
           />
         </div>
-        <p className="mb-3 text-xs text-neutral-500">
+        <Disclosure summary="How these weights are used" className="mb-3">
           Declared weights vs observed win rates. These weights drive the weighted pipeline
           everywhere it appears — edit them below, per partner if their funnel genuinely converts
-          differently. Observed shows only past 10 closed deals per stage; divergence beyond ±15
+          differently. Observed shows only the past 10 closed deals per stage; divergence beyond ±15
           points flags a human review — never a silent weight update.
-        </p>
+        </Disclosure>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-neutral-400">
@@ -336,7 +339,8 @@ export default async function InsightsPage({
             ))}
           </ul>
           <p className="mt-2 text-label text-neutral-400">
-            Counts deals whose account carried verified claims from each source. With volume this becomes source predictive value — which telemetry actually forecasts wins.
+            Counts deals whose account carried verified claims from each source. With volume this
+            becomes source predictive value — which telemetry actually forecasts wins.
           </p>
         </Card>
       )}
@@ -344,14 +348,13 @@ export default async function InsightsPage({
       {/* Attention triggers (task #83): the named catalog of deterministic
           "this deserves attention" rules, each with an org-level switch. */}
       <Card>
-        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+        <SectionHeading hint="Every rule that raises an account for attention, by name.">
           Attention triggers
-        </h2>
-        <p className="mb-3 text-sm text-neutral-500">
-          Every rule that raises an account for attention, by name. Switch one
-          off and it stops running everywhere it&rsquo;s surfaced — no hidden
-          heuristics.
-        </p>
+        </SectionHeading>
+        <Disclosure summary="What switching one off does" className="mb-3">
+          Switch a rule off and it stops running everywhere it&rsquo;s surfaced — there are no
+          hidden heuristics behind these.
+        </Disclosure>
         <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
           {TRIGGER_CATALOG.map((t) => {
             const isOn = triggersOn.has(t.key);

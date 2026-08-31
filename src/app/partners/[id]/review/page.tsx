@@ -75,7 +75,7 @@ export default async function PartnershipReviewPage({ params }: { params: Promis
 
       <header className="mb-6 border-b-2 border-neutral-900 pb-3 dark:border-neutral-100 print:border-neutral-900">
         <p className="text-label font-bold uppercase tracking-[0.14em] text-neutral-400">Partnership review</p>
-        <h1 className="text-2xl font-bold">{partner.name}</h1>
+        <h1 className="text-hero font-extrabold leading-[1.1] tracking-[-0.03em] ink">{partner.name}</h1>
         <p className="mt-1 text-xs text-neutral-500">
           {[partner.partnerType, partnership?.otherOrgName ? `connected tenant: ${partnership.otherOrgName}` : "not yet a connected tenant"].filter(Boolean).join(" · ")}
           {" · generated "}{generatedAt} UTC

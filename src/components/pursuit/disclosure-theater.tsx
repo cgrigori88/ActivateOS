@@ -38,7 +38,7 @@ export function DisclosureTheater({ internal, shareable, candidateLabel }: {
           const kHue = k === "sponsor" ? "var(--color-band-high)" : "var(--color-accent-verified)";
           return (
             <button key={k} type="button" role="tab" aria-selected={on} onClick={() => setAudience(k)}
-              className="rounded-[calc(var(--radius-control)-2px)] px-3.5 py-1.5 text-[12px] font-semibold transition-colors"
+              className="rounded-[calc(var(--radius-control)-2px)] px-3.5 py-1.5 text-body font-semibold transition-colors"
               style={on ? { background: "var(--surface-primary)", color: kHue, boxShadow: "var(--shadow-low)" } : { color: "var(--color-neutral-500)" }}>
               {label}
             </button>
@@ -49,11 +49,11 @@ export function DisclosureTheater({ internal, shareable, candidateLabel }: {
       {/* The morphing payload — one card, two audiences */}
       <div className="rounded-card p-4 transition-colors" style={{ background: `color-mix(in srgb, ${hue} 5%, var(--surface-primary))`, boxShadow: "var(--shadow-low)" }}>
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.03em]" style={{ color: hue }}>
+          <div className="flex items-center gap-1.5 text-label font-bold uppercase tracking-[0.03em]" style={{ color: hue }}>
             <span aria-hidden>{sponsor ? "🔒" : "↗"}</span>
             {sponsor ? `Why ${candidateLabel} — internal, full detail` : `Why ${candidateLabel} — shareable with partner`}
           </div>
-          <span className="text-[10.5px] font-semibold uppercase tracking-[0.04em] text-neutral-400">{rows.length} reason{rows.length === 1 ? "" : "s"}</span>
+          <span className="text-micro font-semibold uppercase tracking-[0.04em] text-neutral-400">{rows.length} reason{rows.length === 1 ? "" : "s"}</span>
         </div>
 
         <div className="mt-2.5">
@@ -61,16 +61,16 @@ export function DisclosureTheater({ internal, shareable, candidateLabel }: {
             ? rows.map((r, i) => {
                 const isConfidential = sponsor && isConfidentialFigure(r.text);
                 return (
-                  <div key={i} className="flex items-start gap-2 py-1 text-[12.5px]">
+                  <div key={i} className="flex items-start gap-2 py-1 text-body">
                     <span className="flex-none font-extrabold" style={{ color: r.polarity >= 0 ? "var(--color-accent-verified)" : "var(--color-accent-risk)" }}>{r.polarity >= 0 ? "+" : "−"}</span>
                     <span className={isConfidential ? "font-semibold" : sponsor ? "" : "text-neutral-500"}>
                       {humanizeReason(r.text)}
-                      {isConfidential && <span className="ml-1.5 rounded-full px-1.5 py-px text-[9.5px] font-bold uppercase tracking-[0.04em]" style={{ background: "color-mix(in srgb, var(--color-band-high) 14%, transparent)", color: "var(--color-band-high)" }}>confidential</span>}
+                      {isConfidential && <span className="ml-1.5 rounded-full px-1.5 py-px text-micro font-bold uppercase tracking-[0.04em]" style={{ background: "color-mix(in srgb, var(--color-band-high) 14%, transparent)", color: "var(--color-band-high)" }}>confidential</span>}
                     </span>
                   </div>
                 );
               })
-            : <div className="text-[12.5px] italic text-neutral-400">{sponsor ? "Withheld — this viewer is not permitted internal reasoning." : "No partner-safe reasons on this route yet."}</div>}
+            : <div className="text-body italic text-neutral-400">{sponsor ? "Withheld — this viewer is not permitted internal reasoning." : "No partner-safe reasons on this route yet."}</div>}
         </div>
 
         {/* The caption that makes the boundary visceral.
@@ -80,7 +80,7 @@ export function DisclosureTheater({ internal, shareable, candidateLabel }: {
             PARTNER'S payload, and the place that fact can be checked independently is the partner's
             own surface, where the figure was never serialized at all. Saying "not hidden in the
             browser" without saying where to verify it invites exactly the objection it answers. */}
-        <div className="mt-2.5 border-t pt-2 text-[10.5px]" style={{ borderColor: "var(--border-subtle)" }}>
+        <div className="mt-2.5 border-t pt-2 text-micro" style={{ borderColor: "var(--border-subtle)" }}>
           {sponsor
             ? <span className="text-neutral-400">Restricted reasoning — visible to the vendor’s own team only. You are seeing both payloads because you are authorized to; a partner receives only the shareable one.</span>
             : figuresRemoved.length

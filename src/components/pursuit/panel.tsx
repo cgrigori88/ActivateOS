@@ -7,10 +7,18 @@ import type { ReactNode } from "react";
  * their identity. `tint` false gives a plain raised card.
  */
 export function Panel({
-  title, eyebrow, aside, accent, children, className = "", tint = false,
+  title, eyebrow, hint, aside, accent, children, className = "", tint = false,
 }: {
   title?: string;
+  /**
+   * Deprecated. A kicker above a heading is decoration: the heading carries its
+   * own weight, and a coloured uppercase line above it competes with the thing
+   * it is introducing. Anything passed here now renders BELOW the title as a
+   * hint, which is what the copy in all eleven call sites was actually doing.
+   */
   eyebrow?: string;
+  /** One short clause under the heading. Long explanation belongs in a Disclosure. */
+  hint?: string;
   aside?: ReactNode;
   accent?: string;               // a --color-* var, e.g. "var(--color-route)"
   children: ReactNode;
@@ -22,9 +30,9 @@ export function Panel({
     <section className={`glass rounded-card p-5 ${className}`} style={bg ? { background: bg } : undefined}>
       {(title || aside) && (
         <div className="mb-3.5 flex items-start justify-between gap-3">
-          <div>
-            {eyebrow && <div className="text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: accent ?? "var(--color-neutral-500)" }}>{eyebrow}</div>}
-            {title && <h2 className="text-[15px] font-bold tracking-[-0.01em]">{title}</h2>}
+          <div className="min-w-0">
+            {title && <h2 className="text-title font-bold tracking-[-0.015em] ink">{title}</h2>}
+            {(hint ?? eyebrow) && <p className="mt-0.5 text-body ink-faint">{hint ?? eyebrow}</p>}
           </div>
           {aside && <div className="flex-none">{aside}</div>}
         </div>

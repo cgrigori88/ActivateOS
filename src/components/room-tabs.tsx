@@ -20,7 +20,7 @@ export function RoomTabs({ tabs }: { tabs: { href: string; label: string }[] }) 
           key={t.href}
           href={t.href}
           aria-current={active(t.href) ? "page" : undefined}
-          className={`rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors duration-[140ms] ${
+          className={`rounded-full px-3.5 py-1.5 text-body font-bold transition-colors duration-[140ms] ${
             active(t.href)
               ? "bg-accent text-white shadow-[var(--shadow-float,0_4px_14px_rgba(0,0,0,0.18))]"
               : "text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100"

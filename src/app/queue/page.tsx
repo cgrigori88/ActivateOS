@@ -182,7 +182,7 @@ export default async function QueuePage({
     <main>
       <PageHeader
         title="Action queue"
-        subtitle="One worklist across active motions and live conversations. Overdue floats up — activation means scheduled work, not a status."
+        subtitle="One worklist across active motions and live conversations. Overdue floats up."
       />
       <RoomTabs tabs={[{ href: "/", label: "Today" }, { href: "/queue", label: "Queue" }]} />
 

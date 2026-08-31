@@ -193,7 +193,7 @@ export default async function AnalyticsPage({
     <main>
       <PageHeader
         title="Outreach analytics"
-        subtitle="The outreach layer's own performance — funnel, trend, cadence, and conversion by propensity band."
+        subtitle="Outreach performance — funnel, trend, cadence, conversion by band."
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -309,7 +309,7 @@ export default async function AnalyticsPage({
         <div className="mt-5 grid grid-cols-2 gap-3 border-t border-neutral-100 pt-4 sm:grid-cols-3 lg:grid-cols-5 dark:border-neutral-800">
           {figures.map((f) => (
             <div key={f.label} className="text-center">
-              <div className={`pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em] ${f.tone}`}>{f.value == null ? "—" : `${f.value}%`}</div>
+              <div className={`pos-metric-fig ${f.tone}`}>{f.value == null ? "—" : `${f.value}%`}</div>
               <div className="text-micro font-medium uppercase tracking-wide text-neutral-400">{f.label}</div>
             </div>
           ))}

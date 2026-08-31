@@ -128,7 +128,7 @@ export default async function CampaignsPage({
     <main>
       <PageHeader
         title="Campaigns"
-        subtitle="Branded, multi-touch email sequences composed from approved motions — preview, approve per touch, then send."
+        subtitle="Multi-touch sequences from approved motions. Approve per touch, then send."
       />
       <RoomTabs tabs={[{ href: "/campaigns", label: "Campaigns" }, { href: "/upcoming", label: "Scheduled sends" }]} />
 
@@ -285,7 +285,7 @@ export default async function CampaignsPage({
                     <span className="flex items-center gap-1.5">
                       <Link href={`/campaigns/${ca.id}`} className="font-medium hover:underline">{ca.name}</Link>
                       {ca.source === "ai_suggested" && (
-                        <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-bold uppercase text-accent dark:bg-blue-900 dark:text-blue-300" title="AI-suggested, accepted by a human">AI</span>
+                        <span className="rounded bg-blue-100 px-1 py-0.5 text-micro font-bold uppercase text-accent dark:bg-blue-900 dark:text-blue-300" title="AI-suggested, accepted by a human">AI</span>
                       )}
                     </span>
                     {ca.objective && <div className="text-label text-neutral-400">{ca.objective}</div>}

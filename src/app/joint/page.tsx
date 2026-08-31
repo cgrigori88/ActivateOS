@@ -58,7 +58,7 @@ export default async function JointPage({
     <main>
       <PageHeader
         title="Joint pursuits"
-        subtitle="Co-sell rooms shared with a partner tenant. Each side sees the identical ledger; the broker proposes plays from data both sides already approved — nothing else."
+        subtitle="Co-sell rooms shared with a partner tenant. Both sides see the identical ledger."
       />
       <RoomTabs tabs={[{ href: "/partners", label: "Partners" }, { href: "/joint", label: "Joint pursuits" }]} />
       {/* Next-step pull (#79): accepting fired the broker; its play waits in the room.
@@ -135,7 +135,7 @@ export default async function JointPage({
             <div className="mb-3 flex flex-wrap gap-4">
               {Object.entries(s.settledTotals).map(([org, total]) => (
                 <div key={org}>
-                  <div className="pos-bento-fig tnum text-[22px] font-extrabold leading-none tracking-[-0.03em]">{fmt(total)}</div>
+                  <div className="pos-metric-fig">{fmt(total)}</div>
                   <div className="mt-0.5 text-label text-neutral-500">
                     settled by {s.orgNames[org] ?? "org"}
                     {s.lostCount[org] > 0 ? ` · ${s.lostCount[org]} lost` : ""}

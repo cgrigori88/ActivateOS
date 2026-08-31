@@ -47,7 +47,7 @@ export function PortfolioMatrix({
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px]">
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-body">
         <span className="flex items-center gap-1.5">
           <span className="text-neutral-400">Rows</span>
           {rows.map((r) => (
@@ -67,7 +67,7 @@ export function PortfolioMatrix({
         <p className="rounded-card p-4 text-sm text-neutral-500" style={{ background: "var(--surface-inset)" }}>No open opportunities in this scope.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border scroll-thin" style={{ borderColor: "var(--border-subtle)" }}>
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-copy">
             <thead>
               <tr className="text-left" style={{ background: "var(--surface-inset)" }}>
                 <th className="px-3 py-2 font-semibold text-neutral-500">{ROW_LABEL[rowDim]}</th>
@@ -87,7 +87,7 @@ export function PortfolioMatrix({
                     const inner = cell && cell.count > 0 ? (
                       <>
                         <span className="tnum font-semibold">{k(cell.weighted)}</span>
-                        <span className="ml-1 text-[10.5px] text-neutral-400">·{cell.count}</span>
+                        <span className="ml-1 text-micro text-neutral-400">·{cell.count}</span>
                       </>
                     ) : <span className="text-neutral-300 dark:text-neutral-600">—</span>;
                     return (

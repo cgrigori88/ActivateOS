@@ -133,21 +133,21 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
           <PursuitHero d={d} lifecycleWord={LIFECYCLE_WORD[d.lifecycle] ?? d.lifecycle} />
           {/* Motion context strip (P1A) — which commercial hypothesis this pursuit serves. */}
           {loaded.motion && (
-            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px]">
+            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-label">
               <span className="font-bold uppercase tracking-[0.04em] text-neutral-400">Serving</span>
               <a href="/motions" className="font-semibold hover:underline" style={{ color: "var(--color-priority)" }}>{loaded.motion.hypothesis}</a>
-              <span className="rounded-full px-2 py-px text-[10.5px] font-semibold" style={{ background: "var(--surface-inset)" }}>motion {loaded.motion.status}</span>
+              <span className="rounded-full px-2 py-px text-micro font-semibold" style={{ background: "var(--surface-inset)" }}>motion {loaded.motion.status}</span>
             </div>
           )}
           {/* Multi-org ribbon — federation reads before the reader scrolls to the panel */}
           {federation && federation.fed.participants.length > 1 && (
-            <div className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-control px-3 py-2 text-[11.5px]"
+            <div className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-control px-3 py-2 text-label"
               style={{ background: "color-mix(in srgb, var(--color-route) 6%, var(--surface-primary))", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-route) 22%, transparent)" }}>
               <span className="font-bold uppercase tracking-[0.04em]" style={{ color: "var(--color-route)" }}>Shared pursuit</span>
               <span className="text-neutral-500">{federation.fed.participants.length} organizations · disclosure decided server-side</span>
               <span className="flex flex-wrap items-center gap-1.5">
                 {federation.fed.participants.map((p, i) => (
-                  <span key={i} className="rounded-full px-2 py-px text-[10.5px] font-semibold" style={{ background: "var(--surface-inset)", color: "var(--text-primary, inherit)" }}>
+                  <span key={i} className="rounded-full px-2 py-px text-micro font-semibold" style={{ background: "var(--surface-inset)", color: "var(--text-primary, inherit)" }}>
                     {p.orgName ?? p.roleKey}{p.isSponsor ? " · sponsor" : ""}
                   </span>
                 ))}
@@ -165,7 +165,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         <Panel eyebrow="Assembled from the fact & signal graph — traceable" title="Why now" accent="var(--color-priority)">
           <WhyNowBento w={d.whyNow} />
           <div className="mt-3 border-t border-neutral-200/70 pt-2.5 dark:border-neutral-800">
-            <span className="text-[10px] font-bold uppercase tracking-[0.05em] text-neutral-400">Lifecycle timing</span>
+            <span className="text-micro font-bold uppercase tracking-[0.05em] text-neutral-400">Lifecycle timing</span>
             <div className="mt-1"><LifecycleBento events={d.whyNow.lifecycle} /></div>
           </div>
         </Panel>
@@ -187,7 +187,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         <div id="route" className="order-3 scroll-mt-6 lg:order-4 lg:col-span-2">
         <Panel eyebrow="Recommendation is not selection" title="Route decision" accent="var(--color-route)"
           aside={r.changeEvents.length > 0 ? (
-            <span className="inline-flex flex-wrap items-center gap-1.5 text-[11.5px]">
+            <span className="inline-flex flex-wrap items-center gap-1.5 text-label">
               <span className="font-semibold uppercase tracking-[0.03em] text-neutral-400">Changed</span>
               <span className="font-semibold text-neutral-400 line-through">{r.changeEvents.at(-1)!.before ? humanizeText(r.changeEvents.at(-1)!.before!) : "—"}</span>→
               <span className="font-bold" style={{ color: "var(--color-route)" }}>{humanizeText(r.changeEvents.at(-1)!.after ?? "—")}</span>
@@ -207,7 +207,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         {/* Why (disclosure split) — the centerpiece */}
         {r.recommended && (
           <Panel eyebrow="Enforced server-side, not in the browser" title={`Why ${recWord}`} accent="var(--color-band-high)" className="order-4 lg:order-5 lg:col-span-2">
-            <p className="mb-3.5 max-w-[80ch] text-[12.5px] text-neutral-500">
+            <p className="mb-3.5 max-w-[80ch] text-body text-neutral-500">
               The same recommendation, two audiences. Toggle the audience — what a partner may see is decided in the read model before it reaches a screen, so the confidential figure is never serialized into the shareable payload.
             </p>
             <DisclosureTheater internal={r.recommended.reasonsInternal} shareable={r.recommended.reasonsShareable} candidateLabel={r.recommended.label} />
@@ -218,7 +218,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
             "waiting on this participant" item. Governed confirm/accept lives inline (operators only). */}
         <div id="team" className="order-5 scroll-mt-6 lg:order-6">
         <Panel title="Pursuit team" accent="var(--color-readiness)"
-          aside={<span className="inline-flex items-center gap-1.5 text-[11.5px] text-neutral-500">Readiness <BandPill band={d.team.activationReadiness.band} /></span>}>
+          aside={<span className="inline-flex items-center gap-1.5 text-label text-neutral-500">Readiness <BandPill band={d.team.activationReadiness.band} /></span>}>
           <ExecutionPlan team={d.team} pursuitId={d.pursuitId} canDecide={loaded.canDecide} />
         </Panel>
         </div>

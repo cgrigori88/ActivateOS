@@ -67,23 +67,35 @@ export function Button({
 }
 
 /**
- * Tones give a grid of cards a shape you can read before you read it. Colour
- * here is categorical, never a call to action — the accent stays reserved for
- * things you click. Each tone is a wash that fades toward the bottom edge, so a
- * surface reads as lit from above like the glass layers do.
+ * Card tints (§7). Colour on a surface communicates what KIND of thing it is,
+ * and only where that reading is load-bearing.
+ *
+ * This map previously offered seven decorative hues — indigo, violet, teal,
+ * emerald, amber, rose — as "a shape you can read before you read it". Four of
+ * them were never used, and two values that pages DID pass (`sky`, `green`)
+ * were absent from the map entirely, so those cards silently rendered untinted
+ * while their author believed otherwise. A palette nobody can predict is not a
+ * system.
+ *
+ * What survives is what the pages actually meant, mapped onto the same semantic
+ * tokens the metrics use, so there is one palette in the product rather than
+ * two. The unused decorative hues are gone: they existed to make a grid look
+ * varied, which is the rainbow this pass removes.
  */
 const CARD_TONES: Record<string, string> = {
   default: "",
-  indigo: "from-indigo/10 dark:from-indigo/20",
-  violet: "from-violet/10 dark:from-violet/20",
-  teal: "from-teal/10 dark:from-teal/20",
-  emerald: "from-emerald/10 dark:from-emerald/20",
-  amber: "from-amber/10 dark:from-amber/20",
-  rose: "from-rose/10 dark:from-rose/20",
   neutral: "",
+  /** AI-proposed / synthetic — the violet the token vocabulary already reserves. */
+  violet: "from-[color-mix(in_srgb,var(--color-accent-violet)_10%,transparent)] dark:from-[color-mix(in_srgb,var(--color-accent-violet)_18%,transparent)]",
+  /** Pending / needs attention. */
+  amber: "from-[color-mix(in_srgb,var(--intent-warning)_10%,transparent)] dark:from-[color-mix(in_srgb,var(--intent-warning)_18%,transparent)]",
+  /** Informational emphasis — the value `sky` used to pass and never receive. */
+  sky: "from-[color-mix(in_srgb,var(--intent-info)_10%,transparent)] dark:from-[color-mix(in_srgb,var(--intent-info)_18%,transparent)]",
+  /** Verified / positive — likewise `green`. */
+  green: "from-[color-mix(in_srgb,var(--intent-positive)_10%,transparent)] dark:from-[color-mix(in_srgb,var(--intent-positive)_18%,transparent)]",
 };
 
-export type Tone = "indigo" | "violet" | "teal" | "emerald" | "amber" | "rose" | "blue" | "neutral";
+export type Tone = "violet" | "amber" | "sky" | "green" | "neutral";
 
 export function Card({
   children,
@@ -123,41 +135,66 @@ export function BackLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-/** Summary stat tile used across screens. Optionally linkable. */
-export function Bento({
+/**
+ * The five things a metric can mean (§2/§7). `neutral` is the default and the
+ * common case — most numbers are just numbers. A metric earns a hue only when
+ * its VALUE carries state the operator should react to, never to tell it apart
+ * from the tile beside it.
+ */
+export type Intent = "positive" | "risk" | "warning" | "info" | "neutral";
+
+/**
+ * Metric — the ONE top-level summary tile for every room (§2).
+ *
+ * Container height, radius, padding, label position, figure size, secondary
+ * annotation, border and shadow are settled here so Today, Pipeline, Partners
+ * and Motions cannot drift into four KPI styles again. Nine call sites had
+ * copy-pasted this component's internals verbatim (`pos-bento-fig tnum
+ * text-display font-extrabold leading-none tracking-[-0.03em]`) and one had
+ * invented its own `text-2xl font-semibold`; both are now this.
+ *
+ * `Bento` remains exported as the historical name so sixteen pages keep working.
+ */
+export function Metric({
   label,
   value,
   subs,
   href,
+  intent,
+  tone,
 }: {
   label: string;
   value: string | number;
   subs?: (string | false | null | undefined)[];
   href?: string;
+  /** What this number MEANS. Omit for the common case. */
+  intent?: Intent;
+  /** Legacy categorical tint, retained for the Pipeline filter chips. */
+  tone?: string;
 }) {
   const sub = (subs ?? []).filter(Boolean) as string[];
   const empty = Number(value) === 0;
   const inner = (
     <>
-      <div
-        className={`pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em] ${
-          empty ? "text-neutral-300 dark:text-neutral-700" : ""
-        }`}
-      >
+      <div className="pos-bento-fig pos-metric-fig">
         {value}
       </div>
-      <div className="mt-1.5 text-[11.5px] font-semibold text-neutral-500">{label}</div>
-      {sub.length > 0 && (
-        <div className="mt-1 text-label text-neutral-400 dark:text-neutral-500">{sub.join(" · ")}</div>
-      )}
+      {/* Label sits BELOW the figure in every room. The figure is what the eye
+          lands on; the label tells it what it just read. */}
+      <div className="mt-1.5 text-body font-semibold ink-muted">{label}</div>
+      {sub.length > 0 && <div className="mt-1 text-label ink-faint">{sub.join(" · ")}</div>}
     </>
   );
   /* flex-1 with a basis so a row is even whether the page laid it out with grid
      or with flex-wrap — some screens use each. */
-  const cls = `pos-bento flex-1 basis-[132px] rounded-card p-4 ${
+  const cls = `pos-bento flex flex-1 basis-[148px] flex-col rounded-card p-4 ${
     empty ? "border border-dashed border-neutral-200 dark:border-neutral-800" : "glass"
   }`;
-  const attrs = { "data-empty": empty ? "true" : undefined };
+  const attrs = {
+    "data-empty": empty ? "true" : undefined,
+    "data-intent": intent,
+    "data-tone": tone,
+  };
   return href ? (
     <Link href={href} {...attrs} className={`pos-lift block ${cls}`}>
       {inner}
@@ -169,12 +206,102 @@ export function Bento({
   );
 }
 
+/** Historical name for {@link Metric}. Kept so existing call sites are untouched. */
+export const Bento = Metric;
+
+/**
+ * SummaryBand — the standardized metric row (§1, §2).
+ *
+ * Every room's summary sits in one of these, so tile width, gutter and row
+ * height are a property of the system rather than of whichever page was written
+ * last. Pages previously used `flex flex-wrap gap-2`, `grid grid-cols-4 gap-3`
+ * and `grid gap-2 sm:grid-cols-5` for the same job.
+ */
+export function SummaryBand({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`pos-summary ${className}`}>{children}</div>;
+}
+
+/**
+ * SectionHeading — one treatment for the heading inside a page (§1, §3).
+ *
+ * The app wrote this inline as `text-micro font-bold uppercase tracking-[0.08em]`,
+ * `text-micro ... tracking-[0.06em]`, `text-sm font-semibold uppercase` and
+ * several more. Uppercase micro-type reads as chrome, so a page built entirely
+ * from it has no hierarchy — everything is a label and nothing is a title.
+ */
+export function SectionHeading({
+  children,
+  hint,
+  actions,
+}: {
+  children: ReactNode;
+  /** One short clause. Long explanation belongs behind disclosure, not here. */
+  hint?: string;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="mb-3 flex items-baseline justify-between gap-3">
+      <div className="min-w-0">
+        <h2 className="text-title font-bold tracking-[-0.015em] ink">{children}</h2>
+        {hint && <p className="mt-0.5 text-body ink-faint">{hint}</p>}
+      </div>
+      {actions && <div className="shrink-0">{actions}</div>}
+    </div>
+  );
+}
+
+/**
+ * Disclosure — the one progressive-detail control (§4, §5).
+ *
+ * Explanatory copy that teaches the product rather than helping the current
+ * decision goes in here. Uncertainty never does: an UNKNOWN, a conflict or a
+ * missing input stays on the surface where it can be seen without a click.
+ */
+export function Disclosure({
+  summary,
+  children,
+  className = "",
+}: {
+  summary: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <details className={`group ${className}`}>
+      <summary className="cursor-pointer list-none text-body ink-muted underline-offset-2 hover:underline">
+        {summary}
+        <span className="ml-1 ink-faint group-open:hidden" aria-hidden>▸</span>
+        <span className="ml-1 hidden ink-faint group-open:inline" aria-hidden>▾</span>
+      </summary>
+      <div className="mt-2 text-body leading-relaxed ink-soft">{children}</div>
+    </details>
+  );
+}
+
 /** Horizontal labeled bar chart — pure CSS, theme-safe, no dependencies. */
-/* A labelled bar chart is categorical — each row is a different thing, not a
-   sample of one thing — so the bars take the categorical order. */
+/*
+ * Two readings, and they are NOT the same chart (§7).
+ *
+ * `categorical` (the default) is a set of different things — partners, sources,
+ * families — and each bar takes its own hue because the hue is the identity.
+ *
+ * `ordered` is ONE measure sampled along a sequence: funnel stages, a horizon,
+ * a ladder. Giving those bars seven hues says the stages are unrelated kinds,
+ * which is false and is what made the Pipeline stage chart read as a rainbow.
+ * An ordered series takes a single hue and lets LENGTH carry the comparison,
+ * which is the only variable that actually differs.
+ */
 const CAT_BG = ["bg-cat-1", "bg-cat-2", "bg-cat-3", "bg-cat-4", "bg-cat-5", "bg-cat-6", "bg-cat-7"];
 
-export function MiniBar({ rows, unit }: { rows: { label: string; value: number; href?: string }[]; unit?: string }) {
+export function MiniBar({
+  rows,
+  unit,
+  series = "categorical",
+}: {
+  rows: { label: string; value: number; href?: string }[];
+  unit?: string;
+  series?: "categorical" | "ordered";
+}) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
     <div className="space-y-1.5">
@@ -182,14 +309,16 @@ export function MiniBar({ rows, unit }: { rows: { label: string; value: number; 
         const label = r.href ? <Link href={r.href} className="hover:underline">{r.label}</Link> : r.label;
         return (
           <div key={r.label} className="flex items-center gap-2">
-            <span className="w-32 shrink-0 truncate text-[12px] text-neutral-500">{label}</span>
+            <span className="w-32 shrink-0 truncate text-body text-neutral-500">{label}</span>
             <div className="h-4 flex-1 overflow-hidden rounded-full bg-neutral-900/[0.06] dark:bg-white/10">
               <div
-                className={`h-full rounded-full ${CAT_BG[i % CAT_BG.length]} transition-[width] duration-[220ms]`}
+                className={`h-full rounded-full transition-[width] duration-[220ms] ${
+                  series === "ordered" ? "bg-accent" : CAT_BG[i % CAT_BG.length]
+                }`}
                 style={{ width: `${(r.value / max) * 100}%` }}
               />
             </div>
-            <span className="tnum w-14 text-right text-[12px] font-semibold text-neutral-600 dark:text-neutral-300">{r.value.toLocaleString()}{unit ?? ""}</span>
+            <span className="tnum w-14 text-right text-body font-semibold text-neutral-600 dark:text-neutral-300">{r.value.toLocaleString()}{unit ?? ""}</span>
           </div>
         );
       })}
@@ -217,14 +346,19 @@ export function NextStep({ message, href, cta }: { message: string; href: string
   );
 }
 
+/**
+ * PageHeader — page title plus ONE concise purpose line (§1).
+ *
+ * The measure is capped at 62ch rather than 78: a purpose line is a sentence
+ * that orients, not a paragraph that teaches. Anything longer than one line at
+ * this measure is explaining the product, and §4 puts that behind disclosure.
+ */
 export function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <header className="mb-7">
-      <h1 className="text-[30px] font-extrabold leading-[1.1] tracking-[-0.03em]">{title}</h1>
+    <header className="mb-6">
+      <h1 className="text-hero font-extrabold leading-[1.1] tracking-[-0.03em] ink">{title}</h1>
       {subtitle && (
-        <p className="mt-2 max-w-[78ch] text-title leading-relaxed text-neutral-500 dark:text-neutral-400">
-          {subtitle}
-        </p>
+        <p className="mt-1.5 max-w-[62ch] text-copy leading-relaxed ink-muted">{subtitle}</p>
       )}
     </header>
   );
@@ -249,7 +383,7 @@ export function BandBadge({ band }: { band: string }) {
     <span
       /* The table tints its row off this attribute — see globals.css. */
       data-band={band}
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ${BAND_STYLES[band] ?? BAND_STYLES.low}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-label font-bold ${BAND_STYLES[band] ?? BAND_STYLES.low}`}
     >
       {BAND_LABELS[band] ?? band}
     </span>
@@ -291,7 +425,7 @@ export function StatusBadge({ status }: { status: string }) {
   return (
     <span
       data-status={status}
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11.5px] font-bold capitalize ${STATUS_STYLES[status] ?? STATUS_STYLES.completed}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-label font-bold capitalize ${STATUS_STYLES[status] ?? STATUS_STYLES.completed}`}
     >
       {STATUS_DOTS[status] && (
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOTS[status]}`} />
@@ -331,13 +465,11 @@ export function StatChip({
   const inner = (
     <>
       <div
-        className={`pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em] ${
-          empty ? "text-neutral-300 dark:text-neutral-700" : ""
-        }`}
+        className="pos-bento-fig pos-metric-fig"
       >
         {value}
       </div>
-      <div className="mt-1.5 text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">{label}</div>
+      <div className="mt-1.5 text-body font-semibold ink-muted">{label}</div>
     </>
   );
   const attrs = { "data-empty": empty ? "true" : undefined };
@@ -394,18 +526,14 @@ export function CountChip({
   const inner = (
     <>
       <div
-        className={`pos-bento-fig tnum text-display font-extrabold leading-none tracking-[-0.03em] ${
-          active
-            ? "text-white"
-            : empty
-              ? "text-neutral-300 dark:text-neutral-700"
-              : (tone && figure[tone]) || ""
+        className={`pos-bento-fig pos-metric-fig ${
+          active ? "text-white" : (tone && figure[tone]) || ""
         }`}
       >
         {value}
       </div>
       <div
-        className={`mt-1.5 text-[11.5px] font-semibold ${
+        className={`mt-1.5 text-label font-semibold ${
           active ? "text-white/75" : "text-neutral-500 dark:text-neutral-400"
         }`}
       >
@@ -511,7 +639,7 @@ export function SortHeader({
   return (
     <Link href={makeHref(next)} className="inline-flex items-center gap-1 hover:text-neutral-800 dark:hover:text-neutral-200">
       {label}
-      <span className={`text-[9px] leading-none ${activeAsc || activeDesc ? "" : "opacity-30"}`}>
+      <span className={`text-micro leading-none ${activeAsc || activeDesc ? "" : "opacity-30"}`}>
         {activeAsc ? "▲" : "▼"}
       </span>
     </Link>
@@ -563,7 +691,7 @@ export function CompletenessGrid({
   return (
     <div>
       <div className="mb-2 flex items-baseline gap-2">
-        <span className="tnum text-2xl font-semibold">{overall}%</span>
+        <span className="tnum text-section font-semibold ink">{overall}%</span>
         <span className="text-xs text-neutral-500">categories with coverage</span>
       </div>
       <div className="flex flex-wrap gap-1.5">

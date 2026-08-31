@@ -26,7 +26,7 @@ export function ScopeChip({ active }: { active: ScopeContext }) {
   };
 
   return (
-    <div className="mb-3 flex items-center gap-2 text-[12px] text-neutral-500">
+    <div className="mb-3 flex items-center gap-2 text-body text-neutral-500">
       <span
         className="inline-flex items-center gap-1.5 rounded-full py-0.5 pl-1 pr-1"
         style={{ background: "color-mix(in srgb, var(--color-accent) 8%, transparent)" }}

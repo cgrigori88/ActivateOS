@@ -31,7 +31,7 @@ export default async function ProviderHealthPage() {
     <main>
       <PageHeader
         title="Provider health"
-        subtitle="Every intelligence provider's live state — tier, cost, enabled/disabled reason, and run outcomes. Nothing is hidden."
+        subtitle="Every provider's live state — tier, cost, and run outcomes."
       />
       <RoomTabs tabs={[{ href: "/sources", label: "Sources" }, { href: "/provider-health", label: "Provider health" }]} />
 

@@ -32,7 +32,7 @@ export function QuerySelect({
 
   return (
     <label className="inline-flex items-center gap-2 text-sm">
-      <span className="text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">{label}</span>
+      <span className="text-label font-semibold text-neutral-500 dark:text-neutral-400">{label}</span>
       {/* Native select, styled to match the rest of the control set. A native
           control keeps the platform's own picker on mobile, which beats any
           custom menu we would write. */}

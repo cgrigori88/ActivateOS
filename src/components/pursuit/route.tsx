@@ -41,8 +41,8 @@ export function RoutePath({ view }: { view: RouteComparisonView }) {
                 boxShadow: isRec ? `inset 0 0 0 1px color-mix(in srgb, ${hue} 45%, transparent)` : "inset 0 0 0 1px var(--border-subtle)",
               }}
             >
-              <span className="text-[13px] font-bold" style={{ color: isRec ? hue : "var(--text-primary, inherit)" }}>{p.label}</span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.04em]" style={{ color: hue }}>{roleWord(p.role)}</span>
+              <span className="text-copy font-bold" style={{ color: isRec ? hue : "var(--text-primary, inherit)" }}>{p.label}</span>
+              <span className="text-micro font-semibold uppercase tracking-[0.04em]" style={{ color: hue }}>{roleWord(p.role)}</span>
             </span>
             {i < view.path.length - 1 && <span className="text-neutral-400" aria-hidden>→</span>}
           </span>
@@ -59,17 +59,17 @@ export function RecommendationChange({ view }: { view: RouteComparisonView }) {
   return (
     <div className="flex flex-wrap gap-2.5">
       <div className="flex-1 basis-[220px] rounded-card p-3.5" style={{ background: "color-mix(in srgb, var(--color-route) 6%, var(--surface-primary))", boxShadow: "var(--shadow-low)" }}>
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.04em]" style={{ color: "var(--color-route)" }}>Recommended</div>
+        <div className="text-micro font-bold uppercase tracking-[0.04em]" style={{ color: "var(--color-route)" }}>Recommended</div>
         <div className="mt-1 flex items-center gap-2">
-          <span className="text-[17px] font-extrabold tracking-[-0.02em]">{rec?.label ?? "—"}</span>
+          <span className="text-section font-extrabold tracking-[-0.02em]">{rec?.label ?? "—"}</span>
         </div>
-        <div className="mt-0.5 text-[11.5px] text-neutral-500">Route confidence <span className="font-semibold" style={{ color: BAND_VAR[rec?.confidence.band ?? "unknown"] }}>{rec ? BAND_WORD[rec.confidence.band] : "—"}</span></div>
+        <div className="mt-0.5 text-label text-neutral-500">Route confidence <span className="font-semibold" style={{ color: BAND_VAR[rec?.confidence.band ?? "unknown"] }}>{rec ? BAND_WORD[rec.confidence.band] : "—"}</span></div>
       </div>
       <div className="flex-1 basis-[220px] rounded-card p-3.5" style={{ background: overridden ? "color-mix(in srgb, var(--color-accent-attention) 8%, var(--surface-primary))" : "var(--surface-inset)", boxShadow: "var(--shadow-low)" }}>
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.04em]" style={{ color: overridden ? "var(--color-accent-attention)" : "var(--color-neutral-500)" }}>{overridden ? "Selected — human override" : "Selection"}</div>
-        <div className="mt-1 text-[17px] font-extrabold tracking-[-0.02em]">{overridden ? sel!.label : "Recommendation accepted"}</div>
+        <div className="text-micro font-bold uppercase tracking-[0.04em]" style={{ color: overridden ? "var(--color-accent-attention)" : "var(--color-neutral-500)" }}>{overridden ? "Selected — human override" : "Selection"}</div>
+        <div className="mt-1 text-section font-extrabold tracking-[-0.02em]">{overridden ? sel!.label : "Recommendation accepted"}</div>
         {overridden && (
-          <div className="mt-0.5 text-[11.5px] text-neutral-600 dark:text-neutral-300">
+          <div className="mt-0.5 text-label text-neutral-600 dark:text-neutral-300">
             {view.overrideCategory ? <b>{titleEnum(view.overrideCategory)}</b> : null}{view.overrideReason ? ` · "${view.overrideReason}"` : ""} — recommendation preserved.
           </div>
         )}
@@ -84,12 +84,12 @@ export function RouteCandidateTable({ view }: { view: RouteComparisonView }) {
   if (!cands.length) return null;
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[520px] border-collapse text-[12.5px]">
+      <table className="w-full min-w-[520px] border-collapse text-body">
         <thead>
           <tr>
-            <th className="px-2.5 py-2 text-left text-[10px] font-bold uppercase tracking-[0.04em] text-neutral-500">Dimension</th>
+            <th className="px-2.5 py-2 text-left text-micro font-bold uppercase tracking-[0.04em] text-neutral-500">Dimension</th>
             {cands.map((c) => (
-              <th key={c.key} className="px-2.5 py-2 text-left text-[10px] font-bold uppercase tracking-[0.04em] text-neutral-500">
+              <th key={c.key} className="px-2.5 py-2 text-left text-micro font-bold uppercase tracking-[0.04em] text-neutral-500">
                 {c.label}{c.key === view.recommended?.key ? " ·rec" : ""}
               </th>
             ))}
@@ -103,7 +103,7 @@ export function RouteCandidateTable({ view }: { view: RouteComparisonView }) {
                 const cell = c.dimensions[dim];
                 return (
                   <td key={c.key} className="px-2.5 py-2">
-                    {cell?.known ? <BandPill band={cell.band} word={cell.label} /> : <span className="text-[12px] italic text-neutral-400">Not available</span>}
+                    {cell?.known ? <BandPill band={cell.band} word={cell.label} /> : <span className="text-body italic text-neutral-400">Not available</span>}
                   </td>
                 );
               })}
@@ -113,9 +113,9 @@ export function RouteCandidateTable({ view }: { view: RouteComparisonView }) {
               Deliberately not a score cell: it informs the human, it never moves the model. */}
           {cands.some((c) => c.executionHistory && c.executionHistory.length > 0) && (
             <tr style={{ borderTop: "1px solid var(--border-subtle)" }}>
-              <td className="px-2.5 py-2 text-neutral-500">execution history <span className="text-[10px] text-neutral-400">(evidence, not a score)</span></td>
+              <td className="px-2.5 py-2 text-neutral-500">execution history <span className="text-micro text-neutral-400">(evidence, not a score)</span></td>
               {cands.map((c) => (
-                <td key={c.key} className="px-2.5 py-2 text-[11.5px] leading-snug text-neutral-600 dark:text-neutral-300">
+                <td key={c.key} className="px-2.5 py-2 text-label leading-snug text-neutral-600 dark:text-neutral-300">
                   {c.executionHistory && c.executionHistory.length > 0 ? c.executionHistory.map((l) => l.text).join(" · ") : <span className="italic text-neutral-400">none recorded</span>}
                 </td>
               ))}
@@ -150,7 +150,7 @@ export function RouteComparisonInsight({ view }: { view: RouteComparisonView }) 
   const pair = relStrongerA && execBetterB ? { rel: a, exec: b } : relStrongerB && execBetterA ? { rel: b, exec: a } : null;
   if (!pair) return null;
   return (
-    <p className="rounded-card px-3 py-2 text-[12.5px]" style={{ background: "color-mix(in srgb, var(--color-route) 6%, var(--surface-primary))", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-route) 20%, transparent)" }}>
+    <p className="rounded-card px-3 py-2 text-body" style={{ background: "color-mix(in srgb, var(--color-route) 6%, var(--surface-primary))", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-route) 20%, transparent)" }}>
       <b>{pair.rel.label}</b> has the stronger active relationship, but <b>{pair.exec.label}</b> has materially better execution history in this category
       <span className="text-neutral-500"> ({pair.exec.executionSummary!.won} won of {pair.exec.executionSummary!.sample} vs {pair.rel.executionSummary!.won} of {pair.rel.executionSummary!.sample}) — evidence in the table below; the route decision above remains yours.</span>
     </p>
@@ -160,7 +160,7 @@ export function RouteComparisonInsight({ view }: { view: RouteComparisonView }) 
 function ReasonRow({ r, muted }: { r: ScoreReason; muted?: boolean }) {
   const sign = r.polarity >= 0 ? "+" : "−";
   return (
-    <div className="flex items-start gap-2 py-1 text-[12.5px]">
+    <div className="flex items-start gap-2 py-1 text-body">
       <span className="flex-none font-extrabold" style={{ color: r.polarity >= 0 ? "var(--color-accent-verified)" : "var(--color-accent-risk)" }}>{sign}</span>
       <span className={muted ? "text-neutral-500" : ""}>{humanizeReason(r.text)}</span>
     </div>
@@ -179,24 +179,24 @@ export function DisclosureSplit({ candidate }: { candidate: RouteCandidateView }
   return (
     <div className="grid gap-2.5 md:grid-cols-2">
       <div className="rounded-card p-4" style={{ background: "color-mix(in srgb, var(--color-band-high) 5%, var(--surface-primary))", boxShadow: "var(--shadow-low)" }}>
-        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.03em]" style={{ color: "var(--color-band-high)" }}>
+        <div className="flex items-center gap-1.5 text-label font-bold uppercase tracking-[0.03em]" style={{ color: "var(--color-band-high)" }}>
           <span aria-hidden>🔒</span> Internal view · full detail
         </div>
         <div className="mt-2">
           {internal
             ? internal.map((r, i) => <ReasonRow key={i} r={r} />)
-            : <div className="text-[12.5px] italic text-neutral-400">Withheld — this viewer is not permitted internal reasoning.</div>}
+            : <div className="text-body italic text-neutral-400">Withheld — this viewer is not permitted internal reasoning.</div>}
         </div>
-        <div className="mt-2 border-t pt-2 text-[10.5px] text-neutral-400" style={{ borderColor: "var(--border-subtle)" }}>Restricted reasons — visible to the vendor’s own team only.</div>
+        <div className="mt-2 border-t pt-2 text-micro text-neutral-400" style={{ borderColor: "var(--border-subtle)" }}>Restricted reasons — visible to the vendor’s own team only.</div>
       </div>
       <div className="rounded-card p-4" style={{ background: "color-mix(in srgb, var(--color-accent-verified) 5%, var(--surface-primary))", boxShadow: "var(--shadow-low)" }}>
-        <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.03em]" style={{ color: "var(--color-accent-verified)" }}>
+        <div className="flex items-center gap-1.5 text-label font-bold uppercase tracking-[0.03em]" style={{ color: "var(--color-accent-verified)" }}>
           <span aria-hidden>↗</span> Shareable with partner
         </div>
         <div className="mt-2">
           {candidate.reasonsShareable.map((r, i) => <ReasonRow key={i} r={r} muted />)}
         </div>
-        <div className="mt-2 border-t pt-2 text-[10.5px] text-neutral-400" style={{ borderColor: "var(--border-subtle)" }}>Generalized server-side — confidential figures are absent from this payload, not hidden in the browser.</div>
+        <div className="mt-2 border-t pt-2 text-micro text-neutral-400" style={{ borderColor: "var(--border-subtle)" }}>Generalized server-side — confidential figures are absent from this payload, not hidden in the browser.</div>
       </div>
     </div>
   );
