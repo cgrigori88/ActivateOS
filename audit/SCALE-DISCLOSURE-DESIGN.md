@@ -18,6 +18,80 @@ No new domain primitive, taxonomy, room, scoring concept, or data model is intro
 
 ---
 
+## Approved refinements (v2 — incorporated into the sections below)
+
+The direction is approved with the following binding refinements. Each is reflected in the
+detailed section it amends; this block is the authoritative summary.
+
+**R1 · Scope semantics (amends §1).**
+- **ALL means "all records the current authenticated principal is authorized to see"** — the
+  server-authorized / RLS-visible set — **never global platform data**. The label reads
+  *"All (my authorized set)"* to make this explicit.
+- Scope is **narrowing-only** relative to that authorized set.
+- Every URL, drawer, deep link, back-navigation and copied link **preserves the active scope**
+  where applicable; **authorization is always re-evaluated server-side** on every request.
+- **No client-provided scope id may widen visibility.** The scope id is applied as an *additional*
+  `AND` filter inside `withTenant`; an id the principal is not authorized for yields **empty**,
+  never a widened set. A scope kind/id the data does not authorize is treated as `ALL`-within-authz
+  (fail-safe), and the resolver logs nothing sensitive.
+
+**R2 · Persistent scope awareness (amends §1.2).** When a non-default scope is active, render a
+**compact, quiet scope chip** beside the page title (not a dashboard component): e.g.
+`CDW · 6 shared accounts · 4 active motions`. Counts come from the same scoped read-models. Default
+(`ALL`) shows **no chip** (calm by default). One-click clear (`✕`) returns to `ALL`.
+
+**R3 · Materiality explainability (amends §2 and §3).** Every surfaced Today/Pipeline item carries
+a **progressively-disclosed "why is this here?"** built **only from existing canonical factors**
+(decisionClass, operationalUrgency, commercialPriority, silent-days, momentum verdict, weighted
+exposure, material-change ledger, route reconsideration). It answers in **one click or less** (a
+`ⓘ why` affordance expanding a compact factor list). **No new score or domain primitive** — it
+*renders the factors that already produced the rank*, in ranked order with their direction.
+
+**R4 · Portfolio is ecosystem-native (amends §3.2).** Portfolio is **not** merely a stage matrix.
+Supported pivots (only where the canonical read-model backs both axes): **Partner × Condition,
+Partner × Stage, Vendor × Partner, Territory × Partner, Motion × Partner, Seller × Attention-state**.
+**Unsupported pivots are simply unavailable** (the axis option is hidden) — never synthesized.
+Clicking a cell **drills into the underlying reconciled records** under the current scope (Attention
+filtered to that slice, or the drawer for a single record).
+
+**R5 · All-mode scale behavior (amends §2.3 and §3.3).** Today "View all" and Pipeline "All" must
+**not** degrade into an arbitrarily long card stack. At volume they render a **compact, sortable,
+searchable, virtualized list/table** with **progressive-disclosure drawers**. **Every existing
+field and action stays reachable** — presentation changes, capability does not.
+
+**R6 · Unified ⌘K — three explicit classes (amends §5).** The resolver is built around three
+declared intents:
+- **GO TO** — entity/navigation lookup (`"Globex"` → open the account/pursuit).
+- **SHOW ME** — constrained structured query/filter (`"at-risk pursuits through WWT"` → resolved
+  `Query` over canonical data).
+- **EXPLAIN** — **evidence-bound** explanation of an existing canonical record/recommendation/
+  condition (`"why is Globex routed through CDW?"` → retrieve the canonical route snapshot +
+  reasons + evidence and **render them**). EXPLAIN is **deterministic and evidence-bound for this
+  workstream**: it retrieves canonical facts/reasons and renders them; **no unconstrained agentic
+  reasoning, no unsupported synthesis.** Unmatched/unsupported ⇒ **"No matching records"** or
+  **"This question is not supported yet"** — never a fabricated answer.
+
+**R7 · Drawer behavior (amends §4).** Drawers preserve **page context, filters, sort, scope, and
+scroll position**. They use the **same server-side disclosure projection as the destination detail
+page**. **No hidden confidential field is ever serialized to the client** merely because the drawer
+is closed — the drawer body is server-rendered on open and emits only the viewer's permitted
+projection.
+
+**R8 · Design language (governs everything).** Every surface upholds PursuitOS doctrine: materiality
+before chronology · business question before database object · progressive disclosure · one
+canonical commercial truth · UNKNOWN remains legitimate · recommendation ≠ decision · server-side
+disclosure · ecosystem-native behavior · human attention is scarce · evidence adjacent to
+intelligence · calm UI, dense intelligence. **No new** domain primitive, scoring concept, data
+model, governed-action semantic, disclosure rule, federation semantic, or demo-only business object.
+
+**Implementation is delivered in six bounded phases**, each followed by the existing regression
+suites and a desktop/mobile + light/dark production-build verification; the current demo journey is
+preserved until the whole workstream is verified:
+1. ecosystem scope + URL persistence · 2. Today compression · 3. Pipeline Attention/Portfolio/All ·
+4. contextual intelligence drawer · 5. unified ⌘K resolver · 6. scale/virtualization hardening.
+
+---
+
 ## 0. Graph mapping (what the data already supports — grounding, not assumption)
 
 | Capability needed | Backed by (existing columns/read-models) |
