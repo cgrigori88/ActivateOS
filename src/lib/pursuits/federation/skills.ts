@@ -4,6 +4,9 @@ import { acceptParticipation } from "./participation";
 import { draftTouchImpl, requestWarmIntroImpl, warmIntroAuthorize } from "../../agents/mcp-writes";
 import { selectRouteByCandidate } from "../../routing/override";
 import type { OverrideCategory } from "../../routing/types";
+import { assembleTeam, transitionMember } from "../../routing/team";
+import { approveMotion, rejectMotion, type EditableField } from "../../motions/approve";
+import { recordChange } from "../ledger";
 import type { DataEnvironment } from "../lineage";
 import { reportEvent } from "../../obs/reporter";
 
@@ -74,9 +77,49 @@ export const SKILL_REGISTRY: SkillDef[] = [
   { skillId: "accept_participation", version: 1, description: "Accept a Pursuit participation invitation", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER"], requiredPermission: "operator",
     handler: async (db, _a, ctx) => { await acceptParticipation(db, String(ctx.args?.participantId)); return { accepted: true }; } },
-  { skillId: "request_team_acceptance", version: 1, description: "Ask a partner org to accept a pursuit-team role", effectClass: "CROSS_TENANT_ACTION",
+  // Pursuit Team — governed confirmation lifecycle (Phase C1). A recommended team is a
+  // proposal; only these governed decisions move a member off RECOMMENDED. Recompute may
+  // change the recommendation (assembleTeam is idempotent and skips confirmed roles), but it
+  // may never silently remove a confirmed human assignment. All reuse `transitionMember`
+  // (the one team-status mutation), which records the append-only TEAM_MEMBER_* event.
+  { skillId: "assemble_pursuit_team", version: 1, description: "Assemble the recommended pursuit team from the selected route", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER", "SYSTEM"], requiredPermission: "operator",
+    handler: async (db, _a, ctx) => assembleTeam(db, String(ctx.pursuitId), (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION") },
+  { skillId: "confirm_team_member", version: 1, description: "Confirm (invite) a recommended team member — the human team decision", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER"], requiredPermission: "operator", precheck: teamMemberInOrg,
+    handler: async (db, _a, ctx) => { await transitionMember(db, String(ctx.args?.memberId), "INVITED", (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION"); return { confirmed: true, memberId: ctx.args?.memberId }; } },
+  { skillId: "accept_team_member", version: 1, description: "Record a confirmed team member's acceptance (feeds readiness)", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER"], requiredPermission: "operator", precheck: teamMemberInOrg,
+    handler: async (db, _a, ctx) => { await transitionMember(db, String(ctx.args?.memberId), "ACCEPTED", (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION"); return { accepted: true, memberId: ctx.args?.memberId }; } },
+  { skillId: "decline_team_member", version: 1, description: "Record that an invited team member declined the role", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER"], requiredPermission: "operator", precheck: teamMemberInOrg,
+    handler: async (db, _a, ctx) => { await transitionMember(db, String(ctx.args?.memberId), "DECLINED", (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION"); return { declined: true, memberId: ctx.args?.memberId }; } },
+  { skillId: "request_team_acceptance", version: 1, description: "Ask a partner org to accept a confirmed pursuit-team role (cross-tenant)", effectClass: "CROSS_TENANT_ACTION",
     eligibleActors: ["USER"], requiredPermission: "operator", actionFamily: "team.request_acceptance",
-    handler: async () => ({ requested: true }) },
+    handler: async (db, actor, ctx) => {
+      // Real cross-tenant ask (no longer a stub): the role must already be a confirmed (INVITED)
+      // assignment in this org before we ask the partner to accept it. We record the request as a
+      // material event on the pursuit; the partner's acceptance is a separate governed decision.
+      const m = (await db.query<{ status: string; role: string; pursuit_id: string }>(
+        `select status, role, pursuit_id from pursuit_team_members where id = $1 and org_id = $2`,
+        [String(ctx.args?.memberId), actor.orgId])).rows[0];
+      if (!m) throw new Error(`team member ${ctx.args?.memberId} not found in this org`);
+      if (m.status !== "INVITED") throw new Error(`team member must be confirmed (INVITED) before requesting acceptance — is ${m.status}`);
+      await recordChange(db, { orgId: actor.orgId, pursuitId: m.pursuit_id, entityType: "pursuit", entityId: m.pursuit_id,
+        changeType: "TEAM_CHANGED", materiality: "MEDIUM", reason: `Acceptance requested for ${m.role}`, actorType: "USER", actorId: actor.id ?? null,
+        triggerType: "GOVERNED_ACTION", dataEnvironment: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION" });
+      return { requested: true, memberId: ctx.args?.memberId, role: m.role };
+    } },
+  // Motion approval — the human gate as a governed mutation (Phase C4). Approval/rejection run
+  // through the SAME dispatch authority as route selection; no direct CRUD bypass. The handlers
+  // wrap the canonical `approveMotion`/`rejectMotion` (which capture the human edit diff for the
+  // learning loop). Motion completion → commercial outcome is Phase B's bridge, not this path.
+  { skillId: "approve_motion", version: 1, description: "Approve a draft revenue motion (human gate, with edits)", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER"], requiredPermission: "operator",
+    handler: async (db, _a, ctx) => approveMotion(db, String(ctx.args?.motionId), (ctx.args?.edits as Partial<Record<EditableField, string>>) ?? {}) },
+  { skillId: "reject_motion", version: 1, description: "Reject a draft revenue motion (human gate)", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER"], requiredPermission: "operator",
+    handler: async (db, _a, ctx) => { await rejectMotion(db, String(ctx.args?.motionId), ctx.args?.note ? String(ctx.args.note) : undefined); return { rejected: true }; } },
   { skillId: "send_partner_intro", version: 1, description: "Send a warm introduction to a partner (external)", effectClass: "EXTERNAL_ACTION",
     eligibleActors: ["USER"], requiredPermission: "operator", actionFamily: "intro.email", provider: "email" },
   // R1-G4 — an APPROVED outreach send is a governed EXTERNAL_ACTION: enqueued to the
@@ -95,6 +138,21 @@ export const SKILL_REGISTRY: SkillDef[] = [
     authorize: async (db, actor, ctx) => warmIntroAuthorize(db, actor.orgId, ctx.args ?? {}),
     handler: async (db, actor, ctx) => requestWarmIntroImpl(db, actor.orgId, ctx.args ?? {}) },
 ];
+
+/**
+ * Tenant guard for team-member skills (R9 precondition). A member id is a bare uuid in the
+ * request; before we transition it we prove it belongs to the actor's org and pursuit. A
+ * cross-tenant member id is a governed REJECTION (audited), not a silent failure.
+ */
+async function teamMemberInOrg(db: PoolClient, actor: Actor, ctx: DispatchCtx): Promise<{ ok: boolean; reason?: string }> {
+  const memberId = ctx.args?.memberId ? String(ctx.args.memberId) : null;
+  if (!memberId) return { ok: false, reason: "missing memberId" };
+  const { rows } = await db.query<{ pursuit_id: string }>(
+    `select pursuit_id from pursuit_team_members where id = $1 and org_id = $2`, [memberId, actor.orgId]);
+  if (!rows[0]) return { ok: false, reason: "team member not found in this org" };
+  if (ctx.pursuitId && rows[0].pursuit_id !== ctx.pursuitId) return { ok: false, reason: "team member does not belong to this pursuit" };
+  return { ok: true };
+}
 
 function defFor(skillId: string, version?: number): SkillDef | undefined {
   const matches = SKILL_REGISTRY.filter((s) => s.skillId === skillId);

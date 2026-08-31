@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { recordAndEnqueue } from "../pursuits/federation/events";
 import { recordOverride } from "../pursuits/overrides";
+import { assembleTeam } from "./team";
 import type { OverrideCategory } from "./types";
 import type { DataEnvironment } from "../pursuits/lineage";
 
@@ -81,5 +82,11 @@ export async function selectPartnerRoute(
     actorType: "USER", actorId: opts.actorId ?? null, triggerType: "USER_OVERRIDE", dataEnvironment: env,
     before: { recommendedPartnerId: recommended }, after: { selectedPartnerId: opts.partnerId, category: opts.category ?? null },
   }, { correlationId: opts.correlationId ?? null });
+
+  // Selected route → proposed Pursuit Team (Phase C1). A committed route decision deterministically
+  // proposes the team for its required roles. Idempotent: assembleTeam skips any role that already
+  // carries a non-superseded member, so re-selection never removes a confirmed human assignment and
+  // an already-staffed pursuit is a no-op. Partner-side roles inherit the just-selected partner.
+  await assembleTeam(db, pursuitId, env);
   return { isOverride, selectedPartnerId: opts.partnerId ?? null };
 }
