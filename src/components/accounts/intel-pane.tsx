@@ -87,6 +87,19 @@ export function AccountIntelPane({ intel, closeHref, flat }: { intel: AccountInt
           )}
         </Section>
 
+        {/* Value Case state (P2B §14) — one honest line, using the existing truth, not a new score. */}
+        {intel.valueCase && (
+          <Section label="What it is worth" accent="var(--color-readiness)">
+            <Row k="Value case">
+              <Link href={`/pursuits/${intel.valueCase.pursuitId}#value`} className="hover:underline">
+                <b>{intel.valueCase.label}</b>
+                {intel.valueCase.impact && <span className="text-neutral-500"> · modeled impact {intel.valueCase.impact}</span>}
+              </Link>
+            </Row>
+            <Row k="Why"><span className="text-neutral-500">{intel.valueCase.because}</span></Row>
+          </Section>
+        )}
+
         <Section label="Through whom" accent="var(--color-route)">
           {t.recommended && (
             <Row k="Recommended">

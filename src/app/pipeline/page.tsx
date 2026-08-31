@@ -256,8 +256,33 @@ export default async function PipelinePage({
     return true;
   };
 
+  // Value Case filter (P2B §14) — a compact context field beside the existing atomic filters.
+  // No new dashboard, no new score: it reads the derived state the Pursuit already carries.
+  const valueByCompany = new Map<string, string>();
+  if (qp("value") && qp("value") !== "all") {
+    const { getValueCase } = await import("@/lib/value/case");
+    const rows = (await db.query<{ id: string; account_id: string }>(
+      `select id, account_id from pursuits where org_id = $1 and account_id = any($2)`,
+      [orgId, [...new Set(opps.map((o) => o.company_id).filter(Boolean))] as string[]])).rows;
+    for (const r of rows) {
+      const vc = await getValueCase(db, orgId, r.id);
+      if (vc) valueByCompany.set(r.account_id, vc.state);
+    }
+  }
+  const valueMatch = (companyId: string | null) => {
+    const f = qp("value");
+    if (!f || f === "all") return true;
+    if (!companyId) return false;
+    const st = valueByCompany.get(companyId) ?? "NOT_ESTABLISHED";
+    return f === "strong" ? st === "STRONG"
+      : f === "conflicting" ? st === "CONFLICTING"
+        : f === "incomplete" ? st === "INCOMPLETE"
+          : f === "none" ? st === "NOT_ESTABLISHED" : true;
+  };
+
   const visible = opps.filter(
     (o) =>
+      valueMatch(o.company_id) &&
       (!qp("stage") || qp("stage") === "all" || o.stage === qp("stage")) &&
       (!qp("partner") || qp("partner") === "all" || (o.partner_name ?? "Direct") === qp("partner")) &&
       (!qp("quote") || qp("quote") === "all" || (qp("quote") === "yes" ? quoteOf(o.id).delivered : !quoteOf(o.id).delivered)) &&
@@ -422,7 +447,7 @@ export default async function PipelinePage({
   const drawerIntel = drawerId ? await withTenant((db) => getAccountIntel(db, drawerId)) : null;
   // Preserve the whole view (filters, scope, sort) across open/close — the drawer never navigates away.
   const preserved = new URLSearchParams();
-  for (const k of ["view", "timeframe", "stage", "partner", "quote", "qual", "scope", "prow", "pcol", "cond", "life"] as const) { const v = qp(k); if (v) preserved.set(k, v); }
+  for (const k of ["view", "timeframe", "stage", "partner", "quote", "qual", "scope", "prow", "pcol", "cond", "life", "value"] as const) { const v = qp(k); if (v) preserved.set(k, v); }
   const drawerHref = (companyId: string) => { const p = new URLSearchParams(preserved); p.set("drawer", companyId); return `/pipeline?${p.toString()}`; };
   const drawerCloseHref = `/pipeline${preserved.toString() ? `?${preserved.toString()}` : ""}`;
   const drawerBase = preserved.toString();
@@ -767,7 +792,7 @@ export default async function PipelinePage({
         const viewHref = (v: string) => {
           const qs = new URLSearchParams();
           qs.set("view", v);
-          for (const k of ["timeframe", "stage", "partner", "quote", "qual", "scope", "life"] as const) { const val = qp(k); if (val) qs.set(k, val); }
+          for (const k of ["timeframe", "stage", "partner", "quote", "qual", "scope", "life", "value"] as const) { const val = qp(k); if (val) qs.set(k, val); }
           return `/pipeline?${qs.toString()}`;
         };
         const seg: { key: typeof view; label: string; hint: string }[] = [
@@ -796,6 +821,8 @@ export default async function PipelinePage({
                 <QuerySelect param="timeframe" value={qp("timeframe") ?? "all"} label="Closing within" options={[{ value: "all", label: "Any time" }, { value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }]} />
                 {/* Lifecycle (P2A §8) — three states, no fourth. */}
                 <QuerySelect param="life" value={qp("life") ?? "all"} label="Lifecycle" options={[{ value: "all", label: "Any lifecycle" }, { value: "renew90", label: "Renewing in 90 days" }, { value: "conflicting", label: "Conflicting timing" }, { value: "stale", label: "Stale evidence" }]} />
+                {/* Value case (P2B §14) — the derived state, four values, no new score. */}
+                <QuerySelect param="value" value={qp("value") ?? "all"} label="Value case" options={[{ value: "all", label: "Any value case" }, { value: "strong", label: "Strong" }, { value: "incomplete", label: "Incomplete" }, { value: "conflicting", label: "Conflicting economics" }, { value: "none", label: "Not established" }]} />
               </>
             )}
             <span className="ml-auto text-xs text-neutral-500">{visible.length} of {opps.length}</span>

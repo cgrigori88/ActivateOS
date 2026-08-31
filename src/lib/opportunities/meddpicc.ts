@@ -116,14 +116,25 @@ export async function assessMeddpicc(db: Db, opportunityId: string): Promise<{ u
   if (oppRows.length === 0) throw new Error("opportunity not found");
   const opp = oppRows[0];
 
-  const { rows: sh } = await db.query<{ role: string; sentiment: string; name: string | null }>(
-    `select s.role, s.sentiment, ct.name from stakeholders s join contacts ct on ct.id = s.contact_id
+  // P2B §8 — MEDDPICC CONSUMES the canonical stakeholder truth; it does not hold a second one.
+  // The `stakeholders` table is already the single store, but this assessment previously ignored
+  // `assertion_state` and so reported a buying role as "strong" on the strength of an INFERRED
+  // assertion — a second, weaker standard of truth living inside the qualification model. It now
+  // reads the P1C assertion state and can never claim more certainty than the canonical assertion
+  // carries. No migration, no dual write, no separate role record.
+  const { rows: sh } = await db.query<{ role: string; sentiment: string; name: string | null; assertion_state: string | null }>(
+    `select s.role, s.sentiment, ct.name, s.assertion_state from stakeholders s join contacts ct on ct.id = s.contact_id
      where s.opportunity_id = $1`,
     [opportunityId],
   );
   const roles = new Set(sh.map((s) => s.role));
   const eb = sh.find((s) => s.role === "economic_buyer");
   const champ = sh.find((s) => s.role === "champion");
+  /** A role may only reach `strong` on a VERIFIED canonical assertion. */
+  const roleStatus = (s: { sentiment: string; assertion_state: string | null } | undefined): Status =>
+    !s ? "gap" : s.assertion_state !== "verified" ? "weak" : s.sentiment === "positive" ? "strong" : "weak";
+  const roleNote = (s: { assertion_state: string | null } | undefined): string =>
+    !s ? "" : s.assertion_state === "verified" ? "verified" : `${s.assertion_state ?? "unverified"} — not yet verified`;
 
   const { rows: ev } = await db.query<{ claim: string; source_type: string }>(
     `select claim, source_type from evidence
@@ -134,13 +145,28 @@ export async function assessMeddpicc(db: Db, opportunityId: string): Promise<{ u
   const painEv = ev.find((e) => /migrat|end.of.life|eol|outage|risk|cost|scal|deadline|compliance|breach|expir/i.test(e.claim));
   const compEv = ev.find((e) => /competitor|incumbent|vmware|veeam|broadcom|replace|rip.and.replace|alternative/i.test(e.claim));
 
+  // P2B: `metrics` is the economic element — it now reads the canonical economic drivers rather
+  // than only the deal size. A deal amount is what WE would book; metrics is about the number the
+  // BUYER tracks, which is exactly what the Value Case models.
+  const { loadDrivers } = await import("../value/drivers");
+  const { assembleCase, bounds: fmtBounds } = await import("../value/case");
+  const orgRow = (await db.query<{ org_id: string | null }>(
+    `select org_id from opportunities where id = $1`, [opportunityId])).rows[0];
+  const drivers = orgRow?.org_id ? await loadDrivers(db, orgRow.org_id, opp.company_id) : [];
+  const vc = assembleCase("", opp.company_id, "", opp.amount_usd ? Number(opp.amount_usd) : null, null, drivers);
+
   const has = (n: number) => ev.length >= n;
   const proposals: Record<ElementKey, { status: Status; notes: string }> = {
-    metrics: opp.amount_usd
-      ? { status: "weak", notes: `Deal sized at ~$${Math.round(Number(opp.amount_usd) / 1000)}k; quantify the buyer's own before/after metric.` }
-      : { status: "gap", notes: "No economic metric captured yet — tie the pain to a number the buyer tracks." },
+    metrics: vc.state === "CONFLICTING"
+      ? { status: "weak", notes: `Modeled customer impact is contested — ${vc.because} Reconcile before quantifying to the buyer.` }
+      : vc.defensible && vc.modeledImpact
+        ? { status: vc.state === "STRONG" ? "strong" : "weak",
+            notes: `Modeled customer impact ${fmtBounds(vc.modeledImpact)} — ${vc.because}` }
+        : opp.amount_usd
+          ? { status: "weak", notes: `Deal sized at ~$${Math.round(Number(opp.amount_usd) / 1000)}k, but that is OUR revenue, not the buyer's metric. No defensible customer impact established yet.` }
+          : { status: "gap", notes: "No economic metric captured yet — tie the pain to a number the buyer tracks." },
     economic_buyer: eb
-      ? { status: eb.sentiment === "positive" ? "strong" : "weak", notes: `Economic buyer: ${eb.name ?? "identified"} (${eb.sentiment}).` }
+      ? { status: roleStatus(eb), notes: `Economic buyer: ${eb.name ?? "identified"} — ${roleNote(eb)} (${eb.sentiment}).` }
       : { status: "gap", notes: "Budget authority not mapped — identify who signs." },
     decision_criteria: has(2)
       ? { status: "weak", notes: "Some criteria inferable from evidence; confirm the buyer's explicit scorecard." }
@@ -153,7 +179,7 @@ export async function assessMeddpicc(db: Db, opportunityId: string): Promise<{ u
         ? { status: "weak", notes: "Pain implied by intelligence; get the buyer to own it explicitly." }
         : { status: "gap", notes: "No compelling event captured — surface the driver of urgency." },
     champion: champ
-      ? { status: champ.sentiment === "positive" ? "strong" : "weak", notes: `Champion: ${champ.name ?? "identified"} (${champ.sentiment}).` }
+      ? { status: roleStatus(champ), notes: `Champion: ${champ.name ?? "identified"} — ${roleNote(champ)} (${champ.sentiment}).` }
       : roles.has("influencer")
         ? { status: "weak", notes: "Influencer engaged; develop them into a power champion." }
         : { status: "gap", notes: "No champion yet — recruit an advocate with influence." },

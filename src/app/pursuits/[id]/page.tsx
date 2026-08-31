@@ -23,6 +23,7 @@ import { buildFederationViewer } from "@/lib/pursuits/federation/grants";
 import { FederationBento } from "@/components/pursuit/federation";
 import { StakeholderPanel } from "@/components/pursuit/stakeholders";
 import { LifecycleBento } from "@/components/pursuit/lifecycle";
+import { ValueCaseCard } from "@/components/pursuit/value-case";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -169,6 +170,16 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
           </div>
         </Panel>
         </div>
+
+        {/* Value Case (P2B §12) — economics on the Pursuit, not in a room of its own. `#value` is
+            the deep-link anchor from Today, the Brief and ⌘K. */}
+        {d.valueCase && (
+          <div id="value" className="order-2 scroll-mt-6 lg:order-3">
+            <Panel eyebrow="What is at stake, and what supports it" title="Value case" accent="var(--color-readiness)">
+              <ValueCaseCard vc={d.valueCase} />
+            </Panel>
+          </div>
+        )}
 
         {/* Route decision — recommended + human selection above the dense compare. `#route` is the
             Today deep-link anchor; scroll-mt keeps it clear of the sticky chrome. The governed

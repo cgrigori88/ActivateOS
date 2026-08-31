@@ -22,6 +22,9 @@ export const STAKEHOLDER_GAP_FLOOR_USD = 500_000;
 export const LIFECYCLE_FLOOR_USD = 500_000;
 /** ...while a CONFLICTING date is a risk at a lower bar — disagreeing with ourselves is cheap to fix. */
 export const LIFECYCLE_CONFLICT_FLOOR_USD = 250_000;
+/** A Value Case gap is worth interrupting the day for only above these floors (P2B §14). */
+const VALUE_FLOOR_USD = 750_000;
+const VALUE_CONFLICT_FLOOR_USD = 400_000;
 
 /**
  * Options (additive, back-compat): `companyIds` narrows the queue to an ecosystem scope
@@ -173,6 +176,44 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
         it.whyItMatters, false, new Date(), now,
         [{ label: it.nextAction?.label ?? "Open", skill: "explain_partner_route", sideEffect: "READ" }],
         it.nextAction?.deepLink ?? (it.pursuitId ? `/pursuits/${it.pursuitId}#whynow` : `/accounts/${it.companyId}`)));
+    }
+  }
+
+  // 2f) Material ECONOMIC gaps (P2B §14) — exceptions only, never a value dashboard. A pursuit
+  //     above the materiality floor whose Value Case is CONFLICTING (two economic truths in play)
+  //     or has no defensible economic baseline at all. An INCOMPLETE case on a small deal is
+  //     ordinary work, not something to interrupt the day with.
+  {
+    const { getValueCase, usd: vusd } = await import("@/lib/value/case");
+    const econRows = await db.query<{ id: string; company_id: string; legal_name: string; ev: string | null }>(
+      `select p.id, p.account_id company_id, c.legal_name, p.expected_value_weighted ev
+         from pursuits p join companies c on c.id = p.account_id
+        where p.org_id = $1 and p.status not in ('CLOSED','ARCHIVED')
+          and coalesce(p.expected_value_weighted, 0) >= $2
+          and ($4::boolean is false or p.account_id = any($3))
+        order by p.expected_value_weighted desc nulls last limit 25`,
+      [caller.orgId, VALUE_FLOOR_USD, ids, scoped]);
+    for (const row of econRows.rows) {
+      const vc = await getValueCase(db, caller.orgId, row.id);
+      if (!vc) continue;
+      const ev = Number(row.ev ?? 0);
+      const conflicting = vc.state === "CONFLICTING";
+      if (!conflicting && vc.defensible) continue;              // a defensible case is not a gap
+      if (conflicting && ev < VALUE_CONFLICT_FLOOR_USD) continue;
+      const top = vc.sensitivity[0];
+      items.push(mk(
+        conflicting ? "VALUE_CONFLICT" : "VALUE_GAP",
+        conflicting ? "RISK" : "ACTION_REQUIRED",
+        conflicting ? "high" : "normal",
+        bandOf(ev >= 1_000_000 ? 85 : 60),
+        row.id, row.company_id, row.legal_name,
+        conflicting
+          ? `${vusd(ev)} Pursuit has contested economics — sources disagree on what it is worth`
+          : `${vusd(ev)} Pursuit has no defensible economic baseline`,
+        top ? `${vc.because} Largest uncertainty: ${top.label}. ${top.ask}` : vc.because,
+        false, new Date(), now,
+        [{ label: conflicting ? "Reconcile" : "Establish value", skill: "assert_economic_fact", sideEffect: "INTERNAL_WRITE" }],
+        `/pursuits/${row.id}#value`));
     }
   }
 

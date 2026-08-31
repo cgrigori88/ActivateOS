@@ -7,6 +7,7 @@ import {
   type ParsedQuery,
 } from "./query";
 import { parseLifecycleShowMe, resolveLifecycleShowMe, resolveLifecycleExplain } from "@/lib/lifecycle/intents";
+import { parseValueShowMe, parseValueExplain, resolveValueShowMe, resolveValueExplain, type ValueShowMode } from "@/lib/value/intents";
 
 /**
  * Intent registrations (P2C-0). The three pre-existing deterministic intents migrated VERBATIM —
@@ -139,6 +140,48 @@ lifecycleShowMe("lifecycle.conflicting", 84, "conflicting",
 lifecycleShowMe("lifecycle.unknown_timing", 83, "unknown",
   "High-value pursuits with no authoritative lifecycle evidence — UNKNOWN, not zero.",
   ["which high-value pursuits have unknown renewal timing"]);
+
+// ---- SHOW ME · Value Case intents (P2B §15) ---------------------------------------------------
+// Placed at 88–86: above the broad opportunity grammar, below the motion funnel. Distinct
+// precedences, so a value phrase can never be resolved by whichever parser was registered first.
+const valueShowMe = (intentKey: string, precedence: number, mode: ValueShowMode, description: string, examples: string[]) =>
+  registerIntent({
+    intentKey, intentClass: "showme", precedence, description,
+    requiredSlots: [], optionalSlots: [], scope: "COMPANY_SCOPED",
+    match: (q) => {
+      const parsed = parseValueShowMe(q);
+      return parsed && parsed.mode === mode ? {} : null;
+    },
+    resolve: async (ctx) => resolveValueShowMe(ctx, mode),
+    examples,
+  });
+
+valueShowMe("value.no_case", 88, "no_case",
+  "Pursuits with no defensible Value Case — absence is UNKNOWN, never zero.",
+  ["which high-value pursuits have no defensible value case", "pursuits lacking a business case"]);
+valueShowMe("value.conflicting", 87, "conflicting_economics",
+  "Value Cases whose economic facts contradict one another — every figure shown, none chosen.",
+  ["which value cases contain conflicting economic facts"]);
+valueShowMe("value.confirmed", 86, "confirmed_economics",
+  "Pursuits carrying verified or customer-confirmed economics.",
+  ["show pursuits with customer-confirmed economics"]);
+
+// ---- EXPLAIN · Value Case (P2B §15) — precedence 62, above the lifecycle explainer ------------
+registerIntent({
+  intentKey: "value.explain",
+  intentClass: "explain",
+  precedence: 62,
+  description: "The Value Case for one account: the three economic truths, evidence quality, and what would strengthen it.",
+  requiredSlots: ["account"],
+  optionalSlots: ["strengthen"],
+  scope: "COMPANY_SCOPED",
+  match: (q) => {
+    const parsed = parseValueExplain(q);
+    return parsed ? { account: parsed.account, strengthen: parsed.strengthen } : null;
+  },
+  resolve: async (ctx, slots) => resolveValueExplain(ctx, String(slots.account), slots.strengthen === true),
+  examples: ["what is the value case for Globex", "what would strengthen Umbrella's value case"],
+});
 
 // ---- EXPLAIN · lifecycle driver (P2A) — precedence 60 -----------------------------------------
 registerIntent({

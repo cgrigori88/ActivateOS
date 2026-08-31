@@ -42,6 +42,9 @@ export async function getPursuitDetail(db: PoolClient, caller: Caller, pursuitId
   // Stakeholder Intelligence (P1C) — coverage over the linked opportunities; a pre-opportunity
   // pursuit comes back NOT ESTABLISHED (honest UNKNOWN), never synthesized.
   const stakeholders = await getStakeholderCoverage(db, caller.orgId, pursuitId);
+  // Value Case (P2B) — the INTERNAL, fully-authorized projection. The partner projection is built
+  // separately by toPartnerValueCase and is never this object with fields hidden.
+  const valueCase = await (await import("@/lib/value/case")).getValueCase(db, caller.orgId, pursuitId);
   const synthetic = r.data_environment !== "PRODUCTION" || route.recommended?.synthetic === true;
 
   const decisionBand: ScoreView[] = [
@@ -58,7 +61,7 @@ export async function getPursuitDetail(db: PoolClient, caller: Caller, pursuitId
     thesis: r.business_problem ?? r.use_case ?? "Untitled pursuit", solution: r.solution,
     lifecycle: r.status, expectedValue: numOrNull(r.expected_value_weighted), currency: r.currency,
     lastMaterialChange: r.last_material_change_at?.toISOString() ?? null,
-    decisionBand, whyNow, route, team, timeline, facts, pendingDecisions: pending, stakeholders,
+    decisionBand, whyNow, route, team, timeline, facts, pendingDecisions: pending, stakeholders, valueCase,
     freshness: [freshness("Updated", r.updated_at)],
     synthetic, demoBanner: r.data_environment !== "PRODUCTION" ? DEMO_BANNER : null,
   };

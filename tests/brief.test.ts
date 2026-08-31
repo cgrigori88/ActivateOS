@@ -35,15 +35,15 @@ function fixture(over: Partial<PursuitDetailView> = {}): PursuitDetailView {
     team: { members: [{ id: "m1", role: "PARTNER_ACCOUNT_MANAGER", side: "PARTNER", personLabel: null, partnerLabel: "CDW", status: "INVITED", fit: null, missing: false, required: true, nextGovernedAction: "accept", waiting: true }],
       activationReadiness: band, missingRequiredRoles: ["VENDOR_ACCOUNT_EXECUTIVE"], gapActions: [], sellerAlternatives: [] },
     timeline: { events: [] }, facts: [{ id: "f1", proposition: "Globex signed a cloud MSA in Q2", state: "ACCEPTED", trust: [], confidence: null }],
-    pendingDecisions: [], freshness: [], synthetic: false, demoBanner: null, stakeholders: null,
+    pendingDecisions: [], freshness: [], synthetic: false, demoBanner: null, stakeholders: null, valueCase: null,
     ...over,
   };
 }
 
-test("brief has all ten canonical sections", () => {
+test("brief has all eleven canonical sections", () => {
   const b = buildPursuitBrief(fixture());
   const keys = b.sections.map((s) => s.key);
-  assert.deepEqual(keys, ["happening", "why", "who", "route", "know", "canknow", "say", "ask", "notclaim", "next"]);
+  assert.deepEqual(keys, ["happening", "why", "who", "route", "value", "know", "canknow", "say", "ask", "notclaim", "next"]);
 });
 
 test("confidential figures are marked and the partner rendering withholds them", () => {

@@ -148,4 +148,6 @@ export interface PursuitDetailView {
   demoBanner: string | null;
   /** Stakeholder Intelligence (P1C) — canonical coverage projection; null only when the read fails. */
   stakeholders: import("@/lib/stakeholders/coverage").StakeholderCoverage | null;
+  /** Value Case (P2B) — the INTERNAL, fully-authorized economic projection. Never partner-safe. */
+  valueCase: import("@/lib/value/case").ValueCase | null;
 }

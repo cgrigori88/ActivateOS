@@ -1,5 +1,10 @@
 import type { PursuitDetailView, ScoreReason } from "./types";
 import type { PursuitOutcomeSummary } from "./outcome-summary";
+import { bounds as vBounds, qualityLine as vQuality, usd as vUsd } from "@/lib/value/case";
+import { toPartnerValueCase as partnerProjection, SPONSOR_CONFIDENTIAL_NOTE } from "@/lib/value/projection";
+
+/** Value formatters, imported once so the Brief speaks the same economics language as every surface. */
+const valueFmt = { bounds: vBounds, qualityLine: vQuality, usd: vUsd };
 
 /**
  * Disclosure-aware Pursuit Brief (Phase F1). A calm, executive restatement of the ALREADY-AUTHORIZED
@@ -142,6 +147,85 @@ export function buildPursuitBrief(
     }
   }
 
+  // ── BUSINESS VALUE (P2B §13) ────────────────────────────────────────────────────────────────
+  // The defensible range and what supports it. A case that is not defensible says so; the Brief
+  // never generates value messaging the evidence does not carry.
+  const value: BriefLine[] = [];
+  const vc = d.valueCase;
+  if (vc && vc.state !== "NOT_ESTABLISHED") {
+    const { bounds: vbounds, qualityLine: vquality, usd: vusd } = valueFmt;
+    // DERIVED-VALUE DISCLOSURE (§16). The internal modeled range may be composed from
+    // sponsor-confidential drivers, and a partner who can see the total plus the disclosed parts
+    // could subtract to recover a withheld one. So the internal total is marked confidential
+    // whenever ANY contributing driver is withheld, and the partner-safe line is RECOMPUTED from
+    // the disclosable drivers alone — never the internal total with rows hidden.
+    const anyWithheld = vc.drivers.some((dr) => !dr.partnerSafe);
+    if (vc.defensible && vc.modeledImpact) {
+      value.push({ text: `Modeled customer impact ${vbounds(vc.modeledImpact)} — ${vc.because}`, confidential: anyWithheld });
+    } else {
+      value.push({ text: `Value case not yet defensible — ${vc.because}`, caution: true });
+    }
+    if (anyWithheld) {
+      const partnerView = partnerProjection(vc);
+      value.push(partnerView.modeledImpact
+        ? { text: `Partner-safe modeled impact ${vbounds(partnerView.modeledImpact)}, recomputed from disclosed inputs only.` }
+        : { text: partnerView.withheldReason ?? "No modeled range can be shared with the partner." });
+      value.push({ text: SPONSOR_CONFIDENTIAL_NOTE });
+    }
+    if (vc.baseline) {
+      value.push({ text: `At stake today: ${vbounds(vc.baseline)} recurring current-state cost. This is context, not impact.`, confidential: true });
+    }
+    if (vc.changeCost) value.push({ text: `Cost to change: ${vbounds(vc.changeCost)}.` });
+    value.push({ text: `Evidence quality: ${vquality(vc.quality)}.` });
+    // The three economic truths, never merged into one number.
+    if (vc.dealAmount != null) {
+      value.push({ text: `Deal amount ${vusd(vc.dealAmount)} is OUR revenue, not the customer's impact — the two are different figures and must not be conflated.` });
+    }
+
+    // WHAT WE KNOW gains the evidenced economics only.
+    for (const dr of vc.drivers) {
+      if (dr.conflicting) continue;
+      if (dr.ladder !== "VERIFIED" && dr.ladder !== "CUSTOMER_CONFIRMED") continue;
+      const b = dr.value;
+      if (!b) continue;
+      know.push({
+        text: `${dr.label}: ${b.low === b.high ? vusd(b.low) : `${vusd(b.low)}–${vusd(b.high)}`} (${dr.ladder === "VERIFIED" ? "verified" : "customer-confirmed"}).`,
+        confidential: dr.values.some((v) => v.disclosureClass !== "PARTNER_SHARED"),
+      });
+    }
+
+    // WHAT NOT TO CLAIM gains the assumptions, the conflicts and the unknowns.
+    for (const dr of vc.drivers) {
+      if (dr.conflicting) {
+        notClaim.push({
+          text: `${dr.label} is contradicted across sources (${dr.values.map((v) => (v.low === v.high ? vusd(v.low) : `${vusd(v.low)}–${vusd(v.high)}`)).join(" vs ")}) — do not quote either figure as settled.`,
+          caution: true,
+        });
+      } else if (dr.ladder === "ASSUMED") {
+        notClaim.push({ text: `${dr.label} is a working assumption, not a customer-confirmed figure — do not present it as their number.`, caution: true });
+      } else if (dr.ladder === "INFERRED") {
+        notClaim.push({ text: `${dr.label} is inferred — do not attribute it to the customer.`, caution: true });
+      }
+      if (dr.values.some((v) => v.disclosureClass !== "PARTNER_SHARED")) {
+        notClaim.push({ text: `Do not share the sponsor-confidential economics behind ${dr.label.toLowerCase()}.`, confidential: true, caution: true });
+      }
+    }
+    if (!vc.defensible) {
+      notClaim.push({ text: `Do not state a modeled value for this pursuit — no defensible range exists yet.`, caution: true });
+    }
+
+    // WHAT TO ASK gains the highest-value missing economic inputs, in sensitivity order.
+    for (const sIt of vc.sensitivity.slice(0, 3)) {
+      toAsk.push({
+        text: sIt.narrowsRangeBy != null && sIt.narrowsRangeBy > 0
+          ? `${sIt.label}: ${sIt.ask} Verifying it narrows the modeled range by ${vusd(sIt.narrowsRangeBy)}.`
+          : `${sIt.label}: ${sIt.ask}`,
+      });
+    }
+  } else if (vc) {
+    value.push({ text: "No economic facts on this account — what is at stake has not been established.", caution: true });
+  }
+
   // WHAT NEXT — the governed next steps: the route decision, waiting-on team, held roles, outcome.
   const next: BriefLine[] = [];
   if (rec && !r.decided) next.push({ text: `Make the governed route decision (approve ${rec.label} or override).` });
@@ -163,6 +247,7 @@ export function buildPursuitBrief(
     { key: "why", title: "Why now", lines: whyNow, emptyNote: "No structured Why Now yet — do not manufacture urgency." },
     { key: "who", title: "Who matters", lines: who, emptyNote: "No team proposed yet." },
     { key: "route", title: "Route", lines: route, emptyNote: "No route recommended yet." },
+    { key: "value", title: "Business value", lines: value, emptyNote: "No economic facts yet — do not manufacture a value story." },
     { key: "know", title: "What we know", lines: know, emptyNote: "No internal evidence lines available." },
     { key: "canknow", title: "What they can know", lines: canKnow, emptyNote: "Nothing is cleared to share with the partner yet." },
     { key: "say", title: "What to say", lines: toSay },

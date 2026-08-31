@@ -11,6 +11,8 @@ export interface AccountIntel {
   legalName: string;
   industry: string | null;
   hunt: { score: number | null; band: string | null; priority: number | null; propensity: number | null; useCase: string | null; problem: string | null; expectedValue: number | null; openOpps: number; pipelineUsd: number };
+  /** Value Case (P2B §14) — the derived STATE, never a new score. Null when no pursuit exists. */
+  valueCase: { state: string; label: string; impact: string | null; because: string; pursuitId: string } | null;
   whyNow: { compellingEvent: string | null; timingKnown: boolean; timingScore: number | null; convergence: number | null; materialChange: string | null; evidence: Array<{ claim: string; confidence: number; firstParty: boolean }>; missingEvidence: string | null;
     /** Lifecycle Intelligence (P2A): the account's primary lifecycle event with its derived state. */
     lifecycle: { label: string; state: string; when: string; because: string } | null };
@@ -105,6 +107,21 @@ export async function getAccountIntel(db: PoolClient, companyId: string): Promis
     }
   }
 
+  // Value Case state (P2B §14) — strong / incomplete / conflicting / not established, read from
+  // the same canonical model Pursuit Detail renders. No new score is introduced.
+  let valueCase: AccountIntel["valueCase"] = null;
+  if (pursuit && orgRow?.org_id) {
+    const { getValueCase, STATE_LABEL: VC_LABEL, bounds: vcBounds } = await import("@/lib/value/case");
+    const vc = await getValueCase(db, orgRow.org_id, pursuit.id);
+    if (vc) {
+      valueCase = {
+        state: vc.state, label: VC_LABEL[vc.state],
+        impact: vc.defensible && vc.modeledImpact ? vcBounds(vc.modeledImpact) : null,
+        because: vc.because, pursuitId: pursuit.id,
+      };
+    }
+  }
+
   return {
     companyId, legalName: co.legal_name, industry: co.industry,
     hunt: {
@@ -137,5 +154,6 @@ export async function getAccountIntel(db: PoolClient, companyId: string): Promis
       humanDecision: overridden ? `Route overridden to ${route!.sel} — recommendation (${recName}) preserved` : (motion?.status === "draft" ? "Approve the drafted motion to activate" : null),
     },
     stakeholders,
+    valueCase,
   };
 }

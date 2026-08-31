@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
 import { getLifecycleHorizon } from "@/lib/lifecycle/horizon";
+import { aggregateValue } from "@/lib/value/aggregate";
+import { bounds as vcBounds } from "@/lib/value/case";
 import { Bento, Card, MiniBar, NextStep, PageHeader, StatusBadge } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
@@ -108,7 +110,7 @@ export default async function MotionsPage({
     const s = p.toString(); return `/motions${s ? `?${s}` : ""}`;
   };
 
-  const { all, goals, initiativeOpts, draftLists, draftCandidates, funnels, lifecycle } = await withTenant(async (db, orgId) => ({
+  const { all, goals, initiativeOpts, draftLists, draftCandidates, funnels, lifecycle, value } = await withTenant(async (db, orgId) => ({
     // Motion Intelligence (P1A): the command funnel, derived from canonical records at read time.
     funnels: await getMotionFunnels(db, orgId, { companyIds: scope.companyIds }),
     // Lifecycle context (P2A §8): CONTEXT ONLY. It is rendered as one line beside the funnel and
@@ -116,6 +118,10 @@ export default async function MotionsPage({
     // a date silently open or close a motion gate would be exactly the hidden composite this
     // programme exists to prevent.
     lifecycle: await getLifecycleHorizon(db, orgId, { days: 90, companyIds: scope.companyIds }),
+    // Value Case aggregate (P2B §14): summed ONLY where the arithmetic is valid — de-duplicated by
+    // account, defensible cases only, contested economics excluded and reported separately. The
+    // basis line says exactly what the total does not contain, so it can never read as the book.
+    value: await aggregateValue(db, orgId, { companyIds: scope.companyIds }),
     all: (await db.query<MotionRow>(
       `select m.id, m.status, m.thesis, m.trigger_summary, m.cta, m.confidence, m.operator_notes,
             m.company_id, c.legal_name, n.slug, c.industry, m.outcome,
@@ -242,6 +248,14 @@ export default async function MotionsPage({
               {lifecycle.unknownAccounts > 0 && <>; {lifecycle.unknownAccounts} account{lifecycle.unknownAccounts === 1 ? " has" : "s have"} no lifecycle evidence at all</>}.{" "}
               <Link href="/pipeline?view=all&life=renew90" className="text-accent hover:underline dark:text-blue-400">See the deals</Link>.{" "}
               <span className="text-neutral-400">Context only — timing does not gate a motion.</span>
+            </p>
+          )}
+          {value.accountsWithAnyCase > 0 && (
+            <p className="mb-3 text-xs text-neutral-500">
+              <span className="font-semibold uppercase tracking-[0.06em] text-neutral-400">Modeled customer impact</span>
+              {" "}· {value.total ? <b>{vcBounds(value.total)}</b> : <b>not yet defensible anywhere in scope</b>}
+              {" "}across {value.accountsCounted} account{value.accountsCounted === 1 ? "" : "s"}.{" "}
+              <span className="text-neutral-400">{value.basis}</span>
             </p>
           )}
           <MotionFunnelCommand funnels={funnels} qs={qs} />

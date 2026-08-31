@@ -146,6 +146,13 @@ export const SKILL_REGISTRY: SkillDef[] = [
     precheck: async (db, actor, ctx) => (await import("../../stakeholders/assert")).stakeholderInOrg(db, actor.orgId, ctx.args),
     handler: async (db, actor, ctx) => (await import("../../stakeholders/assert")).assertStakeholderRole(
       db, actor, ctx.args ?? {}, (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION") },
+  // Canonical economic assertion (P2B §7): the ONLY authoritative path for an economic driver.
+  // Migration 0099's trigger rejects a trusted-provenance economic fact written outside it.
+  { skillId: "assert_economic_fact", version: 1, description: "Assert an economic driver (point or range) with provenance, source and evidence", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER", "AGENT"], requiredPermission: "operator",
+    precheck: async (db, actor, ctx) => (await import("../../value/assert")).economicSubjectInOrg(db, actor.orgId, ctx.args),
+    handler: async (db, actor, ctx) => (await import("../../value/assert")).assertEconomicFact(
+      db, actor, ctx.args ?? {}, (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION") },
 ];
 
 /**
