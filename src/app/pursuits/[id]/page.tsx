@@ -9,6 +9,8 @@ import { PursuitHero, MetricBand, WhyNowBento, FactsBento, MaterialChangeTimelin
 import { RoutePath, RecommendationChange, RouteCandidateTable } from "@/components/pursuit/route";
 import { RouteDecision } from "@/components/pursuit/route-decision";
 import { ExecutionPlan } from "@/components/pursuit/team-decision";
+import { PursuitBriefButton } from "@/components/pursuit/pursuit-brief";
+import { buildPursuitBrief } from "@/lib/pursuits/read-models/brief";
 import { OutcomePanel } from "@/components/pursuit/outcome-panel";
 import { getPursuitOutcomeSummary } from "@/lib/pursuits/read-models/outcome-summary";
 import { currentRole } from "@/lib/auth/org";
@@ -91,12 +93,17 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
   const federation = loaded.federation;
   const r = d.route;
   const recWord = r.recommended?.label ?? "the recommended route";
+  // Disclosure-aware Pursuit Brief (F1) — a presentation over the already-authorized detail view.
+  const brief = buildPursuitBrief(d, loaded.outcome);
 
   return (
     <div className="mx-auto max-w-[1240px] px-4 py-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <BackLink href="/pursuits" label="Pursuits" />
-        {d.demoBanner && <SyntheticBadge text="Demo environment" />}
+        <div className="flex items-center gap-2.5">
+          {d.demoBanner && <SyntheticBadge text="Demo environment" />}
+          <PursuitBriefButton brief={brief} />
+        </div>
       </div>
 
       {/*
