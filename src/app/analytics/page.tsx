@@ -61,9 +61,13 @@ export default async function AnalyticsPage({
              ${windowDays ? `where e.occurred_at >= now() - interval '${windowDays} days'` : ""}
              group by t.company_id`,
           ),
+          // Response/meeting classification lives in interaction_events (the conversation classifier
+          // in comms/inbound + the engagement deriver write POSITIVE_RESPONSE / NEGATIVE_RESPONSE /
+          // MEETING_BOOKED there via `type`). These types were never populated in outcome_events — a
+          // superseded slice — so this reads the real canonical source (Phase B4 reconciliation).
           db.query<{ company_id: string; event_type: string }>(
-            `select distinct company_id, event_type from outcome_events
-             where event_type in ('POSITIVE_RESPONSE','NEGATIVE_RESPONSE','MEETING_BOOKED')
+            `select distinct company_id, type as event_type from interaction_events
+             where type in ('POSITIVE_RESPONSE','NEGATIVE_RESPONSE','MEETING_BOOKED')
              ${windowDays ? `and occurred_at >= now() - interval '${windowDays} days'` : ""}`,
           ),
           db.query<{ company_id: string }>(
