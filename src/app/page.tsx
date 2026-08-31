@@ -19,6 +19,7 @@ import { IntelDrawer } from "@/components/intel/intel-drawer";
 export const dynamic = "force-dynamic";
 
 const TODAY_TOP_DECISIONS = 6;
+const TODAY_VIEWALL_CAP = 50;   // scale guard (R5): view-all never becomes an unbounded card stack
 const TODAY_TOP_CONDITIONS = 4;
 const usdShort = (n: number) => (n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${Math.round(n)}`);
 
@@ -153,7 +154,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   let exposure: TodayExposure | null = null;
   if (pursuitExperienceEnabled()) {
     ({ pursuitQueue, exposure } = await withTenant(async (db, orgId) => ({
-      pursuitQueue: await getTodayQueue(db, await callerFor(db, orgId), { companyIds: scopeIds, limit: viewAll ? undefined : TODAY_TOP_DECISIONS }),
+      pursuitQueue: await getTodayQueue(db, await callerFor(db, orgId), { companyIds: scopeIds, limit: viewAll ? TODAY_VIEWALL_CAP : TODAY_TOP_DECISIONS }),
       exposure: await getTodayExposure(db, scopeIds),
     })));
   }
@@ -248,8 +249,11 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
             </div>
           )}
           {viewAll && (
-            <div className="mt-3">
+            <div className="mt-3 flex items-center gap-4">
               <Link href={{ query: cleanQuery(sp) }} className="text-[12.5px] font-medium text-neutral-500 hover:underline">← Back to command center</Link>
+              {decisionsTotal > TODAY_VIEWALL_CAP && (
+                <span className="text-[11.5px] text-neutral-400">Showing the top {TODAY_VIEWALL_CAP} of {decisionsTotal} — the full dated worklist is in <Link href="/queue" className="font-medium text-accent hover:underline dark:text-blue-400">Queue →</Link></span>
+              )}
             </div>
           )}
         </Panel>
