@@ -36,7 +36,8 @@
     "setup-comms": "tsx scripts/setup-comms-dns.ts",
     "intel": "tsx scripts/intel.ts",
     "screen": "tsx scripts/screen-sweep.ts",
-    "worker": "tsx src/worker/index.ts"
+    "worker": "tsx src/worker/index.ts",
+    "scope:verify": "tsx scripts/scope-verify.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

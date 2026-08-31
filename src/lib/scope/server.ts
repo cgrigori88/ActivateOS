@@ -133,12 +133,15 @@ export async function resolveScope(db: PoolClient, orgId: string, scope: Scope):
   }
 
   if (scope.kind === "PERSONAL") {
+    // Belt-and-suspenders org scoping (matches every branch above): explicit org_id so
+    // the scope is bounded by the tenant even while the app_rw/RLS cutover is latent —
+    // a narrowing lens must never depend on RLS alone to avoid widening cross-tenant.
     const companyIds = await distinct(
       `select distinct company_id from (
-         select account_id company_id from pursuits where account_id is not null and status not in ('WON','LOST','DISQUALIFIED')
-         union select company_id from revenue_motions where ${ACTIVE_MOTION}
+         select account_id company_id from pursuits where org_id = $1 and account_id is not null and status not in ('WON','LOST','DISQUALIFIED')
+         union select company_id from revenue_motions where org_id = $1 and ${ACTIVE_MOTION}
        ) x`,
-      [],
+      [orgId],
     );
     return { scope, label: "My active book", companyIds, facts: [`${companyIds.length} active account${companyIds.length === 1 ? "" : "s"}`] };
   }

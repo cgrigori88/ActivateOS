@@ -3,6 +3,7 @@ import { Bento, Card, PageHeader } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { QuerySelect } from "@/components/query-select";
 import { withTenant } from "@/lib/db/tenant";
+import { getScopeContext } from "@/lib/scope/server";
 import { resolveActionAction, resolveCommActionAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -39,10 +40,19 @@ function startOfToday(): number {
 export default async function QueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ window?: string; source?: string; group?: string; partner?: string; q?: string }>;
+  searchParams: Promise<{ window?: string; source?: string; group?: string; partner?: string; q?: string; scope?: string }>;
 }) {
   const sp = await searchParams;
   const groupKey = ["due", "account", "partner"].includes(sp.group ?? "") ? sp.group! : "due";
+
+  // Ecosystem scope (§1): narrow the worklist to the authorized company set — never
+  // widen. Both row sources already carry a company linkage (motion→company,
+  // thread→company), so scope filters on it as a read-side view predicate. Actions
+  // (id-scoped, RLS-bounded) are unaffected. Same idiom as Today/Pipeline.
+  const scope = await getScopeContext(sp.scope ?? null);
+  const scopeIds = scope.companyIds;
+  const scoped = scopeIds != null;
+  const ids = scopeIds ?? [];
 
   const { cadence, comms, recent } = await withTenant(async (db) => ({
     cadence: (
@@ -56,7 +66,9 @@ export default async function QueuePage({
      left join partners pa on pa.id = m.partner_id
      left join sellers s on s.id = m.partner_seller_id
      where a.status = 'pending' and m.status = 'active'
+       and ($2::boolean is false or m.company_id = any($1))
      order by a.due_at, a.step`,
+        [ids, scoped],
       )
     ).rows,
     comms: (
@@ -68,7 +80,9 @@ export default async function QueuePage({
      join companies c on c.id = t.company_id
      left join sellers s on s.id = ca.owner_seller_id
      where ca.status = 'pending'
+       and ($2::boolean is false or t.company_id = any($1))
      order by ca.due_at nulls last`,
+        [ids, scoped],
       )
     ).rows,
     recent: (
@@ -78,7 +92,9 @@ export default async function QueuePage({
      join revenue_motions m on m.id = a.motion_id
      join companies c on c.id = m.company_id
      where a.status in ('done','skipped')
+       and ($2::boolean is false or m.company_id = any($1))
      order by a.completed_at desc limit 8`,
+        [ids, scoped],
       )
     ).rows,
   }));
@@ -188,7 +204,7 @@ export default async function QueuePage({
         )}
         <QuerySelect param="group" value={groupKey} label="Group by" options={[{ value: "due", label: "Due bucket" }, { value: "account", label: "Account" }, { value: "partner", label: "Partner" }]} />
         <form className="ml-auto flex items-center gap-2">
-          {Object.entries({ window: sp.window, source: sp.source, partner: sp.partner, group: sp.group }).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
+          {Object.entries({ window: sp.window, source: sp.source, partner: sp.partner, group: sp.group, scope: sp.scope }).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
           <input name="q" defaultValue={sp.q ?? ""} placeholder="Search account, task…" className="w-52 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
           <span className="text-xs text-neutral-500">{filtered.length}</span>
         </form>

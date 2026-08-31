@@ -14,6 +14,7 @@ import {
 import { QuerySelect } from "@/components/query-select";
 import { getAccountIntel, type AccountIntel } from "@/lib/accounts/intel";
 import { AccountIntelPane } from "@/components/accounts/intel-pane";
+import { getScopeContext } from "@/lib/scope/server";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,7 @@ interface Params {
   partner?: string;
   cols?: string;
   sel?: string;
+  scope?: string;
 }
 
 function buildQS(params: Params, overrides: Partial<Params>): string {
@@ -82,6 +84,12 @@ export default async function AccountsPage({
   const params = await searchParams;
   const { band, q, industry, partner } = params;
   const sort = params.sort ?? "-score";
+
+  // Ecosystem scope (§1): a narrowing lens over the already-authorized set — never a
+  // widener. Resolved + re-authorized server-side; an empty array is a valid empty
+  // scope (zero rows), null/ALL = no restriction. Same idiom as Today/Pipeline.
+  const scope = await getScopeContext(params.scope ?? null);
+  const scopeIds = scope.companyIds;
 
   const activeCols = params.cols
     ? params.cols.split(",").filter((k) => COL_KEYS.includes(k))
@@ -107,6 +115,7 @@ export default async function AccountsPage({
        from propensity_scores p
        join companies c2 on c2.id = p.company_id
        join taxonomy_nodes n on n.id = p.taxonomy_node_id
+       where ($2::boolean is false or p.company_id = any($1))
        order by p.company_id, p.computed_at desc
      ) latest
      join companies c on c.id = latest.company_id
@@ -115,6 +124,7 @@ export default async function AccountsPage({
        from pursuit_teams t join partners pa on pa.id = t.partner_id
        where t.company_id = latest.company_id and t.status in ('recommended','accepted')
        order by t.created_at desc limit 1) pt on true`,
+      [scopeIds ?? [], scopeIds != null],
     );
 
     const companyIds = all.map((r) => r.company_id);
@@ -271,7 +281,7 @@ export default async function AccountsPage({
           </div>
         }
       >
-        <SearchBox placeholder="Search accounts, industries, partners…" defaultValue={q} hidden={{ band, sort: params.sort, industry, partner, cols: params.cols }} />
+        <SearchBox placeholder="Search accounts, industries, partners…" defaultValue={q} hidden={{ band, sort: params.sort, industry, partner, cols: params.cols, scope: params.scope }} />
         {industryOptions.length > 0 && (
           <QuerySelect param="industry" value={industry ?? "all"} label="Industry" options={[{ value: "all", label: "Any industry" }, ...industryOptions.map((i) => ({ value: i, label: i }))]} />
         )}

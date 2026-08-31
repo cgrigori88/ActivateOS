@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { withTenant } from "@/lib/db/tenant";
+import { getScopeContext } from "@/lib/scope/server";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,11 @@ export async function GET(req: Request): Promise<NextResponse> {
   const url = new URL(req.url);
   const band = url.searchParams.get("band");
   const q = url.searchParams.get("q")?.toLowerCase();
+
+  // Ecosystem scope (§1): the export must narrow to exactly the same authorized set
+  // the on-screen table shows — otherwise a scoped view could export the full book.
+  const scope = await getScopeContext(url.searchParams.get("scope"));
+  const scopeIds = scope.companyIds;
 
   // RISK-1: scope to the caller's org. This export previously ran unscoped —
   // any authenticated user could export every tenant's accounts. Now the
@@ -25,7 +31,7 @@ export async function GET(req: Request): Promise<NextResponse> {
        from propensity_scores p
        join companies c2 on c2.id = p.company_id
        join taxonomy_nodes n on n.id = p.taxonomy_node_id
-       where p.org_id = $1
+       where p.org_id = $1 and ($3::boolean is false or p.company_id = any($2))
        order by p.company_id, p.computed_at desc
      ) latest
      join companies c on c.id = latest.company_id
@@ -35,7 +41,7 @@ export async function GET(req: Request): Promise<NextResponse> {
        where t.company_id = latest.company_id and t.status in ('recommended','accepted')
        order by t.created_at desc limit 1) pt on true
      order by latest.score desc`,
-      [orgId],
+      [orgId, scopeIds ?? [], scopeIds != null],
     ),
   );
 
