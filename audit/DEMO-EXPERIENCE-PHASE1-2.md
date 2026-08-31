@@ -195,3 +195,164 @@ Docs/screens:
 Phase 1 mapping and Phase 2 design are complete. **No code has been written.** Awaiting your
 sign-off (and any edits to the journey, the 10 stories, the wow-moment set, or the exact
 code-change list) before Phase 3 implementation.
+
+---
+
+# PHASE 2 — AMENDED (approved refinements, 2026-08-31)
+
+Approved with the following incorporated. This amendment governs Phase 3.
+
+## A. Four canonical hero stories + six supporting
+
+Every hero reconciles end-to-end from **one** set of canonical objects. A commercial fact
+never changes because the user changed rooms — account identity, opportunity amount/stage,
+evidence, partner relationships, route recommendation, selected route, action state and
+outcomes all derive from the same rows.
+
+### Hero A — Globex Manufacturing (the flagship)
+Virtualization renewal/displacement. **Propensity high, evidence high, timing moderate.**
+CDW **recommended**; executive **overrides to WWT** (recommendation preserved). Shows partner
+comparison, human override, server-side disclosure ($1.84M via TD SYNNEX internal-only),
+shared Pursuit participation (Vertex sponsor · TD SYNNEX distributor), governed action, and
+outcome/intervention history. Canonical objects: `pursuit(Globex)`, route snapshot (rec=CDW,
+selected=WWT), `opportunity(Globex, proposal, $920k, pursuit_id=…)`, participants+grant,
+`outcome(MEETING_BOOKED)`, queue action (governed).
+
+### Hero B — Umbrella Health Systems (systems disagree)
+Late-stage opportunity **healthy on paper, silent 30+ days**. Drives the Today "systems
+disagree" card + the **Late-stage-silent** attention trigger, materiality, an **intervention
+recommendation**, and the downstream Pipeline/Insights effect. Canonical: `opportunity(proposal,
+$920k, last_touch = now-32d)`, `pursuit(Umbrella)`, attention-trigger match, intervention motion.
+
+### Hero C — Stark Industries (preserved unknown)
+**Strong propensity, weak/unverified timing.** PursuitOS **preserves UNKNOWN** rather than
+manufacturing urgency; the Why-Now panel names **what evidence would materially change the
+score** (a verified renewal/contract date). Canonical: `pursuit(Stark)` with `timing = null/UNKNOWN`,
+`why_now.timing_anchor = null`, an explicit "what would change this" evidence gap.
+
+### Hero D — Cyberdyne Systems (multi-partner overlap — the cross-company thesis)
+One vendor (Vertex), one distributor (TD SYNNEX), **two plausible resellers (CDW + WWT)**.
+**Mapping** discovers overlapping commercial context; **route intelligence** recommends one
+path on relationship × capability × coverage × adjacency; **disclosure + participation**
+demonstrate the cross-company infrastructure. Canonical: `pursuit(Cyberdyne)`, both partners
+with capabilities+relationships, mapping lists + overlap cell, route snapshot with a
+justified single recommendation, participants.
+
+### Six supporting records (edge cases, no full choreography)
+1. **Wayne Enterprises** — direct-vs-channel conflict (both claim the deal).
+2. **Acme Robotics** — competitive displacement (incumbent removal).
+3. **Initech Financial** — eventual **win** + co-sell **attribution**.
+4. **Tyrell Corp** — **no-decision / closed-lost** (feeds Insights learning honestly).
+5. **Hooli Cloud** — renewal radar / dormant late-stage (secondary disagree example).
+6. **Soylent Foods** — early-stage nurture / partner-led expansion.
+
+## B. Cross-room object / data reconciliation map
+
+Single source of truth per account → every room reads the same rows:
+
+| Canonical object | Feeds |
+|---|---|
+| `companies` (identity) | Accounts, Pursuits, Pipeline, Mapping, Partners, Today |
+| `propensity_scores` + `propensity_dimensions` | Accounts (score/band/dims), Today (top opps), Pursuit band |
+| `pursuits` (scores, why_now) | Pursuits, Pursuit Detail, Today, Accounts adjacency |
+| `pursuit_route_snapshots` + `route_candidates`/`_reasons` | Pursuit Detail route, Accounts "through whom", Partners route influence |
+| `opportunities` (`pursuit_id` link, amount, stage, last touch) | Pipeline, Accounts open-opps, Today disagree, Insights |
+| `partners` + `partner_capabilities` + `partner_relationships` | Route intelligence, Partners scorecards, Mapping |
+| `account_populations` + `population_members` | Mapping overlap, Accounts partner column |
+| `pursuit_participants` + `context_grants` + `context_contributions` | Pursuit Detail federation, disclosure, Partners joint |
+| `governed_action_invocations` + `action_outbox` + `action_receipts` | Queue, Pursuit Detail actions, safety story |
+| `pursuit_outcomes` + `attribution` + `change_ledger` | Insights, Pipeline outcome, Today recent activity, Pursuit "what changed" |
+
+**Invariant:** the opportunity amount/stage shown on Pipeline == the one rolled up on Accounts
+== the one referenced on Today's disagreement card, because all three read the same
+`opportunities` row (linked to the pursuit via `pursuit_id`).
+
+## C. Revised canonical demo journey (Insights added as first-class)
+
+Today → systems disagreement / trigger → Pursuit → Why Now (unknowns preserved) → route
+recommendation → partner fit → human decision/override → disclosure/federation → governed
+action → Pipeline/outcome → **Insights/learning**.
+
+Insights differentiators to feature: stage-probability calibration; named attention triggers;
+observed-vs-declared assumptions; source predictive value **as outcome volume develops**;
+intervention/outcome history. **Do not overstate confidence on synthetic/small samples** —
+declared assumptions remain declared until observed evidence exists (the UI already labels
+"early sample — patterns firm up with volume"; preserve that).
+
+## D. Queue seed plan (never empty for the demo)
+
+Seed a small coherent action set, each tracing to a canonical Pursuit/Motion/Conversation and
+preserving the governed-action model:
+1. **Awaiting human approval** — a drafted governed action on Globex (PENDING, decision-required).
+2. **Due today** — an intervention step on Umbrella (the silent late-stage deal).
+3. **Overdue / stalled** — a follow-up on Hooli (dormant).
+4. **Partner / cross-org dependent** — a team-acceptance request on Cyberdyne (CROSS_TENANT, awaiting partner).
+5. **Recently completed (contrast)** — the executed "explain route" action on Globex.
+All via `governed_action_invocations` + motion cadence; none autonomously sends (autosend off).
+
+## E. Mapping ↔ Partners interaction model (two stages of one story)
+
+- **Mapping** answers *where do the books/capabilities/interests overlap?* — populated from the
+  canonical accounts: a Vertex "customers/targets" list × a partner list, overlap cells scored
+  by propensity, with the multi-partner Cyberdyne cell showing two resellers overlapping.
+- **Partners** answers *which relationship is best positioned to execute, and why?* — the same
+  canonical partner rows, now with a real joint book (accounts they touch), route influence
+  (where they're the recommended path), one settled/influenced statement, and joint-pursuit
+  participation. Selecting an overlap in Mapping → "evaluate in Partners" is the connective tissue.
+- Not a generic Crossbeam clone or static directory: both are projections of the hero data.
+
+## F. Exact Accounts refinement (preserve the clean scan)
+
+Keep the current table/list architecture — **not** a dense dashboard. Add the intelligence via a
+**selected-account intelligence pane** (right-side or expandable row), progressive disclosure.
+The resting table stays lean (account · band/score · industry · pipeline · a single quiet
+partner/route glyph). The pane, on select, exposes: score/band; evidence quality; strongest
+compelling event / why-now; signal convergence; recommended route / partner (**through whom**);
+open pursuit/opportunity adjacency; latest material change; next-best motion. Default sort gains
+a "hunt" option (propensity × timing × convergence).
+
+## G. Wow-moment discipline (calm, premium)
+
+Reserve high-emphasis for: systems disagree · traceable Why-Now + preserved unknowns · route
+intelligence · Sponsor⇄Partner server-side disclosure · governed action/human decision ·
+outcome calibration/learning. Everything else stays quiet: space, typography, tint, progressive
+disclosure before chrome. Reduce duplicate pills/borders and dashboard treatment.
+
+## H. Safety demonstration (NOT via an empty Analytics room)
+
+Safety is shown through: explicit human approval; recommendation ≠ decision ≠ action; audit
+trail; governed outbox; autosend disabled; synthetic-cannot-send invariant; disclosure
+boundary; action receipts/outcomes. **Analytics** either carries meaningful demo data or stays
+**outside the canonical path** (Insights carries the learning beat instead).
+
+## I. Revised code-change list (Phase 3)
+
+**Phase 3a — canonical data (foundation):** `scripts/demo-stories.ts` — supersedes the breadth
+in `demo-enrich.ts`; builds the 4 hero + 6 supporting from one canonical object set with the
+reconciliation map above (accounts, scores, pursuits+routes, linked opportunities, partner
+capabilities/relationships, mapping lists+overlap, participants/grants, outcomes/attribution,
+queue actions/motions, partner joint book). All `DEMO`/`is_simulated`.
+
+**Phase 3b — Pursuit Detail:** Sponsor⇄Partner **live disclosure toggle** (view-only over the
+existing server projections; no disclosure-logic/payload change) + top **multi-org ribbon** +
+relaxed metric-band chrome.
+
+**Phase 3c — rooms:**
+- Today: promote "systems disagree" to first-class; revenue-at-stake per row; remove per-row
+  `demo` pill; fill Pending approvals + Recent activity from the seeded governed-action/outcome log.
+- Pipeline: one stage rail; MEDDPICC/risk/close behind progressive disclosure; resting card shows
+  real-vs-recorded delta, route/partner influence, evidence health, momentum, next-intervention
+  CTA; materiality-weighted hierarchy.
+- Accounts: selected-account intelligence pane (§F); hunt sort; lean resting table.
+- Analytics: either meaningful data or removed from the guided path (Insights carries learning).
+- Mapping + Partners: rendered from canonical data (§E).
+- Queue: renders the seeded action set (§D).
+- Shared: pill/border reduction + semantic accent-rail utility (existing tokens; no new palette).
+
+**Docs/screens:** refresh `audit/demo-screens/*`; update the commissioning report demo section.
+
+## J. Explicitly NOT changing (unchanged from Phase 2)
+Navigation taxonomy + rooms; architecture, RLS/isolation, the disclosure engine and its
+server-side projections/payloads, governed-action boundary, data model, migrations, all A→E/R1
+invariants; visual direction + the six semantic dimension colors + material/bento language;
+production commissioning, credentials, live flags, external sending.
