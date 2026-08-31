@@ -6,7 +6,8 @@ import { getPursuitDetail } from "@/lib/pursuits/read-models/detail";
 import { callerFor } from "@/lib/pursuits/read-models/caller";
 import { Panel } from "@/components/pursuit/panel";
 import { PursuitHero, MetricBand, WhyNowBento, FactsBento, TeamBento, MaterialChangeTimeline } from "@/components/pursuit/surfaces";
-import { RoutePath, RecommendationChange, RouteCandidateTable, DisclosureSplit } from "@/components/pursuit/route";
+import { RoutePath, RecommendationChange, RouteCandidateTable } from "@/components/pursuit/route";
+import { DisclosureTheater } from "@/components/pursuit/disclosure-theater";
 import { BandPill, SyntheticBadge } from "@/components/pursuit/parts";
 import { humanizeText } from "@/components/pursuit/vocab";
 import { experienceEnabledFor, federationEnabledFor } from "@/lib/pursuits/tenant-flags";
@@ -100,6 +101,21 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         {/* Identity + decision band */}
         <Panel className="order-1 lg:order-1 lg:col-span-2">
           <PursuitHero d={d} lifecycleWord={LIFECYCLE_WORD[d.lifecycle] ?? d.lifecycle} />
+          {/* Multi-org ribbon — federation reads before the reader scrolls to the panel */}
+          {federation && federation.fed.participants.length > 1 && (
+            <div className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-control px-3 py-2 text-[11.5px]"
+              style={{ background: "color-mix(in srgb, var(--color-route) 6%, var(--surface-primary))", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-route) 22%, transparent)" }}>
+              <span className="font-bold uppercase tracking-[0.04em]" style={{ color: "var(--color-route)" }}>Shared pursuit</span>
+              <span className="text-neutral-500">{federation.fed.participants.length} organizations · disclosure decided server-side</span>
+              <span className="flex flex-wrap items-center gap-1.5">
+                {federation.fed.participants.map((p, i) => (
+                  <span key={i} className="rounded-full px-2 py-px text-[10.5px] font-semibold" style={{ background: "var(--surface-inset)", color: "var(--text-primary, inherit)" }}>
+                    {p.orgName ?? p.roleKey}{p.isSponsor ? " · sponsor" : ""}
+                  </span>
+                ))}
+              </span>
+            </div>
+          )}
           <div className="mt-5">
             <MetricBand scores={d.decisionBand} />
           </div>
@@ -131,9 +147,9 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         {r.recommended && (
           <Panel eyebrow="Enforced server-side, not in the browser" title={`Why ${recWord}`} accent="var(--color-band-high)" className="order-4 lg:order-5 lg:col-span-2">
             <p className="mb-3.5 max-w-[80ch] text-[12.5px] text-neutral-500">
-              The same recommendation, two audiences. What a partner may see is decided in the read model before it reaches a screen — the confidential figure is never serialized into the shareable payload.
+              The same recommendation, two audiences. Toggle the audience — what a partner may see is decided in the read model before it reaches a screen, so the confidential figure is never serialized into the shareable payload.
             </p>
-            <DisclosureSplit candidate={r.recommended} />
+            <DisclosureTheater internal={r.recommended.reasonsInternal} shareable={r.recommended.reasonsShareable} candidateLabel={r.recommended.label} />
           </Panel>
         )}
 

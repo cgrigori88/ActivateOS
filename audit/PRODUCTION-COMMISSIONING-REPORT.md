@@ -142,10 +142,11 @@ Via the audited `scripts/pilot-flags.ts` (writes `org_features` + append-only `o
 **Boot the demo:**
 ```
 npx tsx scripts/demo-db.ts && npx tsx scripts/demo-stories.ts
+npm run build   # REQUIRED: run the demo on a production build — `next dev` (turbopack) does not hydrate client interactivity here
 DATABASE_URL=postgresql://app_rw:demo@127.0.0.1:5433/pursuit_demo \
   NEXT_PUBLIC_SUPABASE_URL= NEXT_PUBLIC_SUPABASE_ANON_KEY= \
   PURSUITS_ENABLED=1 FACTS_ENABLED=1 ROUTING_ENABLED=1 PURSUIT_EXPERIENCE_ENABLED=1 \
-  FEDERATION_ENABLED=1 GOVERNED_ACTION_ENABLED=1 PORT=3100 npx next dev -p 3100
+  FEDERATION_ENABLED=1 GOVERNED_ACTION_ENABLED=1 PORT=3100 npx next start -p 3100
 ```
 
 ---
