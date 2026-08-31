@@ -1,0 +1,13 @@
+-- 0096: Seller-relationship recency (P0.1 hygiene — Intelligence Wave).
+--
+-- `sellerRelationship()` (src/lib/routing/relationship.ts) reads
+-- seller_account_relationships.last_interaction_at to make relationship strength TEMPORAL
+-- (Relationship Truth §15-17: a strong relationship with no recent engagement decays; the
+-- seller-fit `activity_recency` dimension consumes it). The column was modeled in the verify
+-- harness but never migrated — so any org with vendor sellers broke route recompute on a
+-- migrations-only database. Recency IS canonical to the relationship layer, so the fix is the
+-- smallest additive migration, not a query rewrite.
+--
+-- Deliberately NO backfill: interaction recency is never fabricated. NULL means UNKNOWN and the
+-- reader already treats it as neutral (recencyFactor(null) = 0.5, displayed as unknown).
+alter table seller_account_relationships add column if not exists last_interaction_at timestamptz;

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { completeStructuredMeta } from "../ai/client";
 import { resolveOrgAnthropicKey } from "../ai/org-keys";
 import { computeMotionEconomics, type PlayEconomics } from "../motions/economics";
+import { resolveDeterministicPursuit } from "../motions/pursuit-link";
 import { loadPartnerPlaybook } from "../playbooks/playbooks";
 import { renderSkillsSection, skillsForContext } from "../skills/skills";
 
@@ -216,12 +217,16 @@ ${renderSkillsSection(skills)}Design the Revenue Motion.`;
   );
   if (!citation.ok) throw new Error(`motion rejected: ${citation.reason}`);
 
+  // Canonical Pursuit linkage at creation (P0.2): deterministic only — the shared rule links
+  // exactly-one-match (or exactly-one-live), otherwise leaves NULL. Never guessed.
+  const link = await resolveDeterministicPursuit(db, args.orgId, args.companyId, score.node_id);
+
   const { rows: motions } = await db.query<{ id: string }>(
     `insert into revenue_motions (org_id, company_id, taxonomy_node_id, play_template_id,
         propensity_score_id, status, thesis, trigger_summary, primary_persona,
         secondary_persona, cta, confidence, partner_id, partner_seller_id,
-        estimated_value_usd, effort)
-     values ($1, $2, $3, $4, $5, 'draft', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        estimated_value_usd, effort, pursuit_id)
+     values ($1, $2, $3, $4, $5, 'draft', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
      returning id`,
     [
       args.orgId,
@@ -239,6 +244,7 @@ ${renderSkillsSection(skills)}Design the Revenue Motion.`;
       team?.seller_id ?? null,
       econ?.estimatedValueUsd ?? null,
       econ?.effort ?? null,
+      link.pursuitId,
     ],
   );
 

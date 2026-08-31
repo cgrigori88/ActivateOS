@@ -20,6 +20,17 @@ type Db = Pool | PoolClient;
  * jointly pursued accounts (the partner is literally in the room working
  *  them). closed_lost is counted, not itemized — losses settle to zero but
  * hiding their existence would make the won-rate look better than it is.
+ *
+ * ATTRIBUTION VOCABULARY BOUNDARY (P0.3, Intelligence Wave). This module's
+ * `sourced|influenced` is REGISTRATION-BASED settlement terminology, bounded to
+ * the partnership settlement context (partner rooms, joint statements). It is
+ * NOT the canonical attribution taxonomy (`attribution.attribution_class`:
+ * SOURCE/INFLUENCED/ASSISTED/OBSERVED/UNKNOWN with model_version, evidence and
+ * human override), which is the authoritative outcome interpretation for every
+ * canonical Pursuit intelligence surface. The two vocabularies must never be
+ * merged or summed; where a surface shows both, the settlement figure is
+ * labeled "registration-based" explicitly. Any translation between them must
+ * be explicit and one-way at a read boundary — never silent.
  */
 
 export interface SettlementEntry {
