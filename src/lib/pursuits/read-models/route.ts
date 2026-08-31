@@ -72,10 +72,11 @@ interface CandRow { id: string; label: string; route_topology: string; rank: num
 
 export async function getRouteComparison(db: PoolClient, caller: Caller, pursuitId: string): Promise<RouteComparisonView> {
   const dimensionKeys = ["account_relationship", "product_capability", "seller_coverage", "transaction_adjacency", "territory_alignment"];
-  const snap = await db.query<{ id: string; recommended_partner_id: string | null; selected_partner_id: string | null }>(
-    `select id, recommended_partner_id, selected_partner_id from pursuit_route_snapshots where pursuit_id = $1 and is_current`, [pursuitId]);
-  if (!snap.rows[0]) return { path: [], recommended: null, selected: null, selectionMatchesRecommendation: true, overrideReason: null, overrideCategory: null, alternatives: [], changeEvents: [], dimensionKeys };
+  const snap = await db.query<{ id: string; recommended_partner_id: string | null; selected_partner_id: string | null; route_status: string }>(
+    `select id, recommended_partner_id, selected_partner_id, route_status from pursuit_route_snapshots where pursuit_id = $1 and is_current`, [pursuitId]);
+  if (!snap.rows[0]) return { path: [], recommended: null, selected: null, selectionMatchesRecommendation: true, overrideReason: null, overrideCategory: null, alternatives: [], changeEvents: [], dimensionKeys, decided: false, selectedKey: null, recomputePending: false };
   const snapshotId = snap.rows[0].id;
+  const decided = snap.rows[0].route_status === "SELECTED";
 
   const cands = await db.query<CandRow & { partner_id: string | null; distributor_id: string | null }>(
     `select rc.id, rc.route_topology, rc.rank, rc.disqualified, rc.total_score, rc.partner_activation_score,
@@ -92,7 +93,14 @@ export async function getRouteComparison(db: PoolClient, caller: Caller, pursuit
 
   const recommended = views.find((_, i) => cands.rows[i].is_recommended) ?? null;
   const selected = views.find((_, i) => cands.rows[i].is_selected) ?? null;
+  const selectedKey = selected?.key ?? null;   // the raw selection, kept even when it == recommendation
   const alternatives = views.filter((v) => v !== recommended);
+
+  // Recompute-pending (R12/loop-honesty): a decision enqueues READINESS/TODAY recomputes; until the
+  // worker drains them, downstream state has not settled — surfaced so the UI never implies it has.
+  const pend = await db.query<{ n: string }>(
+    `select count(*)::text n from recompute_requests where pursuit_id = $1 and status in ('PENDING','RUNNING')`, [pursuitId]);
+  const recomputePending = Number(pend.rows[0].n) > 0;
 
   // Participant path.
   const parts = await db.query<{ participant_role: string; sequence: number; pname: string | null; dname: string | null }>(
@@ -116,7 +124,7 @@ export async function getRouteComparison(db: PoolClient, caller: Caller, pursuit
     path, recommended, selected: selectionMatches ? null : selected, selectionMatchesRecommendation: selectionMatches,
     overrideReason: selectionMatches ? null : (ov.rows[0]?.reason ?? null),
     overrideCategory: selectionMatches ? null : (ov.rows[0]?.human_decision?.category ?? null),
-    alternatives, changeEvents, dimensionKeys,
+    alternatives, changeEvents, dimensionKeys, decided, selectedKey, recomputePending,
   };
 }
 

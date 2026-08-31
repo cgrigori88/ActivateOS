@@ -44,6 +44,10 @@ export const DEPENDENCY_MAP: Record<string, RecomputeTarget[]> = {
   // Route + team execution feed readiness and the queue.
   ROUTE_SELECTED: ["READINESS", "TODAY"],
   PARTNER_SELECTED: ["READINESS", "TODAY"],
+  // A human override is a route DECISION (not a belief change): it settles readiness + the
+  // queue, but must NOT trigger a ROUTE recompute (that would rebuild the snapshot and drop
+  // the selection). Recommendation ≠ decision survives the recompute.
+  PARTNER_OVERRIDE: ["READINESS", "TODAY"],
   PARTNER_DECLINED: ["ROUTE", "READINESS", "TODAY"],
   TEAM_MEMBER_ASSIGNED: ["READINESS", "TODAY"],
   TEAM_MEMBER_ACCEPTED: ["READINESS", "TODAY"],
@@ -86,6 +90,13 @@ export interface EnqueueResult { enqueued: RecomputeTarget[]; suppressed: boolea
 export async function enqueueRecompute(db: PoolClient, i: EnqueueInput): Promise<EnqueueResult> {
   const targets = targetsFor(i.changeType);
   if (!targets.length) return { enqueued: [], suppressed: false, reason: "no dependency (inert change type)" };
+
+  // The recompute engine (E3-E) is a rollout-gated downstream; not every schema has it (the
+  // Workstream-C blind harness omits it). A decision must still record its ledger event, so if the
+  // queue table is absent, skip the enqueue CLEANLY — a catalog lookup, never a failed INSERT that
+  // would abort the caller's transaction. Where the table exists (the real app) this is a no-op.
+  const reg = await db.query<{ r: string | null }>(`select to_regclass('public.recompute_requests') as r`);
+  if (!reg.rows[0]?.r) return { enqueued: [], suppressed: false, reason: "recompute substrate not deployed" };
 
   // Loop guard (R23): count prior requests on this correlation chain.
   if (i.correlationId) {

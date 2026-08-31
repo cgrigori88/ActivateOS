@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { recordChange } from "../pursuits/ledger";
+import { recordAndEnqueue } from "../pursuits/federation/events";
 import { recordOverride } from "../pursuits/overrides";
 import type { OverrideCategory } from "./types";
 import type { DataEnvironment } from "../pursuits/lineage";
@@ -10,13 +10,38 @@ import type { DataEnvironment } from "../pursuits/lineage";
  * with the original ranking, reason, and a normalized category — supervision data. Strategic
  * overrides read AS overrides (§55), never by bending score weights. Route changes never fork
  * the Pursuit (§19).
+ *
+ * Canonical micro-loop: this is the ONE authoritative route mutation. The governed skills
+ * `select_partner_route` / `override_partner_route` call it inside `dispatchSkill`; committing a
+ * decision records the material event AND enqueues its recompute via `recordAndEnqueue` (the
+ * producer) so the reactive half of the loop runs. It intentionally enqueues only the targets the
+ * dependency map assigns to PARTNER_SELECTED/PARTNER_OVERRIDE (READINESS/TODAY) — never a ROUTE
+ * recompute, which would rebuild the snapshot and drop the human selection. Recommendation ≠
+ * decision survives recompute.
  */
 
 export interface SelectResult { isOverride: boolean; selectedPartnerId: string | null; }
 
+/**
+ * Resolve a route candidate (by its id, the read-model `key`) to its partner/distributor and
+ * commit the decision through the single mutation path. Used by the governed route-decision skills.
+ */
+export async function selectRouteByCandidate(
+  db: PoolClient, pursuitId: string, candidateId: string,
+  opts: { actorId?: string | null; reason?: string; category?: OverrideCategory; env?: DataEnvironment; correlationId?: string | null },
+): Promise<SelectResult> {
+  const cand = (await db.query<{ partner_id: string | null; distributor_id: string | null }>(
+    `select rc.partner_id, rc.distributor_id
+       from route_candidates rc
+       join pursuit_route_snapshots s on s.id = rc.route_snapshot_id
+      where rc.id = $1 and s.pursuit_id = $2 and s.is_current`, [candidateId, pursuitId])).rows[0];
+  if (!cand) throw new Error(`route candidate ${candidateId} not found on the current snapshot for pursuit ${pursuitId}`);
+  return selectPartnerRoute(db, pursuitId, { partnerId: cand.partner_id, distributorId: cand.distributor_id, ...opts });
+}
+
 export async function selectPartnerRoute(
   db: PoolClient, pursuitId: string,
-  opts: { partnerId: string | null; distributorId?: string | null; actorId?: string | null; reason?: string; category?: OverrideCategory; env?: DataEnvironment },
+  opts: { partnerId: string | null; distributorId?: string | null; actorId?: string | null; reason?: string; category?: OverrideCategory; env?: DataEnvironment; correlationId?: string | null },
 ): Promise<SelectResult> {
   const env = opts.env ?? "PRODUCTION";
   const snap = await db.query<{ id: string; org_id: string; recommended_partner_id: string | null }>(
@@ -47,12 +72,14 @@ export async function selectPartnerRoute(
       beforeValue: recommended, afterValue: opts.partnerId, reason: opts.reason ?? null, actorId: opts.actorId ?? null,
     });
   }
-  await recordChange(db, {
+  // Record the material decision AND enqueue its recompute (the producer path). PARTNER_SELECTED /
+  // PARTNER_OVERRIDE map to READINESS/TODAY only — the selection stands; no ROUTE rebuild.
+  await recordAndEnqueue(db, {
     orgId, pursuitId, entityType: "pursuit", entityId: pursuitId,
     changeType: isOverride ? "PARTNER_OVERRIDE" : "PARTNER_SELECTED", materiality: "HIGH",
     reason: isOverride ? `Route override (${opts.category ?? "OTHER"}): ${opts.reason ?? ""}` : "Recommended route selected",
     actorType: "USER", actorId: opts.actorId ?? null, triggerType: "USER_OVERRIDE", dataEnvironment: env,
     before: { recommendedPartnerId: recommended }, after: { selectedPartnerId: opts.partnerId, category: opts.category ?? null },
-  });
+  }, { correlationId: opts.correlationId ?? null });
   return { isOverride, selectedPartnerId: opts.partnerId ?? null };
 }

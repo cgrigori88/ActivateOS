@@ -2,6 +2,9 @@ import type { PoolClient } from "pg";
 import { hasActionAuthority } from "./grants";
 import { acceptParticipation } from "./participation";
 import { draftTouchImpl, requestWarmIntroImpl, warmIntroAuthorize } from "../../agents/mcp-writes";
+import { selectRouteByCandidate } from "../../routing/override";
+import type { OverrideCategory } from "../../routing/types";
+import type { DataEnvironment } from "../lineage";
 import { reportEvent } from "../../obs/reporter";
 
 /**
@@ -49,6 +52,23 @@ interface SkillDef {
 /** The seed registry. Handlers live here (functions can't live in the DB); metadata is mirrored to governed_skills. */
 export const SKILL_REGISTRY: SkillDef[] = [
   { skillId: "explain_route", version: 1, description: "Explain the recommended route", effectClass: "READ",
+    eligibleActors: ["USER", "AGENT", "WORKER", "SYSTEM"], requiredPermission: "viewer",
+    handler: async () => ({ explained: true }) },
+  // Canonical route decision (the first human governed commercial mutation with a live audit
+  // trail). Both wrap the single route mutation `selectRouteByCandidate`; selection vs override is
+  // computed there from recommended-vs-chosen, so the skill id is the operator's intent and the
+  // ledger records the reality (PARTNER_SELECTED / PARTNER_OVERRIDE). Recommendation is preserved.
+  { skillId: "select_partner_route", version: 1, description: "Approve (select) a recommended partner route", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER"], requiredPermission: "operator",
+    handler: async (db, actor, ctx) => selectRouteByCandidate(db, String(ctx.pursuitId), String(ctx.args?.candidateKey), {
+      actorId: actor.id ?? null, env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null }) },
+  { skillId: "override_partner_route", version: 1, description: "Override the recommended partner route (human decision)", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER"], requiredPermission: "operator",
+    handler: async (db, actor, ctx) => selectRouteByCandidate(db, String(ctx.pursuitId), String(ctx.args?.candidateKey), {
+      actorId: actor.id ?? null, reason: ctx.args?.reason ? String(ctx.args.reason) : undefined,
+      category: (ctx.args?.category as OverrideCategory) ?? "OTHER", env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION",
+      correlationId: ctx.correlationId ?? null }) },
+  { skillId: "explain_partner_route", version: 1, description: "Explain the route candidate comparison (read-only)", effectClass: "READ",
     eligibleActors: ["USER", "AGENT", "WORKER", "SYSTEM"], requiredPermission: "viewer",
     handler: async () => ({ explained: true }) },
   { skillId: "accept_participation", version: 1, description: "Accept a Pursuit participation invitation", effectClass: "INTERNAL_WRITE",

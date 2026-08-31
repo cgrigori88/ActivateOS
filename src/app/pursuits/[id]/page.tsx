@@ -7,6 +7,8 @@ import { callerFor } from "@/lib/pursuits/read-models/caller";
 import { Panel } from "@/components/pursuit/panel";
 import { PursuitHero, MetricBand, WhyNowBento, FactsBento, TeamBento, MaterialChangeTimeline } from "@/components/pursuit/surfaces";
 import { RoutePath, RecommendationChange, RouteCandidateTable } from "@/components/pursuit/route";
+import { RouteDecision } from "@/components/pursuit/route-decision";
+import { currentRole } from "@/lib/auth/org";
 import { DisclosureTheater } from "@/components/pursuit/disclosure-theater";
 import { BandPill, SyntheticBadge } from "@/components/pursuit/parts";
 import { humanizeText } from "@/components/pursuit/vocab";
@@ -52,13 +54,17 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
     // Sponsor / owning org: the full D.5 decision surface (+ the federation panel).
     const detail = await getPursuitDetail(db, await callerFor(db, orgId), id);
     if (!detail) return null;
+    // Can this caller COMMIT a governed route decision? Operators/owners only — the dispatch
+    // boundary re-checks, this only decides whether to render the control (viewers see state).
+    const role = await currentRole(db);
+    const canDecide = role === "owner" || role === "operator";
     let federation = null;
     if (fed) {
       const actions = await getGovernedActions(db, { type: "USER", orgId, role: "operator" }, id);
       const outcomes = await getPursuitOutcomes(db, await buildFederationViewer(db, orgId, id), id);
       federation = { fed, actions, outcomes };
     }
-    return { kind: "sponsor" as const, detail, federation };
+    return { kind: "sponsor" as const, detail, federation, canDecide };
   });
   if (!loaded) notFound();
 
@@ -126,8 +132,11 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
           <WhyNowBento w={d.whyNow} />
         </Panel>
 
-        {/* Route decision — recommended + human selection above the dense compare */}
-        <Panel eyebrow="Recommendation is not selection" title="Route decision" accent="var(--color-route)" className="order-3 lg:order-4 lg:col-span-2"
+        {/* Route decision — recommended + human selection above the dense compare. `#route` is the
+            Today deep-link anchor; scroll-mt keeps it clear of the sticky chrome. The governed
+            decision control (RouteDecision) is the first human governed mutation in the platform. */}
+        <div id="route" className="order-3 scroll-mt-6 lg:order-4 lg:col-span-2">
+        <Panel eyebrow="Recommendation is not selection" title="Route decision" accent="var(--color-route)"
           aside={r.changeEvents.length > 0 ? (
             <span className="inline-flex flex-wrap items-center gap-1.5 text-[11.5px]">
               <span className="font-semibold uppercase tracking-[0.03em] text-neutral-400">Changed</span>
@@ -139,9 +148,11 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
           <div className="space-y-4">
             <RoutePath view={r} />
             <RecommendationChange view={r} />
+            <RouteDecision view={r} pursuitId={d.pursuitId} canDecide={loaded.canDecide} />
             <RouteCandidateTable view={r} />
           </div>
         </Panel>
+        </div>
 
         {/* Why (disclosure split) — the centerpiece */}
         {r.recommended && (

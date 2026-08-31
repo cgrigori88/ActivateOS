@@ -96,6 +96,11 @@ export interface RouteComparisonView {
   alternatives: RouteCandidateView[];
   changeEvents: { at: string; before: string | null; after: string | null; trigger: string; synthetic: boolean }[]; // §20/§24
   dimensionKeys: string[];
+  // Canonical micro-loop decision state (governed route decision):
+  decided: boolean;                 // route_status = 'SELECTED' — a human has committed a decision
+  selectedKey: string | null;       // the currently-selected candidate id (even when it == recommended)
+  recomputePending: boolean;        // a recompute triggered by the decision is still PENDING/RUNNING —
+                                    // the UI must NOT imply downstream state has settled until this clears
 }
 
 // ---- Team (§21/§22) --------------------------------------------------------

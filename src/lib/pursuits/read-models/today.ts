@@ -48,9 +48,9 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
     `Approve route${r.recommended ? ` via ${r.recommended}` : ""}`, "Recommended route is awaiting your approval.", r.synthetic, r.at, now,
     [{ label: "Approve", skill: "select_partner_route", sideEffect: "INTERNAL_WRITE" }, { label: "Override", skill: "override_partner_route", sideEffect: "INTERNAL_WRITE" }, { label: "Compare", skill: "explain_partner_route", sideEffect: "READ" }],
     // Deep-link into the route-decision section of the canonical Pursuit detail (the decision
-    // room) — NOT a dedicated /route sub-room (that segment never existed → 404). `focus=route`
-    // scrolls to and highlights the governed decision control.
-    `/pursuits/${r.pursuit_id}?focus=route`));
+    // room) — NOT a dedicated /route sub-room (that segment never existed → 404). The `#route`
+    // anchor natively scrolls to the governed decision control; scope persists via the cookie.
+    `/pursuits/${r.pursuit_id}#route`));
 
   // 2) Fact reviews open → DECISION_REQUIRED (RISK operational when material predicate).
   const reviews = await db.query<{ id: string; reason: string; created_at: Date; account_label: string | null; pursuit_id: string | null; company_id: string | null }>(
