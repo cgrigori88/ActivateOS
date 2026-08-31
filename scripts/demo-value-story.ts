@@ -19,6 +19,7 @@
  *   npx tsx scripts/demo-value-story.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertSyntheticDatabase } from "../src/lib/env/db-identity";
 import { dispatchSkill, type Actor } from "../src/lib/pursuits/federation/skills";
 
 const URL = process.env.DEMO_URL ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
@@ -58,6 +59,9 @@ async function assert_(db: PoolClient, actor: Actor, companyId: string, s: Spec)
 
 async function main() {
   const pool = new Pool({ connectionString: URL });
+  // Refuses unless the TARGET database says it is synthetic (0102). An exported
+  // production DEMO_URL is the realistic accident; the database answers, not the env.
+  await assertSyntheticDatabase(pool, "demo value-case seed");
   const db = (await pool.connect()) as PoolClient;
   try {
     await db.query("begin");

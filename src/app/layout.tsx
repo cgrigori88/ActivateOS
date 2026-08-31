@@ -10,6 +10,7 @@ import { currentRole } from "@/lib/auth/org";
 import { withTenant } from "@/lib/db/tenant";
 import { getShellScope } from "@/lib/scope/server";
 import { signOutAction } from "@/app/login/actions";
+import { isPublicSite } from "@/lib/env/environment";
 
 const sans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -38,10 +39,32 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // CSP nonce (#65): minted per-request by the middleware; without it the
   // browser would refuse the theme-boot script and dark mode would flash.
   let nonce: string | undefined;
+  let surface: string | null = null;
   try {
-    nonce = (await headers()).get("x-nonce") ?? undefined;
+    const h = await headers();
+    nonce = h.get("x-nonce") ?? undefined;
+    // Set by src/proxy.ts when this deployment is the public marketing site.
+    surface = h.get("x-pursuitos-surface");
   } catch {
     /* static build pass — no request, no CSP either */
+  }
+
+  // The marketing page is not a room: no navigation rail, no scope selector, no
+  // badge queries. Returning early also means the tenant reads below never run,
+  // which is what lets the public site deploy with no database at all.
+  if (surface === "landing" || isPublicSite()) {
+    // Theme boot is kept: a visitor who has used the app and chosen dark should
+    // not be flashed a light marketing page. Everything else the shell does —
+    // rail, scope selector, badge queries — is dropped, which is what allows
+    // this deployment to run with no database at all.
+    return (
+      <html lang="en" suppressHydrationWarning className={`${sans.variable} ${mono.variable}`}>
+        <head>
+          <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
+        </head>
+        <body className="min-h-screen font-sans">{children}</body>
+      </html>
+    );
   }
 
   // Who is signed in (identity mode only) — the rail's user chip + sign-out.

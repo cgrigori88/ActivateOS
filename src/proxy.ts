@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { clientIp, rateLimited } from "@/lib/security/rate-limit";
+import { siteMode, type SiteMode } from "@/lib/env/environment";
 
 /**
  * Access gate, in transition (task #64 slice 1). Two credentials are accepted,
@@ -73,6 +74,63 @@ async function basicAuthValid(req: NextRequest): Promise<boolean> {
   }
 }
 
+/**
+ * Public-site mode (topology §2A / §4).
+ *
+ * When PURSUITOS_ENV=public this deployment is the marketing site and nothing
+ * else. The application routes are not merely unlinked — they are unreachable,
+ * because "unlinked" is not a security boundary. `/` serves the landing page and
+ * every other path 404s before it can touch a database.
+ *
+ * This is why the public site can safely run from the same repository as the
+ * app: the separation is enforced here, at the edge, not by remembering to
+ * deploy a different branch.
+ */
+function publicSiteResponse(req: NextRequest, nonce: string, csp: string | null): NextResponse | null {
+  let mode: SiteMode;
+  try {
+    mode = siteMode();
+  } catch (e) {
+    // A typo'd PURSUITOS_ENV must not silently resolve to "serve the app".
+    // Refusing every request is the safe failure: loud, immediate, and it
+    // cannot leak an environment's data under another environment's name.
+    return new NextResponse((e as Error).message, { status: 500 });
+  }
+  if (mode !== "public") return null;
+
+  const { pathname } = req.nextUrl;
+
+  // Next's own asset routes must pass through or the page has no CSS or fonts.
+  if (pathname.startsWith("/_next") || pathname === "/favicon.ico" || pathname === "/icon.svg") {
+    return NextResponse.next();
+  }
+
+  const headersFor = (res: NextResponse) => {
+    if (csp) res.headers.set("content-security-policy", csp);
+    // The public site is the one surface that SHOULD be indexed; the demo and
+    // app are not, and neither inherits this because neither runs in this mode.
+    res.headers.set("x-robots-tag", "index, follow");
+    return res;
+  };
+
+  if (pathname === "/" || pathname === "/landing") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/landing";
+    const fwd = new Headers(req.headers);
+    fwd.delete("x-nonce"); // never trust a client-supplied nonce
+    if (csp) {
+      fwd.set("content-security-policy", csp); // where Next reads the nonce
+      fwd.set("x-nonce", nonce);               // where the root layout reads it
+    }
+    // Marks the surface so the root layout renders WITHOUT the application
+    // shell — a marketing page must not carry the product's navigation rail.
+    fwd.set("x-pursuitos-surface", "landing");
+    return headersFor(NextResponse.rewrite(url, { request: { headers: fwd } }));
+  }
+
+  return headersFor(new NextResponse("Not found", { status: 404 }));
+}
+
 export async function proxy(req: NextRequest) {
   const basicConfigured = Boolean(process.env.BASIC_AUTH_USER && process.env.BASIC_AUTH_PASS);
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -83,6 +141,11 @@ export async function proxy(req: NextRequest) {
   // up for its own inline scripts) and the policy lands on the RESPONSE.
   const nonce = makeNonce();
   const csp = process.env.NODE_ENV === "production" ? cspFor(nonce) : null;
+
+  // Public site: decided before any auth or database consideration, because in
+  // that mode there is no tenant to authenticate and no database to reach.
+  const publicResponse = publicSiteResponse(req, nonce, csp);
+  if (publicResponse) return publicResponse;
 
   // Ecosystem scope (scale-disclosure §1): a shareable `?scope=` link mirrors into the persistent
   // `pos:scope` cookie so the whole shell (selector + chip) reflects it on this same render and

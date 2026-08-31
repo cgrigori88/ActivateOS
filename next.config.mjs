@@ -2,6 +2,14 @@
 const nextConfig = {
   serverExternalPackages: ["pg"],
 
+  // Build provenance (§15). Evaluated once, when the bundle is compiled, so
+  // /api/build reports when this DEPLOYMENT was built rather than when the
+  // request happened to arrive. Vercel supplies the commit SHA itself via
+  // VERCEL_GIT_COMMIT_SHA; this fills the one field it has no variable for.
+  env: {
+    PURSUITOS_BUILT_AT: new Date().toISOString(),
+  },
+
   // CSV intake uploads the file to a server action (analysis runs in-app so
   // partner data never transits a third party). Default cap is 1MB; the
   // intake code enforces its own 8MB/10k-row limits inside that envelope.

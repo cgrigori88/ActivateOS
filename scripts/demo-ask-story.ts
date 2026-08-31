@@ -12,6 +12,7 @@
  *   DEMO_URL=postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo npx tsx scripts/demo-ask-story.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertSyntheticDatabase } from "../src/lib/env/db-identity";
 import { answerQuestion } from "../src/lib/interpret/answer";
 import { logAnswer } from "../src/lib/interpret/log";
 import "../src/lib/search/intents";
@@ -42,6 +43,9 @@ const QUESTIONS = [
 
 async function main() {
   const pool = new Pool({ connectionString: URL });
+  // Refuses unless the TARGET database says it is synthetic (0102). An exported
+  // production DEMO_URL is the realistic accident; the database answers, not the env.
+  await assertSyntheticDatabase(pool, "demo Ask seed");
   const db = (await pool.connect()) as PoolClient;
   try {
     const org = (await db.query<{ org_id: string }>(`select org_id from revenue_motions limit 1`)).rows[0].org_id;

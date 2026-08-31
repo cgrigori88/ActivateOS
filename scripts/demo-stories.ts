@@ -20,6 +20,7 @@
  * Each layer is defensive: a failing layer logs and does not abort the rest.
  */
 import { Pool, type PoolClient } from "pg";
+import { assertSyntheticDatabase } from "../src/lib/env/db-identity";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import { recomputeRoute } from "../src/lib/routing/route-model";
 import { selectPartnerRoute } from "../src/lib/routing/override";
@@ -118,6 +119,9 @@ const DIMS = (a: Acct): Record<string, number> => ({
 
 async function main() {
   log("building canonical demo world → " + URL.replace(/:[^:@/]*@/, ":***@"));
+  // Refuses unless the TARGET database says it is synthetic (0102). An exported
+  // production DEMO_URL is the realistic accident; the database answers, not the env.
+  await assertSyntheticDatabase(pool, "canonical demo world seed");
   const base = await tx(async (db) => {
     const vendor = (await db.query<{ id: string }>(`select id from organizations where name='Vertex Systems' order by created_at asc limit 1`)).rows[0]?.id;
     const distributor = (await db.query<{ id: string }>(`select id from organizations where name='TD SYNNEX (demo)' limit 1`)).rows[0]?.id;

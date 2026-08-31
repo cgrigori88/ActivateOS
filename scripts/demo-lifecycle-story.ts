@@ -17,6 +17,7 @@
  *   npx tsx scripts/demo-lifecycle-story.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertSyntheticDatabase } from "../src/lib/env/db-identity";
 import { randomUUID } from "node:crypto";
 import { bridgeImportRenewals } from "../src/lib/lifecycle/bridge";
 
@@ -76,6 +77,9 @@ async function putFact(db: PoolClient, s: FactSpec): Promise<string> {
 
 async function main() {
   const pool = new Pool({ connectionString: URL });
+  // Refuses unless the TARGET database says it is synthetic (0102). An exported
+  // production DEMO_URL is the realistic accident; the database answers, not the env.
+  await assertSyntheticDatabase(pool, "demo lifecycle seed");
   const db = (await pool.connect()) as PoolClient;
   try {
     await db.query("begin");

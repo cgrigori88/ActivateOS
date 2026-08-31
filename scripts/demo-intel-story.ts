@@ -20,6 +20,7 @@
  *   npx tsx scripts/demo-intel-story.ts     (idempotent — sentinel-guarded)
  */
 import { Pool, type PoolClient } from "pg";
+import { assertSyntheticDatabase } from "../src/lib/env/db-identity";
 import { dispatchSkill, type Actor } from "../src/lib/pursuits/federation/skills";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import { recordOutcome, recordAttribution } from "../src/lib/pursuits/federation/outcomes";
@@ -35,6 +36,9 @@ async function tx<T>(pool: Pool, orgId: string, fn: (db: PoolClient) => Promise<
 
 async function main() {
   const pool = new Pool({ connectionString: URL });
+  // Refuses unless the TARGET database says it is synthetic (0102). An exported
+  // production DEMO_URL is the realistic accident; the database answers, not the env.
+  await assertSyntheticDatabase(pool, "demo intelligence seed");
   const db = await pool.connect();
   try {
     const done = await db.query(`select 1 from companies where legal_name = $1`, [SENTINEL]);

@@ -17,6 +17,7 @@
  *  - re-runnable (idempotent): historical rows and prior demo MEDDPICC are cleared first.
  */
 import { Pool } from "pg";
+import { assertSyntheticDatabase } from "../src/lib/env/db-identity";
 import { ELEMENTS, type ElementKey, type Status } from "../src/lib/opportunities/meddpicc";
 
 const URL = process.env.DEMO_URL ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
@@ -146,6 +147,9 @@ export async function enrichMeddpicc(pool: Pool) {
 /** CLI entry: DEMO_URL=… npx tsx scripts/demo-meddpicc.ts */
 if (import.meta.url === `file://${process.argv[1]}`) {
   const pool = new Pool({ connectionString: URL });
+  // Refuses unless the TARGET database says it is synthetic (0102). An exported
+  // production DEMO_URL is the realistic accident; the database answers, not the env.
+  await assertSyntheticDatabase(pool, "demo MEDDPICC seed");
   console.log(`[demo-meddpicc] enriching → ${URL.replace(/:[^:@]*@/, ":***@")}`);
   enrichMeddpicc(pool)
     .then(() => pool.end())

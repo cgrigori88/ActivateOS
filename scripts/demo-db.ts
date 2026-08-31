@@ -21,6 +21,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Pool, type PoolClient } from "pg";
+import { assertSyntheticDatabase } from "../src/lib/env/db-identity";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import { promoteFromSignal } from "../src/lib/facts/promotion";
 import { linkFactToPursuits } from "../src/lib/facts/pursuit-link";
@@ -168,7 +169,66 @@ async function seed(pool: Pool) {
   return { vendor: s.vendor, partnerOrg: s.partnerOrg, hero, second, foreign };
 }
 
+/**
+ * Two provisioning modes, because a hosted demo project is not a local one.
+ *
+ *   LOCAL (default)  — DROP DATABASE / CREATE DATABASE on the container Postgres.
+ *                      Fast, total, and only possible where we own the cluster.
+ *   IN-PLACE         — DEMO_TARGET_URL set (a hosted Supabase demo project).
+ *                      No cluster-level DDL is available there, so the database
+ *                      must already exist and be migrated; we assert it is
+ *                      synthetic and seed into it.
+ *
+ * The mode is chosen by whether DEMO_TARGET_URL is set, never inferred from the
+ * shape of a hostname — an inference is exactly what would eventually be wrong.
+ */
+const TARGET_URL = process.env.DEMO_TARGET_URL;
+const IN_PLACE = Boolean(TARGET_URL);
+const EFFECTIVE_URL = TARGET_URL ?? DEMO_URL;
+
+/** True only for a cluster we own outright and may drop databases on. */
+function isLoopback(host: string): boolean {
+  return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "/var/run/postgresql";
+}
+
 async function main() {
+  if (IN_PLACE) {
+    // Hosted demo project. The database is not ours to recreate, so the guard
+    // is the only thing standing between this seed and whatever DEMO_TARGET_URL
+    // actually points at. Ask the database itself before writing a single row.
+    const redacted = EFFECTIVE_URL.replace(/:[^:@/]*@/, ":***@");
+    console.log(`[demo-db] IN-PLACE seed → ${redacted}`);
+    const probe = new Pool({ connectionString: EFFECTIVE_URL, max: 1 });
+    let identity;
+    try {
+      identity = await assertSyntheticDatabase(probe, "in-place demo provisioning");
+    } finally {
+      await probe.end();
+    }
+    console.log(`[demo-db] target confirmed synthetic: environment="${identity.environment}"${identity.label ? ` (${identity.label})` : ""}`);
+
+    // Schema must already be present — `npx tsx scripts/migrate.ts` against the
+    // demo project, which is a separate, reviewable step. Seeding a database
+    // whose schema we just silently created would hide a migration failure.
+    await runMigrations(EFFECTIVE_URL);
+
+    const pool = new Pool({ connectionString: EFFECTIVE_URL });
+    const ids = await seed(pool);
+    await pool.end();
+    console.log(`[demo-db] seeded in place:\n  vendor(sole)=${ids.vendor}\n  guest=${ids.partnerOrg}\n  HERO=${ids.hero}`);
+    return;
+  }
+
+  // LOCAL: destructive, and deliberately restricted to a cluster we own. A
+  // DEMO_PGHOST pointing anywhere else is a mistake, not a feature.
+  if (!isLoopback(HOST)) {
+    throw new Error(
+      `REFUSED: demo-db drops and recreates database "${DB}", which is only ever safe on a local cluster.\n` +
+        `DEMO_PGHOST is "${HOST}". To seed a hosted demo project, set DEMO_TARGET_URL instead — that path\n` +
+        `asserts the target is marked synthetic and never issues DROP DATABASE.`,
+    );
+  }
+
   console.log(`[demo-db] building ${DB} @ ${HOST}:${PORT}`);
   await withClient(ADMIN, async (c) => {
     await c.query(`select pg_terminate_backend(pid) from pg_stat_activity where datname=$1 and pid<>pg_backend_pid()`, [DB]).catch(() => {});
@@ -178,6 +238,18 @@ async function main() {
   await withClient(DEMO_URL, (c) => c.query(BOOTSTRAP).then(() => console.log("[demo-db] bootstrap applied")));
   await runMigrations(DEMO_URL);
   await withClient(DEMO_URL, (c) => c.query(`alter role app_rw login password 'demo'; grant connect on database ${DB} to app_rw;`).then(() => {}));
+
+  // Mark the freshly built local database as synthetic so the story scripts that
+  // run after this one are permitted to write to it. A demo database that the
+  // guard refuses would be a guard nobody could use.
+  await withClient(DEMO_URL, (c) =>
+    c.query(
+      `insert into environment_identity (singleton, environment, is_synthetic, label)
+       values (true, 'demo', true, $1)
+       on conflict (singleton) do update set environment='demo', is_synthetic=true, label=excluded.label`,
+      [`local demo database ${DB}`],
+    ).then(() => {}),
+  );
 
   const pool = new Pool({ connectionString: DEMO_URL });
   const ids = await seed(pool);

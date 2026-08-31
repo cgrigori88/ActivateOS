@@ -11,12 +11,16 @@
  *   DEMO_URL=postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo npx tsx scripts/backfill-motion-pursuits.ts
  */
 import { Pool } from "pg";
+import { assertSyntheticDatabase } from "../src/lib/env/db-identity";
 import { resolveDeterministicPursuit } from "../src/lib/motions/pursuit-link";
 
 const URL = process.env.DEMO_URL ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
 
 async function main() {
   const pool = new Pool({ connectionString: URL });
+  // Refuses unless the TARGET database says it is synthetic (0102). An exported
+  // production DEMO_URL is the realistic accident; the database answers, not the env.
+  await assertSyntheticDatabase(pool, "demo motion→pursuit backfill");
   const c = await pool.connect();
   try {
     const already = Number((await c.query<{ n: string }>(`select count(*)::text n from revenue_motions where pursuit_id is not null`)).rows[0].n);
