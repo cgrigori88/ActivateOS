@@ -8,6 +8,7 @@ import { Shell } from "@/components/shell";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { currentRole } from "@/lib/auth/org";
 import { withTenant } from "@/lib/db/tenant";
+import { getShellScope } from "@/lib/scope/server";
 import { signOutAction } from "@/app/login/actions";
 
 const sans = Plus_Jakarta_Sans({
@@ -119,6 +120,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     /* build pass, no tenant, or db unavailable — defaults, shell still renders */
   }
 
+  // Ecosystem scope (scale-disclosure §1): options derived from the tenant's data + the active
+  // resolved scope (label + facts). Cookie-driven so it persists across plain rail navigations;
+  // fail-safe to ALL. Self-contained (its own withTenant) — never throws into the shell.
+  const { options: scopeOptions, active: scopeActive } = await getShellScope();
+
   return (
     // suppressHydrationWarning: the boot script may add `class="dark"` before
     // React hydrates, so the html attributes legitimately differ from the SSR.
@@ -127,7 +133,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
       <body className="min-h-screen font-sans">
-        <Shell user={user} signOut={signOutAction} isOwner={isOwner} badges={badges} alerts={alerts} guest={guest} pursuitExperience={pursuitExperienceEnabled()}>{children}</Shell>
+        <Shell user={user} signOut={signOutAction} isOwner={isOwner} badges={badges} alerts={alerts} guest={guest} pursuitExperience={pursuitExperienceEnabled()} scopeOptions={scopeOptions} scopeActive={scopeActive}>{children}</Shell>
       </body>
     </html>
   );

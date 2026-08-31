@@ -83,7 +83,18 @@ export async function proxy(req: NextRequest) {
   // up for its own inline scripts) and the policy lands on the RESPONSE.
   const nonce = makeNonce();
   const csp = process.env.NODE_ENV === "production" ? cspFor(nonce) : null;
+
+  // Ecosystem scope (scale-disclosure §1): a shareable `?scope=` link mirrors into the persistent
+  // `pos:scope` cookie so the whole shell (selector + chip) reflects it on this same render and
+  // survives subsequent plain navigations. This is presentation persistence only — every room
+  // re-authorizes the scope server-side against the RLS-scoped set, so it can never widen visibility.
+  const rawScope = req.nextUrl.searchParams.get("scope");
+  const scopeToken = rawScope && /^[a-z]+(:[A-Za-z0-9 _.\-]{1,128})?$/.test(rawScope) ? rawScope : null;
+
   const pass = () => {
+    if (scopeToken && req.cookies.get("pos:scope")?.value !== scopeToken) {
+      req.cookies.set("pos:scope", scopeToken); // same-render: server components read the new cookie
+    }
     // Rebuild from req.headers so cookie refreshes (below) are carried too.
     const fwd = new Headers(req.headers);
     fwd.delete("x-nonce"); // never trust a client-supplied nonce
@@ -93,6 +104,7 @@ export async function proxy(req: NextRequest) {
     }
     const res = NextResponse.next({ request: { headers: fwd } });
     if (csp) res.headers.set("content-security-policy", csp);
+    if (scopeToken) res.cookies.set("pos:scope", scopeToken, { path: "/", sameSite: "lax", maxAge: 60 * 60 * 24 * 30 });
     return res;
   };
 

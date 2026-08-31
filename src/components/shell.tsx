@@ -5,6 +5,9 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { CommandPalette } from "@/components/command-palette";
+import { ScopeSelector } from "@/components/scope/scope-selector";
+import { ScopeChip } from "@/components/scope/scope-chip";
+import type { ScopeContext, ScopeOption } from "@/lib/scope/scope";
 
 /**
  * Application shell: grouped left sidebar on desktop, horizontal nav on
@@ -261,6 +264,8 @@ export function Shell({
   alerts,
   guest,
   pursuitExperience,
+  scopeOptions,
+  scopeActive,
 }: {
   children: ReactNode;
   /** Signed-in identity email; null in Basic-Auth / local-dev mode. */
@@ -276,6 +281,10 @@ export function Shell({
   guest?: boolean;
   /** Workstream D: PURSUIT_EXPERIENCE_ENABLED — adds the Pursuits room when on (default off). */
   pursuitExperience?: boolean;
+  /** Ecosystem scope options derived from the tenant's data (scale-disclosure §1). */
+  scopeOptions?: ScopeOption[];
+  /** The active resolved scope (label + facts) for the selector + chip. */
+  scopeActive?: ScopeContext;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -505,6 +514,11 @@ export function Shell({
             </kbd>
           )}
         </button>
+        {scopeOptions && scopeActive && (
+          <div className="mt-0.5">
+            <ScopeSelector options={scopeOptions} active={scopeActive.scope} collapsed={collapsed} />
+          </div>
+        )}
       </div>
       <nav ref={navRef} className="pos-rail-scroll flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 pb-3">
         {navGroups.map((group, i) => (
@@ -602,7 +616,10 @@ export function Shell({
           </svg>
         </button>
 
-        <div className="mx-auto max-w-[1400px] px-4 pb-10 pt-4 sm:px-6 md:pt-16 lg:px-7">{children}</div>
+        <div className="mx-auto max-w-[1400px] px-4 pb-10 pt-4 sm:px-6 md:pt-16 lg:px-7">
+          {scopeActive && <ScopeChip active={scopeActive} />}
+          {children}
+        </div>
       </div>
     </div>
   );
