@@ -38,7 +38,9 @@
     "screen": "tsx scripts/screen-sweep.ts",
     "worker": "tsx src/worker/index.ts",
     "scope:verify": "tsx scripts/scope-verify.ts",
-    "append-only:verify": "tsx scripts/append-only-verify.ts"
+    "append-only:verify": "tsx scripts/append-only-verify.ts",
+    "microloop:verify": "tsx scripts/canonical-microloop-verify.ts",
+    "backfill:pursuit-links": "tsx scripts/backfill-pursuit-links.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

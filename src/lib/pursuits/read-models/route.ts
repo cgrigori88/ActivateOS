@@ -98,9 +98,12 @@ export async function getRouteComparison(db: PoolClient, caller: Caller, pursuit
 
   // Recompute-pending (R12/loop-honesty): a decision enqueues READINESS/TODAY recomputes; until the
   // worker drains them, downstream state has not settled — surfaced so the UI never implies it has.
-  const pend = await db.query<{ n: string }>(
-    `select count(*)::text n from recompute_requests where pursuit_id = $1 and status in ('PENDING','RUNNING')`, [pursuitId]);
-  const recomputePending = Number(pend.rows[0].n) > 0;
+  // The recompute engine is rollout-gated; where its table isn't deployed (isolated harnesses) this
+  // is simply never pending — a catalog check, never a failing query that would break the read.
+  const hasRecompute = (await db.query<{ r: string | null }>(`select to_regclass('public.recompute_requests') as r`)).rows[0]?.r;
+  const recomputePending = hasRecompute
+    ? Number((await db.query<{ n: string }>(`select count(*)::text n from recompute_requests where pursuit_id = $1 and status in ('PENDING','RUNNING')`, [pursuitId])).rows[0].n) > 0
+    : false;
 
   // Participant path.
   const parts = await db.query<{ participant_role: string; sequence: number; pname: string | null; dname: string | null }>(
