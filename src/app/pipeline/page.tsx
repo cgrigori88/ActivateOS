@@ -794,231 +794,194 @@ export default async function PipelinePage({
       )}
 
       {view === "board" && visible.length > 0 && (
-      <div className="space-y-4">
-        {visible.map((o) => {
+      <div className="space-y-3">
+        {[...visible]
+          // Materiality controls order: open deals by weighted value, closed sink to the bottom.
+          .sort((a, b) => {
+            const ca = a.stage.startsWith("closed"), cb = b.stage.startsWith("closed");
+            if (ca !== cb) return ca ? 1 : -1;
+            return (Number(b.amount_usd ?? 0) * probOf(b)) - (Number(a.amount_usd ?? 0) * probOf(a));
+          })
+          .map((o) => {
           const stakeholders = stakeholdersByOpp.get(o.id) ?? [];
           const gaps = o.stage.startsWith("closed") ? [] : stakeholderGaps(stakeholders);
           const stageIdx = STAGES.indexOf(o.stage as (typeof STAGES)[number]);
           const won = o.stage === "closed_won";
           const lost = o.stage === "closed_lost";
+          const closed = won || lost;
           const quote = quoteOf(o.id);
           const mo = momentum.get(o.id);
+          const amt = o.amount_usd != null ? Number(o.amount_usd) : null;
+          const weighted = amt != null && !closed ? Math.round((amt * probOf(o)) / 1000) : null;
+          // Canonical "what is actually happening" — same conditions/language as Where-Your-Systems-Disagree.
+          const silentDays = o.updated_at ? Math.floor((Date.now() - new Date(o.updated_at).getTime()) / 86_400_000) : null;
+          const lateStage = o.stage === "proposal" || o.stage === "negotiation";
+          const material = amt != null && amt >= 900_000 ? "high" : amt != null && amt >= 400_000 ? "mid" : "low";
+          type Att = { tone: "rose" | "amber"; label: string; next: string } | null;
+          const attention: Att = closed ? null
+            : lateStage && silentDays != null && silentDays >= 30 ? { tone: "rose", label: `Late-stage on paper, silent ${silentDays} days — the record and the deal have parted ways`, next: "Re-engage the economic buyer" }
+            : silentDays != null && silentDays >= 21 ? { tone: "amber", label: `Untouched ${silentDays} days — renewal window closing, deal dormant`, next: "Follow up before the window lapses" }
+            : mo?.verdict === "at_risk" ? { tone: "rose", label: mo.reasons.join(" · ") || "Momentum at risk", next: "Intervene now" }
+            : mo?.verdict === "stalling" ? { tone: "amber", label: mo.reasons.join(" · ") || "Stalling — plan says moving, outbox stopped", next: "Advance the next step" }
+            : null;
+          const railColor = won ? "var(--color-accent-verified)" : lost ? "var(--color-neutral-400)"
+            : attention?.tone === "rose" ? "var(--color-accent-risk)" : attention?.tone === "amber" ? "var(--color-accent-attention)"
+            : mo?.verdict === "advancing" ? "var(--color-route)" : "var(--border-subtle)";
+          const attTone = (t: "rose" | "amber") => t === "rose"
+            ? { fg: "var(--color-accent-risk)", bg: "color-mix(in srgb, var(--color-accent-risk) 8%, transparent)" }
+            : { fg: "var(--color-accent-attention)", bg: "color-mix(in srgb, var(--color-accent-attention) 9%, transparent)" };
           return (
-            <Card key={o.id}>
-              <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <Link href={`/accounts/${o.company_id}`} className="font-semibold hover:underline">
-                  {o.name}
-                </Link>
-                <span className={`text-xs font-medium uppercase tracking-wide ${won ? "text-positive dark:text-green-400" : lost ? "text-red-700 dark:text-red-400" : "text-neutral-500"}`}>
-                  {o.stage.replace(/_/g, " ")}
-                </span>
-                {mo && (
-                  <span
-                    title={mo.reasons.join(" · ") || "observed behavior over the last 14 days"}
-                    className={`rounded-full px-2 py-0.5 text-micro font-bold ${
-                      mo.verdict === "advancing"
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                        : mo.verdict === "at_risk"
-                          ? "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
-                          : mo.verdict === "stalling"
-                            ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                            : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"
-                    }`}
-                  >
+            <Card key={o.id} className={`relative overflow-hidden ${material === "high" && attention ? "shadow-[var(--shadow-mid)]" : ""}`}>
+              {/* Materiality + attention accent rail */}
+              <div aria-hidden className="absolute inset-y-0 left-0" style={{ width: material === "high" ? 4 : material === "mid" ? 3 : 2, background: railColor }} />
+
+              {/* Header — identity, outcome/stage, materiality amount, route */}
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pl-1.5">
+                <Link href={`/accounts/${o.company_id}`} className="text-[15px] font-bold hover:underline">{o.name}</Link>
+                {closed
+                  ? <span className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.04em]" style={won ? { background: "color-mix(in srgb, var(--color-accent-verified) 14%, transparent)", color: "var(--color-accent-verified)" } : { background: "var(--surface-inset)", color: "var(--color-neutral-500)" }}>{won ? "Closed won" : "Closed lost — no decision"}</span>
+                  : <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-neutral-500">{o.stage.replace(/_/g, " ")}</span>}
+                {amt != null && (
+                  <span className="tnum" style={{ fontSize: material === "high" ? 17 : material === "mid" ? 15 : 13.5, fontWeight: 800 }}>
+                    ${Math.round(amt / 1000)}k
+                    {weighted != null && <span className="ml-1 text-[11.5px] font-medium text-neutral-400">· ${weighted}k weighted</span>}
+                  </span>
+                )}
+                {o.partner_name && <span className="text-[11.5px] text-neutral-500">route <b className="text-neutral-600 dark:text-neutral-300">{o.partner_name}</b></span>}
+                {mo && !closed && (
+                  <span title={mo.reasons.join(" · ") || "observed behavior over the last 14 days"} className="rounded-full px-2 py-0.5 text-micro font-bold"
+                    style={mo.verdict === "advancing" ? { background: "color-mix(in srgb, var(--color-route) 12%, transparent)", color: "var(--color-route)" }
+                      : mo.verdict === "at_risk" ? { background: "color-mix(in srgb, var(--color-accent-risk) 12%, transparent)", color: "var(--color-accent-risk)" }
+                      : mo.verdict === "stalling" ? { background: "color-mix(in srgb, var(--color-accent-attention) 12%, transparent)", color: "var(--color-accent-attention)" }
+                      : { background: "var(--surface-inset)", color: "var(--color-neutral-500)" }}>
                     {mo.jointActive ? "◆ " : ""}{MOMENTUM_LABEL[mo.verdict]}
                   </span>
                 )}
-                {o.amount_usd != null && (
-                  <span className="tnum text-sm text-neutral-500">
-                    ${Math.round(Number(o.amount_usd) / 1000)}k
-                    {!o.stage.startsWith("closed") &&
-                      ` · $${Math.round((Number(o.amount_usd) * probOf(o)) / 1000)}k weighted`}
-                  </span>
-                )}
-                {o.partner_name && (
-                  <span className="text-xs text-neutral-400">via {o.partner_name}</span>
-                )}
-                {o.expected_close_date && (
-                  <span className="text-xs text-neutral-400">· close {new Date(o.expected_close_date).toISOString().slice(0, 10)}</span>
-                )}
-                {quote.delivered ? (
-                  <span className="rounded bg-green-100 px-1.5 py-0.5 text-micro font-medium text-positive dark:bg-green-950 dark:text-green-300" title={quote.note ?? "detected in email conversation"}>
-                    quote sent{quote.at ? ` · ${quote.at}` : ""}
-                  </span>
-                ) : (
-                  <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-micro font-medium text-neutral-500 dark:bg-neutral-800" title="no priced document detected in the conversation yet">no quote</span>
-                )}
-                {initiativeOpts.length > 0 && (
-                  <form action={assignInitiativeAction.bind(null, o.id)} className="flex items-center gap-1" title="initiative this deal rolls up into — the target moves the moment you link it">
-                    <select
-                      name="initiativeId"
-                      defaultValue={o.initiative_id ?? ""}
-                      className={`max-w-[180px] rounded border bg-transparent px-1 py-0.5 text-xs ${o.initiative_id ? "border-violet-300 text-violet-700 dark:border-violet-800 dark:text-violet-300" : "border-neutral-300 text-neutral-500 dark:border-neutral-700"}`}
-                    >
-                      <option value="">no initiative</option>
-                      {initiativeOpts.map((i) => (
-                        <option key={i.id} value={i.id}>{i.name}</option>
-                      ))}
-                    </select>
-                    <button className="text-micro font-medium text-neutral-400 underline-offset-2 hover:underline">set</button>
-                  </form>
-                )}
-                {o.motion_id && (
-                  <Link
-                    href={`/briefs/${o.motion_id}`}
-                    className="ml-auto text-xs font-medium text-accent hover:underline dark:text-blue-400"
-                  >
-                    Brief →
-                  </Link>
-                )}
+                {o.expected_close_date && <span className="text-[11px] text-neutral-400">close {new Date(o.expected_close_date).toISOString().slice(0, 10)}</span>}
+                {o.motion_id && <Link href={`/briefs/${o.motion_id}`} className="ml-auto text-[11.5px] font-medium text-accent hover:underline dark:text-blue-400">Brief →</Link>}
               </div>
 
-              {/* Stage timeline — shown for every opportunity, won or lost or open. */}
-              <div className="mb-2 flex gap-1">
+              {/* One clean stage rail */}
+              <div className="mt-2.5 mb-1 flex gap-1 pl-1.5">
                 {STAGES.map((s, idx) => {
                   const on = won ? true : lost ? false : idx <= stageIdx;
-                  const isCurrent = !o.stage.startsWith("closed") && idx === stageIdx;
+                  const isCurrent = !closed && idx === stageIdx;
                   const tone = won ? "bg-green-500" : on ? (isCurrent ? "bg-blue-600" : "bg-blue-400") : "bg-neutral-200 dark:bg-neutral-700";
                   return (
                     <div key={s} className="flex-1" title={s.replace(/_/g, " ")}>
-                      <div className={`h-1.5 rounded-full ${tone}`} />
+                      <div className={`h-1 rounded-full ${tone}`} />
                       <div className={`mt-0.5 hidden text-[9px] uppercase tracking-wide sm:block ${isCurrent ? "font-semibold text-accent dark:text-blue-400" : "text-neutral-400"}`}>{s.replace(/_/g, " ")}</div>
                     </div>
                   );
                 })}
               </div>
-              {lost && <p className="mb-2 text-label font-medium text-red-700 dark:text-red-400">Closed lost — stages shown for the record.</p>}
-              {(won || lost) && autopsies.has(o.id) && (
-                <details className="mb-2">
-                  <summary className="cursor-pointer text-xs font-medium text-accent hover:underline dark:text-blue-400">Autopsy — what the record says happened</summary>
+
+              {/* PRIMARY: what is actually happening + the next intervention (materiality-gated) */}
+              {attention && (
+                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-control px-2.5 py-2 pl-2.5 text-[12.5px]" style={{ background: attTone(attention.tone).bg }}>
+                  <span className="font-semibold" style={{ color: attTone(attention.tone).fg }}>{attention.label}.</span>
+                  <span className="text-neutral-500">Next: <b className="text-neutral-700 dark:text-neutral-200">{attention.next}</b></span>
+                </div>
+              )}
+
+              {/* Manage — CRM detail behind progressive disclosure (native <details>, robust) */}
+              {!closed && (
+                <details className="mt-2 pl-1.5">
+                  <summary className="inline-flex cursor-pointer list-none items-center gap-2 text-[11.5px] font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
+                    <span className="uppercase tracking-[0.04em]">Manage</span>
+                    {(() => { const m = meddpicc.get(o.id)!; const sc = meddpiccScore(m); const mg = meddpiccGaps(m);
+                      const t = sc >= 70 ? "var(--color-accent-verified)" : sc >= 40 ? "var(--color-accent-attention)" : "var(--color-accent-risk)";
+                      return <span className="tnum rounded px-1.5 py-0.5 text-micro font-semibold" style={{ background: `color-mix(in srgb, ${t} 12%, transparent)`, color: t }}>MEDDPICC {sc}{mg.length ? ` · ${mg.length} to firm up` : ""}</span>; })()}
+                    {gaps.length > 0 && <span className="text-micro text-neutral-400">buyer roles: {gaps.length} gap{gaps.length === 1 ? "" : "s"}</span>}
+                    {!quote.delivered && <span className="text-micro text-neutral-400">no quote</span>}
+                  </summary>
+
+                  <div className="mt-2.5 space-y-2.5">
+                    {gaps.length > 0 && (
+                      <p className="text-[12px] font-medium" style={{ color: "var(--color-accent-attention)" }}>Buyer-role gaps: {gaps.join(" · ")}</p>
+                    )}
+                    {stakeholders.length > 0 && (
+                      <div className="space-y-1">
+                        {stakeholders.map((s) => (
+                          <form key={s.contact_id} action={setStakeholderAction.bind(null, o.id, s.contact_id)} className="flex items-center gap-2 text-sm">
+                            <span className="font-medium">{s.name ?? s.email}</span>
+                            <select name="role" defaultValue={s.role} className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-xs dark:border-neutral-700">
+                              {ROLES.map((r) => <option key={r} value={r}>{r.replace(/_/g, " ")}</option>)}
+                            </select>
+                            <select name="sentiment" defaultValue={s.sentiment} className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-xs dark:border-neutral-700">
+                              {SENTIMENTS.map((r) => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                            <button type="submit" className="text-xs font-medium text-accent hover:underline dark:text-blue-400">Save</button>
+                          </form>
+                        ))}
+                      </div>
+                    )}
+                    {/* MEDDPICC editor */}
+                    {(() => {
+                      const m = meddpicc.get(o.id)!;
+                      return (
+                        <div>
+                          <form action={assessMeddpiccAction.bind(null, o.id)} className="mb-2 flex items-center gap-2">
+                            <button className="rounded-md px-2.5 py-1 text-label font-medium text-accent ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">AI assess from evidence</button>
+                            <span className="text-micro text-neutral-400">drafts every element you haven&rsquo;t set from stakeholders &amp; verified signals — your call to keep</span>
+                          </form>
+                          <div className="grid gap-1.5 sm:grid-cols-2">
+                            {ELEMENTS.map((e) => {
+                              const st = m[e.key];
+                              return (
+                                <form key={e.key} action={setMeddpiccAction.bind(null, o.id, e.key)} className="flex items-center gap-1.5 rounded-md border border-neutral-200 px-2 py-1.5 dark:border-neutral-800" title={e.hint}>
+                                  <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-neutral-100 text-micro font-bold text-neutral-500 dark:bg-neutral-800">{e.letter}</span>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1">
+                                      <span className="truncate text-label font-medium">{e.label}</span>
+                                      {st.source === "ai_assist" && <span className="rounded bg-blue-100 px-1 text-[8px] font-bold uppercase text-accent dark:bg-blue-900 dark:text-blue-300" title="AI-drafted, unconfirmed">AI</span>}
+                                    </div>
+                                    <input name="notes" defaultValue={st.notes ?? ""} placeholder="notes" className="mt-0.5 w-full rounded border border-transparent bg-transparent text-label text-neutral-500 hover:border-neutral-200 focus:border-neutral-300 focus:outline-none dark:hover:border-neutral-700" />
+                                  </div>
+                                  <select name="status" defaultValue={st.status} className={`rounded px-1 py-0.5 text-micro font-medium ${STATUS_TONE[st.status]}`}>
+                                    {MEDDPICC_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                                  </select>
+                                  <button className="text-micro font-medium text-accent hover:underline dark:text-blue-400">save</button>
+                                </form>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {/* Stage controls (secondary — outcomes are not generic buttons) */}
+                    <div className="flex flex-wrap items-center gap-2 border-t pt-2.5" style={{ borderColor: "var(--border-subtle)" }}>
+                      <span className="text-micro uppercase tracking-[0.04em] text-neutral-400">Advance / close</span>
+                      {[...STAGES, "closed_won", "closed_lost"]
+                        .filter((s) => { const idx = STAGES.indexOf(s as (typeof STAGES)[number]); if (s === "closed_won" || s === "closed_lost") return true; return idx > stageIdx || idx === stageIdx - 1; })
+                        .map((s) => (
+                          <form key={s} action={advanceOpportunityAction.bind(null, o.id, s as Stage)}>
+                            <button type="submit" className={s === "closed_won" ? "rounded-md bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800" : s === "closed_lost" ? "rounded-md px-3 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-300 hover:bg-red-50 dark:text-red-400 dark:ring-red-800 dark:hover:bg-red-950" : "rounded-md px-3 py-1 text-xs font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"}>{s.replace(/_/g, " ")}</button>
+                          </form>
+                        ))}
+                      {initiativeOpts.length > 0 && (
+                        <form action={assignInitiativeAction.bind(null, o.id)} className="ml-auto flex items-center gap-1" title="initiative this deal rolls up into">
+                          <select name="initiativeId" defaultValue={o.initiative_id ?? ""} className={`max-w-[180px] rounded border bg-transparent px-1 py-0.5 text-xs ${o.initiative_id ? "border-violet-300 text-violet-700 dark:border-violet-800 dark:text-violet-300" : "border-neutral-300 text-neutral-500 dark:border-neutral-700"}`}>
+                            <option value="">no initiative</option>
+                            {initiativeOpts.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                          </select>
+                          <button className="text-micro font-medium text-neutral-400 underline-offset-2 hover:underline">set</button>
+                        </form>
+                      )}
+                    </div>
+                  </div>
+                </details>
+              )}
+
+              {/* Closed — the outcome + its autopsy, read as an outcome not a stage */}
+              {closed && autopsies.has(o.id) && (
+                <details className="mt-2 pl-1.5">
+                  <summary className="cursor-pointer text-[11.5px] font-medium text-accent hover:underline dark:text-blue-400">Autopsy — what the record says happened</summary>
                   <ul className="mt-1.5 space-y-0.5 text-sm text-neutral-600 dark:text-neutral-300">
                     {autopsies.get(o.id)!.lines.map((l, i) => <li key={i}>{l}</li>)}
                   </ul>
                   <p className="mt-1 text-label text-neutral-400">Assembled from the record at read time — duration, path, contact, and grounding sources. No opinions, no AI.</p>
                 </details>
-              )}
-
-              {gaps.length > 0 && (
-                <p className="mb-2 text-xs font-medium text-amber-700 dark:text-amber-400">
-                  Risk: {gaps.join(" · ")}
-                </p>
-              )}
-
-              {stakeholders.length > 0 && (
-                <div className="mb-2 space-y-1">
-                  {stakeholders.map((s) => (
-                    <form
-                      key={s.contact_id}
-                      action={setStakeholderAction.bind(null, o.id, s.contact_id)}
-                      className="flex items-center gap-2 text-sm"
-                    >
-                      <span className="font-medium">{s.name ?? s.email}</span>
-                      <select
-                        name="role"
-                        defaultValue={s.role}
-                        className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-xs dark:border-neutral-700"
-                      >
-                        {ROLES.map((r) => (
-                          <option key={r} value={r}>
-                            {r.replace(/_/g, " ")}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        name="sentiment"
-                        defaultValue={s.sentiment}
-                        className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-xs dark:border-neutral-700"
-                      >
-                        {SENTIMENTS.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="submit"
-                        className="text-xs font-medium text-accent hover:underline dark:text-blue-400"
-                      >
-                        Save
-                      </button>
-                    </form>
-                  ))}
-                </div>
-              )}
-
-              {/* MEDDPICC qualification */}
-              {(() => {
-                const m = meddpicc.get(o.id)!;
-                const score = meddpiccScore(m);
-                const gaps = meddpiccGaps(m);
-                const scoreTone = score >= 70 ? "bg-green-100 text-positive dark:bg-green-950 dark:text-green-300" : score >= 40 ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
-                return (
-                  <details className="mt-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
-                    <summary className="flex cursor-pointer items-center gap-2 text-xs font-medium text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100">
-                      <span className="uppercase tracking-wide">MEDDPICC</span>
-                      <span className={`tnum rounded px-1.5 py-0.5 text-micro font-semibold ${scoreTone}`}>{score}</span>
-                      <span className="text-label font-normal text-neutral-400">
-                        {gaps.length === 0 ? "fully qualified" : `${gaps.length} to firm up`}
-                      </span>
-                    </summary>
-                    <div className="mt-2">
-                      <form action={assessMeddpiccAction.bind(null, o.id)} className="mb-2 flex items-center gap-2">
-                        <button className="rounded-md px-2.5 py-1 text-label font-medium text-accent ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
-                          AI assess from evidence
-                        </button>
-                        <span className="text-micro text-neutral-400">drafts every element you haven&rsquo;t set from stakeholders &amp; verified signals — your call to keep</span>
-                      </form>
-                      <div className="grid gap-1.5 sm:grid-cols-2">
-                        {ELEMENTS.map((e) => {
-                          const st = m[e.key];
-                          return (
-                            <form key={e.key} action={setMeddpiccAction.bind(null, o.id, e.key)} className="flex items-center gap-1.5 rounded-md border border-neutral-200 px-2 py-1.5 dark:border-neutral-800" title={e.hint}>
-                              <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-neutral-100 text-micro font-bold text-neutral-500 dark:bg-neutral-800">{e.letter}</span>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1">
-                                  <span className="truncate text-label font-medium">{e.label}</span>
-                                  {st.source === "ai_assist" && <span className="rounded bg-blue-100 px-1 text-[8px] font-bold uppercase text-accent dark:bg-blue-900 dark:text-blue-300" title="AI-drafted, unconfirmed">AI</span>}
-                                </div>
-                                <input name="notes" defaultValue={st.notes ?? ""} placeholder="notes" className="mt-0.5 w-full rounded border border-transparent bg-transparent text-label text-neutral-500 hover:border-neutral-200 focus:border-neutral-300 focus:outline-none dark:hover:border-neutral-700" />
-                              </div>
-                              <select name="status" defaultValue={st.status} className={`rounded px-1 py-0.5 text-micro font-medium ${STATUS_TONE[st.status]}`}>
-                                {MEDDPICC_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
-                              </select>
-                              <button className="text-micro font-medium text-accent hover:underline dark:text-blue-400">save</button>
-                            </form>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </details>
-                );
-              })()}
-
-              {!o.stage.startsWith("closed") && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {[...STAGES, "closed_won", "closed_lost"]
-                    .filter((s) => {
-                      const idx = STAGES.indexOf(s as (typeof STAGES)[number]);
-                      if (s === "closed_won" || s === "closed_lost") return true;
-                      return idx > stageIdx || idx === stageIdx - 1;
-                    })
-                    .map((s) => (
-                      <form key={s} action={advanceOpportunityAction.bind(null, o.id, s as Stage)}>
-                        <button
-                          type="submit"
-                          className={
-                            s === "closed_won"
-                              ? "rounded-md bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800"
-                              : s === "closed_lost"
-                                ? "rounded-md px-3 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-300 hover:bg-red-50 dark:text-red-400 dark:ring-red-800 dark:hover:bg-red-950"
-                                : "rounded-md px-3 py-1 text-xs font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
-                          }
-                        >
-                          {s.replace(/_/g, " ")}
-                        </button>
-                      </form>
-                    ))}
-                </div>
               )}
             </Card>
           );
