@@ -16,6 +16,8 @@ interface Hit {
   sub: string | null;
   href: string;
 }
+interface Explanation { title: string; subtitle: string; lines: { label: string; value: string }[]; grounding: string[]; }
+interface PaletteResponse { intent: "goto" | "showme" | "explain"; interpreted: string | null; results: Hit[]; explanation: Explanation | null; note: string | null; }
 
 /* Every destination, including rooms that live as tabs rather than rail items
    (Queue, Scheduled sends, Provider health) — the palette is how the merged
@@ -48,6 +50,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
+  const [meta, setMeta] = useState<{ intent: PaletteResponse["intent"]; interpreted: string | null; explanation: Explanation | null; note: string | null }>({ intent: "goto", interpreted: null, explanation: null, note: null });
   const [sel, setSel] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -64,14 +67,17 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     const needle = q.trim();
     if (needle.length < 2) {
       setHits([]);
+      setMeta({ intent: "goto", interpreted: null, explanation: null, note: null });
       return;
     }
     const t = setTimeout(async () => {
       try {
         const res = await fetch(`/api/palette?q=${encodeURIComponent(needle)}`);
         if (!res.ok) return;
-        const data = (await res.json()) as { results: Hit[] };
-        setHits((prev) => (inputRef.current?.value.trim() === needle ? data.results : prev));
+        const data = (await res.json()) as PaletteResponse;
+        if (inputRef.current?.value.trim() !== needle) return;
+        setHits(data.results);
+        setMeta({ intent: data.intent, interpreted: data.interpreted, explanation: data.explanation, note: data.note });
       } catch {
         /* transient — keep whatever is on screen */
       }
@@ -142,7 +148,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search accounts, campaigns, partners… or jump to a room"
+            placeholder="Go to a name · show me at-risk deals through WWT · why is Globex routed through CDW?"
             className="w-full bg-transparent py-3.5 pl-11 pr-14 text-[14.5px] outline-none placeholder:text-neutral-400"
             aria-label="Search"
           />
@@ -150,10 +156,39 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             esc
           </kbd>
         </div>
+        {q.trim().length >= 2 && (meta.interpreted || meta.explanation || meta.note || meta.intent !== "goto") && (
+          <div className="border-b border-neutral-950/[0.06] px-3 py-2 dark:border-white/10">
+            <div className="mb-1 flex items-center gap-1.5">
+              <span className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
+                style={{ background: "color-mix(in srgb, var(--color-accent) 12%, transparent)", color: "var(--color-accent)" }}>
+                {meta.intent === "explain" ? "Explain" : meta.intent === "showme" ? "Show me" : "Go to"}
+              </span>
+              {meta.interpreted && <span className="text-[11.5px] text-neutral-500">{meta.interpreted}</span>}
+            </div>
+            {meta.explanation && (
+              <div className="rounded-lg p-2.5" style={{ background: "var(--surface-inset)" }}>
+                <div className="text-[13px] font-bold">{meta.explanation.title}</div>
+                <div className="mb-1.5 text-[11px] text-neutral-500">{meta.explanation.subtitle}</div>
+                <dl className="space-y-0.5">
+                  {meta.explanation.lines.map((l, i) => (
+                    <div key={i} className="flex gap-2 text-[12px]">
+                      <dt className="w-[92px] shrink-0 text-neutral-400">{l.label}</dt>
+                      <dd className="min-w-0 flex-1 text-neutral-700 dark:text-neutral-200">{l.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <div className="mt-1.5 text-[10px] text-neutral-400">Grounded in: {meta.explanation.grounding.join(" · ")}</div>
+              </div>
+            )}
+            {meta.note && !meta.explanation && (
+              <p className="text-[12px] text-neutral-500">{meta.note}</p>
+            )}
+          </div>
+        )}
         <div ref={listRef} className="max-h-[46vh] overflow-y-auto p-2 scroll-thin">
-          {flat.length === 0 && (
+          {flat.length === 0 && !meta.explanation && !meta.note && (
             <p className="px-3 py-6 text-center text-body text-neutral-400">
-              Nothing matches “{q}” — accounts, campaigns, motions, partners and joint pursuits are searchable.
+              Nothing matches “{q}”. Try a name (Globex), a query (at-risk deals through WWT), or a question (why is Globex routed through CDW?).
             </p>
           )}
           {flat.map((hit, i) => (

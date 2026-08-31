@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { withTenant } from "@/lib/db/tenant";
 import { clientIp, rateLimited } from "@/lib/security/rate-limit";
+import { classifyIntent, parseShowMe, resolveShowMe, resolveExplain } from "@/lib/search/query";
+import { resolveScope } from "@/lib/scope/server";
+import { parseScope, SCOPE_COOKIE } from "@/lib/scope/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +37,15 @@ export async function GET(req: NextRequest) {
 
   const pat = likePattern(q);
   const results: Hit[] = [];
+  // Unified retrieval intent (§5 / R6): GO TO (entity nav, below) · SHOW ME (structured query) ·
+  // EXPLAIN (evidence-bound). All deterministic; unmatched fails honestly.
+  const intent = classifyIntent(q);
+  let interpreted: string | null = null;
+  let explanation: unknown = null;
+  let note: string | null = null;
+  let scopeRaw: string | null = null;
+  try { scopeRaw = (await cookies()).get(SCOPE_COOKIE)?.value ?? null; } catch { /* no request cookies */ }
+  const scope = parseScope(scopeRaw);
   try {
     // RISK-1: run the five lookups under withTenant (pins app.org_id). The
     // subqueries keep their explicit org_id filters (complementary to RLS). A
@@ -98,9 +111,28 @@ export async function GET(req: NextRequest) {
       results.push({ group: "Partners", label: r.name, sub: r.partner_type, href: `/partners/${r.id}` });
     for (const r of pursuits.rows)
       results.push({ group: "Joint pursuits", label: r.name, sub: r.status, href: `/joint/${r.id}` });
+
+    // SHOW ME — a constrained structured query over canonical read-models (RLS-scoped, honors scope).
+    if (intent === "showme") {
+      const parsed = parseShowMe(q);
+      if (!parsed) { note = "This question is not supported yet."; }
+      else {
+        interpreted = parsed.interpreted;
+        const companyIds = scope.kind === "ALL" ? null : (await resolveScope(db, orgId, scope)).companyIds;
+        const hits = await resolveShowMe(db, orgId, parsed.query, companyIds);
+        for (const h of hits) results.push(h);
+        if (hits.length === 0) note = "No matching records.";
+      }
+    }
+
+    // EXPLAIN — evidence-bound explanation of an existing canonical record (route / timing).
+    if (intent === "explain") {
+      const ex = await resolveExplain(db, q);
+      if ("note" in ex) note = ex.note; else explanation = ex;
+    }
     });
   } catch {
     /* no tenant, or db unavailable — an empty palette beats a 500 mid-keystroke */
   }
-  return NextResponse.json({ results });
+  return NextResponse.json({ intent, interpreted, results, explanation, note });
 }
