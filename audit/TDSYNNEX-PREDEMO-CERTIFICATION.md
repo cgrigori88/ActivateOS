@@ -1,6 +1,8 @@
 # TD SYNNEX Pre-Demo Certification
 
-**Demo commit: `6cd727a`** on `claude/activateos-platform-review-xzkgmd`.
+**Demo commit: `051b2fd`**, tagged **`tdsynnex-demo`**, on `claude/activateos-platform-review-xzkgmd`.
+Its only change over `6cd727a` — the commit the certification walk actually ran against — is this
+document, so the running application is byte-identical between the two.
 Certified against a production build (`npm run build` → `npx next start`) on demo state rebuilt
 from source. **18/18 rooms PASS.**
 
@@ -279,12 +281,12 @@ Ecosystem benchmarking · marketplace / network layer · transaction and settlem
 
 ## 11. Freeze
 
-**Demo commit: `6cd727a`.** No further feature work before the walkthrough.
+**Demo commit: `051b2fd`, tagged `tdsynnex-demo`.** No further feature work before the walkthrough.
 
 To reproduce exactly:
 
 ```
-git checkout 6cd727a
+git checkout tdsynnex-demo
 # rebuild demo state (see §7), then:
 mv .env.local .env.local.aside          # NEXT_PUBLIC_SUPABASE_* is inlined at build time
 npm run build
