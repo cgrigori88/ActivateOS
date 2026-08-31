@@ -213,8 +213,9 @@ instead of using the canonical `buttonClass`, and filled the "closed won" button
 option in a row of equals looked like the recommendation. Now `ghost` geometry with outcome carried
 by ink.
 
-Five verify suites need a `wsb_verify` database absent from this environment — pre-existing and
-unrelated, identical on the stashed tree.
+Five verify suites need a provisioned `wsb_verify` database. It exists on the local instance but is
+empty (0 relations), so those suites cannot run — pre-existing and unrelated, identical on the
+stashed tree.
 
 ---
 
