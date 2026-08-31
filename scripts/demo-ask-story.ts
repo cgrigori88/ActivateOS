@@ -29,6 +29,14 @@ const QUESTIONS = [
   "Which motion has the most constrained revenue?",
   "Where does CDW activate well?",
   "Why is Globex Manufacturing Inc. routed through WWT?",
+  // Deliberately included: this is the question the TD SYNNEX brief proposed, and the registry
+  // CANNOT represent it truthfully — "blocked by a partner" is not a filter, "buying authority" is
+  // not one of the three canonical roles, and the compound resolver is a conjunction, not the "or"
+  // the sentence asks for. It is kept in the demo set precisely so the surface can be seen saying
+  // which clauses it did not apply, instead of answering a narrower question in silence.
+  "Show me high-value Pursuits renewing in the next 90 days that are blocked by a partner or missing buying authority.",
+  // LAST, and therefore the hero card on /ask: the strongest question the registry answers in
+  // full. The demo's last impression should be the capability, not its edge.
   "Show WWT pursuits over $500K renewing in 90 days without a verified economic buyer.",
 ];
 
@@ -48,6 +56,7 @@ async function main() {
       await logAnswer(db, org, env, env.model);
       const n = env.hits.length;
       console.log(`  ${env.outcome.padEnd(11)} ${(env.intentKey ?? "—").padEnd(28)} ${String(n).padStart(2)} hit(s)  ${q}`);
+      if (env.unapplied.length > 0) console.log(`      ↳ did NOT apply: ${env.unapplied.join(" / ")}`);
       if (env.outcome === "UNSUPPORTED") console.log(`      ↳ ${env.answer}`);
     }
     console.log("\nAsk demo exchanges written (deterministic path, canonical resolvers).");

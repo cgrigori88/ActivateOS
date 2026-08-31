@@ -1,6 +1,7 @@
 import type { ResolveContext, IntentResult } from "./registry";
 import { getTodayQueue } from "@/lib/pursuits/read-models/today";
 import { getMotionFunnels, aggregateConstraints } from "@/lib/motions/funnel";
+import { money } from "./significance";
 
 /**
  * Attention intents (P2C-1 §6, first query class): "What should I focus on today?", "Where is
@@ -59,6 +60,9 @@ export async function resolveMotionConstrained(ctx: ResolveContext): Promise<Int
     note: ranked.length === 0
       ? "No Motion has revenue behind a gating constraint in this scope."
       : `${ranked[0].name} carries the most: ${usd(ranked[0].usd)}.`,
+    significance: money("Constrained revenue, all Motions", ranked.reduce((a, r) => a + r.usd, 0),
+      `sum across ${ranked.length} Motion(s) of expected value behind a gating constraint`),
+    nextAction: ranked[0] ? { label: `Open ${ranked[0].name}`, href: `/motions?h=${encodeURIComponent(ranked[0].slug)}` } : null,
   };
 }
 
@@ -88,6 +92,9 @@ export async function resolveAttention(ctx: ResolveContext, mode: AttentionMode)
       note: rows.length === 0
         ? "Nothing is behind a gating constraint in this scope."
         : `${usd(total)} of expected value sits behind a gating constraint.`,
+      significance: money("Revenue behind a gating constraint", total,
+        `sum of expected value across every not-ready pursuit, counted once against its PRIMARY blocker; informational overlays excluded`),
+      nextAction: rows[0] ? { label: `Work the largest blocker — ${rows[0].label}`, href: "/motions" } : null,
     };
   }
 
@@ -114,5 +121,9 @@ export async function resolveAttention(ctx: ResolveContext, mode: AttentionMode)
     note: items.length === 0
       ? (mode === "waiting" ? "No decision is waiting on you in this scope." : "Nothing has surfaced for today in this scope.")
       : `${items.length} item${items.length === 1 ? "" : "s"}${view.total != null && view.total > items.length ? ` of ${view.total}` : ""}.`,
+    // No significance figure: the decision queue carries commercial PRIORITY BANDS, not amounts.
+    // Summing bands into a dollar total would be inventing one, so this answer states none.
+    significance: null,
+    nextAction: items[0] ? { label: `Start with ${items[0].accountLabel} — ${items[0].title}`, href: items[0].deepLink } : null,
   };
 }

@@ -15,7 +15,7 @@
  *   DEMO_URL=postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo npx tsx scripts/interpret-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
-import { listIntents, routeIntent, validateSlots, getIntent, resolveStructured, type Slots } from "../src/lib/search/registry";
+import { listIntents, routeIntent, validateSlots, getIntent, resolveStructured, type Slots, type IntentClass } from "../src/lib/search/registry";
 import "../src/lib/search/intents";
 import { buildCatalog, catalogText, allowedIntentKeys, catalogVersion } from "../src/lib/interpret/catalog";
 import { interpret, type RawInterpretation, type InterpretTransport } from "../src/lib/interpret/interpreter";
@@ -459,15 +459,34 @@ async function main() {
     // Found by the screenshot pass: an explanation whose lines qualify each other cannot be
     // truncated to its first line. "Why is X routed through WWT?" answered "Recommended: CDW" and
     // stopped — reading as though the answer were CDW, when the next line said the human chose it.
-    const routeEnv = await answerQuestion(db, org, `why is ${globex.legal_name} routed through WWT`, { intentClass: "explain" });
+    // The account's ACTUAL route is read from the record, so this holds whichever partner is
+    // currently selected — a demo world where a human override has since moved the route must not
+    // turn a correct assertion into a failing one.
+    const actualRoute = (await db.query<{ sel: string | null; rec: string | null }>(
+      `select sp.name sel, rp.name rec
+         from pursuits pu
+         join pursuit_route_snapshots s on s.pursuit_id = pu.id and s.is_current
+         left join partners sp on sp.id = s.selected_partner_id
+         left join partners rp on rp.id = s.recommended_partner_id
+        where pu.account_id = $1 and pu.org_id = $2 order by pu.created_at asc limit 1`,
+      [globex.id, org])).rows[0];
+    const onRoute = actualRoute?.sel ?? actualRoute?.rec ?? null;
+    const wrongPartner = (await db.query<{ name: string }>(
+      `select name from partners where org_id = $1 and name <> coalesce($2, '') and name <> coalesce($3, '')
+        order by name limit 1`, [org, actualRoute?.sel ?? null, actualRoute?.rec ?? null])).rows[0]?.name ?? null;
+
+    const routeEnv = await answerQuestion(db, org, `why is ${globex.legal_name} routed through ${onRoute ?? "a partner"}`, { intentClass: "explain" });
     ok("an explanation's answer line carries more than its first line",
       /Recommended/.test(routeEnv.answer) && /Selected/.test(routeEnv.answer), routeEnv.answer);
-    // And the FALSE PREMISE in that question is corrected rather than quietly answered around.
-    ok("a partner named in the question that is not the route is corrected first",
-      /is not routed through WWT/.test(routeEnv.answer), routeEnv.answer);
-    const trueRoute = await answerQuestion(db, org, `why is ${globex.legal_name} routed through CDW`, { intentClass: "explain" });
     ok("…and a question naming the ACTUAL route gets no spurious correction",
-      !/is not routed through/.test(trueRoute.answer), trueRoute.answer);
+      !/is not routed through/.test(routeEnv.answer), routeEnv.answer);
+
+    if (wrongPartner) {
+      // The FALSE PREMISE is corrected rather than quietly answered around.
+      const falseEnv = await answerQuestion(db, org, `why is ${globex.legal_name} routed through ${wrongPartner}`, { intentClass: "explain" });
+      ok(`a partner named in the question that is not the route is corrected first (${wrongPartner})`,
+        new RegExp(`is not routed through ${wrongPartner}`).test(falseEnv.answer), falseEnv.answer);
+    } else ok("a partner named in the question that is not the route is corrected first (only one partner on record)", true);
 
     // Also from the screenshot pass: six blocker families all deep-link to /motions, and a
     // provenance list repeating one link six times reads as six records.
@@ -695,6 +714,98 @@ async function main() {
     ok("every paraphrase becomes answerable once a valid interpretation is supplied", viaInterpreter === PARAPHRASES.length);
     ok("allowedIntentKeys is class-filterable for the interpreter prompt",
       allowedIntentKeys("explain").every((k) => getIntent(k)!.intentClass === "explain"));
+
+    // ───────────────────────────────────────────────────────────────────────────────────────────
+    section("18 · Executive framing: commercial significance and next action (pre-demo §2)");
+
+    const withFigure: [string, IntentClass][] = [
+      ["which high-value pursuits lack an economic buyer", "showme"],
+      ["what changes in the next 90 days", "showme"],
+      ["where is revenue blocked", "showme"],
+      ["which motion has the most constrained revenue", "showme"],
+      ["which value cases contain conflicting economic facts", "showme"],
+    ];
+    for (const [q, cls] of withFigure) {
+      const r = await answerQuestion(db, org, q, { intentClass: cls });
+      ok(`"${q}" states what is at stake`, r.significance != null, r.answer);
+      if (r.significance) {
+        ok(`…and states the BASIS of that figure`, r.significance.basis.length > 20, r.significance.basis);
+        ok(`…as a real magnitude, never a zero placeholder`, /\d/.test(r.significance.value) && !/^\$0/.test(r.significance.value), r.significance.value);
+      }
+      ok(`"${q}" offers a next action into a canonical room`, r.nextAction != null && r.nextAction.href.startsWith("/"));
+    }
+
+    // The honest omissions. Each of these resolvers has NO defensible single figure, and the
+    // contract is that it supplies none rather than reaching for one.
+    const noFigure: [string, IntentClass, string][] = [
+      ["what materially changed in the last 30 days", "showme", "the ledger carries materiality, not amounts"],
+      ["what should I focus on today", "showme", "the decision queue carries priority bands, not amounts"],
+      ["where does CDW activate well", "explain", "activation is counts and outcomes, not one number"],
+    ];
+    for (const [q, cls, why] of noFigure) {
+      const r = await answerQuestion(db, org, q, { intentClass: cls });
+      ok(`"${q}" states NO figure — ${why}`, r.significance == null,
+        r.significance ? JSON.stringify(r.significance) : "");
+    }
+
+    // Contested economics must report the DEAL amount, never a sum of the disputed figures —
+    // summing numbers that contradict each other is averaging a conflict by another route (P2B §17).
+    const conflictEnv = await answerQuestion(db, org, "which value cases contain conflicting economic facts", { intentClass: "showme" });
+    ok("contested economics report the deal amount, and say the disputed figures were not summed",
+      /deal amount/i.test(conflictEnv.significance?.basis ?? "") && /NOT summed/i.test(conflictEnv.significance?.basis ?? ""),
+      conflictEnv.significance?.basis ?? "");
+
+    // Defensible modeled impact reports the FLOOR, not a midpoint or ceiling.
+    const confirmedEnv = await answerQuestion(db, org, "show pursuits with customer-confirmed economics", { intentClass: "showme" });
+    if (confirmedEnv.significance) {
+      ok("defensible modeled impact reports the floor, and says so",
+        /LOW bound|floor/i.test(confirmedEnv.significance.basis), confirmedEnv.significance.basis);
+    } else ok("defensible modeled impact reports the floor, and says so (none defensible in scope)", true);
+
+    // ── Unapplied constraints: an answer narrower than the question says which clause it dropped.
+    const orForm = await answerQuestion(db, org,
+      "Show me high-value Pursuits renewing in the next 90 days that are blocked by a partner or missing buying authority.",
+      { intentClass: "showme" });
+    ok("a question with unrepresentable clauses still answers what it CAN",
+      orForm.outcome === "MATCHED" && orForm.intentKey === "lifecycle.horizon", `${orForm.outcome} ${orForm.intentKey}`);
+    ok("…and names the clauses it did NOT apply, rather than answering narrowly in silence",
+      orForm.unapplied.length === 2
+      && orForm.unapplied.some((u) => /buying-authority/.test(u))
+      && orForm.unapplied.some((u) => /partner-blocked/.test(u)),
+      JSON.stringify(orForm.unapplied));
+
+    // The compound intent CAN represent all four families, so the same clauses raise no notice.
+    const andForm = await answerQuestion(db, org,
+      "show WWT pursuits over $500K renewing in 90 days without a verified economic buyer", { intentClass: "showme" });
+    ok("a question the compound intent fully represents raises no unapplied notice",
+      andForm.intentKey === "pursuit.compound" && andForm.unapplied.length === 0, JSON.stringify(andForm.unapplied));
+
+    // And the everyday single-family questions must not be nagged at.
+    for (const [q, cls] of [
+      ["which high-value pursuits lack an economic buyer", "showme"],
+      ["what changes in the next 90 days", "showme"],
+      ["which value cases contain conflicting economic facts", "showme"],
+      ["at-risk late-stage opportunities over $500k", "showme"],
+    ] as [string, IntentClass][]) {
+      const r = await answerQuestion(db, org, q, { intentClass: cls });
+      ok(`"${q}" raises no spurious unapplied notice`, r.unapplied.length === 0, JSON.stringify(r.unapplied));
+    }
+
+    // The UI contract: uncertainty is never behind progressive disclosure, provenance always is.
+    // Comments stripped: this file's own header describes the design it implements, and a naive
+    // scan matches the description instead of the code.
+    const askUi = readFileSync("src/app/ask/page.tsx", "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+    ok("the Ask surface spells out what UNKNOWN means, in words", /this is not a zero/i.test(askUi));
+    ok("the Ask surface spells out what AMBIGUOUS means, in words", /admits more than one reading/i.test(askUi));
+    ok("engineering provenance sits behind 'Why this answer'", /Why this answer/.test(askUi) && /<details/.test(askUi));
+    ok("the outcome meaning is rendered OUTSIDE any <details> block",
+      askUi.indexOf("{o.meaning}") < askUi.indexOf("Why this answer"), "meaning must precede the disclosure");
+    ok("a discarded model interpretation is still shown to an engineer", /Interpretation discarded/.test(askUi));
+    ok("internal parser slots are withheld from the executive view", /INTERNAL_SLOTS/.test(askUi));
+    ok("the significance block renders only when a figure exists", /\{ex\.significance && \(/.test(askUi));
+    ok("an unapplied-clause notice is rendered above the outcome, outside any disclosure",
+      askUi.indexOf("ex.unapplied") < askUi.indexOf("{o.meaning}")
+      && askUi.indexOf("ex.unapplied") < askUi.indexOf("Why this answer"));
 
   } finally {
     db.release();

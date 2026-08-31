@@ -131,7 +131,9 @@ export async function resolveChanges(
     group: `${r.materiality === "CRITICAL" ? "Critical" : r.materiality === "HIGH" ? "Material" : "Other"} change`,
     label: `${r.account_label ?? word(r.entity_type)} — ${word(r.change_type)}`,
     sub: `${r.reason ?? "no reason recorded"} · ${ago(r.occurred_at)}${r.actor_type ? ` · ${r.actor_type.toLowerCase()}` : ""}`,
-    href: r.pursuit_id ? `/pursuits/${r.pursuit_id}` : r.company_id ? `/accounts/${r.company_id}` : "/today",
+    // Today lives at the root, not at /today — a ledger entry with no pursuit or account behind it
+    // has to land somewhere real, and "/today" is a 404.
+    href: r.pursuit_id ? `/pursuits/${r.pursuit_id}` : r.company_id ? `/accounts/${r.company_id}` : "/",
   }));
 
   const counts = sorted.reduce<Record<string, number>>((a, r) => ({ ...a, [r.materiality]: (a[r.materiality] ?? 0) + 1 }), {});
@@ -146,5 +148,10 @@ export async function resolveChanges(
     note: sorted.length === 0
       ? `Nothing${opts.materialOnly ? " material" : ""} was recorded in that window.`
       : `${summary}${sorted.length > hits.length ? ` · showing the top ${hits.length}` : ""}.`,
+    // No dollar figure. The ledger records WHAT changed and how material it was; it does not carry
+    // a commercial value per entry, and summing the pursuits behind the entries would double-count
+    // an account that changed three times. An absent figure is the correct output.
+    significance: null,
+    nextAction: hits[0] ? { label: `Open ${hits[0].label.split(" — ")[0]}`, href: hits[0].href } : null,
   };
 }

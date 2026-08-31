@@ -94,6 +94,13 @@ export function parseShowMe(q: string): { query: ParsedQuery; interpreted: strin
 
 /** Resolve a parsed SHOW ME query as pure SQL over the canonical opportunity read-model (RLS-scoped). */
 export async function resolveShowMe(db: PoolClient, orgId: string, q: ParsedQuery, companyIds: string[] | null): Promise<QueryHit[]> {
+  return (await resolveShowMeWithTotals(db, orgId, q, companyIds)).hits;
+}
+
+/** Same query, also returning the amount it just filtered — for the Ask surface's significance line. */
+export async function resolveShowMeWithTotals(
+  db: PoolClient, orgId: string, q: ParsedQuery, companyIds: string[] | null,
+): Promise<{ hits: QueryHit[]; amountUsd: number }> {
   const scoped = companyIds != null;
   const where: string[] = ["o.stage not in ('closed_won','closed_lost')"]; const params: unknown[] = [];
   const P = (v: unknown) => { params.push(v); return `$${params.length}`; };
@@ -113,6 +120,7 @@ export async function resolveShowMe(db: PoolClient, orgId: string, q: ParsedQuer
       order by o.amount_usd desc nulls last limit 25`, params);
   // Condition filter applied in JS via the canonical classifier (silent-days + stage).
   const hits: QueryHit[] = [];
+  let amountUsd = 0;
   for (const r of rows) {
     if (q.conditions.length) {
       const cond = opportunityCondition({ stage: r.stage, updatedAt: r.updated_at });
@@ -121,8 +129,9 @@ export async function resolveShowMe(db: PoolClient, orgId: string, q: ParsedQuer
     const amt = r.amount_usd != null ? Number(r.amount_usd) : null;
     const sub = [r.stage.replace(/_/g, " "), amt != null ? `$${Math.round(amt / 1000)}k` : null, r.partner ? `via ${r.partner}` : null].filter(Boolean).join(" · ");
     hits.push({ group: "Matches", label: `${r.legal_name} — ${r.name}`, sub, href: `/accounts/${r.company_id}` });
+    amountUsd += amt ?? 0;
   }
-  return hits;
+  return { hits, amountUsd };
 }
 
 // ---- SHOW ME (Motion, P1A): execution-ready accounts within a hypothesis -------------------------
@@ -179,7 +188,7 @@ export function parseStakeholderShowMe(q: string): { role: string; partner: stri
 
 export async function resolveStakeholderShowMe(
   db: PoolClient, orgId: string, parsed: { role: string; partner: string | null }, companyIds: string[] | null,
-): Promise<{ hits: QueryHit[]; interpreted: string }> {
+): Promise<{ hits: QueryHit[]; interpreted: string; exposureUsd: number; top: { label: string; href: string } | null }> {
   const scoped = companyIds != null;
   const { rows } = await db.query<{ id: string; legal_name: string; ev: string | null; partner: string | null }>(
     `select pu.id, c.legal_name, pu.expected_value_weighted ev, sp.name partner
@@ -196,7 +205,11 @@ export async function resolveStakeholderShowMe(
       order by pu.expected_value_weighted desc nulls last limit 15`,
     [orgId, parsed.role, companyIds ?? [], scoped, parsed.partner]);
   const roleWord = parsed.role.replace(/_/g, " ");
+  // Rows are already ordered by expected value, so the first is the largest gap.
+  const exposureUsd = rows.reduce((a, r) => a + Number(r.ev ?? 0), 0);
   return {
+    exposureUsd,
+    top: rows[0] ? { label: rows[0].legal_name, href: `/pursuits/${rows[0].id}#stakeholders` } : null,
     hits: rows.map((r) => ({
       group: `No verified ${roleWord}${parsed.partner ? ` · via ${parsed.partner}` : ""}`,
       label: r.legal_name,

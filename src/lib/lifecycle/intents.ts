@@ -1,4 +1,5 @@
 import type { ResolveContext, IntentResult, Slots } from "@/lib/search/registry";
+import { money } from "@/lib/search/significance";
 import { getLifecycleHorizon } from "./horizon";
 import { loadLifecycleFacts, eventsForAccount, primaryLifecycleEvent, STATE_LABEL } from "./state";
 
@@ -54,6 +55,12 @@ export async function resolveLifecycleShowMe(
       note: hits.length === 0
         ? `Nothing enters a lifecycle window in the next ${view.days} days. ${view.unknownAccounts} accounts in scope have no lifecycle evidence at all — UNKNOWN, not zero.`
         : undefined,
+      significance: money("Expected value entering the window",
+        view.items.reduce((a, i) => a + (i.expectedValue ?? 0), 0),
+        `sum of expected value across ${view.items.length} pursuit(s) with a lifecycle event inside ${view.days} days`),
+      nextAction: view.items[0]?.pursuitId
+        ? { label: `Open the nearest event — ${view.items[0].accountLabel}`, href: `/pursuits/${view.items[0].pursuitId}#whynow` }
+        : null,
     };
   }
 
@@ -109,6 +116,11 @@ export async function resolveLifecycleShowMe(
     note: hits.length === 0
       ? (mode === "conflicting" ? "No lifecycle dates are currently in conflict." : "Every account in scope carries some lifecycle evidence.")
       : undefined,
+    significance: money(
+      mode === "conflicting" ? "Expected value behind a contested date" : "Expected value with no lifecycle evidence",
+      accounts.filter((a) => hits.some((h) => h.label === a.legal_name)).reduce((t, a) => t + Number(a.ev ?? 0), 0),
+      `sum of expected value across ${hits.length} account(s) in this state`),
+    nextAction: hits[0] ? { label: `Open ${hits[0].label}`, href: hits[0].href } : null,
   };
 }
 

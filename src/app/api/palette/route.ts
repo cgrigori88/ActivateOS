@@ -149,6 +149,11 @@ export async function GET(req: NextRequest) {
       // AMBIGUOUS carries a clarification instead of an answer — one short question, never a guess.
       if (env.clarification) note = env.clarification;
       else if (env.outcome !== "MATCHED") note = env.answer;
+      // A clause the answering intent could not represent outranks any other note: the result set
+      // below is broader than what was typed, and saying nothing would be the wrong answer.
+      if (env.unapplied.length > 0) {
+        note = `This answer does not apply ${env.unapplied.join(" or ")} — not representable in one query yet.`;
+      }
     }
     });
   } catch {

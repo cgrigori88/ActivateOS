@@ -53,6 +53,16 @@ export interface AnswerEnvelope {
   /** One short question, when the request genuinely admits more than one reading. */
   clarification: string | null;
   scopeNote: string;
+  /**
+   * Parts of the question the answering intent could not represent. Never empty in silence: an
+   * answer that ignored a clause says which clause, rather than presenting a broader result set
+   * as though it were the one asked for.
+   */
+  unapplied: string[];
+  /** What is commercially at stake — computed by the resolver, or absent. Never estimated. */
+  significance: { label: string; value: string; basis: string } | null;
+  /** The single most useful next step, as a deep link. Absent when the record supports none. */
+  nextAction: { label: string; href: string } | null;
   /** The canonical records this answer stands on — hrefs, for audit without storing payloads. */
   recordIds: string[];
   grounding: string[];
@@ -107,6 +117,49 @@ export function classifyForAnswer(q: string): IntentClass {
   const ex = routeIntent(q, "explain");
   if (ex.kind === "MATCHED" && ex.intent.intentKey !== "record.explain") return "explain";
   return "goto";
+}
+
+/**
+ * Constraint cues an operator's words carry, mapped to the registry's own family vocabulary.
+ *
+ * WHY THIS EXISTS. Ask "high-value pursuits renewing in the next 90 days that are blocked by a
+ * partner or missing buying authority" and the compound parser declines (it can represent the
+ * renewal window, but not "blocked by a partner", and "buying authority" is not one of the three
+ * canonical roles). Routing then falls through to `lifecycle.horizon`, which answers the renewal
+ * clause perfectly — and DROPS the other two clauses in silence, returning a broader set than was
+ * asked for under a read-back that never mentions what it ignored.
+ *
+ * That is the same failure shape as a dropped amount filter, arriving by a different route. The
+ * answer is not to invent the missing capability; it is to say plainly which part of the question
+ * was not applied. Under-firing is preferred to nagging, so the patterns below are deliberately
+ * specific phrases rather than bare topic words.
+ */
+const CONSTRAINT_CUES: { family: string; phrase: string; re: RegExp }[] = [
+  { family: "stakeholder", phrase: "the buying-authority constraint",
+    re: /economic\s+buyer|champion|technical\s+(?:buyer|validator)|buying\s+authority|budget\s+holder|decision[-\s]maker|signs?\s+off|sign-?off/i },
+  { family: "lifecycle", phrase: "the renewal / lifecycle window",
+    re: /\brenew|\bexpir|end[-\s]of[-\s](?:life|support)|contract\s+end/i },
+  { family: "value", phrase: "the Value Case condition",
+    re: /value case|business case|defensible economics/i },
+  { family: "partner", phrase: "the partner-blocked condition",
+    re: /blocked\s+by\s+(?:a\s+|the\s+)?partner|partner\s+(?:is\s+)?block|waiting\s+on\s+(?:a\s+|the\s+)?partner|partner\s+acceptance/i },
+  { family: "amount", phrase: "the amount threshold",
+    re: /(?:over|above|under|below|more than|less than)\s*\$?\s*[\d.,]+\s*[mk]?\b/i },
+  { family: "condition", phrase: "the deal-condition filter",
+    re: /at[-\s]risk|stalling/i },
+];
+
+/**
+ * Which constraints the operator's words asked for that the answering intent cannot represent.
+ * Empty when the intent declares no families (nothing to compare against) — silence beats a
+ * warning derived from missing metadata.
+ */
+export function unappliedConstraints(q: string, intentKey: string | null): string[] {
+  if (!intentKey) return [];
+  const def = getIntent(intentKey);
+  if (!def?.families || def.families.length === 0) return [];
+  const covered = new Set(def.families);
+  return CONSTRAINT_CUES.filter((c) => !covered.has(c.family) && c.re.test(q)).map((c) => c.phrase);
 }
 
 const scopeNoteFor = (companyIds: string[] | null): string =>
@@ -182,7 +235,7 @@ export async function answerQuestion(
       ...base, path: "GOTO", outcome: hits.length > 0 ? "MATCHED" : "UNKNOWN",
       intentKey: null, slots: null, interpreted: null,
       answer: hits.length > 0 ? `${hits.length} record${hits.length === 1 ? "" : "s"} match that name.` : "No record matches that name in scope.",
-      hits, recordIds: hits.map((h) => h.href), grounding: [],
+      hits, significance: null, nextAction: null, unapplied: [], recordIds: hits.map((h) => h.href), grounding: [],
       latency: { interpretMs: null, resolveMs: Date.now() - t0, totalMs: Date.now() - t0 },
       model: null,
     };
@@ -200,6 +253,8 @@ export async function answerQuestion(
       interpreted: result.interpreted ?? null,
       answer: compose(result, "MATCHED", null),
       hits: result.hits ?? [], explanation: result.explanation ?? null,
+      significance: result.significance ?? null, nextAction: result.nextAction ?? null,
+      unapplied: unappliedConstraints(q, routed.intent.intentKey),
       recordIds: idsOf(result), grounding: groundingOf(result),
       latency: { interpretMs: null, resolveMs, totalMs: Date.now() - t0 },
       model: null,
@@ -213,7 +268,7 @@ export async function answerQuestion(
     outcome: routed.kind === "AMBIGUOUS" ? "AMBIGUOUS" : "UNSUPPORTED",
     intentKey: null, slots: null, interpreted: null,
     answer: routed.note,
-    hits: [], recordIds: [], grounding: [],
+    hits: [], significance: null, nextAction: null, unapplied: [], recordIds: [], grounding: [],
     latency: { interpretMs: null, resolveMs: 0, totalMs: Date.now() - t0 },
     model: null,
     rejection,
@@ -248,7 +303,7 @@ export async function answerQuestion(
       ...base, path: "INTERPRETED", outcome: "UNSUPPORTED",
       intentKey: null, slots: null, interpreted: null,
       answer: "That question is not something PursuitOS can answer from the record yet.",
-      hits: [], recordIds: [], grounding: [],
+      hits: [], significance: null, nextAction: null, unapplied: [], recordIds: [], grounding: [],
       latency: { interpretMs, resolveMs: 0, totalMs: Date.now() - t0 },
       model: interpretation.model,
     };
@@ -263,7 +318,7 @@ export async function answerQuestion(
       answer: interpretation.clarification
         ?? `That could mean ${named.length || interpretation.candidates.length} different things — narrow the question.`,
       hits: named.slice(0, 4).map((d, i) => ({ group: "Did you mean", label: d, sub: interpretation.candidates[i] ?? null, href: "#" })),
-      recordIds: [], grounding: [],
+      significance: null, nextAction: null, unapplied: [], recordIds: [], grounding: [],
       latency: { interpretMs, resolveMs: 0, totalMs: Date.now() - t0 },
       model: interpretation.model,
     };
@@ -287,7 +342,7 @@ export async function answerQuestion(
       intentKey: def.intentKey, slots: checked.slots, interpreted: null,
       clarification: entities.outcome === "AMBIGUOUS" ? entities.note : null,
       answer: entities.note,
-      hits: [], recordIds: [], grounding: [],
+      hits: [], significance: null, nextAction: null, unapplied: [], recordIds: [], grounding: [],
       latency: { interpretMs, resolveMs: 0, totalMs: Date.now() - t0 },
       model: interpretation.model,
     };
@@ -314,6 +369,8 @@ export async function answerQuestion(
     interpreted: resolved.interpreted ?? null,
     answer: compose(resolved, outcome === "UNKNOWN" ? "MATCHED" : outcome, null),
     hits, explanation: resolved.explanation ?? null,
+    significance: resolved.significance ?? null, nextAction: resolved.nextAction ?? null,
+    unapplied: unappliedConstraints(q, def.intentKey),
     recordIds: idsOf(resolved), grounding: groundingOf(resolved),
     latency: { interpretMs, resolveMs, totalMs: Date.now() - t0 },
     model: interpretation.model,

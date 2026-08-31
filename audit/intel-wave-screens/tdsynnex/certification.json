@@ -1,0 +1,146 @@
+[
+  {
+    "step": "1  Today",
+    "path": "/",
+    "status": 200,
+    "links": 37,
+    "height": 2247,
+    "fails": []
+  },
+  {
+    "step": "2a Motion Overview",
+    "path": "/motions",
+    "status": 200,
+    "links": 37,
+    "height": 1000,
+    "fails": []
+  },
+  {
+    "step": "2b Motion Constraints",
+    "path": "/motions?view=constraints",
+    "status": 200,
+    "links": 32,
+    "height": 1000,
+    "fails": []
+  },
+  {
+    "step": "3  Partner Activation",
+    "path": "/partners/45aaba63-c63e-41e7-a241-1cf6fb11407d",
+    "status": 200,
+    "links": 29,
+    "height": 1098,
+    "fails": []
+  },
+  {
+    "step": "4  Pursuit Detail",
+    "path": "/pursuits/8ef34823-b00d-4a69-b8c4-9b24920bdff4",
+    "status": 200,
+    "links": 23,
+    "height": 4542,
+    "fails": []
+  },
+  {
+    "step": "5  Sponsor/Partner review",
+    "path": "/partners/45aaba63-c63e-41e7-a241-1cf6fb11407d/review",
+    "status": 200,
+    "links": 24,
+    "height": 1000,
+    "fails": []
+  },
+  {
+    "step": "5b Partner review (2nd partner)",
+    "path": "/partners/9c533551-83d0-4f71-a539-3bed59f3b920/review",
+    "status": 200,
+    "links": 24,
+    "height": 1000,
+    "fails": []
+  },
+  {
+    "step": "6  Execution plan",
+    "path": "/pursuits/8ef34823-b00d-4a69-b8c4-9b24920bdff4#team",
+    "status": 200,
+    "links": 23,
+    "height": 4542,
+    "fails": []
+  },
+  {
+    "step": "7  Stakeholder Intelligence",
+    "path": "/pursuits/8ef34823-b00d-4a69-b8c4-9b24920bdff4#stakeholders",
+    "status": 0,
+    "links": 23,
+    "height": 4542,
+    "fails": []
+  },
+  {
+    "step": "8  Value Case",
+    "path": "/pursuits/8ef34823-b00d-4a69-b8c4-9b24920bdff4#value",
+    "status": 0,
+    "links": 23,
+    "height": 4542,
+    "fails": []
+  },
+  {
+    "step": "8b Value Case (conflict)",
+    "path": "/pursuits/a7f7dfb5-b91f-4e2f-9961-57b16358916c#value",
+    "status": 200,
+    "links": 23,
+    "height": 3972,
+    "fails": []
+  },
+  {
+    "step": "9  Lifecycle",
+    "path": "/pursuits/8ef34823-b00d-4a69-b8c4-9b24920bdff4#whynow",
+    "status": 200,
+    "links": 23,
+    "height": 4542,
+    "fails": []
+  },
+  {
+    "step": "10a Pipeline Attention",
+    "path": "/pipeline",
+    "status": 200,
+    "links": 40,
+    "height": 2661,
+    "fails": []
+  },
+  {
+    "step": "10b Pipeline Portfolio",
+    "path": "/pipeline?view=portfolio",
+    "status": 200,
+    "links": 40,
+    "height": 1431,
+    "fails": []
+  },
+  {
+    "step": "11 Ask",
+    "path": "/ask",
+    "status": 200,
+    "links": 40,
+    "height": 1234,
+    "fails": []
+  },
+  {
+    "step": "12 Insights",
+    "path": "/insights",
+    "status": 200,
+    "links": 26,
+    "height": 2203,
+    "fails": []
+  },
+  {
+    "step": "—  Brief",
+    "path": "/pursuits/8ef34823-b00d-4a69-b8c4-9b24920bdff4#brief",
+    "status": 200,
+    "links": 23,
+    "height": 4542,
+    "fails": []
+  },
+  {
+    "step": "—  Accounts",
+    "path": "/accounts/77595ada-0ce9-434c-9eef-fa7a5ade3068",
+    "status": 200,
+    "links": 25,
+    "height": 1880,
+    "fails": []
+  }
+]

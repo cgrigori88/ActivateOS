@@ -113,7 +113,15 @@ export function validateSlots(def: IntentDefinition, raw: Slots): SlotValidation
   return { ok: true, slots: out };
 }
 
-/** What a resolver produces. `hits` for list answers, `explanation` for evidence-bound answers. */
+/**
+ * What a resolver produces. `hits` for list answers, `explanation` for evidence-bound answers.
+ *
+ * `significance` and `nextAction` exist so an executive-facing surface can lead with what the
+ * answer MEANS commercially and what to do about it — without any surface inventing either. Both
+ * are optional and both are frequently absent on purpose: a resolver that has no honest single
+ * figure (a list of ledger changes; a partner's activation profile) supplies none, and the UI shows
+ * none. An empty slot is the correct output when the canonical data does not support the claim.
+ */
 export interface IntentResult {
   hits?: QueryHit[];
   explanation?: Explanation;
@@ -121,6 +129,14 @@ export interface IntentResult {
   interpreted?: string;
   /** Honest failure text when the intent resolved but the record holds no answer. */
   note?: string;
+  /**
+   * What is commercially at stake in this answer — computed by the resolver from the same rows it
+   * returned, never derived by a surface and never estimated. `basis` states what the figure sums,
+   * because an unexplained total is exactly the confident-garbage problem.
+   */
+  significance?: { label: string; value: string; basis: string } | null;
+  /** The single most useful next step, as a deep link into a canonical room. */
+  nextAction?: { label: string; href: string } | null;
 }
 
 /** Everything a resolver is allowed to know. Scope is narrowing-only and never widened here. */

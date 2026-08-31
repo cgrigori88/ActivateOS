@@ -2,6 +2,7 @@ import { listIntents, type ResolveContext, type IntentResult, type Slots } from 
 import { renewalProjection } from "@/lib/lifecycle/projection";
 import { getValueCase } from "@/lib/value/case";
 import { opportunityCondition, CONDITION_LABEL, type ConditionState } from "@/lib/opportunities/condition";
+import { money as significanceOf } from "./significance";
 
 /**
  * Compound pursuit filter (P2C-1 §7). ONE intent that can express a request spanning several
@@ -269,5 +270,11 @@ export async function resolveCompound(ctx: ResolveContext, f: CompoundFilters): 
     note: kept.length === 0
       ? `No pursuit satisfies all ${fams.length} constraints together. Each one alone may still return rows.`
       : `${kept.length} pursuit${kept.length === 1 ? "" : "s"} satisfy all ${fams.length} constraints.`,
+    // Deal amount where an opportunity exists, expected value otherwise — never both for one row,
+    // and the basis says which mix was used, because the two are different economic truths (P2B §2).
+    significance: significanceOf("Commercial exposure in this cut",
+      kept.reduce((a, r) => a + Number(r.amount ?? r.ev ?? 0), 0),
+      `sum over ${kept.length} pursuit(s) of the linked opportunity amount, or expected value where no opportunity is linked`),
+    nextAction: kept[0] ? { label: `Open ${kept[0].legal_name}`, href: `/pursuits/${kept[0].id}` } : null,
   };
 }

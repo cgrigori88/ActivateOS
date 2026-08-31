@@ -1,6 +1,6 @@
 import { registerIntent, type Slots, type SlotSpec } from "./registry";
 import {
-  parseShowMe, resolveShowMe,
+  parseShowMe, resolveShowMeWithTotals,
   parseMotionShowMe, resolveMotionShowMe,
   parseStakeholderShowMe, resolveStakeholderShowMe,
   resolveExplain, EXPLAIN_ASPECTS, type ExplainAspect,
@@ -12,6 +12,7 @@ import { parseAttention, resolveAttention, parseMotionConstrained, resolveMotion
 import { parseChanges, resolveChanges } from "./changes";
 import { parseCompound, filtersFromSlots, resolveCompound, MISSING_ROLES, VALUE_STATES, CONDITIONS, STAGES } from "./compound";
 import { parsePartnerActivation, resolvePartnerActivation } from "./partner-activation";
+import { money } from "./significance";
 
 /** Reusable slot specs — declared once so the same concept reads identically to an interpreter. */
 const SLOT: Record<string, SlotSpec> = {
@@ -100,13 +101,17 @@ registerIntent({
     return parsed ? { role: parsed.role, partner: parsed.partner } : null;
   },
   resolve: async (ctx, slots) => {
-    const { hits, interpreted } = await resolveStakeholderShowMe(
-      ctx.db, ctx.orgId, { role: String(slots.role), partner: (slots.partner as string | null) ?? null }, ctx.companyIds);
+    const role = String(slots.role);
+    const { hits, interpreted, exposureUsd, top } = await resolveStakeholderShowMe(
+      ctx.db, ctx.orgId, { role, partner: (slots.partner as string | null) ?? null }, ctx.companyIds);
     return {
       hits, interpreted,
       note: hits.length === 0
         ? "No pursuits with that coverage gap — or coverage is not yet established (pre-opportunity pursuits are UNKNOWN, not gaps)."
         : undefined,
+      significance: money(`Expected value with no verified ${role.replace(/_/g, " ")}`, exposureUsd,
+        `sum of expected value across ${hits.length} pursuit(s) that have a linked opportunity but no VERIFIED assertion for that role`),
+      nextAction: top ? { label: `Assert the ${role.replace(/_/g, " ")} on ${top.label}`, href: top.href } : null,
     };
   },
   examples: ["which high-value pursuits lack an economic buyer", "show WWT pursuits missing a verified champion"],
@@ -156,11 +161,14 @@ registerIntent({
       amountGt: (slots.amountGt as number | null) ?? null,
       amountLt: (slots.amountLt as number | null) ?? null,
     } as ParsedQuery;
-    const hits = await resolveShowMe(ctx.db, ctx.orgId, query, ctx.companyIds);
+    const { hits, amountUsd } = await resolveShowMeWithTotals(ctx.db, ctx.orgId, query, ctx.companyIds);
     return {
       hits,
       interpreted: (slots.interpreted as string | undefined) ?? undefined,
       note: hits.length === 0 ? "No matching records." : undefined,
+      significance: money("Open opportunity value in this cut", amountUsd,
+        `sum of the opportunity amount across the ${hits.length} matching open opportunit${hits.length === 1 ? "y" : "ies"}`),
+      nextAction: hits[0] ? { label: `Open ${hits[0].label.split(" — ")[0]}`, href: hits[0].href } : null,
     };
   },
   examples: ["at-risk late-stage opportunities over $500k", "stalling deals through WWT"],

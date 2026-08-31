@@ -20,8 +20,9 @@ export async function logAnswer(
     `insert into ask_exchanges
        (org_id, question, answer, tool_calls, model,
         intent_key, intent_class, resolution_path, outcome, slots, record_hrefs,
-        scope_size, interpret_ms, resolve_ms, total_ms, rejection, catalog_version)
-     values ($1,$2,$3,'[]'::jsonb,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        scope_size, interpret_ms, resolve_ms, total_ms, rejection, catalog_version,
+        significance, next_action, unapplied)
+     values ($1,$2,$3,'[]'::jsonb,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
     [
       orgId,
       env.question.slice(0, 2000),
@@ -40,6 +41,10 @@ export async function logAnswer(
       env.latency.totalMs,
       env.rejection?.slice(0, 500) ?? null,
       catalogVersion(),
+      // Both are the resolver's own output. Nothing here is composed by this file.
+      env.significance ? JSON.stringify(env.significance) : null,
+      env.nextAction ? JSON.stringify(env.nextAction) : null,
+      env.unapplied.length > 0 ? JSON.stringify(env.unapplied) : null,
     ],
   );
 }

@@ -183,14 +183,25 @@ export default async function AdminPage({
   } = t;
 
   // ── Access: members join auth.users → OWNER pool ────────────────────────────
-  const { rows: members } = orgId
-    ? await ownerPool.query<{ user_id: string; email: string | null; role: string; created_at: Date; last_sign_in_at: Date | null }>(
+  // The `auth` schema is Supabase's, and it is not present (or not readable) in every environment
+  // this app runs against — a local demo database has no `auth.users` at all. That was throwing
+  // `permission denied for schema auth` and taking the WHOLE Admin room down with a 500, from a
+  // link that appears in the rail on every page. One unavailable panel must not 500 a room: the
+  // member list degrades to empty and the room renders everything else it knows.
+  let members: { user_id: string; email: string | null; role: string; created_at: Date; last_sign_in_at: Date | null }[] = [];
+  let membersUnavailable = false;
+  if (orgId) {
+    try {
+      members = (await ownerPool.query<{ user_id: string; email: string | null; role: string; created_at: Date; last_sign_in_at: Date | null }>(
         `select m.user_id, u.email, m.role, m.created_at, u.last_sign_in_at
          from org_members m join auth.users u on u.id = m.user_id
          where m.org_id = $1 order by m.created_at asc`,
         [orgId],
-      )
-    : { rows: [] };
+      )).rows;
+    } catch {
+      membersUnavailable = true;
+    }
+  }
 
   const keyRows: KeyRow[] = apiKeys.map((k) => ({
     id: k.id,
@@ -264,7 +275,12 @@ export default async function AdminPage({
           </p>
         ) : (
           <>
-            {members.length === 0 ? (
+            {membersUnavailable ? (
+              <p className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                The identity directory isn&apos;t readable from this deployment&apos;s database, so the member list
+                can&apos;t be shown. Everything else on this page is live — this panel alone is unavailable.
+              </p>
+            ) : members.length === 0 ? (
               <p className="mb-3 text-sm text-neutral-500">No members yet — create the owner on the <Link href="/login" className="text-accent hover:underline dark:text-blue-400">sign-in page</Link> first.</p>
             ) : (
               <div className="mb-4 overflow-x-auto scroll-thin">

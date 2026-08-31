@@ -73,12 +73,18 @@ export function DisclosureTheater({ internal, shareable, candidateLabel }: {
             : <div className="text-[12.5px] italic text-neutral-400">{sponsor ? "Withheld — this viewer is not permitted internal reasoning." : "No partner-safe reasons on this route yet."}</div>}
         </div>
 
-        {/* The caption that makes the boundary visceral */}
+        {/* The caption that makes the boundary visceral.
+            PRECISION MATTERS HERE, because this is the claim a technical buyer will test. Both
+            payloads are present in THIS page — the sponsor is authorized to see both, and that is
+            the whole point of a comparison view. What the caption asserts is a fact about the
+            PARTNER'S payload, and the place that fact can be checked independently is the partner's
+            own surface, where the figure was never serialized at all. Saying "not hidden in the
+            browser" without saying where to verify it invites exactly the objection it answers. */}
         <div className="mt-2.5 border-t pt-2 text-[10.5px]" style={{ borderColor: "var(--border-subtle)" }}>
           {sponsor
-            ? <span className="text-neutral-400">Restricted reasoning — visible to the vendor’s own team only.</span>
+            ? <span className="text-neutral-400">Restricted reasoning — visible to the vendor’s own team only. You are seeing both payloads because you are authorized to; a partner receives only the shareable one.</span>
             : figuresRemoved.length
-              ? <span style={{ color: "var(--color-accent-verified)" }}><b>{figuresRemoved.length} confidential figure{figuresRemoved.length === 1 ? "" : "s"} removed at the server</b> — absent from this payload, not hidden in the browser.</span>
+              ? <span style={{ color: "var(--color-accent-verified)" }}><b>{figuresRemoved.length} confidential figure{figuresRemoved.length === 1 ? "" : "s"} removed at the server</b> — the partner’s payload is built without {figuresRemoved.length === 1 ? "it" : "them"}. Verify on the partner’s own review surface, where {figuresRemoved.length === 1 ? "it was" : "they were"} never serialized.</span>
               : <span className="text-neutral-400">Generalized server-side — confidential figures never enter this payload.</span>}
         </div>
       </div>

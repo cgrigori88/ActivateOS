@@ -86,6 +86,10 @@ export async function resolvePartnerActivation(ctx: ResolveContext, partnerName:
       lines,
       grounding: [`${pattern.evidencePursuits} pursuit(s) of evidence`, "pursuit_outcomes (terminal, canonical)", "pursuit_route_snapshots", "partner_relationships"],
     },
+    // No single figure: activation is counts and outcomes per category, and there is no honest way
+    // to collapse "selected 7x, 4 outcomes below the calibration floor" into one number.
+    significance: null,
+    nextAction: { label: `Open ${partner.name}'s activation profile`, href: `/partners/${partner.id}` },
     hits: [...proven, ...observed].slice(0, 6).map((r) => ({
       group: r.sufficient ? "Proven category" : "Observed category",
       label: `${r.category} · ${r.relationshipState.replace(/_/g, " ").toLowerCase()}`,

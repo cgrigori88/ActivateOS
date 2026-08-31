@@ -1,6 +1,7 @@
 import type { ResolveContext, IntentResult } from "@/lib/search/registry";
 import { getValueCase, bounds, usd, qualityLine, STATE_LABEL, type ValueCase } from "./case";
 import { LADDER_LABEL } from "./drivers";
+import { money } from "@/lib/search/significance";
 
 /** Build the canonical Explanation object every EXPLAIN intent returns. */
 const expl = (title: string, subtitle: string, lines: { label: string; value: string }[]) => ({
@@ -79,10 +80,18 @@ export async function resolveValueShowMe(ctx: ResolveContext, mode: ValueShowMod
       sub: `${c.conflicts.map((d) => d.label).join(", ")} — ${c.because}`,
       href: `/pursuits/${c.pursuitId}#value`,
     }));
+    const contested = cases.filter((c) => c.state === "CONFLICTING");
     return {
       hits,
       interpreted: "Value Cases whose economic facts contradict one another — both figures shown, neither chosen",
       note: hits.length === 0 ? "No Value Case in scope has contested economics." : undefined,
+      // The DEAL amount, deliberately — not the contested customer-impact figures, which are the
+      // very numbers in dispute. Summing disputed economics to report their size would be averaging
+      // a conflict by another route (P2B §17).
+      significance: money("Deal value behind contested economics",
+        contested.reduce((a, c) => a + (c.dealAmount ?? 0), 0),
+        `sum of the deal amount across ${contested.length} pursuit(s) whose economic facts contradict one another — the contested customer-impact figures are NOT summed`),
+      nextAction: contested[0] ? { label: `Reconcile ${contested[0].accountLabel}`, href: `/pursuits/${contested[0].pursuitId}#value` } : null,
     };
   }
 
@@ -95,10 +104,18 @@ export async function resolveValueShowMe(ctx: ResolveContext, mode: ValueShowMod
         sub: `${qualityLine(c.quality)}${c.defensible && c.modeledImpact ? ` · modeled ${bounds(c.modeledImpact)}` : ""}`,
         href: `/pursuits/${c.pursuitId}#value`,
       }));
+    const evidenced = cases.filter((c) => c.quality.CUSTOMER_CONFIRMED > 0 || c.quality.VERIFIED > 0);
+    const defensible = evidenced.filter((c) => c.defensible && c.modeledImpact);
     return {
       hits,
       interpreted: "Pursuits carrying verified or customer-confirmed economic facts",
       note: hits.length === 0 ? "No Value Case in scope carries verified or customer-confirmed economics yet." : undefined,
+      // The LOW end of the modeled range, across defensible cases only. The floor is the defensible
+      // claim; quoting the high end as the total would be the optimistic reading of a bounded model.
+      significance: money("Defensible modeled customer impact (floor)",
+        defensible.reduce((a, c) => a + (c.modeledImpact?.low ?? 0), 0),
+        `sum of the LOW bound of the modeled range across ${defensible.length} defensible Value Case(s) — the floor, not the midpoint or the ceiling`),
+      nextAction: evidenced[0] ? { label: `Open ${evidenced[0].accountLabel}'s Value Case`, href: `/pursuits/${evidenced[0].pursuitId}#value` } : null,
     };
   }
 
@@ -109,12 +126,17 @@ export async function resolveValueShowMe(ctx: ResolveContext, mode: ValueShowMod
     sub: `${STATE_LABEL[c.state]} — ${c.because}`,
     href: `/pursuits/${c.pursuitId}#value`,
   }));
+  const undefended = cases.filter((c) => !c.defensible);
   return {
     hits,
     interpreted: "Pursuits with no defensible Value Case — nothing is assumed to be zero",
     note: hits.length === 0
       ? "Every Value Case in scope is defensible."
       : `${hits.length} of ${cases.length} pursuits in scope cannot state a defensible modeled range.`,
+    significance: money("Deal value with no defensible business case",
+      undefended.reduce((a, c) => a + (c.dealAmount ?? 0), 0),
+      `sum of the deal amount across ${undefended.length} pursuit(s) that cannot state a defensible modeled range`),
+    nextAction: undefended[0] ? { label: `Build the case for ${undefended[0].accountLabel}`, href: `/pursuits/${undefended[0].pursuitId}#value` } : null,
   };
 }
 
@@ -172,6 +194,13 @@ export async function resolveValueExplain(
       explanation: expl(`What would strengthen it — ${vc.accountLabel}`,
         "Deterministic sensitivity: range widths are interval arithmetic over the drivers. No confidence percentage is claimed.",
         lines.map((t, i) => ({ label: i === 0 ? "Current range" : `Driver ${i}`, value: t }))),
+      significance: vc.defensible && vc.modeledImpact
+        ? { label: "Modeled customer impact", value: `${bounds(vc.modeledImpact)}`,
+            basis: `interval arithmetic over the evidenced economic drivers; width ${usd(vc.modeledImpact.high - vc.modeledImpact.low)}` }
+        : null,
+      nextAction: vc.sensitivity[0]
+        ? { label: `Strengthen: ${vc.sensitivity[0].label}`, href: `/pursuits/${vc.pursuitId}#value` }
+        : null,
       hits: vc.sensitivity.slice(0, 3).map((s) => ({
         group: "What would strengthen it",
         label: s.label,
@@ -200,6 +229,14 @@ export async function resolveValueExplain(
     explanation: expl(`Value case — ${vc.accountLabel}`,
       "Three economic truths, kept distinct. Modeled impact is the customer's business impact, not our revenue.",
       parts.map((t, i) => ({ label: ["State", "Modeled impact", "Deal amount", "Expected value", "At stake today", "Evidence", "Why"][i] ?? "Note", value: t }))),
+    significance: vc.defensible && vc.modeledImpact
+      ? { label: "Modeled customer impact", value: bounds(vc.modeledImpact),
+          basis: "the customer's business impact, distinct from the deal amount and from expected value" }
+      : vc.dealAmount != null
+        ? { label: "Deal amount", value: usd(vc.dealAmount),
+            basis: "what we would book — no defensible modeled customer impact exists yet, so none is stated" }
+        : null,
+    nextAction: { label: `Open the Value Case for ${vc.accountLabel}`, href: `/pursuits/${vc.pursuitId}#value` },
     hits: vc.drivers.slice(0, 6).map((d) => ({
       group: "Economic drivers",
       label: d.label,
