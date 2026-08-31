@@ -8,6 +8,8 @@ import { Panel } from "@/components/pursuit/panel";
 import { PursuitHero, MetricBand, WhyNowBento, FactsBento, TeamBento, MaterialChangeTimeline } from "@/components/pursuit/surfaces";
 import { RoutePath, RecommendationChange, RouteCandidateTable } from "@/components/pursuit/route";
 import { RouteDecision } from "@/components/pursuit/route-decision";
+import { OutcomePanel } from "@/components/pursuit/outcome-panel";
+import { getPursuitOutcomeSummary } from "@/lib/pursuits/read-models/outcome-summary";
 import { currentRole } from "@/lib/auth/org";
 import { DisclosureTheater } from "@/components/pursuit/disclosure-theater";
 import { BandPill, SyntheticBadge } from "@/components/pursuit/parts";
@@ -58,13 +60,14 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
     // boundary re-checks, this only decides whether to render the control (viewers see state).
     const role = await currentRole(db);
     const canDecide = role === "owner" || role === "operator";
+    const outcome = await getPursuitOutcomeSummary(db, id);
     let federation = null;
     if (fed) {
       const actions = await getGovernedActions(db, { type: "USER", orgId, role: "operator" }, id);
       const outcomes = await getPursuitOutcomes(db, await buildFederationViewer(db, orgId, id), id);
       federation = { fed, actions, outcomes };
     }
-    return { kind: "sponsor" as const, detail, federation, canDecide };
+    return { kind: "sponsor" as const, detail, federation, canDecide, outcome };
   });
   if (!loaded) notFound();
 
@@ -179,6 +182,13 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         <Panel eyebrow="Material events only" title="What changed" accent="var(--color-accent-violet)" className="order-7 lg:order-7">
           <MaterialChangeTimeline timeline={d.timeline} />
         </Panel>
+
+        {/* Outcome & attribution — the learning half (Phase B). Only when an outcome exists. */}
+        {loaded.outcome.latest && (
+          <Panel eyebrow="What happened ≠ who moved it" title="Outcome & attribution" accent="var(--color-accent-verified)" className="order-8 lg:order-9 lg:col-span-2">
+            <OutcomePanel summary={loaded.outcome} />
+          </Panel>
+        )}
 
         {/* Federation — participants, shared context, governed actions, outcome trail (disclosure-safe) */}
         {federation && (

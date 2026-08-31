@@ -23,7 +23,7 @@ export default async function InsightsPage({
   searchParams: Promise<{ wscope?: string }>;
 }) {
   const sp = await searchParams;
-  const { triggersOn, partnerRows, stageWeights, events, closed, edits, replies, attribution } =
+  const { triggersOn, partnerRows, stageWeights, events, closed, edits, replies, attribution, canonicalOutcomes } =
     await withTenant(async (db, orgId) => {
       const triggersOn = await enabledTriggers(db, orgId);
 
@@ -57,7 +57,16 @@ export default async function InsightsPage({
       // won vs lost deals. Early-sample honesty is part of the feature.
       const attribution = await sourceOutcomeAttribution(db, orgId);
 
-      return { triggersOn, partnerRows, stageWeights, events, closed, edits, replies, attribution };
+      // Canonical outcome rollup (Phase B): terminal pursuit_outcomes by attribution class — the
+      // learning half made visible. Honest about a small sample; UNKNOWN shown as UNKNOWN.
+      const { rows: canonicalOutcomes } = await db.query<{ outcome_label: string; cls: string; n: string; v: string | null }>(
+        `select o.outcome_label, coalesce(a.human_override_class, a.attribution_class, 'NONE') as cls,
+                count(*)::text n, sum(o.value_amount) v
+           from pursuit_outcomes o left join attribution a on a.id = o.attribution_id
+          where o.org_id = $1 and o.is_terminal
+          group by 1, 2 order by 1, 2`, [orgId]);
+
+      return { triggersOn, partnerRows, stageWeights, events, closed, edits, replies, attribution, canonicalOutcomes };
     });
 
   const wscope = partnerRows.some((p) => p.id === sp.wscope) ? sp.wscope! : "";
@@ -79,6 +88,15 @@ export default async function InsightsPage({
 
   const attributionDeals = attribution.reduce((s_, a) => Math.max(s_, a.wonDeals + a.lostDeals), 0);
 
+  // Canonical outcome rollup (Phase B): won/lost/no-decision by attribution class.
+  const canonicalWon = canonicalOutcomes.filter((o) => o.outcome_label === "CLOSED_WON");
+  const canonicalTotal = canonicalOutcomes.reduce((s_, o) => s_ + Number(o.n), 0);
+  const byClass = (() => {
+    const m = new Map<string, number>();
+    for (const o of canonicalWon) m.set(o.cls, (m.get(o.cls) ?? 0) + Number(o.n));
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  })();
+
 
   return (
     <main>
@@ -93,6 +111,27 @@ export default async function InsightsPage({
         <Bento label="deals won" value={wonN} href="/pipeline?stage=closed_won" />
         <Bento label="edit intensity" value={intensity ?? "—"} subs={["0 sent as-is · 1 rewritten"]} />
       </div>
+
+      {/* Canonical outcome rollup (Phase B): terminal pursuit_outcomes by attribution class. */}
+      {canonicalTotal > 0 && (
+        <Card className="mb-6">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Canonical outcomes · attribution</h2>
+            <span className="text-xs text-neutral-400">{canonicalTotal} terminal outcome{canonicalTotal === 1 ? "" : "s"} — small sample; honest by design</span>
+          </div>
+          <div className="flex flex-wrap gap-2 text-sm">
+            {byClass.length === 0 ? (
+              <span className="text-neutral-500">No wins recorded yet.</span>
+            ) : byClass.map(([cls, n]) => (
+              <span key={cls} className="inline-flex items-center gap-1.5 rounded-md bg-neutral-100 px-2.5 py-1 dark:bg-neutral-800">
+                <b>{n}</b> won <span className="text-neutral-500">·</span>
+                <span className={cls === "UNKNOWN" ? "font-semibold text-amber-700 dark:text-amber-400" : "font-medium text-neutral-700 dark:text-neutral-300"}>{cls}</span>
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-neutral-400">Outcome ≠ Attribution — the count is what happened; the class is PursuitOS’s evidence-bound claim about who moved it. UNKNOWN is preserved where no partner route was selected.</p>
+        </Card>
+      )}
 
       <Card className="mb-6">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
