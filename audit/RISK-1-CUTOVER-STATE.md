@@ -1,3 +1,14 @@
+> **⚠️ STATUS OF RECORD (2026-08-31): this file is a SESSION LOG of an attempted guided
+> cutover, NOT a verified statement of production state.** The repository cannot prove
+> which DB role production runs as, whether FORCE RLS is applied on prod, or whether the
+> prod migration tracker was reconciled — those are environment facts only an operator can
+> confirm against the live deployment. Where this log says the cutover is "done & verified,"
+> treat it as **aspirational / unconfirmed**. The authoritative status is
+> **UNKNOWN / REQUIRES OPERATOR VERIFICATION** — see `audit/PRODUCTION-RLS-STATUS.md`.
+> The `PILOT-OPERATIONAL-READINESS.md` and `PRODUCTION-COMMISSIONING-REPORT.md` "halted /
+> blocked" reports remain the operative go/no-go until an operator re-verifies. Do not infer
+> production state from `.env`, migration files, or this log.
+
 # RISK-1 / RISK-3 cutover — live state & remaining steps
 
 _Last updated during the guided prod cutover session. Project: PursuitOS
