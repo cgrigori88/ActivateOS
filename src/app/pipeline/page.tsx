@@ -36,6 +36,11 @@ import {
 import { initiativeOptions } from "@/lib/partnerships/initiatives";
 import { listWritebacks } from "@/lib/opportunities/writeback";
 import { opportunityAutopsy, type Autopsy } from "@/lib/opportunities/autopsy";
+import { getScopeContext, scopeParamFrom } from "@/lib/scope/server";
+import { opportunityCondition, type ConditionState } from "@/lib/opportunities/condition";
+import { buildPortfolio, availableDims, type PortfolioOpp, type RowDim, type ColDim } from "@/lib/opportunities/portfolio";
+import { PortfolioMatrix } from "@/components/pipeline/portfolio-matrix";
+import { PipelineAllTable } from "@/components/pipeline/all-table";
 
 const MEDDPICC_STATUSES: Status[] = ["unknown", "gap", "weak", "strong"];
 
@@ -59,11 +64,21 @@ interface DealReg {
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; timeframe?: string; stage?: string; partner?: string; quote?: string; qual?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const view = sp.view === "review" ? "review" : "board";
-  const timeframe = ["7", "30", "90"].includes(sp.timeframe ?? "") ? Number(sp.timeframe) : null;
+  const qp = (k: string): string | undefined => { const v = sp[k]; return typeof v === "string" ? v : undefined; };
+  // Progressive views (§3): Attention (intervention now) · Portfolio (where exposure concentrates) ·
+  // All (the exhaustive dataset, compact) · Review (deal registration — capability preserved).
+  const view = (["attention", "portfolio", "all", "review"].includes(qp("view") ?? "") ? qp("view") : "attention") as "attention" | "portfolio" | "all" | "review";
+  const timeframe = ["7", "30", "90"].includes(qp("timeframe") ?? "") ? Number(qp("timeframe")) : null;
+  // Ecosystem scope (§1): narrow the whole board to the authorized company-id set. Re-authorized server-side.
+  const scope = await getScopeContext(scopeParamFrom(sp));
+  const scopeIds = scope.companyIds;
+  // Portfolio pivot dimensions + drill-in condition filter.
+  const prow = (qp("prow") ?? "partner") as RowDim;
+  const pcol = (qp("pcol") ?? "condition") as ColDim;
+  const condFilter = (["at_risk", "stalling", "healthy"].includes(qp("cond") ?? "") ? qp("cond") : undefined) as ConditionState | undefined;
 
   // RISK-1 adoption (task #67): all reads run under withTenant, which pins the
   // session to the caller's org. Inert on the owner connection; real isolation
@@ -72,7 +87,7 @@ export default async function PipelinePage({
     opps, open, total, weighted, regRows, tieOut, writebacks, approvedWb,
     calibration, renewals, scoreOf, quoteOf, probOf, qualOf, partnerOptions,
     visible, stakeholdersByOpp, regByOpp, meddpicc, momentum, initiativeOpts,
-    autopsies,
+    autopsies, ecoByCompany,
   } = await withTenant(async (db, orgId) => {
   const { rows: allOpps } = await db.query(
     `select o.id, o.name, o.stage, o.amount_usd, o.next_step, o.expected_close_date, o.updated_at,
@@ -83,8 +98,22 @@ export default async function PipelinePage({
      left join taxonomy_nodes n on n.id = o.taxonomy_node_id
      left join revenue_motions m on m.id = o.motion_id
      left join partners pa on pa.id = m.partner_id
+     where ($2::boolean is false or o.company_id = any($1))
      order by o.updated_at desc`,
+    [scopeIds ?? [], scopeIds != null],
   );
+
+  // Ecosystem map (§3.2 / R4): each in-scope company's primary seller and, through it, vendor and
+  // territory — the ecosystem dimensions the Portfolio pivots over. Primary = strongest relationship.
+  const { rows: ecoRows } = await db.query<{ company_id: string; seller: string | null; vendor: string | null; territory: string | null }>(
+    `select distinct on (r.company_id) r.company_id, s.name seller, v.name vendor, s.territory
+       from seller_account_relationships r
+       join sellers s on s.id = r.seller_id and s.org_id = $1
+       left join vendors v on v.id = s.vendor_id
+      order by r.company_id, r.strength desc nulls last`,
+    [orgId],
+  );
+  const ecoByCompany = new Map(ecoRows.map((r) => [r.company_id, { seller: r.seller, vendor: r.vendor, territory: r.territory }]));
 
   // Renewal radar (B+3): every account on an approved list whose renewal_date
   // sits inside 120 days — the co-sell clock. Engagement quiet = decay risk;
@@ -213,10 +242,10 @@ export default async function PipelinePage({
   const qualOf = (id: string) => (scoreOf(id) >= 70 ? "strong" : scoreOf(id) < 40 ? "risk" : "ok");
   const visible = opps.filter(
     (o) =>
-      (!sp.stage || sp.stage === "all" || o.stage === sp.stage) &&
-      (!sp.partner || sp.partner === "all" || (o.partner_name ?? "Direct") === sp.partner) &&
-      (!sp.quote || sp.quote === "all" || (sp.quote === "yes" ? quoteOf(o.id).delivered : !quoteOf(o.id).delivered)) &&
-      (!sp.qual || sp.qual === "all" || qualOf(o.id) === sp.qual),
+      (!qp("stage") || qp("stage") === "all" || o.stage === qp("stage")) &&
+      (!qp("partner") || qp("partner") === "all" || (o.partner_name ?? "Direct") === qp("partner")) &&
+      (!qp("quote") || qp("quote") === "all" || (qp("quote") === "yes" ? quoteOf(o.id).delivered : !quoteOf(o.id).delivered)) &&
+      (!qp("qual") || qp("qual") === "all" || qualOf(o.id) === qp("qual")),
   );
 
   const open = opps.filter((o) => !o.stage.startsWith("closed"));
@@ -340,8 +369,33 @@ export default async function PipelinePage({
     opps, open, total, weighted, regRows, tieOut, writebacks, approvedWb,
     calibration, renewals, scoreOf, quoteOf, probOf, qualOf, partnerOptions,
     visible, stakeholdersByOpp, regByOpp, meddpicc, momentum, initiativeOpts,
-    autopsies,
+    autopsies, ecoByCompany,
   };
+  });
+
+  // Normalize the visible book into canonical pivot rows (§3.2): partner from the motion, seller /
+  // vendor / territory from the ecosystem map, condition from the shared canonical classifier.
+  const portfolioOpps: PortfolioOpp[] = visible.map((o) => {
+    const eco = ecoByCompany.get(o.company_id);
+    const closed = o.stage.startsWith("closed");
+    const cond = opportunityCondition({ stage: o.stage, updatedAt: o.updated_at }, momentum.get(o.id));
+    const amt = o.amount_usd != null ? Number(o.amount_usd) : null;
+    return {
+      amountUsd: amt, weighted: closed ? 0 : (amt ?? 0) * probOf(o), stage: o.stage, closed,
+      condition: cond.state, partner: o.partner_name ?? null,
+      vendor: eco?.vendor ?? null, territory: eco?.territory ?? null, seller: eco?.seller ?? null,
+    };
+  });
+  const dims = availableDims(portfolioOpps);
+  const safeRow: RowDim = dims.rows.includes(prow) ? prow : (dims.rows[0] ?? "partner");
+  const safeCol: ColDim = dims.cols.includes(pcol) && pcol !== (safeRow as string) ? pcol : (dims.cols.find((cInner) => cInner !== (safeRow as string)) ?? "condition");
+  const portfolio = buildPortfolio(portfolioOpps, safeRow, safeCol, [...STAGES, "closed_won", "closed_lost"]);
+  // Attention view (§3.1): intervention-worthy opps only, materiality-ordered, honoring drill-in filters.
+  const attentionVisible = visible.filter((o) => {
+    if (o.stage.startsWith("closed")) return false;
+    const cond = opportunityCondition({ stage: o.stage, updatedAt: o.updated_at }, momentum.get(o.id));
+    if (!cond.needsAttention) return false;
+    return !condFilter || cond.state === condFilter;
   });
 
   return (
@@ -558,7 +612,7 @@ export default async function PipelinePage({
               const chipHref = (o: Record<string, string | undefined>) => {
                 const p = new URLSearchParams();
                 p.set("view", view);
-                for (const [k, v] of Object.entries({ timeframe: sp.timeframe, stage: sp.stage, partner: sp.partner, quote: sp.quote, qual: sp.qual, ...o })) if (v) p.set(k, v);
+                for (const [k, v] of Object.entries({ timeframe: qp("timeframe"), stage: qp("stage"), partner: qp("partner"), quote: qp("quote"), qual: qp("qual"), ...o })) if (v) p.set(k, v);
                 return `/pipeline?${p.toString()}`;
               };
               const chip = (label: string, count: number, active: boolean, href: string, tone = "neutral") => {
@@ -580,16 +634,16 @@ export default async function PipelinePage({
               const quoteSent = opps.filter((o) => quoteOf(o.id).delivered).length;
               const strong = opps.filter((o) => qualOf(o.id) === "strong").length;
               const risk = opps.filter((o) => qualOf(o.id) === "risk").length;
-              const noFilters = !sp.stage && !sp.quote && !sp.qual;
+              const noFilters = !qp("stage") && !qp("quote") && !qp("qual");
               return (
                 <div className="mb-5 flex flex-wrap gap-2">
                   {chip("all", opps.length, noFilters, chipHref({ stage: undefined, quote: undefined, qual: undefined }))}
                   {[...STAGES, "closed_won", "closed_lost"].map((s) =>
-                    chip(s.replace(/_/g, " "), cStage(s), sp.stage === s, chipHref({ stage: sp.stage === s ? undefined : s }), s === "closed_won" ? "green" : s === "closed_lost" ? "red" : "blue"),
+                    chip(s.replace(/_/g, " "), cStage(s), qp("stage") === s, chipHref({ stage: qp("stage") === s ? undefined : s }), s === "closed_won" ? "green" : s === "closed_lost" ? "red" : "blue"),
                   )}
-                  {chip("quote sent", quoteSent, sp.quote === "yes", chipHref({ quote: sp.quote === "yes" ? undefined : "yes" }), "green")}
-                  {chip("well-qualified", strong, sp.qual === "strong", chipHref({ qual: sp.qual === "strong" ? undefined : "strong" }), "green")}
-                  {chip("at risk", risk, sp.qual === "risk", chipHref({ qual: sp.qual === "risk" ? undefined : "risk" }), "amber")}
+                  {chip("quote sent", quoteSent, qp("quote") === "yes", chipHref({ quote: qp("quote") === "yes" ? undefined : "yes" }), "green")}
+                  {chip("well-qualified", strong, qp("qual") === "strong", chipHref({ qual: qp("qual") === "strong" ? undefined : "strong" }), "green")}
+                  {chip("at risk", risk, qp("qual") === "risk", chipHref({ qual: qp("qual") === "risk" ? undefined : "risk" }), "amber")}
                 </div>
               );
             })()}
@@ -670,33 +724,44 @@ export default async function PipelinePage({
         );
       })()}
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        {(["board", "review"] as const).map((v) => {
+      {(() => {
+        // Preserve scope + active filters across the view switch.
+        const viewHref = (v: string) => {
           const qs = new URLSearchParams();
           qs.set("view", v);
-          for (const k of ["timeframe", "stage", "partner", "quote", "qual"] as const) if (sp[k]) qs.set(k, sp[k]!);
-          return (
-            <Link
-              key={v}
-              href={`/pipeline?${qs.toString()}`}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                view === v
-                  ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                  : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
-              }`}
-            >
-              {v === "board" ? "Board" : "Review + deal reg"}
-            </Link>
-          );
-        })}
-        <QuerySelect param="stage" value={sp.stage ?? "all"} label="Stage" options={[{ value: "all", label: "Any stage" }, ...STAGES.map((s) => ({ value: s, label: s.replace(/_/g, " ") })), { value: "closed_won", label: "closed won" }, { value: "closed_lost", label: "closed lost" }]} />
-        {partnerOptions.length > 0 && (
-          <QuerySelect param="partner" value={sp.partner ?? "all"} label="Partner" options={[{ value: "all", label: "Any partner" }, { value: "Direct", label: "Direct" }, ...partnerOptions.map((p) => ({ value: p, label: p }))]} />
-        )}
-        <QuerySelect param="quote" value={sp.quote ?? "all"} label="Quote" options={[{ value: "all", label: "Any" }, { value: "yes", label: "Quote sent" }, { value: "no", label: "No quote" }]} />
-        <QuerySelect param="timeframe" value={sp.timeframe ?? "all"} label="Closing within" options={[{ value: "all", label: "Any time" }, { value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }]} />
-        <span className="ml-auto text-xs text-neutral-500">{visible.length} of {opps.length}</span>
-      </div>
+          for (const k of ["timeframe", "stage", "partner", "quote", "qual", "scope"] as const) { const val = qp(k); if (val) qs.set(k, val); }
+          return `/pipeline?${qs.toString()}`;
+        };
+        const seg: { key: typeof view; label: string; hint: string }[] = [
+          { key: "attention", label: "Attention", hint: "needs intervention now" },
+          { key: "portfolio", label: "Portfolio", hint: "where exposure concentrates" },
+          { key: "all", label: "All", hint: "the whole book, compact" },
+          { key: "review", label: "Review", hint: "deal registration" },
+        ];
+        return (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--surface-inset)" }}>
+              {seg.map((v) => (
+                <Link key={v.key} href={viewHref(v.key)} title={v.hint}
+                  className={`rounded-md px-3 py-1.5 text-[13px] font-semibold transition-colors ${view === v.key ? "bg-white text-neutral-900 shadow-[var(--shadow-low)] dark:bg-neutral-700 dark:text-white" : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"}`}>
+                  {v.label}
+                </Link>
+              ))}
+            </div>
+            {(view === "all" || view === "review") && (
+              <>
+                <QuerySelect param="stage" value={qp("stage") ?? "all"} label="Stage" options={[{ value: "all", label: "Any stage" }, ...STAGES.map((s) => ({ value: s, label: s.replace(/_/g, " ") })), { value: "closed_won", label: "closed won" }, { value: "closed_lost", label: "closed lost" }]} />
+                {partnerOptions.length > 0 && (
+                  <QuerySelect param="partner" value={qp("partner") ?? "all"} label="Partner" options={[{ value: "all", label: "Any partner" }, { value: "Direct", label: "Direct" }, ...partnerOptions.map((p) => ({ value: p, label: p }))]} />
+                )}
+                <QuerySelect param="quote" value={qp("quote") ?? "all"} label="Quote" options={[{ value: "all", label: "Any" }, { value: "yes", label: "Quote sent" }, { value: "no", label: "No quote" }]} />
+                <QuerySelect param="timeframe" value={qp("timeframe") ?? "all"} label="Closing within" options={[{ value: "all", label: "Any time" }, { value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }]} />
+              </>
+            )}
+            <span className="ml-auto text-xs text-neutral-500">{visible.length} of {opps.length}</span>
+          </div>
+        );
+      })()}
 
       {opps.length === 0 && (
         <p className="text-sm text-neutral-500">
@@ -704,8 +769,30 @@ export default async function PipelinePage({
           earns a meeting.
         </p>
       )}
-      {opps.length > 0 && visible.length === 0 && (
+      {opps.length > 0 && visible.length === 0 && view !== "portfolio" && (
         <p className="text-sm text-neutral-500">No opportunities match these filters — clear one above.</p>
+      )}
+
+      {/* PORTFOLIO (§3.2 / R4): ecosystem-native pivot matrix over the canonical open book. */}
+      {view === "portfolio" && (
+        <PortfolioMatrix portfolio={portfolio} rows={dims.rows} cols={dims.cols} basePath="/pipeline" scopeToken={qp("scope")} />
+      )}
+
+      {/* ALL (§3.3 / R5): the exhaustive book as one dense, sortable, virtualized table. */}
+      {view === "all" && visible.length > 0 && (
+        <PipelineAllTable
+          rows={[...visible].map((o) => {
+            const cond = opportunityCondition({ stage: o.stage, updatedAt: o.updated_at }, momentum.get(o.id));
+            const amt = o.amount_usd != null ? Number(o.amount_usd) : null;
+            return {
+              id: o.id, name: o.name, account: o.legal_name, companyId: o.company_id, stage: o.stage,
+              amountUsd: amt, weightedUsd: amt != null && !o.stage.startsWith("closed") ? Math.round(amt * probOf(o)) : null,
+              partner: o.partner_name ?? null, condition: cond.state,
+              closeDate: o.expected_close_date ? new Date(o.expected_close_date).toISOString().slice(0, 10) : null,
+              meddpicc: scoreOf(o.id),
+            };
+          })}
+        />
       )}
 
       {view === "review" && visible.length > 0 && (
@@ -793,9 +880,16 @@ export default async function PipelinePage({
         </div>
       )}
 
-      {view === "board" && visible.length > 0 && (
+      {view === "attention" && attentionVisible.length === 0 && (
+        <p className="rounded-card p-4 text-sm text-neutral-500" style={{ background: "var(--surface-inset)" }}>
+          Nothing needs intervention right now{condFilter ? " in this slice" : ""}. The open book is in{" "}
+          <Link href="/pipeline?view=all" className="font-medium text-accent hover:underline dark:text-blue-400">All</Link>, concentrated in{" "}
+          <Link href="/pipeline?view=portfolio" className="font-medium text-accent hover:underline dark:text-blue-400">Portfolio</Link>.
+        </p>
+      )}
+      {view === "attention" && attentionVisible.length > 0 && (
       <div className="space-y-3">
-        {[...visible]
+        {[...attentionVisible]
           // Materiality controls order: open deals by weighted value, closed sink to the bottom.
           .sort((a, b) => {
             const ca = a.stage.startsWith("closed"), cb = b.stage.startsWith("closed");

@@ -301,6 +301,24 @@ async function main() {
     });
   });
 
+  // Layer 9 — route attribution: link each open opportunity to its account's partner-bearing motion
+  // so the pipeline reads the same route the pursuit/mapping story tells (Umbrella/Cyberdyne/Hooli via
+  // CDW, Globex via WWT). Wires existing objects (opp ↔ motion by company) — no new business object.
+  await layer("Route attribution — opportunities ↔ partner motions (canonical)", async () => {
+    await tx(async (db) => {
+      await db.query("select set_config('app.org_id',$1,true)", [base.vendor]);
+      await db.query(
+        `update opportunities o set motion_id = m.id
+           from revenue_motions m
+          where m.company_id = o.company_id and m.partner_id is not null
+            and o.stage not in ('closed_won','closed_lost')
+            and m.id = (select id from revenue_motions
+                         where company_id = o.company_id and partner_id is not null
+                         order by created_at limit 1)`,
+      );
+    });
+  });
+
   log("done — 4 hero + 6 supporting, reconciled (DEMO/synthetic).");
   await pool.end();
 }
