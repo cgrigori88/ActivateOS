@@ -28,10 +28,15 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
 const money = (n: number | null) => (n == null ? "—" : n >= 1000 ? `$${(n / 1_000_000).toFixed(2)}M` : `$${n}`);
 const k = (n: number) => `$${Math.round(n / 1000)}k`;
 
-export function AccountIntelPane({ intel, closeHref }: { intel: AccountIntel; closeHref: string }) {
+export function AccountIntelPane({ intel, closeHref, flat }: { intel: AccountIntel; closeHref: string; flat?: boolean }) {
   const t = intel.throughWhom;
+  // `flat` = sitting on an opaque drawer sheet (§4): no card chrome of its own, so the sheet is the
+  // single opaque reading surface. Default (Accounts ?sel) keeps the sticky glass card.
   return (
-    <aside className="rounded-card border p-4 lg:sticky lg:top-4" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-primary)", boxShadow: "var(--shadow-low)" }}>
+    <aside
+      className={flat ? "" : "rounded-card border p-4 lg:sticky lg:top-4"}
+      style={flat ? undefined : { borderColor: "var(--border-subtle)", background: "var(--surface-primary)", boxShadow: "var(--shadow-low)" }}
+    >
       <div className="mb-3 flex items-start justify-between gap-2">
         <div>
           <Link href={`/accounts/${intel.companyId}`} className="text-[15px] font-bold hover:underline">{intel.legalName}</Link>

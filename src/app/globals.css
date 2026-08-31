@@ -152,6 +152,13 @@
   --surface-primary: var(--glass-bg);
   --surface-inset: color-mix(in srgb, var(--color-neutral-500) 6%, transparent);
   --surface-elevated: var(--glass-bg);
+  /* Opaque reading surface for sheets/drawers that float over a dimmed page — depth from the
+     scrim + shadow, never from letting the page text bleed through the content. */
+  --surface-sheet: #ffffff;
+  /* Rail-native popover material (dark in BOTH OS themes — the rail is a material, not a mode). */
+  --rail-pop-bg: #141d31;
+  --rail-pop-edge: rgba(255, 255, 255, 0.1);
+  --rail-pop-hover: rgba(255, 255, 255, 0.07);
   --border-subtle: var(--hairline);
   --border-emphasis: var(--hairline-strong);
   --shadow-low: 0 1px 2px rgba(11, 18, 32, 0.05), 0 1px 3px rgba(11, 18, 32, 0.06);
@@ -182,6 +189,8 @@ html.dark {
   --hairline-strong: rgba(255, 255, 255, 0.16);
   --surface-inset: rgba(255, 255, 255, 0.04);
   --shadow-low: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  /* Opaque sheet in dark mode: solid slate, brighter than the near-black ground. */
+  --surface-sheet: #131c2e;
 }
 
 html {

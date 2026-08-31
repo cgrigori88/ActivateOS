@@ -108,16 +108,16 @@ export function ScopeSelector({ options, active, collapsed }: { options: ScopeOp
       {open && (
         <div
           role="listbox"
-          className="absolute left-0 right-0 z-50 mt-1 max-h-[60vh] overflow-y-auto rounded-card bg-white p-1.5 text-neutral-800 shadow-[0_18px_50px_rgba(0,0,0,0.28)] ring-1 ring-neutral-950/10 scroll-thin dark:bg-neutral-900 dark:text-neutral-100 dark:ring-white/10"
-          style={{ minWidth: 220 }}
+          className="pos-rail-scroll absolute left-0 right-0 z-50 mt-1 max-h-[60vh] overflow-y-auto rounded-card p-1.5 text-rail-ink"
+          style={{ minWidth: 220, background: "var(--rail-pop-bg)", boxShadow: "var(--shadow-rail)", border: "1px solid var(--rail-pop-edge)" }}
         >
           <MenuItem opt={allOpt} active={scopesEqual(active, { kind: "ALL", id: null })} onPick={apply} />
           {groups.length === 0 && (
-            <p className="px-3 py-2 text-[11.5px] text-neutral-400">No narrower scopes in this tenant yet.</p>
+            <p className="px-3 py-2 text-[11.5px] text-rail-ink-soft/70">No narrower scopes in this tenant yet.</p>
           )}
           {groups.map(([group, items]) => (
             <div key={group} className="mt-1">
-              <p className="mb-0.5 mt-1 px-3 text-micro font-bold uppercase tracking-[0.12em] text-neutral-400">{group}</p>
+              <p className="mb-0.5 mt-1 px-3 text-micro font-bold uppercase tracking-[0.12em] text-rail-ink-soft/60">{group}</p>
               {items.map((o) => (
                 <MenuItem key={`${o.kind}:${o.id}`} opt={o} active={scopesEqual(active, { kind: o.kind, id: o.id })} onPick={apply} />
               ))}
@@ -136,12 +136,12 @@ function MenuItem({ opt, active, onPick }: { opt: ScopeOption; active: boolean; 
       role="option"
       aria-selected={active}
       onClick={() => onPick(opt)}
-      className={`flex w-full items-center gap-2 rounded-xl px-3 py-1.5 text-left text-[13px] transition-colors duration-[100ms] ${
-        active ? "bg-accent text-white" : "hover:bg-neutral-100 dark:hover:bg-neutral-800"
+      className={`flex w-full items-center gap-2 rounded-full px-3 py-1.5 text-left text-[13px] transition-colors duration-[100ms] ${
+        active ? "bg-accent font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]" : "text-rail-ink-soft hover:bg-[var(--rail-pop-hover)] hover:text-rail-ink"
       }`}
     >
       <span className="truncate">{opt.label}</span>
-      {active && <span className="ml-auto shrink-0 text-micro">✓</span>}
+      {active && <span className="ml-auto shrink-0 text-micro text-white/90">✓</span>}
     </button>
   );
 }

@@ -17,10 +17,15 @@ export function IntelDrawer({ intel, closeHref }: { intel: AccountIntel; closeHr
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={`${intel.legalName} intelligence`}>
       <DrawerKeys closeHref={closeHref} />
-      <Link href={closeHref} scroll={false} aria-label="Close" className="absolute inset-0 bg-neutral-950/40 backdrop-blur-[2px]" />
-      <div className="absolute inset-y-0 right-0 w-[min(440px,94vw)] overflow-y-auto p-3 scroll-thin">
-        <AccountIntelPane intel={intel} closeHref={closeHref} />
-      </div>
+      <Link href={closeHref} scroll={false} aria-label="Close" className="absolute inset-0 bg-neutral-950/50 backdrop-blur-[3px]" />
+      {/* Opaque reading sheet: depth comes from the dimmed/blurred page + the float shadow, never from
+          letting page text bleed through. Glass treatment stays on the left-edge chrome only. */}
+      <aside
+        className="absolute inset-y-0 right-0 flex w-[min(440px,94vw)] flex-col overflow-y-auto border-l p-4 scroll-thin"
+        style={{ background: "var(--surface-sheet)", borderColor: "var(--border-emphasis)", boxShadow: "var(--shadow-float)" }}
+      >
+        <AccountIntelPane intel={intel} closeHref={closeHref} flat />
+      </aside>
     </div>
   );
 }

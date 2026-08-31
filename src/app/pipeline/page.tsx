@@ -433,7 +433,7 @@ export default async function PipelinePage({
         const lostQual = avg(opps.filter((o) => o.stage === "closed_lost"));
         return (
           <>
-            <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="mb-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
               <Bento label="open opportunities" value={open.length} href="/pipeline" />
               <Bento label="total pipeline" value={`$${Math.round(total / 1000)}k`} />
               <Bento label="weighted" value={`$${Math.round(weighted / 1000)}k`} subs={["by stage probability"]} />
@@ -444,7 +444,7 @@ export default async function PipelinePage({
 
             {/* ── Tie-out (task #87): one place where the numbers reconcile ── */}
             {tieOut && (
-              <Card className="mb-5">
+              <Card className="mb-3">
                 <div className="mb-1 flex items-baseline justify-between gap-2">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Does it tie out?</h2>
                   <span className="text-label text-neutral-400">CRM export vs live record, account by account</span>
@@ -494,7 +494,7 @@ export default async function PipelinePage({
                 approved by a human, exported to the CRM. Detection alone just
                 moves the stitching problem downstream; this closes it. ── */}
             {tieOut && (tieOut.deltas.length > 0 || writebacks.length > 0) && (
-              <Card className="mb-5">
+              <Card className="mb-3">
                 <div className="mb-1 flex items-baseline justify-between gap-3">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Fix the CRM</h2>
                   <span className="text-xs text-neutral-400">corrections proposed from the tie-out — nothing touches the CRM without approval</span>
@@ -552,7 +552,7 @@ export default async function PipelinePage({
 
             {/* ── Forecast calibration: the forecast measured against reality ── */}
             {calibration.length > 0 && (
-              <Card className="mb-5">
+              <Card className="mb-3">
                 <div className="mb-1 flex items-baseline justify-between gap-3">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Was the forecast right?</h2>
                   <span className="text-xs text-neutral-400">what the weighted pipeline said, vs what closed since</span>
@@ -581,7 +581,7 @@ export default async function PipelinePage({
 
             {/* ── Renewal radar (B+3): the co-sell clock ── */}
             {renewals.length > 0 && (
-              <Card tone="amber" className="mb-5">
+              <Card tone="amber" className="mb-3">
                 <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Renewal radar</h2>
                 <p className="mb-3 text-xs text-neutral-500">
                   Renewals inside 120 days across your approved lists. Quiet engagement is decay risk; the partners
@@ -661,7 +661,7 @@ export default async function PipelinePage({
               );
             })()}
             {(wonQual != null || lostQual != null) && (
-              <Card className="mb-5">
+              <Card className="mb-3">
                 <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">AI learned signal · qualification vs outcome</h2>
                 <p className="text-sm text-neutral-600 dark:text-neutral-300">
                   Closed-won deals qualified at <span className="font-semibold text-positive dark:text-green-400">{wonQual ?? "—"}</span> MEDDPICC health on average;
@@ -673,7 +673,7 @@ export default async function PipelinePage({
               </Card>
             )}
             {stageRows.length > 0 && (
-              <Card className="mb-5">
+              <Card className="mb-3">
                 <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Open opportunities by stage</h2>
                 <MiniBar rows={stageRows} />
               </Card>
@@ -698,7 +698,7 @@ export default async function PipelinePage({
               const maxP = Math.max(1, ...partners.map(([, v]) => v.open + v.won));
               if (totalOpen === 0 && partners.length === 0) return null;
               return (
-                <Card className="mb-5">
+                <Card className="mb-3">
                   <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Pipeline &amp; revenue roll-up</h2>
                     <span className="text-label text-neutral-400">open pipeline · base (direct) vs joint (co-sell)</span>
