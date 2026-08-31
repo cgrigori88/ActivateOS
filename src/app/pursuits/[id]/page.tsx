@@ -6,7 +6,7 @@ import { getPursuitDetail } from "@/lib/pursuits/read-models/detail";
 import { callerFor } from "@/lib/pursuits/read-models/caller";
 import { Panel } from "@/components/pursuit/panel";
 import { PursuitHero, MetricBand, WhyNowBento, FactsBento, MaterialChangeTimeline } from "@/components/pursuit/surfaces";
-import { RoutePath, RecommendationChange, RouteCandidateTable } from "@/components/pursuit/route";
+import { RoutePath, RecommendationChange, RouteCandidateTable, RouteComparisonInsight } from "@/components/pursuit/route";
 import { RouteDecision } from "@/components/pursuit/route-decision";
 import { ExecutionPlan } from "@/components/pursuit/team-decision";
 import { PursuitBriefButton } from "@/components/pursuit/pursuit-brief";
@@ -173,6 +173,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
             <RoutePath view={r} />
             <RecommendationChange view={r} />
             <RouteDecision view={r} pursuitId={d.pursuitId} canDecide={loaded.canDecide} />
+            <RouteComparisonInsight view={r} />
             <RouteCandidateTable view={r} />
           </div>
         </Panel>

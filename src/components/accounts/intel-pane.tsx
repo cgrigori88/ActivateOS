@@ -99,6 +99,14 @@ export function AccountIntelPane({ intel, closeHref, flat }: { intel: AccountInt
             </Row>
           )}
           {t.overlapLists.length > 0 && <Row k="Shared book">overlaps {t.overlapLists.join(", ")}</Row>}
+          {/* Strongest seller path (P1B.5): tier + recency evidence; UNKNOWN stays UNKNOWN. */}
+          {t.sellerPath && (
+            <Row k="Strongest path">
+              <b>{t.sellerPath.name}</b>{t.sellerPath.partnerLabel && <span className="text-neutral-500"> ({t.sellerPath.partnerLabel})</span>}
+              <span className="text-neutral-400"> · {t.sellerPath.tier.replace(/_/g, " ").toLowerCase()} · {t.sellerPath.recency === "UNKNOWN" ? "recency UNKNOWN" : `${t.sellerPath.recency} contact`}</span>
+              {!t.sellerPath.assigned && <span style={{ color: "var(--color-timing)" }}> · not on the pursuit team</span>}
+            </Row>
+          )}
           {t.conflict && <Row k="Note"><span style={{ color: "var(--color-accent-attention)" }}>{t.conflict}</span></Row>}
         </Section>
 

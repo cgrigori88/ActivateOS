@@ -182,6 +182,26 @@ export async function resolveExplain(db: PoolClient, q: string, orgId?: string):
   const asksTiming = /timing|when|renewal|now|urgent/i.test(q);
   const asksReady = /execution[- ]?ready|not\s+ready|isn'?t\s+ready/i.test(q);
   const asksQualify = /qualif/i.test(q);
+  const asksSellerPath = /seller|strongest\s+path|who\s+(?:has|knows)/i.test(q);
+
+  // Seller-path intent (P1B.5) — evidence-ranked paths into the account: the five relationship
+  // tiers with temporal decay, UNKNOWN recency preserved. Ownership ≠ recommendation.
+  if (asksSellerPath && orgId) {
+    const { getSellerPaths } = await import("@/lib/partners/intelligence");
+    const paths = await getSellerPaths(db, orgId, co.id);
+    if (paths.length === 0) return { note: `No seller relationships on record for ${co.legal_name} — UNKNOWN, not zero.` };
+    return {
+      title: `Strongest paths into ${co.legal_name}`,
+      subtitle: "Asserted seller relationships with temporal decay — evidence, not an assignment.",
+      lines: paths.slice(0, 4).map((p) => ({
+        label: p.partnerLabel ? `${p.name} (${p.partnerLabel})` : `${p.name} (vendor)`,
+        value: `${p.tier.replace(/_/g, " ").toLowerCase()} · strength ${p.strength}` +
+               (p.recency === "UNKNOWN" ? " · recency UNKNOWN" : ` · ${p.recency} contact`) +
+               (p.assignedOnLivePursuit ? " · on the pursuit team" : " · not on the pursuit team"),
+      })),
+      grounding: ["seller_account_relationships (strength + last_interaction_at, decayed)", "pursuit_team_members (assignment)"],
+    };
+  }
 
   // Motion intents (P1A) — grounded in the funnel read-model (same gates, same constraint
   // vocabulary as the Motions room). Hypothesis resolution is deterministic: one named in the

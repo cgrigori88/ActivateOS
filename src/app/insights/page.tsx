@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
+import { partnerActivationHeadlines } from "@/lib/partners/intelligence";
 import { calibrateStages, editIntensity } from "@/lib/insights/calibration";
 import { computeFunnel } from "@/lib/insights/funnel";
 import { STAGES, type Stage } from "@/lib/opportunities/lifecycle";
@@ -23,9 +25,11 @@ export default async function InsightsPage({
   searchParams: Promise<{ wscope?: string }>;
 }) {
   const sp = await searchParams;
-  const { triggersOn, partnerRows, stageWeights, events, closed, edits, replies, attribution, canonicalOutcomes } =
+  const { triggersOn, partnerRows, stageWeights, events, closed, edits, replies, attribution, canonicalOutcomes, partnerHeadlines } =
     await withTenant(async (db, orgId) => {
       const triggersOn = await enabledTriggers(db, orgId);
+      // Partner activation-vs-presence (P1B): separate truths per partner — no leaderboard score.
+      const partnerHeadlines = await partnerActivationHeadlines(db, orgId);
 
       // Editable stage weights (0036): the calibration card is also the editor.
       const { rows: partnerRows } = await db.query<{ id: string; name: string }>(
@@ -66,7 +70,7 @@ export default async function InsightsPage({
           where o.org_id = $1 and o.is_terminal
           group by 1, 2 order by 1, 2`, [orgId]);
 
-      return { triggersOn, partnerRows, stageWeights, events, closed, edits, replies, attribution, canonicalOutcomes };
+      return { triggersOn, partnerRows, stageWeights, events, closed, edits, replies, attribution, canonicalOutcomes, partnerHeadlines };
     });
 
   const wscope = partnerRows.some((p) => p.id === sp.wscope) ? sp.wscope! : "";
@@ -130,6 +134,40 @@ export default async function InsightsPage({
             ))}
           </div>
           <p className="mt-2 text-xs text-neutral-400">Outcome ≠ Attribution — the count is what happened; the class is PursuitOS’s evidence-bound claim about who moved it. UNKNOWN is preserved where no partner route was selected.</p>
+        </Card>
+      )}
+
+      {/* Partner activation vs presence (P1B.3): overlap ≠ activation ≠ execution — the disagreement
+          IS the insight. Latency shows median + sample or UNKNOWN; no composite score, no leaderboard. */}
+      {partnerHeadlines.length > 0 && (
+        <Card className="mb-6">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Partner activation vs presence</h2>
+            <span className="text-xs text-neutral-400">separate truths — presence, activation, acceptance, canonical outcomes</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse text-[12.5px]">
+              <thead>
+                <tr className="text-left text-[10px] font-bold uppercase tracking-wide text-neutral-500">
+                  <th className="px-2 py-1.5">Partner</th><th className="px-2 py-1.5">Overlap</th><th className="px-2 py-1.5">Selected routes</th>
+                  <th className="px-2 py-1.5">Teams accepted</th><th className="px-2 py-1.5">Pending</th><th className="px-2 py-1.5">Median accept</th><th className="px-2 py-1.5">Canonical wins</th>
+                </tr>
+              </thead>
+              <tbody>
+                {partnerHeadlines.map((h) => (
+                  <tr key={h.partnerId} style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                    <td className="px-2 py-1.5 font-semibold"><Link href={`/partners/${h.partnerId}`} className="hover:underline">{h.name}</Link></td>
+                    <td className="tnum px-2 py-1.5">{h.overlap}</td>
+                    <td className="tnum px-2 py-1.5">{h.selected}</td>
+                    <td className="tnum px-2 py-1.5">{h.accepted}</td>
+                    <td className="tnum px-2 py-1.5">{h.pending > 0 ? <span style={{ color: "var(--color-timing)" }}>{h.pending}</span> : 0}</td>
+                    <td className="tnum px-2 py-1.5">{h.medianAcceptDays == null ? <span className="text-neutral-400">UNKNOWN</span> : <>{h.medianAcceptDays}d <span className="text-neutral-400">(n={h.acceptSample})</span></>}</td>
+                    <td className="tnum px-2 py-1.5">{h.sample > 0 ? <>{h.won} of {h.sample}</> : <span className="text-neutral-400">none</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
 

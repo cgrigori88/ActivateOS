@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Bento, Card, NextStep, PageHeader } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { listPartnerRooms } from "@/lib/partners/hub";
+import { partnerActivationHeadlines } from "@/lib/partners/intelligence";
 import { withTenant } from "@/lib/db/tenant";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,13 @@ export default async function PartnersPage({
   searchParams?: Promise<{ welcome?: string }>;
 }) {
   const sp = (await searchParams) ?? {};
-  const partners = await withTenant((db, orgId) => listPartnerRooms(db, orgId));
+  const { partners, headlines } = await withTenant(async (db, orgId) => ({
+    partners: await listPartnerRooms(db, orgId),
+    // Activation headlines (P1B.3): presence vs activation vs execution, per partner — separate
+    // truths on one chip row, no composite score.
+    headlines: await partnerActivationHeadlines(db, orgId),
+  }));
+  const headlineBy = new Map(headlines.map((h) => [h.partnerId, h]));
   const connected = partners.filter((p) => p.partnershipStatus === "active");
   const openPursuits = partners.reduce((s, p) => s + p.openPursuits, 0);
   const settledTotal = partners.reduce((s, p) => s + p.settledUsd, 0);
@@ -103,6 +110,14 @@ export default async function PartnersPage({
                 {p.bookLists} list{p.bookLists === 1 ? "" : "s"} · {p.motionsActive} active motion
                 {p.motionsActive === 1 ? "" : "s"} · {p.motionsWon} won
               </p>
+              {(() => { const h = headlineBy.get(p.id); if (!h) return null; return (
+                <p className="mt-1.5 text-label">
+                  <span className="text-neutral-500">activation:</span>{" "}
+                  <span className="font-semibold">{h.overlap} overlap → {h.selected} selected → {h.accepted} accepted</span>
+                  {h.pending > 0 && <span className="font-semibold" style={{ color: "var(--color-timing)" }}> · {h.pending} pending</span>}
+                  {h.sample > 0 && <span style={{ color: "var(--color-accent-verified)" }}> · {h.won} won (canonical)</span>}
+                </p>
+              ); })()}
             </Card>
           </Link>
         ))}

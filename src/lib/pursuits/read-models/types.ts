@@ -84,6 +84,11 @@ export interface RouteCandidateView {
   reasonsInternal: ScoreReason[] | null;   // null when caller lacks internal disclosure (§39/§40/§65)
   disqualifiers: { code: string; severity: "HARD" | "SOFT"; detail: string }[];
   synthetic: boolean;
+  // Execution-history EVIDENCE (P1B.2): canonical outcomes + attribution for this candidate
+  // partner in this pursuit's category. Display-only — never an input to any score (fit-v2 is a
+  // deferred versioned decision). Absent for candidates without a partner or without history.
+  executionHistory?: ScoreReason[];
+  executionSummary?: { won: number; lost: number; sample: number } | null;
 }
 export interface RoutePathStep { role: string; label: string; sequence: number; }
 export interface RouteComparisonView {

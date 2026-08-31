@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { getSellerPaths } from "@/lib/partners/intelligence";
 
 /**
  * Selected-account intelligence (Phase 3c-2). Assembles the "where should I hunt, why now,
@@ -11,7 +12,9 @@ export interface AccountIntel {
   industry: string | null;
   hunt: { score: number | null; band: string | null; priority: number | null; propensity: number | null; useCase: string | null; problem: string | null; expectedValue: number | null; openOpps: number; pipelineUsd: number };
   whyNow: { compellingEvent: string | null; timingKnown: boolean; timingScore: number | null; convergence: number | null; materialChange: string | null; evidence: Array<{ claim: string; confidence: number; firstParty: boolean }>; missingEvidence: string | null };
-  throughWhom: { recommended: string | null; selected: string | null; overridden: boolean; partners: Array<{ name: string; strength: number | null; tenure: number | null; recommended: boolean }>; overlapLists: string[]; conflict: string | null };
+  throughWhom: { recommended: string | null; selected: string | null; overridden: boolean; partners: Array<{ name: string; strength: number | null; tenure: number | null; recommended: boolean }>; overlapLists: string[]; conflict: string | null;
+    /** Strongest seller path (P1B.5): tiered + decayed evidence; UNKNOWN recency stays UNKNOWN. */
+    sellerPath: { name: string; partnerLabel: string | null; tier: string; recency: string; assigned: boolean } | null };
   whatNext: { motion: string | null; governedAction: string | null; humanDecision: string | null };
 }
 
@@ -52,6 +55,12 @@ export async function getAccountIntel(db: PoolClient, companyId: string): Promis
   const overridden = !!(route?.sel && route.rec && route.sel !== route.rec);
   const recName = route?.rec ?? null;
 
+  // Strongest seller path (P1B.5) — evidence-ranked; ownership ≠ recommendation.
+  const orgRow = (await db.query<{ org_id: string | null }>(`select org_id from revenue_motions where company_id=$1 limit 1`, [companyId])).rows[0]
+    ?? (await db.query<{ org_id: string | null }>(`select org_id from partners limit 1`)).rows[0];
+  const sellerPaths = orgRow?.org_id ? await getSellerPaths(db, orgRow.org_id, companyId) : [];
+  const topSeller = sellerPaths[0] ?? null;
+
   return {
     companyId, legalName: co.legal_name, industry: co.industry,
     hunt: {
@@ -75,6 +84,7 @@ export async function getAccountIntel(db: PoolClient, companyId: string): Promis
       partners: partners.map((p) => ({ name: p.name, strength: p.strength, tenure: p.tenure, recommended: p.name === recName })),
       overlapLists,
       conflict: partners.length >= 2 && Math.abs((partners[0].strength ?? 0) - (partners[1].strength ?? 0)) <= 6 ? `${partners[0].name} and ${partners[1].name} are both credibly positioned — a routing decision, not a default` : null,
+      sellerPath: topSeller ? { name: topSeller.name, partnerLabel: topSeller.partnerLabel, tier: topSeller.tier, recency: topSeller.recency, assigned: topSeller.assignedOnLivePursuit } : null,
     },
     whatNext: {
       motion: motion ? `${motion.thesis ?? "motion"}${motion.status === "draft" ? " (draft — awaiting approval)" : ""}` : null,

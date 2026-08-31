@@ -109,9 +109,51 @@ export function RouteCandidateTable({ view }: { view: RouteComparisonView }) {
               })}
             </tr>
           ))}
+          {/* Execution history (P1B.2) — canonical outcome EVIDENCE beside the scored dimensions.
+              Deliberately not a score cell: it informs the human, it never moves the model. */}
+          {cands.some((c) => c.executionHistory && c.executionHistory.length > 0) && (
+            <tr style={{ borderTop: "1px solid var(--border-subtle)" }}>
+              <td className="px-2.5 py-2 text-neutral-500">execution history <span className="text-[10px] text-neutral-400">(evidence, not a score)</span></td>
+              {cands.map((c) => (
+                <td key={c.key} className="px-2.5 py-2 text-[11.5px] leading-snug text-neutral-600 dark:text-neutral-300">
+                  {c.executionHistory && c.executionHistory.length > 0 ? c.executionHistory.map((l) => l.text).join(" · ") : <span className="italic text-neutral-400">none recorded</span>}
+                </td>
+              ))}
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * RouteComparisonInsight (P1B.2/P1B.3) — the two-truths sentence. Rendered ONLY when the human
+ * selection differs from the recommendation AND both clauses are independently grounded: one
+ * candidate's asserted relationship is materially stronger while the other's canonical execution
+ * history is materially better (sample ≥ 2). The recommendation and the human decision stay
+ * separate; this states the disagreement, it does not resolve it.
+ */
+const BAND_RANK: Record<string, number> = { unknown: 0, low: 1, moderate: 2, high: 3, very_high: 4 };
+export function RouteComparisonInsight({ view }: { view: RouteComparisonView }) {
+  const a = view.selected, b = view.recommended;
+  if (!a || !b || a.key === b.key) return null;
+  const relA = BAND_RANK[a.dimensions.account_relationship?.band ?? "unknown"] ?? 0;
+  const relB = BAND_RANK[b.dimensions.account_relationship?.band ?? "unknown"] ?? 0;
+  const exA = a.executionSummary, exB = b.executionSummary;
+  if (!exA || !exB) return null;
+  // The disagreement must hold in BOTH directions with real evidence, or nothing renders.
+  const relStrongerA = relA > relB;
+  const execBetterB = exB.sample >= 2 && exB.won > exA.won;
+  const relStrongerB = relB > relA;
+  const execBetterA = exA.sample >= 2 && exA.won > exB.won;
+  const pair = relStrongerA && execBetterB ? { rel: a, exec: b } : relStrongerB && execBetterA ? { rel: b, exec: a } : null;
+  if (!pair) return null;
+  return (
+    <p className="rounded-card px-3 py-2 text-[12.5px]" style={{ background: "color-mix(in srgb, var(--color-route) 6%, var(--surface-primary))", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-route) 20%, transparent)" }}>
+      <b>{pair.rel.label}</b> has the stronger active relationship, but <b>{pair.exec.label}</b> has materially better execution history in this category
+      <span className="text-neutral-500"> ({pair.exec.executionSummary!.won} won of {pair.exec.executionSummary!.sample} vs {pair.rel.executionSummary!.won} of {pair.rel.executionSummary!.sample}) — evidence in the table below; the route decision above remains yours.</span>
+    </p>
   );
 }
 

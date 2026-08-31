@@ -79,7 +79,10 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
         and ($2::boolean is false or pu.account_id = any($1))`, [ids, scoped]);
   for (const w of waitingTeam.rows) {
     const who = w.partner_name ?? w.role.replace(/_/g, " ").toLowerCase();
-    items.push(mk("TEAM_WAITING", "ACTION_REQUIRED", "normal", bandOf(n(w.priority)), w.pursuit_id, w.company_id, w.account_label,
+    // Materiality escalation (P1B): a partner acceptance holding a HIGH-band pursuit is operationally
+    // urgent, not routine — same item type, upgraded urgency only where the band supports it.
+    const wBand = bandOf(n(w.priority));
+    items.push(mk("TEAM_WAITING", "ACTION_REQUIRED", wBand === "very_high" || wBand === "high" ? "high" : "normal", wBand, w.pursuit_id, w.company_id, w.account_label,
       `Waiting on ${who} to accept`, `A confirmed ${w.role.replace(/_/g, " ").toLowerCase()} role has not yet been accepted — activation readiness is held.`,
       w.synthetic, w.invited_at ?? new Date(), now,
       [{ label: "Mark accepted", skill: "accept_team_member", sideEffect: "INTERNAL_WRITE" }], `/pursuits/${w.pursuit_id}#team`));

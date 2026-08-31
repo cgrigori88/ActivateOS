@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import type { RouteComparisonView, RouteCandidateView, RouteDimensionCell, ScoreReason, RoutePathStep } from "./types";
 import { scoreView, type Caller } from "./helpers";
+import { getExecutionEvidence } from "@/lib/partners/intelligence";
 
 /**
  * Route comparison read model (Workstream D, §15-20/§39/§40). Compares candidates by DIMENSION
@@ -90,6 +91,24 @@ export async function getRouteComparison(db: PoolClient, caller: Caller, pursuit
 
   const views: RouteCandidateView[] = [];
   for (const c of cands.rows) views.push(await buildCandidate(db, snapshotId, c.id, { ...c, total_score: c.total_score == null ? null : Number(c.total_score), partner_activation_score: num(c.partner_activation_score), suitability_score: num(c.suitability_score), activation_readiness_score: num(c.activation_readiness_score), candidate_confidence: num(c.candidate_confidence) }, caller, dimensionKeys));
+
+  // Execution-history evidence (P1B.2): canonical outcomes for candidate PARTNERS in this
+  // pursuit's category, attached as display-only evidence beside the dimensional compare. Bounded
+  // to the candidates the panel actually renders; internal-only (the shareable projection keeps
+  // its generalized reasons — the raw win/loss figures never enter the partner payload).
+  if (caller.canSeeInternal) {
+    const ctx = (await db.query<{ org_id: string; node: string | null }>(
+      `select org_id, product_category_id node from pursuits where id = $1`, [pursuitId])).rows[0];
+    if (ctx) {
+      for (let i = 0; i < views.length && i < 4; i++) {
+        const pid = cands.rows[i].partner_id;
+        if (!pid) continue;
+        const ev = await getExecutionEvidence(db, ctx.org_id, pid, ctx.node);
+        views[i].executionHistory = ev.lines.map((l) => ({ text: l.text, polarity: l.polarity, refType: l.refType, refId: l.refId }));
+        views[i].executionSummary = { won: ev.won, lost: ev.lost, sample: ev.sample };
+      }
+    }
+  }
 
   const recommended = views.find((_, i) => cands.rows[i].is_recommended) ?? null;
   const selected = views.find((_, i) => cands.rows[i].is_selected) ?? null;

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { withTenant } from "@/lib/db/tenant";
 import { BackLink, Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
 import { partnerRoom } from "@/lib/partners/hub";
+import { getPartnerActivationProfile } from "@/lib/partners/intelligence";
+import { ActivationProfile } from "@/components/partners/activation-profile";
 import { OVERLAP_LEVELS, LEVEL_LABEL, type RungState } from "@/lib/partnerships/overlap";
 import { createInitiativeAction, decideEvidenceShareAction, decideIntroAction, decideSkillShareAction, offerEvidenceShareAction, offerSkillShareAction, requestIntroAction, revokeEvidenceShareAction, revokeSkillShareAction, savePlaybookAction, setInitiativeStatusAction } from "../actions";
 import { loadPartnerPlaybook } from "@/lib/playbooks/playbooks";
@@ -56,11 +58,13 @@ export default async function PartnerRoomPage({
   const { id } = await params;
   const sp = (await searchParams) ?? {};
 
-  const { room, playbook, initiatives, skillShares, evidenceShares, offerableClaims, shareableSkills } = await withTenant(async (db, orgId) => {
+  const { room, profile, playbook, initiatives, skillShares, evidenceShares, offerableClaims, shareableSkills } = await withTenant(async (db, orgId) => {
     const room = await partnerRoom(db, orgId, id);
     if (!room) notFound();
     return {
       room,
+      // Activation intelligence (P1B) — presence/relationship/activation/execution as separate truths.
+      profile: await getPartnerActivationProfile(db, orgId, id),
       playbook: await loadPartnerPlaybook(db, orgId, id),
       initiatives: await listInitiatives(db, orgId, { partnerId: id }),
       // Skill sharing (task #85): both directions on this partnership, plus the
@@ -101,6 +105,9 @@ export default async function PartnerRoomPage({
       </div>
       <PageHeader title={partner.name} subtitle={meta || undefined} />
 
+      {/* ── Activation intelligence (P1B): where they are vs where they act vs what followed ── */}
+      {profile && <ActivationProfile p={profile} />}
+
       {/* ── Scorecard v1: settlement truth, not self-reporting ── */}
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Scorecard</h2>
       <div className="mb-6 flex flex-wrap gap-3">
@@ -114,8 +121,8 @@ export default async function PartnerRoomPage({
           value={scorecard.avgCycleDays == null ? "—" : `${scorecard.avgCycleDays}d`}
           subs={["open → closed-won"]}
         />
-        <Bento label="sourced revenue" value={money(scorecard.sourcedUsd)} subs={["deal-registered"]} />
-        <Bento label="influenced revenue" value={money(scorecard.influencedUsd)} subs={["jointly pursued"]} />
+        <Bento label="sourced revenue" value={money(scorecard.sourcedUsd)} subs={["registration-based (settlement)"]} />
+        <Bento label="influenced revenue" value={money(scorecard.influencedUsd)} subs={["registration-based (settlement)"]} />
         <Bento
           label="responsiveness"
           value={scorecard.responsivenessDays == null ? "—" : scorecard.responsivenessDays < 1 ? "<1d" : `${Math.round(scorecard.responsivenessDays)}d`}
