@@ -14,6 +14,9 @@ import {
   setMotionInitiativeAction,
 } from "./actions";
 import { initiativeOptions } from "@/lib/partnerships/initiatives";
+import { getScopeContext } from "@/lib/scope/server";
+import { getMotionFunnels } from "@/lib/motions/funnel";
+import { MotionFunnelCommand, MotionConstraintDrawer } from "@/components/motions/funnel-command";
 
 export const dynamic = "force-dynamic";
 // AI drafting actions invoked from this segment can run tens of seconds —
@@ -69,13 +72,27 @@ export default async function MotionsPage({
     blocked?: string;
     more?: string;
     notice?: string;
+    scope?: string;
+    mdrawer?: string;
+    mstage?: string;
   }>;
 }) {
   const sp = await searchParams;
   const groupKey = GROUPS[sp.group ?? "status"] ? (sp.group ?? "status") : "status";
   const group = GROUPS[groupKey];
+  // Ecosystem scope (§1): the funnel narrows to the authorized company set — never widens.
+  const scope = await getScopeContext(sp.scope ?? null);
+  // URL builder preserving room state (filters, scope, drawer) — drawer opens with scroll intact.
+  const qs = (extra: Record<string, string | null>) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries({ status: sp.status, partner: sp.partner, goal: sp.goal, group: sp.group, scope: sp.scope, mdrawer: sp.mdrawer, mstage: sp.mstage })) if (v) p.set(k, v);
+    for (const [k, v] of Object.entries(extra)) { if (v == null) p.delete(k); else p.set(k, v); }
+    const s = p.toString(); return `/motions${s ? `?${s}` : ""}`;
+  };
 
-  const { all, goals, initiativeOpts, draftLists, draftCandidates } = await withTenant(async (db, orgId) => ({
+  const { all, goals, initiativeOpts, draftLists, draftCandidates, funnels } = await withTenant(async (db, orgId) => ({
+    // Motion Intelligence (P1A): the command funnel, derived from canonical records at read time.
+    funnels: await getMotionFunnels(db, orgId, { companyIds: scope.companyIds }),
     all: (await db.query<MotionRow>(
       `select m.id, m.status, m.thesis, m.trigger_summary, m.cta, m.confidence, m.operator_notes,
             m.company_id, c.legal_name, n.slug, c.industry, m.outcome,
@@ -159,9 +176,15 @@ export default async function MotionsPage({
       ? STATUS_ORDER.map((s) => ({ label: s, value: groups.get(s)?.length ?? 0 }))
       : [...groups.entries()].map(([label, ms]) => ({ label, value: ms.length })).sort((a, b) => b.value - a.value).slice(0, 10);
 
+  const drawerFunnel = sp.mdrawer ? funnels.find((f) => f.hypothesis.taxonomyNodeId === sp.mdrawer) : undefined;
+
   return (
     <main>
-      <PageHeader title="Motions" subtitle="Agents propose, you dispose — grouped and filtered so it holds at scale. Approvals feed the learning loop." />
+      <PageHeader title="Motions" subtitle="Each commercial hypothesis as a live funnel — where it qualifies, through whom, what can move now, and exactly what blocks the rest." />
+
+      {/* ── Motion command (P1A.1): the hypothesis funnel is the first viewport ── */}
+      <MotionFunnelCommand funnels={funnels} qs={qs} />
+
       {/* Next-step pull (#79): the just-approved play flows straight into outreach. */}
       {justApproved && (
         <NextStep
@@ -396,6 +419,11 @@ export default async function MotionsPage({
             </section>
           ))}
         </>
+      )}
+
+      {/* Constraint decomposition drawer (P1A.2) — server-rendered only when open. */}
+      {drawerFunnel && (
+        <MotionConstraintDrawer funnel={drawerFunnel} stage={sp.mstage ?? "not_ready"} closeHref={qs({ mdrawer: null, mstage: null })} />
       )}
     </main>
   );

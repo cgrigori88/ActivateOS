@@ -64,13 +64,18 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
     const role = await currentRole(db);
     const canDecide = role === "owner" || role === "operator";
     const outcome = await getPursuitOutcomeSummary(db, id);
+    // Motion context (P1A): deterministic linkage only — a motion names this pursuit_id or nothing.
+    const motion = (await db.query<{ id: string; status: string; hypothesis: string }>(
+      `select m.id, m.status, n.name as hypothesis from revenue_motions m
+         join taxonomy_nodes n on n.id = m.taxonomy_node_id
+        where m.pursuit_id = $1 order by m.created_at desc limit 1`, [id])).rows[0] ?? null;
     let federation = null;
     if (fed) {
       const actions = await getGovernedActions(db, { type: "USER", orgId, role: "operator" }, id);
       const outcomes = await getPursuitOutcomes(db, await buildFederationViewer(db, orgId, id), id);
       federation = { fed, actions, outcomes };
     }
-    return { kind: "sponsor" as const, detail, federation, canDecide, outcome };
+    return { kind: "sponsor" as const, detail, federation, canDecide, outcome, motion };
   });
   if (!loaded) notFound();
 
@@ -94,7 +99,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
   const r = d.route;
   const recWord = r.recommended?.label ?? "the recommended route";
   // Disclosure-aware Pursuit Brief (F1) — a presentation over the already-authorized detail view.
-  const brief = buildPursuitBrief(d, loaded.outcome);
+  const brief = buildPursuitBrief(d, loaded.outcome, loaded.motion);
 
   return (
     <div className="mx-auto max-w-[1240px] px-4 py-6">
@@ -118,6 +123,14 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         {/* Identity + decision band */}
         <Panel className="order-1 lg:order-1 lg:col-span-2">
           <PursuitHero d={d} lifecycleWord={LIFECYCLE_WORD[d.lifecycle] ?? d.lifecycle} />
+          {/* Motion context strip (P1A) — which commercial hypothesis this pursuit serves. */}
+          {loaded.motion && (
+            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px]">
+              <span className="font-bold uppercase tracking-[0.04em] text-neutral-400">Serving</span>
+              <a href="/motions" className="font-semibold hover:underline" style={{ color: "var(--color-priority)" }}>{loaded.motion.hypothesis}</a>
+              <span className="rounded-full px-2 py-px text-[10.5px] font-semibold" style={{ background: "var(--surface-inset)" }}>motion {loaded.motion.status}</span>
+            </div>
+          )}
           {/* Multi-org ribbon — federation reads before the reader scrolls to the panel */}
           {federation && federation.fed.participants.length > 1 && (
             <div className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-control px-3 py-2 text-[11.5px]"

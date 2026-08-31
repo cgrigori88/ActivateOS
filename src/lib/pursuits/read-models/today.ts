@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import type { TodayQueueView, DecisionItem, DecisionClass } from "./types";
 import { bandOf, type Caller } from "./helpers";
 import { classifyChange, isMaterial, todaySort, type OperationalUrgency } from "./materiality";
+import { motionAcceptanceBlockage } from "@/lib/motions/funnel";
 import { STAGE_PROBABILITY, type Stage } from "@/lib/opportunities/lifecycle";
 
 /**
@@ -82,6 +83,22 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
       `Waiting on ${who} to accept`, `A confirmed ${w.role.replace(/_/g, " ").toLowerCase()} role has not yet been accepted — activation readiness is held.`,
       w.synthetic, w.invited_at ?? new Date(), now,
       [{ label: "Mark accepted", skill: "accept_team_member", sideEffect: "INTERNAL_WRITE" }], `/pursuits/${w.pursuit_id}#team`));
+  }
+
+  // 2c) Motion blocked by participant acceptance (P1A.6) — an exceptions-only aggregate: only when
+  //     the expected value held by pending acceptances on an approved/active hypothesis clears the
+  //     materiality floor. One line per hypothesis ("$2.1M of X is blocked by partner acceptance"),
+  //     never one per pursuit — the per-pursuit items are 2b above.
+  if (!scoped) {   // hypothesis-level aggregate is a whole-book signal; scoped views keep 2b only
+    const blockage = await motionAcceptanceBlockage(db, caller.orgId);
+    for (const b of blockage) {
+      items.push(mk("MOTION_ACCEPTANCE_BLOCKED", "ACTION_REQUIRED", "high", "high", null, null, b.name,
+        `$${(b.blockedUsd / 1_000_000).toFixed(1)}M of ${b.name} is blocked by partner acceptance`,
+        `${b.pursuits} pursuit${b.pursuits === 1 ? "" : "s"} on this hypothesis are waiting on a confirmed participant to accept.`,
+        false, new Date(), now,
+        [{ label: "Mark accepted", skill: "accept_team_member", sideEffect: "INTERNAL_WRITE" }],
+        `/motions?mdrawer=${b.taxonomyNodeId}&mstage=not_ready`));
+    }
   }
 
   // 3) Material ledger changes (recent) → MATERIAL_CHANGE / RISK / OPPORTUNITY.

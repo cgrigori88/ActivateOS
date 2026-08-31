@@ -8,7 +8,7 @@ import type { ConditionState } from "./condition";
  * underlying reconciled records (Attention view) under the current scope.
  */
 
-export type RowDim = "partner" | "vendor" | "territory" | "seller";
+export type RowDim = "partner" | "vendor" | "territory" | "seller" | "motion";
 export type ColDim = "condition" | "stage" | "partner";
 
 /** A normalized opportunity for pivoting — assembled by the page from already-loaded canonical data. */
@@ -22,6 +22,8 @@ export interface PortfolioOpp {
   vendor: string | null;
   territory: string | null;
   seller: string | null;
+  /** The commercial hypothesis (motion taxonomy) — canonical linkage only, never inferred. */
+  motion: string | null;
 }
 
 export interface PortfolioCell { usd: number; weighted: number; count: number; }
@@ -39,7 +41,7 @@ const UNASSIGNED = "—";
 const empty = (): PortfolioCell => ({ usd: 0, weighted: 0, count: 0 });
 function add(c: PortfolioCell, o: PortfolioOpp) { c.usd += o.amountUsd ?? 0; c.weighted += o.weighted; c.count += 1; }
 
-const rowValue = (o: PortfolioOpp, dim: RowDim): string => (dim === "partner" ? o.partner : dim === "vendor" ? o.vendor : dim === "territory" ? o.territory : o.seller) ?? UNASSIGNED;
+const rowValue = (o: PortfolioOpp, dim: RowDim): string => (dim === "partner" ? o.partner : dim === "vendor" ? o.vendor : dim === "territory" ? o.territory : dim === "motion" ? o.motion : o.seller) ?? UNASSIGNED;
 const colValue = (o: PortfolioOpp, dim: ColDim): string => (dim === "condition" ? o.condition : dim === "stage" ? o.stage : o.partner ?? UNASSIGNED);
 
 /** Which dimensions actually have data (non-null on ≥1 open opp) — the caller offers only these. */
@@ -51,6 +53,7 @@ export function availableDims(opps: PortfolioOpp[]): { rows: RowDim[]; cols: Col
   if (has((o) => o.vendor)) rows.push("vendor");
   if (has((o) => o.territory)) rows.push("territory");
   if (has((o) => o.seller)) rows.push("seller");
+  if (has((o) => o.motion)) rows.push("motion");
   const cols: ColDim[] = ["condition", "stage"];
   if (has((o) => o.partner)) cols.push("partner");
   return { rows, cols };

@@ -31,7 +31,10 @@ function isConfidentialFigure(text: string): boolean {
 const clean = (t: string) => t.replace(/_/g, " ").replace(/\s+/g, " ").trim();
 const money = (n: number | null, cur: string | null) => (n == null ? null : new Intl.NumberFormat("en-US", { style: "currency", currency: cur || "USD", notation: "compact", maximumFractionDigits: 1 }).format(n));
 
-export function buildPursuitBrief(d: PursuitDetailView, outcome?: PursuitOutcomeSummary | null): PursuitBrief {
+export function buildPursuitBrief(
+  d: PursuitDetailView, outcome?: PursuitOutcomeSummary | null,
+  motion?: { hypothesis: string; status: string } | null,
+): PursuitBrief {
   const r = d.route;
   const rec = r.recommended ?? r.selected ?? null;
   const shareable: ScoreReason[] = rec?.reasonsShareable ?? [];
@@ -43,6 +46,9 @@ export function buildPursuitBrief(d: PursuitDetailView, outcome?: PursuitOutcome
   happening.push({ text: `${d.accountLabel} · ${clean(d.lifecycle)}${d.solution ? ` · ${d.solution}` : ""}` });
   const ev = money(d.expectedValue, d.currency);
   if (ev) happening.push({ text: `Expected value ${ev}.`, confidential: true });
+  // Motion context (P1A) — the commercial hypothesis this pursuit serves. Internal strategy:
+  // confidential by default, withheld from the partner rendering.
+  if (motion) happening.push({ text: `Serving hypothesis: ${motion.hypothesis} (motion ${motion.status}).`, confidential: true });
 
   // WHY NOW — structured trigger components (present ones only; unknowns feed WHAT TO ASK).
   const whyNow: BriefLine[] = [];

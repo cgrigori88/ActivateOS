@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { opportunityCondition, CONDITION_LABEL, type ConditionState } from "@/lib/opportunities/condition";
+import { getMotionFunnels, getMotionConstraints, accountsAtStage } from "@/lib/motions/funnel";
 
 /**
  * Unified ⌘K retrieval (scale-disclosure §5 / R6). THREE explicit intent classes, all deterministic
@@ -31,7 +32,7 @@ export interface ResolveResult {
 
 // ---- Intent classification (rule-based, no model) --------------------------
 const EXPLAIN_RE = /^\s*(why|explain|how come|what makes)\b/i;
-const SHOWME_TOKENS = /(at[- ]risk|stalling|late[- ]stage|through |via |over \$|under \$|>\s*\$|renewal|closing|proposal|negotiation|pursuits?|opportunit|deals?)/i;
+const SHOWME_TOKENS = /(execution[- ]?ready|at[- ]risk|stalling|late[- ]stage|through |via |over \$|under \$|>\s*\$|renewal|closing|proposal|negotiation|pursuits?|opportunit|deals?)/i;
 
 export function classifyIntent(q: string): Intent {
   if (EXPLAIN_RE.test(q)) return "explain";
@@ -119,9 +120,45 @@ export async function resolveShowMe(db: PoolClient, orgId: string, q: ParsedQuer
   return hits;
 }
 
+// ---- SHOW ME (Motion, P1A): execution-ready accounts within a hypothesis -------------------------
+/**
+ * "show execution-ready pursuits/accounts [in|for <hypothesis>]" — resolved through the Motion
+ * funnel read-model (same gates, same constraints). Deterministic: an unnamed hypothesis lists the
+ * ready set of EVERY hypothesis; nothing is guessed.
+ */
+export function parseMotionShowMe(q: string): { hypothesis: string | null } | null {
+  if (!/execution[- ]?ready/i.test(q)) return null;
+  const m = q.match(/(?:in|for)\s+(?:the\s+)?([\w][\w& .-]{1,40})\s*$/i);
+  return { hypothesis: m ? m[1].trim().replace(/\b(motion|hypothesis)\b\s*$/i, "").trim() || null : null };
+}
+
+export async function resolveMotionShowMe(
+  db: PoolClient, orgId: string, parsed: { hypothesis: string | null }, companyIds: string[] | null,
+): Promise<{ hits: QueryHit[]; interpreted: string }> {
+  const funnels = await getMotionFunnels(db, orgId, { companyIds });
+  const matched = parsed.hypothesis
+    ? funnels.filter((f) => f.hypothesis.name.toLowerCase().includes(parsed.hypothesis!.toLowerCase()) || f.hypothesis.slug.toLowerCase().includes(parsed.hypothesis!.toLowerCase()))
+    : funnels;
+  const hits: QueryHit[] = [];
+  for (const f of matched) {
+    for (const a of accountsAtStage(f, "execution_ready").slice(0, 15)) {
+      hits.push({
+        group: `Execution-ready · ${f.hypothesis.name}`,
+        label: a.name,
+        sub: a.expectedValue != null ? `$${Math.round(a.expectedValue / 1000)}k expected · ${a.band.replace(/_/g, " ")}` : a.band.replace(/_/g, " "),
+        href: a.pursuitId ? `/pursuits/${a.pursuitId}` : `/accounts/${a.companyId}`,
+      });
+    }
+  }
+  return { hits, interpreted: `Execution-ready accounts${parsed.hypothesis ? ` · ${parsed.hypothesis}` : ""} (Motion funnel gates)` };
+}
+
 // ---- EXPLAIN: evidence-bound explanation of an existing record -------------
-/** Resolve an EXPLAIN question to canonical facts + reasons, or an honest "not supported". */
-export async function resolveExplain(db: PoolClient, q: string): Promise<Explanation | { note: string }> {
+/**
+ * Resolve an EXPLAIN question to canonical facts + reasons, or an honest "not supported".
+ * `orgId` grounds the Motion-funnel intents; the route/timing intents remain RLS-scoped reads.
+ */
+export async function resolveExplain(db: PoolClient, q: string, orgId?: string): Promise<Explanation | { note: string }> {
   // Identify the subject account by name (the only entity EXPLAIN grounds against today).
   const nameMatch = q.match(/\b(?:is|does|do|are|was)?\s*([A-Z][\w&.'-]+(?:\s+[A-Z][\w&.'-]+){0,3})/);
   const candidate = nameMatch ? nameMatch[1].trim() : null;
@@ -143,6 +180,47 @@ export async function resolveExplain(db: PoolClient, q: string): Promise<Explana
 
   const asksRoute = /route|through|partner|cdw|wwt|reseller|distributor/i.test(q);
   const asksTiming = /timing|when|renewal|now|urgent/i.test(q);
+  const asksReady = /execution[- ]?ready|not\s+ready|isn'?t\s+ready/i.test(q);
+  const asksQualify = /qualif/i.test(q);
+
+  // Motion intents (P1A) — grounded in the funnel read-model (same gates, same constraint
+  // vocabulary as the Motions room). Hypothesis resolution is deterministic: one named in the
+  // question wins; otherwise the account's most recent motion's hypothesis is used AND stated.
+  if ((asksReady || asksQualify) && orgId) {
+    const node = await resolveHypothesis(db, orgId, q, co.id);
+    if (!node) return { note: `No motion hypothesis found for ${co.legal_name} — this question needs an account with an evaluated motion.` };
+
+    if (asksReady) {
+      const { account } = await getMotionConstraints(db, orgId, node.id, co.id);
+      if (!account) return { note: `${co.legal_name} is not evaluated for ${node.name}.` };
+      const gating = account.constraints.filter((c) => c.gating);
+      return {
+        title: gating.length === 0 ? `${co.legal_name} IS execution-ready — ${node.name}` : `Why ${co.legal_name} is not execution-ready — ${node.name}`,
+        subtitle: node.stated ? `Hypothesis: ${node.name} (the account's most recent motion).` : `Hypothesis: ${node.name}.`,
+        lines: gating.length === 0
+          ? [{ label: "Status", value: "All gates pass — qualified, route decided, timing verified, team accepted, motion approved." }]
+          : gating.map((c) => ({ label: c.severity === "UNKNOWN" ? "Unknown" : "Blocking", value: c.label })),
+        grounding: ["Motion funnel gates (propensity · route snapshot/disqualifiers · timing · pursuit team · motion status)"],
+      };
+    }
+
+    // asksQualify — the propensity truth behind qualification, with its top features.
+    const prop = (await db.query<{ id: string; score: string; band: string; computed_at: Date }>(
+      `select id, score, band, computed_at from propensity_scores
+        where company_id = $1 and taxonomy_node_id = $2 and (org_id is null or org_id = $3)
+        order by computed_at desc limit 1`, [co.id, node.id, orgId])).rows[0];
+    if (!prop) return { note: `${co.legal_name} has not been evaluated for ${node.name} — no propensity score on record.` };
+    const feats = (await db.query<{ feature: string; contribution: string | null }>(
+      `select feature, contribution from score_features where score_id = $1 order by contribution desc nulls last limit 3`, [prop.id])).rows;
+    return {
+      title: `Why ${co.legal_name} ${["very_high", "high"].includes(prop.band) ? "qualifies" : "does not qualify"} for ${node.name}`,
+      subtitle: `Propensity ${prop.band.replace(/_/g, " ")} (${Math.round(Number(prop.score))}) · scored ${prop.computed_at.toISOString().slice(0, 10)}.`,
+      lines: feats.length
+        ? feats.map((f) => ({ label: f.feature.replace(/_/g, " "), value: f.contribution != null ? `contribution ${Number(f.contribution).toFixed(1)}` : "present" }))
+        : [{ label: "Features", value: "No stored feature breakdown for this score version." }],
+      grounding: ["propensity_scores (latest)", "score_features"],
+    };
+  }
 
   // Route explanation — recommendation vs human selection, verbatim reasons (recommendation ≠ decision).
   if ((asksRoute || !asksTiming) && pursuit) {
@@ -191,4 +269,24 @@ export async function resolveExplain(db: PoolClient, q: string): Promise<Explana
   }
 
   return { note: "No matching records." };
+}
+
+/**
+ * Deterministic hypothesis resolution for Motion EXPLAIN intents: a taxonomy node NAMED in the
+ * question wins; otherwise the account's most recent motion's node (a fixed rule, and the answer
+ * states it — `stated`); zero candidates → null. Never a guess between candidates.
+ */
+async function resolveHypothesis(
+  db: PoolClient, orgId: string, q: string, companyId: string,
+): Promise<{ id: string; name: string; stated: boolean } | null> {
+  const named = (await db.query<{ id: string; name: string }>(
+    `select n.id, n.name from taxonomy_nodes n
+      where exists (select 1 from revenue_motions m where m.org_id = $1 and m.taxonomy_node_id = n.id)
+        and ($2 ilike '%' || n.name || '%' or $2 ilike '%' || n.slug || '%')
+      order by length(n.name) desc limit 1`, [orgId, q])).rows[0];
+  if (named) return { ...named, stated: false };
+  const recent = (await db.query<{ id: string; name: string }>(
+    `select n.id, n.name from revenue_motions m join taxonomy_nodes n on n.id = m.taxonomy_node_id
+      where m.org_id = $1 and m.company_id = $2 order by m.created_at desc limit 1`, [orgId, companyId])).rows[0];
+  return recent ? { ...recent, stated: true } : null;
 }

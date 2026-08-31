@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { withTenant } from "@/lib/db/tenant";
 import { clientIp, rateLimited } from "@/lib/security/rate-limit";
-import { classifyIntent, parseShowMe, resolveShowMe, resolveExplain } from "@/lib/search/query";
+import { classifyIntent, parseShowMe, resolveShowMe, resolveExplain, parseMotionShowMe, resolveMotionShowMe } from "@/lib/search/query";
 import { resolveScope } from "@/lib/scope/server";
 import { parseScope, SCOPE_COOKIE } from "@/lib/scope/scope";
 
@@ -114,20 +114,31 @@ export async function GET(req: NextRequest) {
 
     // SHOW ME — a constrained structured query over canonical read-models (RLS-scoped, honors scope).
     if (intent === "showme") {
-      const parsed = parseShowMe(q);
-      if (!parsed) { note = "This question is not supported yet."; }
-      else {
-        interpreted = parsed.interpreted;
-        const companyIds = scope.kind === "ALL" ? null : (await resolveScope(db, orgId, scope)).companyIds;
-        const hits = await resolveShowMe(db, orgId, parsed.query, companyIds);
+      const companyIds = scope.kind === "ALL" ? null : (await resolveScope(db, orgId, scope)).companyIds;
+      // Motion funnel query (P1A): "execution-ready pursuits [in <hypothesis>]" — same gates as
+      // the Motions room; checked before the generic opportunity allowlist.
+      const motionParsed = parseMotionShowMe(q);
+      if (motionParsed) {
+        const { hits, interpreted: mi } = await resolveMotionShowMe(db, orgId, motionParsed, companyIds);
+        interpreted = mi;
         for (const h of hits) results.push(h);
-        if (hits.length === 0) note = "No matching records.";
+        if (hits.length === 0) note = "No execution-ready accounts in that cut.";
+      } else {
+        const parsed = parseShowMe(q);
+        if (!parsed) { note = "This question is not supported yet."; }
+        else {
+          interpreted = parsed.interpreted;
+          const hits = await resolveShowMe(db, orgId, parsed.query, companyIds);
+          for (const h of hits) results.push(h);
+          if (hits.length === 0) note = "No matching records.";
+        }
       }
     }
 
-    // EXPLAIN — evidence-bound explanation of an existing canonical record (route / timing).
+    // EXPLAIN — evidence-bound explanation of an existing canonical record (route / timing /
+    // motion readiness / motion qualification).
     if (intent === "explain") {
-      const ex = await resolveExplain(db, q);
+      const ex = await resolveExplain(db, q, orgId);
       if ("note" in ex) note = ex.note; else explanation = ex;
     }
     });

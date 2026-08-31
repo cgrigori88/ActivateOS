@@ -94,11 +94,12 @@ export default async function PipelinePage({
   const { rows: allOpps } = await db.query(
     `select o.id, o.name, o.stage, o.amount_usd, o.next_step, o.expected_close_date, o.updated_at,
             o.company_id, c.legal_name, n.slug, o.motion_id, o.initiative_id,
-            pa.name as partner_name, m.partner_id
+            pa.name as partner_name, m.partner_id, mn.name as motion_hypothesis
      from opportunities o
      join companies c on c.id = o.company_id
      left join taxonomy_nodes n on n.id = o.taxonomy_node_id
      left join revenue_motions m on m.id = o.motion_id
+     left join taxonomy_nodes mn on mn.id = m.taxonomy_node_id
      left join partners pa on pa.id = m.partner_id
      where ($2::boolean is false or o.company_id = any($1))
      order by o.updated_at desc`,
@@ -386,6 +387,7 @@ export default async function PipelinePage({
       amountUsd: amt, weighted: closed ? 0 : (amt ?? 0) * probOf(o), stage: o.stage, closed,
       condition: cond.state, partner: o.partner_name ?? null,
       vendor: eco?.vendor ?? null, territory: eco?.territory ?? null, seller: eco?.seller ?? null,
+      motion: o.motion_hypothesis ?? null,
     };
   });
   const dims = availableDims(portfolioOpps);

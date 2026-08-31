@@ -9,7 +9,7 @@ import type { Portfolio, RowDim, ColDim } from "@/lib/opportunities/portfolio";
  * drills into the underlying reconciled records (Attention, filtered) under the current scope.
  */
 
-const ROW_LABEL: Record<RowDim, string> = { partner: "Partner", vendor: "Vendor", territory: "Territory", seller: "Seller" };
+const ROW_LABEL: Record<RowDim, string> = { partner: "Partner", vendor: "Vendor", territory: "Territory", seller: "Seller", motion: "Motion" };
 const COL_LABEL: Record<ColDim, string> = { condition: "Condition", stage: "Stage", partner: "Partner" };
 const colKeyLabel = (colDim: ColDim, key: string): string =>
   colDim === "condition" ? (CONDITION_LABEL[key as keyof typeof CONDITION_LABEL] ?? key) : key.replace(/_/g, " ");
