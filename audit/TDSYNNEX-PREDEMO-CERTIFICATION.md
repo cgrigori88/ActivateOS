@@ -1,11 +1,11 @@
 # TD SYNNEX Pre-Demo Certification
 
-**Demo commit: `e2a64f0`** on `claude/activateos-platform-review-xzkgmd`. The SHA is the
+**Demo commit: `03ae85b`** on `claude/activateos-platform-review-xzkgmd`. The SHA is the
 authoritative freeze identifier: an annotated `tdsynnex-demo` tag exists locally but the remote
 refuses tag refs for this session's credentials (HTTP 403), so do not rely on the tag being there —
 push it from a workstation with tag permission if you want one, or just use the SHA.
 
-`e2a64f0` differs from `6cd727a` — the commit the certification walk actually ran against — only in
+`03ae85b` differs from `6cd727a` — the commit the certification walk actually ran against — only in
 this document, so the running application is identical.
 Certified against a production build (`npm run build` → `npx next start`) on demo state rebuilt
 from source. **18/18 rooms PASS.**
@@ -285,12 +285,12 @@ Ecosystem benchmarking · marketplace / network layer · transaction and settlem
 
 ## 11. Freeze
 
-**Demo commit: `e2a64f0`.** No further feature work before the walkthrough.
+**Demo commit: `03ae85b`.** No further feature work before the walkthrough.
 
 To reproduce exactly:
 
 ```
-git checkout e2a64f0
+git checkout 03ae85b
 # rebuild demo state (see §7), then:
 mv .env.local .env.local.aside          # NEXT_PUBLIC_SUPABASE_* is inlined at build time
 npm run build
