@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { DecisionItem, DecisionClass } from "@/lib/pursuits/read-models/types";
-import { BandPill, SyntheticBadge } from "./parts";
+import { BandPill } from "./parts";
 import { skillLabel } from "./vocab";
 
 /**
@@ -39,7 +39,6 @@ export function TodayDecisionCard({ item }: { item: DecisionItem }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-[14.5px] font-bold">
           <span className="truncate">{item.title}</span>
-          {item.synthetic && <SyntheticBadge text="demo" />}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-neutral-500">
           <span>Operational urgency <b className="capitalize text-neutral-700 dark:text-neutral-200">{item.operationalUrgency}</b></span>

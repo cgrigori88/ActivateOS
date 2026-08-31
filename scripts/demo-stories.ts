@@ -286,6 +286,21 @@ async function main() {
     });
   });
 
+  // Layer 8 — Today completeness: draft motions (Pending approvals) + recent activity events.
+  await layer("Today — pending approvals + recent activity", async () => {
+    await tx(async (db) => {
+      await db.query("select set_config('app.org_id',$1,true)", [base.vendor]);
+      for (const [name, thesis] of [["Stark Industries LLC", "Draft: sovereign landing-zone play — awaiting approval"], ["Acme Robotics", "Draft: incumbent-displacement play — awaiting approval"]] as const) {
+        const c = (await db.query<{ id: string }>(`select id from companies where legal_name=$1 limit 1`, [name])).rows[0];
+        if (c) await db.query(`insert into revenue_motions (org_id, company_id, taxonomy_node_id, status, thesis, trigger_summary, estimated_value_usd, created_at) values ($1,$2,$3,'draft',$4,$4,300000, now())`, [base.vendor, c.id, base.node, thesis]);
+      }
+      for (const [name, ev] of [["Initech Financial (expansion)", "CLOSED_WON"], ["Umbrella Health Systems", "MEETING_BOOKED"], ["Cyberdyne Systems", "TEAM_ACCEPTED"], ["Wayne Enterprises", "OPPORTUNITY_ADVANCED"]] as const) {
+        const c = (await db.query<{ id: string }>(`select id from companies where legal_name=$1 limit 1`, [name])).rows[0];
+        if (c) await db.query(`insert into outcome_events (org_id, company_id, event_type, payload, occurred_at) values ($1,$2,$3,'{}'::jsonb, now() - (random()*interval '3 days'))`, [base.vendor, c.id, ev]);
+      }
+    });
+  });
+
   log("done — 4 hero + 6 supporting, reconciled (DEMO/synthetic).");
   await pool.end();
 }

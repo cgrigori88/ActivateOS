@@ -172,6 +172,32 @@ export default async function TodayPage() {
         </Panel>
       )}
 
+      {/* Where your systems disagree — first-class intelligence, promoted to sit with
+          the decision queue (not a secondary table). The cross-company rules only a
+          two-sided platform can run. */}
+      {divergences.length > 0 && (
+        <Card tone="amber" className="mb-6">
+          <div className="mb-2.5 flex items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: "var(--color-accent-attention)" }}>
+              Where your systems disagree
+            </h2>
+            <span className="text-label text-neutral-400">the record and the deal have parted ways — each row names both</span>
+          </div>
+          <ul className="space-y-px">
+            {divergences.map((d, i) => (
+              <li key={i} className="flex items-start gap-2.5 rounded-control px-2 py-1.5 text-sm transition-colors hover:bg-[var(--surface-inset)]">
+                <span className="mt-1 h-6 w-0.5 shrink-0 rounded-full" style={{ background: d.kind === "joint_vs_pipeline" ? "var(--color-accent-violet)" : "var(--color-accent-attention)" }} aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <Link href={d.href} className="font-semibold hover:underline">{d.account}</Link>
+                  <span className="text-neutral-500"> — {d.text}</span>
+                </span>
+                <span className="mt-0.5 shrink-0 text-[10px] font-semibold uppercase tracking-[0.04em] text-neutral-400">{d.kind.replace(/_/g, " ")}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {/* Instrumentation is secondary to decisions (D.5 §4): when the decision
           queue leads, the KPI strip steps back — smaller and dimmer — so Today
           is dominated by what needs acting on, not empty counters. */}
@@ -205,39 +231,6 @@ export default async function TodayPage() {
               </li>
             ))}
           </ol>
-        </Card>
-      )}
-
-      {/* ── Where your systems disagree (task #83): reality divergence, with
-          the receipts — including the cross-company rules only a two-sided
-          platform can run. ── */}
-      {divergences.length > 0 && (
-        <Card tone="amber" className="mb-6">
-          <div className="mb-2 flex items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-              Where your systems disagree
-            </h2>
-            <span className="text-label text-neutral-400">each row names both records in conflict</span>
-          </div>
-          <ul className="space-y-2">
-            {divergences.map((d, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm">
-                <span
-                  className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold uppercase tracking-wide ${
-                    d.kind === "joint_vs_pipeline"
-                      ? "bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400"
-                      : "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
-                  }`}
-                >
-                  {d.kind.replace(/_/g, " ")}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <Link href={d.href} className="font-medium hover:underline">{d.account}</Link>
-                  <span className="text-neutral-500"> — {d.text}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
         </Card>
       )}
 
