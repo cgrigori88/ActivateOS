@@ -12,6 +12,8 @@ import {
   Toolbar,
 } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
+import { getAccountIntel, type AccountIntel } from "@/lib/accounts/intel";
+import { AccountIntelPane } from "@/components/accounts/intel-pane";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +63,7 @@ interface Params {
   industry?: string;
   partner?: string;
   cols?: string;
+  sel?: string;
 }
 
 function buildQS(params: Params, overrides: Partial<Params>): string {
@@ -91,7 +94,7 @@ export default async function AccountsPage({
     return COL_KEYS.filter((x) => set.has(x)).join(",");
   };
 
-  const { all, partnerRows, oppRows, dimRows } = await withTenant(async (db) => {
+  const { all, partnerRows, oppRows, dimRows, intel } = await withTenant(async (db) => {
     const { rows: all } = await db.query(
       `select latest.*, pt.partner_name, pt.team_status,
             c.refresh_tier, c.next_refresh_at, c.country, c.state,
@@ -152,7 +155,8 @@ export default async function AccountsPage({
       [all.map((r) => r.score_id)],
     );
 
-    return { all, partnerRows, oppRows, dimRows };
+    const intel: AccountIntel | null = params.sel ? await getAccountIntel(db, params.sel) : null;
+    return { all, partnerRows, oppRows, dimRows, intel };
   });
 
   const partnersByCompany = new Map<string, string[]>();
@@ -293,6 +297,7 @@ export default async function AccountsPage({
         )}
       </Toolbar>
 
+      <div className={intel ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start" : ""}>
       <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white scroll-thin dark:border-neutral-800 dark:bg-neutral-900">
         <table className="data-table">
           <thead>
@@ -326,10 +331,14 @@ export default async function AccountsPage({
               const refreshDue = r.next_refresh_at && new Date(r.next_refresh_at).getTime() < Date.now();
               const ps = partnersOf(r.company_id);
               const o = oppsOf(r.company_id);
+              const selected = params.sel === r.company_id;
               return (
-                <tr key={r.company_id}>
+                <tr key={r.company_id} className={selected ? "bg-[color-mix(in_srgb,var(--color-priority)_7%,transparent)]" : ""}>
                   <td>
-                    <Link href={`/accounts/${r.company_id}`} className="font-medium text-blue-800 hover:underline dark:text-blue-300">{r.legal_name}</Link>
+                    <span className="flex items-center gap-1.5">
+                      <Link href={`/accounts${buildQS(params, { sel: selected ? undefined : r.company_id })}`} scroll={false} className={`font-medium hover:underline ${selected ? "text-blue-900 dark:text-blue-200" : "text-blue-800 dark:text-blue-300"}`} title="Show intelligence">{r.legal_name}</Link>
+                      <Link href={`/accounts/${r.company_id}`} className="text-[11px] text-neutral-300 hover:text-neutral-500 dark:text-neutral-600" title="Open account room" aria-label="Open account room">↗</Link>
+                    </span>
                   </td>
                   {show("industry") && <td className="text-neutral-500">{r.industry ?? "—"}</td>}
                   {show("score") && <td className="tnum text-base font-semibold">{Number(r.score).toFixed(0)}</td>}
@@ -373,6 +382,8 @@ export default async function AccountsPage({
             })}
           </tbody>
         </table>
+      </div>
+      {intel && <AccountIntelPane intel={intel} closeHref={`/accounts${buildQS(params, { sel: undefined })}`} />}
       </div>
     </main>
   );

@@ -1,0 +1,110 @@
+import Link from "next/link";
+import type { AccountIntel } from "@/lib/accounts/intel";
+
+/**
+ * Selected-account intelligence pane (Phase 3c-2). Answers where to hunt / why now /
+ * through whom / what next for one account, from canonical data. Calm, premium, and
+ * built from the same objects as Today/Mapping/Partners/Pipeline.
+ */
+function Section({ label, accent, children }: { label: string; accent: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <span className="h-3 w-0.5 rounded-full" style={{ background: accent }} aria-hidden />
+        <span className="text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: accent }}>{label}</span>
+      </div>
+      <div className="space-y-1.5 pl-2.5 text-[12.5px]">{children}</div>
+    </div>
+  );
+}
+function Row({ k, children }: { k: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-2">
+      <span className="w-[104px] shrink-0 text-neutral-400">{k}</span>
+      <span className="min-w-0 flex-1 text-neutral-700 dark:text-neutral-200">{children}</span>
+    </div>
+  );
+}
+const money = (n: number | null) => (n == null ? "—" : n >= 1000 ? `$${(n / 1_000_000).toFixed(2)}M` : `$${n}`);
+const k = (n: number) => `$${Math.round(n / 1000)}k`;
+
+export function AccountIntelPane({ intel, closeHref }: { intel: AccountIntel; closeHref: string }) {
+  const t = intel.throughWhom;
+  return (
+    <aside className="rounded-card border p-4 lg:sticky lg:top-4" style={{ borderColor: "var(--border-subtle)", background: "var(--surface-primary)", boxShadow: "var(--shadow-low)" }}>
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div>
+          <Link href={`/accounts/${intel.companyId}`} className="text-[15px] font-bold hover:underline">{intel.legalName}</Link>
+          <div className="text-[11.5px] text-neutral-500">{intel.industry ?? "—"}</div>
+        </div>
+        <Link href={closeHref} className="rounded-control px-1.5 py-0.5 text-[11px] text-neutral-400 hover:bg-[var(--surface-inset)]" aria-label="Close">✕</Link>
+      </div>
+
+      <div className="space-y-4">
+        <Section label="Hunt" accent="var(--color-priority)">
+          <Row k="Priority · propensity">
+            {intel.hunt.priority != null ? <b>{intel.hunt.priority}</b> : "—"} · {intel.hunt.propensity != null ? <b>{intel.hunt.propensity}</b> : "—"}
+            {intel.hunt.band && <span className="ml-1.5 text-neutral-400">({intel.hunt.band.replace(/_/g, " ")})</span>}
+          </Row>
+          {intel.hunt.useCase && <Row k="Pursuit">{intel.hunt.useCase}{intel.hunt.problem ? ` — ${intel.hunt.problem}` : ""}</Row>}
+          <Row k="Whitespace">{intel.hunt.openOpps} open opportunit{intel.hunt.openOpps === 1 ? "y" : "ies"} · {k(intel.hunt.pipelineUsd)} pipeline</Row>
+          <Row k="Expected value">{money(intel.hunt.expectedValue)}</Row>
+        </Section>
+
+        <Section label="Why now" accent="var(--color-timing)">
+          <Row k="Compelling event">{intel.whyNow.compellingEvent ?? <span className="text-neutral-400">none verified</span>}</Row>
+          <Row k="Timing">
+            {intel.whyNow.timingKnown
+              ? <b>{intel.whyNow.timingScore}</b>
+              : <span style={{ color: "var(--color-accent-attention)" }}>UNKNOWN — preserved, not assumed</span>}
+          </Row>
+          {intel.whyNow.convergence != null && <Row k="Convergence">{intel.whyNow.convergence} independent signal famil{intel.whyNow.convergence === 1 ? "y" : "ies"}</Row>}
+          {intel.whyNow.materialChange && <Row k="Latest change">{intel.whyNow.materialChange}</Row>}
+          {intel.whyNow.evidence.length > 0 && (
+            <Row k="Evidence">
+              <span className="space-y-0.5">
+                {intel.whyNow.evidence.slice(0, 2).map((e, i) => (
+                  <span key={i} className="block">{e.claim} <span className="text-neutral-400">· {(e.confidence * 100).toFixed(0)}% {e.firstParty ? "first-party" : "external"}</span></span>
+                ))}
+              </span>
+            </Row>
+          )}
+          {intel.whyNow.missingEvidence && (
+            <Row k="Still missing"><span style={{ color: "var(--color-accent-attention)" }}>{intel.whyNow.missingEvidence}</span></Row>
+          )}
+        </Section>
+
+        <Section label="Through whom" accent="var(--color-route)">
+          {t.recommended && (
+            <Row k="Recommended">
+              <b style={{ color: "var(--color-route)" }}>{t.recommended}</b>
+              {t.overridden && <span className="text-neutral-500"> · selected <b>{t.selected}</b> (human override — recommendation preserved)</span>}
+            </Row>
+          )}
+          {t.partners.length > 0 && (
+            <Row k="Partners">
+              <span className="space-y-0.5">
+                {t.partners.slice(0, 3).map((p) => (
+                  <span key={p.name} className="block">
+                    <b>{p.name}</b>{p.recommended && <span className="ml-1 text-[10px] font-bold uppercase" style={{ color: "var(--color-route)" }}> rec</span>}
+                    <span className="text-neutral-400"> · relationship {p.strength ?? "—"}{p.tenure != null ? ` · ${p.tenure}mo` : ""}</span>
+                  </span>
+                ))}
+              </span>
+            </Row>
+          )}
+          {t.overlapLists.length > 0 && <Row k="Shared book">overlaps {t.overlapLists.join(", ")}</Row>}
+          {t.conflict && <Row k="Note"><span style={{ color: "var(--color-accent-attention)" }}>{t.conflict}</span></Row>}
+        </Section>
+
+        <Section label="What next" accent="var(--color-readiness)">
+          {intel.whatNext.motion && <Row k="Motion">{intel.whatNext.motion}</Row>}
+          {intel.whatNext.governedAction && <Row k="Governed action">{intel.whatNext.governedAction}</Row>}
+          {intel.whatNext.humanDecision && <Row k="Human decision"><b>{intel.whatNext.humanDecision}</b></Row>}
+          {!intel.whatNext.motion && !intel.whatNext.governedAction && !intel.whatNext.humanDecision && <span className="text-neutral-400">No pending action.</span>}
+          <div className="pt-1"><Link href={`/pursuits`} className="text-[11.5px] font-medium text-accent hover:underline dark:text-blue-400">Open in Pursuits →</Link></div>
+        </Section>
+      </div>
+    </aside>
+  );
+}
