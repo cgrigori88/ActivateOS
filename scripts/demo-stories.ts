@@ -28,6 +28,7 @@ import { addParticipant, acceptParticipation } from "../src/lib/pursuits/federat
 import { proposeGrant, acceptGrant } from "../src/lib/pursuits/federation/grants";
 import { recordContribution } from "../src/lib/pursuits/federation/contributions";
 import { recordOutcome, recordAttribution } from "../src/lib/pursuits/federation/outcomes";
+import { enrichMeddpicc } from "./demo-meddpicc";
 
 const URL = process.env.DEMO_URL ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
 const pool = new Pool({ connectionString: URL, max: 1 });
@@ -317,6 +318,13 @@ async function main() {
                          order by created_at limit 1)`,
       );
     });
+  });
+
+  // Layer 10 — synthetic MEDDPICC/outcome qualification so the Pipeline "avg qualification" bento
+  // and "AI learned signal · qualification vs outcome" demonstrate the machinery (won>lost, but a
+  // modest noisy gap — not fake accuracy; small sample; UNKNOWNs preserved). Idempotent.
+  await layer("Synthetic MEDDPICC — qualification vs outcome (demonstrates the learning loop)", async () => {
+    await enrichMeddpicc(pool);
   });
 
   log("done — 4 hero + 6 supporting, reconciled (DEMO/synthetic).");
