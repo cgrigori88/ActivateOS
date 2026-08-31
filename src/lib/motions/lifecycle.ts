@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { createMotionActions } from "./cadence";
+import { bridgePursuitOutcome } from "../pursuits/bridge/outcome-bridge";
 
 /**
  * Motion lifecycle (BLUEPRINT Phase 3): draft → approved → active → closed.
@@ -48,7 +49,8 @@ export async function transitionMotion(
     org_id: string | null;
     company_id: string;
     status: MotionStatus;
-  }>(`select org_id, company_id, status from revenue_motions where id = $1`, [motionId]);
+    pursuit_id: string | null;
+  }>(`select org_id, company_id, status, pursuit_id from revenue_motions where id = $1`, [motionId]);
   if (rows.length === 0) throw new Error(`motion not found: ${motionId}`);
   const motion = rows[0];
   if (!canTransition(motion.status, to)) {
@@ -80,5 +82,15 @@ export async function transitionMotion(
   // Activation means scheduled work: the play cadence becomes dated actions.
   if (to === "active") {
     await createMotionActions(db, motionId);
+  }
+
+  // Canonical bridge (Phase B): a motion completing with NO_DECISION is a commercial outcome the
+  // opportunity model cannot express (opps only close won/lost). Won/lost stay with the opportunity
+  // (the authoritative deal outcome) to avoid double-counting. Idempotent, gated, DEMO-safe.
+  if (to === "completed" && opts.outcome === "no_decision") {
+    await bridgePursuitOutcome(db, {
+      orgId: motion.org_id, pursuitId: motion.pursuit_id, companyId: motion.company_id,
+      label: "NO_DECISION", sourceRef: `motion:${motionId}:completed:no_decision`,
+    });
   }
 }

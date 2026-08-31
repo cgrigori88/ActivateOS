@@ -56,6 +56,9 @@ export const DEPENDENCY_MAP: Record<string, RecomputeTarget[]> = {
   MEETING_BOOKED: ["READINESS", "TODAY"],
   OPPORTUNITY_CREATED: ["READINESS", "TODAY"],
   STAGE_CHANGED: ["READINESS", "TODAY"],
+  // A recorded commercial outcome (Phase B bridge) moves readiness + the queue; a terminal outcome
+  // ends the active pursuit, an intermediate one nudges it.
+  OUTCOME_RECORDED: ["READINESS", "TODAY"],
   // Transaction adjacency signal → route.
   TRANSACTION_SIGNAL_INGESTED: ["ROUTE", "TODAY"],
 };

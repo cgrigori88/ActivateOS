@@ -41,7 +41,8 @@
     "append-only:verify": "tsx scripts/append-only-verify.ts",
     "microloop:verify": "tsx scripts/canonical-microloop-verify.ts",
     "backfill:pursuit-links": "tsx scripts/backfill-pursuit-links.ts",
-    "route-persistence:verify": "tsx scripts/route-persistence-verify.ts"
+    "route-persistence:verify": "tsx scripts/route-persistence-verify.ts",
+    "outcome-bridge:verify": "tsx scripts/outcome-bridge-verify.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

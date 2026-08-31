@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { meddpiccFor, meddpiccScore, ELEMENTS } from "./meddpicc";
+import { bridgePursuitOutcome } from "../pursuits/bridge/outcome-bridge";
 
 /**
  * Opportunity lifecycle (BLUEPRINT Phase 6) — same discipline as motions:
@@ -92,7 +93,9 @@ export async function advanceOpportunity(
     company_id: string;
     motion_id: string | null;
     stage: Stage;
-  }>(`select org_id, company_id, motion_id, stage from opportunities where id = $1`, [
+    pursuit_id: string | null;
+    amount_usd: string | null;
+  }>(`select org_id, company_id, motion_id, stage, pursuit_id, amount_usd from opportunities where id = $1`, [
     opportunityId,
   ]);
   if (rows.length === 0) throw new Error(`opportunity not found: ${opportunityId}`);
@@ -136,6 +139,16 @@ export async function advanceOpportunity(
       JSON.stringify({ opportunityId, from: opp.stage, to, note: note ?? null, meddpicc, meddpiccScore: meddpiccScoreAtClose }),
     ],
   );
+
+  // Canonical bridge (Phase B): a deterministic pursuit link feeds the canonical outcome loop —
+  // outcome → attribution → recompute. Idempotent, gated on outcome_learning, DEMO stays DEMO. The
+  // legacy outcome_events write above is untouched (strangler dual-write).
+  const label = closing ? (to === "closed_won" ? "CLOSED_WON" : "CLOSED_LOST") : "OPPORTUNITY_PROGRESSED";
+  await bridgePursuitOutcome(db, {
+    orgId: opp.org_id, pursuitId: opp.pursuit_id, companyId: opp.company_id, label,
+    valueAmount: to === "closed_won" && opp.amount_usd != null ? Number(opp.amount_usd) : null,
+    sourceRef: closing ? `opp:${opportunityId}:${label}` : `opp:${opportunityId}:progressed:${to}`,
+  });
 }
 
 /**
@@ -149,7 +162,7 @@ export async function createOpportunityFromMotion(
   motionId: string,
 ): Promise<{ opportunityId: string }> {
   const { rows: motions } = await db.query(
-    `select m.org_id, m.company_id, m.taxonomy_node_id, m.status, m.estimated_value_usd,
+    `select m.org_id, m.company_id, m.taxonomy_node_id, m.status, m.estimated_value_usd, m.pursuit_id,
             c.legal_name, n.slug
      from revenue_motions m
      join companies c on c.id = m.company_id
@@ -187,9 +200,11 @@ export async function createOpportunityFromMotion(
     return { opportunityId: existing[0].id };
   }
 
+  // Forward linkage (new-path enforcement): an opportunity created from a motion inherits the
+  // motion's canonical pursuit_id, so future outcomes bridge deterministically without a backfill.
   const { rows: opps } = await db.query<{ id: string }>(
-    `insert into opportunities (org_id, company_id, motion_id, taxonomy_node_id, name, amount_usd)
-     values ($1, $2, $3, $4, $5, $6) returning id`,
+    `insert into opportunities (org_id, company_id, motion_id, taxonomy_node_id, name, amount_usd, pursuit_id)
+     values ($1, $2, $3, $4, $5, $6, $7) returning id`,
     [
       m.org_id,
       m.company_id,
@@ -197,6 +212,7 @@ export async function createOpportunityFromMotion(
       m.taxonomy_node_id,
       `${m.legal_name} — ${m.slug ?? "opportunity"}`,
       m.estimated_value_usd,
+      m.pursuit_id ?? null,
     ],
   );
   const opportunityId = opps[0].id;
@@ -221,6 +237,12 @@ export async function createOpportunityFromMotion(
      values ($1, $2, $3, 'OPPORTUNITY_CREATED', $4)`,
     [m.org_id, motionId, m.company_id, JSON.stringify({ opportunityId })],
   );
+
+  // Canonical bridge (Phase B): OPPORTUNITY_CREATED against the pursuit the motion carries.
+  await bridgePursuitOutcome(db, {
+    orgId: m.org_id, pursuitId: m.pursuit_id, companyId: m.company_id,
+    label: "OPPORTUNITY_CREATED", sourceRef: `opp:${opportunityId}:created`,
+  });
 
   return { opportunityId };
 }

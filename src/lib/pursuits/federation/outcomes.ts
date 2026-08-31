@@ -46,23 +46,39 @@ export interface RecordOutcomeInput {
   occurredAt?: Date | null;
   dataEnvironment?: string;
   isSimulated?: boolean;
+  /** Deterministic idempotency key for a bridged legacy event (0095). NULL = no dedup (scripts). */
+  sourceRef?: string | null;
 }
 
-/** Record an outcome WITH its decision-time context (R14). Append-only; never edited. */
+/**
+ * Record an outcome WITH its decision-time context (R14). Append-only; never edited. Idempotent when
+ * a `sourceRef` is supplied (0095): a retried/duplicate source event collapses to the existing row,
+ * so the same commercial event never creates two canonical outcomes.
+ */
 export async function recordOutcome(db: PoolClient, i: RecordOutcomeInput): Promise<string> {
   const { rows } = await db.query<{ id: string }>(
     `insert into pursuit_outcomes
        (org_id, pursuit_id, company_id, outcome_label, is_terminal, score_snapshot_id, route_snapshot_id,
         why_now_snapshot_id, override_id, experiment_id, cohort, value_amount, seconds_since_recommended,
-        detail, occurred_at, data_environment, is_simulated)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, coalesce($15, now()), $16, $17)
+        detail, occurred_at, data_environment, is_simulated, source_ref)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, coalesce($15, now()), $16, $17, $18)
+     on conflict (org_id, source_ref) where source_ref is not null do nothing
      returning id`,
     [i.orgId, i.pursuitId, i.companyId ?? null, i.label, isTerminalOutcome(i.label),
      i.scoreSnapshotId ?? null, i.routeSnapshotId ?? null, i.whyNowSnapshotId ?? null, i.overrideId ?? null,
      i.experimentId ?? null, i.cohort ?? null, i.valueAmount ?? null, i.secondsSinceRecommended ?? null,
-     JSON.stringify(i.detail ?? {}), i.occurredAt ?? null, i.dataEnvironment ?? "PRODUCTION", i.isSimulated ?? false],
+     JSON.stringify(i.detail ?? {}), i.occurredAt ?? null, i.dataEnvironment ?? "PRODUCTION", i.isSimulated ?? false, i.sourceRef ?? null],
   );
-  return rows[0].id;
+  if (rows[0]) return rows[0].id;
+  // Idempotent replay: the unique source_ref already produced an outcome — return it.
+  const ex = await db.query<{ id: string }>(`select id from pursuit_outcomes where org_id = $1 and source_ref = $2`, [i.orgId, i.sourceRef]);
+  return ex.rows[0].id;
+}
+
+/** Whether a bridged source event has already produced a canonical outcome (idempotency probe). */
+export async function outcomeExistsForSource(db: PoolClient, orgId: string, sourceRef: string): Promise<string | null> {
+  const { rows } = await db.query<{ id: string }>(`select id from pursuit_outcomes where org_id = $1 and source_ref = $2`, [orgId, sourceRef]);
+  return rows[0]?.id ?? null;
 }
 
 export interface OutcomeView {
