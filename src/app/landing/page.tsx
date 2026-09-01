@@ -23,8 +23,29 @@ import { HeroMesh } from "@/components/hero-mesh";
  * preview, two calls to action, and a stop.
  */
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.pursuitos.io";
-const ACCESS_EMAIL = process.env.NEXT_PUBLIC_ACCESS_EMAIL ?? "access@pursuitos.io";
+/**
+ * Both are read at REQUEST time rather than baked into the bundle.
+ *
+ * `NEXT_PUBLIC_*` is the obvious choice and the wrong one here: Next inlines
+ * those at build time, so changing the contact address later would need a
+ * rebuild to take effect. This page renders on the server, so a plain runtime
+ * variable works and the address becomes a one-field edit in the dashboard —
+ * which matters, because it is expected to change once real mail exists on the
+ * domain. The NEXT_PUBLIC_ names are still honoured so an environment already
+ * configured with them keeps working.
+ */
+const APP_URL =
+  process.env.PURSUITOS_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://app.pursuitos.io";
+const ACCESS_EMAIL =
+  process.env.PURSUITOS_ACCESS_EMAIL ?? process.env.NEXT_PUBLIC_ACCESS_EMAIL ?? "";
+
+/**
+ * A "Request access" button pointing at `mailto:` with no address is a dead
+ * control that looks live — the exact failure this codebase keeps refusing to
+ * ship. So the contact route is derived once: configured means a real mailto,
+ * unconfigured means the CTA is simply not rendered and Login carries the page.
+ */
+const CONTACT_HREF = ACCESS_EMAIL ? `mailto:${ACCESS_EMAIL}?subject=PursuitOS%20access` : null;
 
 /**
  * Rendered per request, not prerendered — and the reason is worth recording,
@@ -171,17 +192,23 @@ export default function LandingPage() {
               Know what to pursue. Through whom. Why now. Who needs to act. And what actually happened.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <a
-                href={`mailto:${ACCESS_EMAIL}?subject=PursuitOS%20access`}
-                className="rounded-control px-5 py-2.5 text-copy font-semibold text-white transition-colors"
-                style={{ background: "var(--color-accent)" }}
-              >
-                Request access
-              </a>
+              {CONTACT_HREF && (
+                <a
+                  href={CONTACT_HREF}
+                  className="rounded-control px-5 py-2.5 text-copy font-semibold text-white transition-colors"
+                  style={{ background: "var(--color-accent)" }}
+                >
+                  Request access
+                </a>
+              )}
+              {/* Login becomes the primary action when there is no contact route,
+                  so the hero never ends without one. */}
               <a
                 href={APP_URL}
-                className="rounded-control px-5 py-2.5 text-copy font-semibold transition-colors ink-soft hover:ink"
-                style={{ border: "1px solid var(--border-emphasis)" }}
+                className="rounded-control px-5 py-2.5 text-copy font-semibold transition-colors"
+                style={CONTACT_HREF
+                  ? { border: "1px solid var(--border-emphasis)", color: "var(--ink-soft)" }
+                  : { background: "var(--color-accent)", color: "#fff" }}
               >
                 Login
               </a>
@@ -234,11 +261,11 @@ export default function LandingPage() {
             PursuitOS is in design-partner release. We take on a small number at a time.
           </p>
           <a
-            href={`mailto:${ACCESS_EMAIL}?subject=PursuitOS%20access`}
+            href={CONTACT_HREF ?? APP_URL}
             className="mt-7 inline-block rounded-control px-5 py-2.5 text-copy font-semibold text-white transition-colors"
             style={{ background: "var(--color-accent)" }}
           >
-            Request access
+            {CONTACT_HREF ? "Request access" : "Login"}
           </a>
         </div>
       </section>
@@ -246,7 +273,7 @@ export default function LandingPage() {
       <footer className="mx-auto max-w-[1080px] px-6 pb-10">
         <div className="flex flex-wrap items-center justify-between gap-3 pt-6 text-micro ink-faint" style={{ borderTop: "1px solid var(--border-subtle)" }}>
           <span>PursuitOS</span>
-          <a href={`mailto:${ACCESS_EMAIL}`} className="hover:ink-muted">{ACCESS_EMAIL}</a>
+          {ACCESS_EMAIL && <a href={`mailto:${ACCESS_EMAIL}`} className="hover:ink-muted">{ACCESS_EMAIL}</a>}
         </div>
       </footer>
     </main>
