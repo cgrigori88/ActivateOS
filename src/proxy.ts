@@ -124,6 +124,7 @@ function publicSiteResponse(req: NextRequest, nonce: string, csp: string | null)
     }
     // Marks the surface so the root layout renders WITHOUT the application
     // shell — a marketing page must not carry the product's navigation rail.
+    // set() replaces any inbound value, so a client cannot influence it here.
     fwd.set("x-pursuitos-surface", "landing");
     return headersFor(NextResponse.rewrite(url, { request: { headers: fwd } }));
   }
@@ -161,6 +162,12 @@ export async function proxy(req: NextRequest) {
     // Rebuild from req.headers so cookie refreshes (below) are carried too.
     const fwd = new Headers(req.headers);
     fwd.delete("x-nonce"); // never trust a client-supplied nonce
+    // Same reasoning as the nonce: the root layout treats this header as proof
+    // that the proxy classified the request as the public marketing surface, and
+    // renders without the application shell when it sees it. A client that could
+    // set it could strip the navigation off any authenticated page, so it is
+    // cleared on every request the gate lets through.
+    fwd.delete("x-pursuitos-surface");
     if (csp) {
       fwd.set("content-security-policy", csp); // where Next reads the nonce
       fwd.set("x-nonce", nonce); // where the root layout reads it

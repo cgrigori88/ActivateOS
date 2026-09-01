@@ -318,7 +318,14 @@ export function Shell({
 
   // Auth surfaces stand alone: no rail, no chrome — you aren't "inside" yet.
   // /join is the public guest-seat landing (B+2), same posture.
-  const bare = pathname.startsWith("/login") || pathname.startsWith("/join");
+  //
+  // Matched on whole path SEGMENTS, not string prefixes. `"/joint".startsWith("/join")`
+  // is true, so a prefix test silently stripped the entire navigation off the
+  // Joint pursuits room — a signed-in co-sell surface rendered as though the
+  // viewer were not signed in. Found on the live demo, where /joint came up
+  // full-bleed with no rail.
+  const bareRoots = ["/login", "/join"];
+  const bare = bareRoots.some((root) => pathname === root || pathname.startsWith(`${root}/`));
 
   // Owners get Routines + Admin folded into the Platform group (never a
   // separate group — Intelligence belongs to everyone, governance to owners).
