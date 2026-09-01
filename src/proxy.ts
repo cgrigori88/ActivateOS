@@ -230,5 +230,12 @@ export const config = {
   // authenticates with its own bearer secret — neither uses Basic Auth.
   // api/mcp carries its own bearer-key auth (task #76) — the gate would
   // otherwise demand Basic Auth from every personal agent.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/webhooks|api/research|api/mcp).*)"],
+  //
+  // api/build carries its own auth too (session OR OPS_FINGERPRINT_TOKEN,
+  // constant-time compared, 404 on failure). Gating it here made it useless for
+  // the job it exists to do: an unauthenticated caller was redirected to /login,
+  // so the ops token never reached the check, and the one endpoint meant to
+  // answer "which commit and which database is this?" could not be queried
+  // precisely when auth or the database is the thing being diagnosed.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/webhooks|api/research|api/mcp|api/build).*)"],
 };
