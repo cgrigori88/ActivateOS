@@ -19,7 +19,7 @@ is needed before Wednesday.
 |---|---|
 | Role | Unauthenticated marketing site |
 | SHA | `4dbe485` application code + this phase (see §2) |
-| Vercel project | **`pursuit-web`** — *to be created* |
+| Vercel project | **`pursuitos-web`** — *to be created* |
 | Database | **none** — proven, not asserted (§5) |
 | Auth | none; app routes 404 at the edge |
 | Worker | none |
@@ -30,7 +30,7 @@ is needed before Wednesday.
 |---|---|
 | Role | Real authenticated multi-tenant application |
 | SHA | same commit as demo |
-| Vercel project | **`pursuit-app`** — *to be created* |
+| Vercel project | **`pursuitos-app`** — *to be created* |
 | Supabase project | **NOT YET IDENTIFIED — halted (§6)** |
 | Migration state | n/a until the project exists |
 | Auth | Supabase identity, existing `src/proxy.ts` gate, RLS + FORCE RLS unchanged |
@@ -42,7 +42,7 @@ is needed before Wednesday.
 |---|---|
 | Role | Persistent synthetic demo, resettable |
 | SHA | same commit as app |
-| Vercel project | **`pursuit-demo`** — *to be created* |
+| Vercel project | **`pursuitos-demo`** — *to be created* |
 | Supabase project | **`qifatlqxfuhwrwvpbwsc`** (`pursuitos-demo`, ca-central-1) — created and migrated |
 | Migration state | **102 files = 102 tracker rows = 152 tables, RLS + FORCE RLS 152/152 — verified on the live project** |
 | Auth / protection | Supabase identity with demo-only users **plus** Vercel deployment protection |
@@ -205,23 +205,28 @@ and production both need their own project.
 
 ### HALT 4 · Create the three Vercel projects
 
-For each, at **https://vercel.com/new** → import `cgrigori88/ActivateOS` → set **Production Branch**
-to `claude/activateos-platform-review-xzkgmd`:
+For each, at **https://vercel.com/new** → import `cgrigori88/ActivateOS`, adding the environment
+variables on the import screen. **Production Branch is not settable at import time** — after the
+project exists, go to **Settings → Git → Production Branch**, set it to
+`claude/activateos-platform-review-xzkgmd`, then trigger a build (Promote to Production on a branch
+deployment, or push a commit). Vercel's first deployment comes from `main`, which is the stale
+pre-transformation code; treat it as throwaway and do not attach a real domain until the branch
+build is verified on its `*.vercel.app` URL.
 
 | Project | Domain | `PURSUITOS_ENV` | Also set |
 |---|---|---|---|
-| `pursuit-web` | `pursuitos.io` (+ `www`) | `public` | `NEXT_PUBLIC_APP_URL=https://app.pursuitos.io`, `NEXT_PUBLIC_ACCESS_EMAIL=<your address>` |
-| `pursuit-demo` | `demo.pursuitos.io` | `demo` | demo `DATABASE_URL` + Supabase keys, feature flags (§7), `OPS_FINGERPRINT_TOKEN` |
-| `pursuit-app` | `app.pursuitos.io` | `app` | production credentials — only after HALT 3 |
+| `pursuitos-web` | `pursuitos.io` (+ `www`) | `public` | `NEXT_PUBLIC_APP_URL=https://app.pursuitos.io`, `NEXT_PUBLIC_ACCESS_EMAIL=<your address>` |
+| `pursuitos-demo` | `demo.pursuitos.io` | `demo` | demo `DATABASE_URL` + Supabase keys, feature flags (§7), `OPS_FINGERPRINT_TOKEN` |
+| `pursuitos-app` | `app.pursuitos.io` | `app` | production credentials — only after HALT 3 |
 
 `pursuitos.io` is already a Vercel domain and the subdomains already resolve to Vercel, so binding is
 a Settings → Domains entry per project with no DNS propagation wait. The apex currently points at the
-existing deployment — **moving it to `pursuit-web` is what replaces the stale site**, so do it after
-`pursuit-web` builds green.
+existing deployment — **moving it to `pursuitos-web` is what replaces the stale site**, so do it after
+`pursuitos-web` builds green.
 
 ### HALT 5 · Protect the demo
 
-`demo-pursuit` Settings → **Deployment Protection** → enable **Password Protection** (or Vercel
+`pursuitos-demo` Settings → **Deployment Protection** → enable **Password Protection** (or Vercel
 Authentication). This is *in addition to* application auth; `noindex` is not access control.
 
 Then create demo users in the demo Supabase project → Authentication → Users. Send back the email
@@ -334,6 +339,6 @@ fingerprint, edge-level public/app separation — is built, tested and committed
 remains is HALT 1 through HALT 5: a billing upgrade, two project creations, one production-database
 decision, three Vercel projects, and demo protection.
 
-The critical path to Wednesday is **HALT 1 → HALT 2 → HALT 4 (`pursuit-demo`) → HALT 5**. The public
+The critical path to Wednesday is **HALT 1 → HALT 2 → HALT 4 (`pursuitos-demo`) → HALT 5**. The public
 site can go live in parallel and depends on nothing. `app.pursuitos.io` should wait for a deliberate
 decision on HALT 3.
