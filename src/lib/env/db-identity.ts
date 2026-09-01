@@ -29,8 +29,22 @@ export type DbIdentity = {
   establishedAt: Date;
 };
 
-/** Reads the marker. Returns null when the database has no identity — which is a refusal, not a default. */
-export async function readDbIdentity(db: Pool | PoolClient): Promise<DbIdentity | null> {
+/**
+ * The three distinguishable outcomes of asking a database what it is.
+ *
+ * `unreadable` exists because collapsing it into `absent` produces a confident
+ * lie: a wrong password would report "this database has no identity", which
+ * reads as a fact about the database when it is actually a fact about the
+ * connection. Both still refuse — but an operator who is told the truth fixes
+ * their connection string in seconds, and one who is told the marker is missing
+ * goes looking for it in the wrong place.
+ */
+export type IdentityRead =
+  | { status: "found"; identity: DbIdentity }
+  | { status: "absent" }
+  | { status: "unreadable"; reason: string };
+
+export async function readDbIdentity(db: Pool | PoolClient): Promise<IdentityRead> {
   try {
     const { rows } = await db.query<{
       environment: DbIdentity["environment"];
@@ -38,17 +52,22 @@ export async function readDbIdentity(db: Pool | PoolClient): Promise<DbIdentity 
       label: string;
       established_at: Date;
     }>(`select environment, is_synthetic, label, established_at from environment_identity limit 1`);
-    if (!rows.length) return null;
+    if (!rows.length) return { status: "absent" };
     return {
-      environment: rows[0].environment,
-      isSynthetic: rows[0].is_synthetic,
-      label: rows[0].label,
-      establishedAt: rows[0].established_at,
+      status: "found",
+      identity: {
+        environment: rows[0].environment,
+        isSynthetic: rows[0].is_synthetic,
+        label: rows[0].label,
+        establishedAt: rows[0].established_at,
+      },
     };
-  } catch {
-    // Table absent (pre-0102), unreadable, or the connection is broken. Every
-    // one of those means we cannot prove this database is safe to destroy.
-    return null;
+  } catch (e) {
+    const err = e as { code?: string; message?: string };
+    // 42P01 = undefined_table: reached the database, but 0102 has not been
+    // applied. That IS a fact about the database, so it counts as absent.
+    if (err.code === "42P01") return { status: "absent" };
+    return { status: "unreadable", reason: err.message ?? String(e) };
   }
 }
 
@@ -96,9 +115,19 @@ export async function assertSyntheticDatabase(db: Pool | PoolClient, operation: 
   // never touched — the single most misleading thing this message could do.
   const target = await describeConnection(db);
 
-  const identity = await readDbIdentity(db);
+  const read = await readDbIdentity(db);
 
-  if (!identity) {
+  if (read.status === "unreadable") {
+    throw new CrossEnvironmentWriteError(
+      `REFUSED: ${operation} against ${target}.\n` +
+        `Could not read this database's identity, so nothing about it can be trusted:\n` +
+        `  ${read.reason}\n` +
+        `This is a CONNECTION problem, not a missing marker — check DATABASE_URL, and in\n` +
+        `particular that the password placeholder was actually replaced.`,
+    );
+  }
+
+  if (read.status === "absent") {
     throw new CrossEnvironmentWriteError(
       `REFUSED: ${operation} against ${target}.\n` +
         `This database has no environment_identity row, so it cannot be proven synthetic.\n` +
@@ -108,6 +137,7 @@ export async function assertSyntheticDatabase(db: Pool | PoolClient, operation: 
     );
   }
 
+  const identity = read.identity;
   if (!identity.isSynthetic) {
     throw new CrossEnvironmentWriteError(
       `REFUSED: ${operation} against ${target}.\n` +

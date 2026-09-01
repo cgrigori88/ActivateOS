@@ -35,13 +35,23 @@ async function main() {
   if (!set) {
     const current = await readDbIdentity(pool);
     console.log(`target       : ${target}`);
-    if (!current) {
-      console.log(`identity     : UNMARKED — reseed tooling will refuse this database.`);
+    if (current.status === "unreadable") {
+      // Reporting this as UNMARKED would be a confident lie: it describes the
+      // connection, not the database. The most common cause by far is a
+      // DATABASE_URL whose password placeholder was never substituted.
+      console.log(`identity     : CANNOT READ — this is a connection problem, not a missing marker.`);
+      console.log(`error        : ${current.reason}`);
+      console.log(`check        : DATABASE_URL — host, port, and that the password was actually filled in.`);
+      process.exitCode = 1;
+    } else if (current.status === "absent") {
+      console.log(`identity     : UNMARKED — reached the database, but it carries no identity row.`);
+      console.log(`             : reseed tooling will refuse it until it is marked.`);
     } else {
-      console.log(`environment  : ${current.environment}`);
-      console.log(`is_synthetic : ${current.isSynthetic}${current.isSynthetic ? "  (reseed permitted)" : "  (reseed REFUSED)"}`);
-      console.log(`label        : ${current.label || "—"}`);
-      console.log(`established  : ${current.establishedAt.toISOString()}`);
+      const id = current.identity;
+      console.log(`environment  : ${id.environment}`);
+      console.log(`is_synthetic : ${id.isSynthetic}${id.isSynthetic ? "  (reseed permitted)" : "  (reseed REFUSED)"}`);
+      console.log(`label        : ${id.label || "—"}`);
+      console.log(`established  : ${id.establishedAt.toISOString()}`);
     }
     await pool.end();
     return;
@@ -58,14 +68,24 @@ async function main() {
   const label = flag("--label") ?? "";
 
   const existing = await readDbIdentity(pool);
-  if (existing && existing.environment !== set) {
+  if (existing.status === "unreadable") {
+    // Never write a marker into a database we could not read. That is how a
+    // typo'd connection string ends up stamping an identity onto whatever it
+    // actually reached.
+    console.error(
+      `REFUSED: could not read ${target} to check its current identity:\n  ${existing.reason}\n` +
+        `Fix the connection before marking anything — check that DATABASE_URL's password was filled in.`,
+    );
+    process.exit(1);
+  }
+  if (existing.status === "found" && existing.identity.environment !== set) {
     // Re-labelling a database is how a demo could quietly become "production",
     // or worse, how production could be re-labelled demo and then wiped. Both
     // directions require an explicit acknowledgement.
     if (!args.includes("--force")) {
       console.error(
-        `REFUSED: ${target} is already marked "${existing.environment}"` +
-          `${existing.label ? ` (${existing.label})` : ""}.\n` +
+        `REFUSED: ${target} is already marked "${existing.identity.environment}"` +
+          `${existing.identity.label ? ` (${existing.identity.label})` : ""}.\n` +
           `Changing a database's environment identity is not a routine edit.\n` +
           `Re-run with --force if you are certain this is the same database re-purposed.`,
       );
