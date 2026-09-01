@@ -207,10 +207,36 @@ async function main() {
     }
     console.log(`[demo-db] target confirmed synthetic: environment="${identity.environment}"${identity.label ? ` (${identity.label})` : ""}`);
 
-    // Schema must already be present — `npx tsx scripts/migrate.ts` against the
-    // demo project, which is a separate, reviewable step. Seeding a database
-    // whose schema we just silently created would hide a migration failure.
-    await runMigrations(EFFECTIVE_URL);
+    // Schema must already be present — migrating is a separate, reviewable step.
+    // Seeding a database whose schema we silently created would hide a migration
+    // failure behind a seed failure.
+    //
+    // If the tracker already accounts for every file on disk, the schema is at
+    // parity and re-running the DDL buys nothing. It is not free either: it
+    // replays 102 files over a connection pooler, and it leans on every one of
+    // them being perfectly idempotent — a much stronger assumption than "they
+    // applied cleanly once", and not one worth testing during a demo setup.
+    const tracker = new Pool({ connectionString: EFFECTIVE_URL, max: 1 });
+    let applied = 0;
+    try {
+      const { rows } = await tracker.query<{ n: string }>("select count(*)::text as n from schema_migrations");
+      applied = Number(rows[0].n);
+    } catch {
+      applied = 0; // no tracker at all — the database has not been migrated
+    } finally {
+      await tracker.end();
+    }
+    const onDisk = readdirSync(join(process.cwd(), "supabase", "migrations")).filter((f) => f.endsWith(".sql")).length;
+
+    if (applied >= onDisk) {
+      console.log(`[demo-db] schema at parity (${applied}/${onDisk} migrations tracked) — skipping DDL`);
+    } else {
+      throw new Error(
+        `REFUSED: the target has ${applied} of ${onDisk} migrations applied.\n` +
+          `Seeding a partially-migrated database produces failures that look like seed bugs.\n` +
+          `Migrate it first:  DATABASE_URL="$DEMO_TARGET_URL" npx tsx scripts/migrate.ts`,
+      );
+    }
 
     const pool = new Pool({ connectionString: EFFECTIVE_URL });
     const ids = await seed(pool);
