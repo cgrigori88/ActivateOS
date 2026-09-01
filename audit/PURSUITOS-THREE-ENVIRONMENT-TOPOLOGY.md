@@ -43,11 +43,11 @@ is needed before Wednesday.
 | Role | Persistent synthetic demo, resettable |
 | SHA | same commit as app |
 | Vercel project | **`pursuit-demo`** — *to be created* |
-| Supabase project | **BLOCKED on the Pro upgrade (§6)** — provisioning is proven and scripted |
-| Migration state | 102 files = 102 tracker rows = 152 tables, verified on a clean database (§4) |
+| Supabase project | **`qifatlqxfuhwrwvpbwsc`** (`pursuitos-demo`, ca-central-1) — created and migrated |
+| Migration state | **102 files = 102 tracker rows = 152 tables, RLS + FORCE RLS 152/152 — verified on the live project** |
 | Auth / protection | Supabase identity with demo-only users **plus** Vercel deployment protection |
 | Worker | Demo database only, external sending hard-off — *not commissioned* |
-| Seed | Canonical synthetic world; guarded reseed (§5) |
+| Seed | Marked `demo` / `is_synthetic=true`; canonical world **not yet loaded** (§6, Step 6) |
 
 ---
 
@@ -309,11 +309,11 @@ become permanent.
 | app.pursuitos.io | **NOT YET COMMISSIONED** |
 | Production Supabase | **NOT YET IDENTIFIED** — HALT 3 |
 | Production auth | **NOT YET COMMISSIONED** |
-| Demo deployment | **BLOCKED** — HALT 1, 2, 4 |
+| Demo deployment | **BLOCKED** — HALT 4 only (Vercel project) |
 | demo.pursuitos.io | **NOT YET BOUND** — HALT 4 |
-| Demo Supabase | **BLOCKED** — HALT 1, 2 |
-| Migration parity | **PASS** — 102 = 102 = 152 tables, verified clean |
-| Demo seed | **PASS locally** — canonical world intact, guarded |
+| Demo Supabase | **PASS** — `qifatlqxfuhwrwvpbwsc`, migrated to parity, marked synthetic |
+| Migration parity | **PASS** — 102 = 102 = 152 tables, on the live demo project |
+| Demo seed | **PENDING** — schema ready and marked; seed runs from a machine with direct Postgres access |
 | Demo protection | **NOT YET APPLIED** — HALT 5 |
 | Demo isolation | **PASS** — enforced and tested at DB + edge |
 | Feature flags | **PASS** — fail-closed, verified in code |
