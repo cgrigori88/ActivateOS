@@ -174,6 +174,11 @@ export async function proxy(req: NextRequest) {
     }
     const res = NextResponse.next({ request: { headers: fwd } });
     if (csp) res.headers.set("content-security-policy", csp);
+    // Only the public site should be indexed. The app and the demo are gated by
+    // authentication — this header is hygiene, not access control, and it is
+    // stated here rather than in a robots.txt precisely so nobody mistakes it
+    // for a gate: a crawler that ignores it still meets the sign-in redirect.
+    res.headers.set("x-robots-tag", "noindex, nofollow");
     if (scopeToken) res.cookies.set("pos:scope", scopeToken, { path: "/", sameSite: "lax", maxAge: 60 * 60 * 24 * 30 });
     return res;
   };
