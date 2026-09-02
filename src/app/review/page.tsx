@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Bento, Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
+import { ExecutionModel } from "@/components/execution-model";
 import { withTenant } from "@/lib/db/tenant";
 import { resolveReviewAction } from "./actions";
 import { buttonClass } from "@/components/ui";
@@ -120,16 +121,54 @@ export default async function ReviewPage({
   return (
     <main>
       <PageHeader
-        title="Evidence review"
-        subtitle="Only what needs a human, grouped by account."
+        title="Review"
+        subtitle="Where a person has to agree before something becomes accepted truth."
       />
 
-      {/* Bentos */}
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      {/* Wave 4 §2/§8: Review is the human-authority stage of the execution model. */}
+      <ExecutionModel
+        current="review"
+        steps={{ review: all.length > 0 ? { label: `${all.length} awaiting a person` } : { label: "nothing waiting" } }}
+      />
+
+      {/*
+        Wave 4 §7/§12 — the empty-dashboard problem, which this room had in its
+        purest form.
+
+        With an empty queue the page rendered five zero tiles, four filter selects
+        filtering nothing, and a sentence of engineering prose about sampling and
+        cross-checkers — roughly 250px of chrome over 600px of void, all of it
+        saying "nothing". A governance surface that looks broken when it is simply
+        satisfied teaches operators to distrust it.
+
+        Empty is now a STATE, not a layout: one calm line saying you are caught up,
+        followed by what would appear here — and that list is drawn only from
+        review reasons this product actually produces, so it is a description of
+        the system rather than a brochure. The instruments and filters return the
+        moment there is something to instrument or filter.
+      */}
+      {all.length === 0 ? (
+        <Card>
+          <p className="text-title font-semibold ink">You&rsquo;re caught up.</p>
+          <p className="mt-1 text-copy ink-muted">No evidence or decisions currently require review.</p>
+          <div className="mt-3 border-t pt-2.5 text-body ink-faint" style={{ borderColor: "var(--border-subtle)" }}>
+            <span className="ink-muted">Work arrives here when:</span>
+            <ul className="mt-1 space-y-0.5">
+              <li>· a claim lands below the confidence threshold and is held for verification</li>
+              <li>· two sources contradict each other on the same fact</li>
+              <li>· the cross-checker disputes something already recorded</li>
+              <li>· a claim is material enough that it is sampled for a person regardless</li>
+            </ul>
+          </div>
+        </Card>
+      ) : (
+      <>
+      {/* Instruments — only while there is something to instrument. */}
+      <div className="mb-4 flex flex-wrap gap-2">
         <Bento label="pending" value={all.length} href="/review" />
-        <Bento label="contradictions" value={byReason("contradiction")} href="/review?reason=contradiction" />
-        <Bento label="checker disputes" value={byReason("checker_disagreement")} href="/review?reason=checker_disagreement" />
-        <Bento label="high impact" value={byReason("high_impact")} href="/review?reason=high_impact" />
+        {byReason("contradiction") > 0 && <Bento label="contradictions" value={byReason("contradiction")} href="/review?reason=contradiction" />}
+        {byReason("checker_disagreement") > 0 && <Bento label="checker disputes" value={byReason("checker_disagreement")} href="/review?reason=checker_disagreement" />}
+        {byReason("high_impact") > 0 && <Bento label="high impact" value={byReason("high_impact")} href="/review?reason=high_impact" />}
         <Bento label="accounts affected" value={accounts} href="/review?group=account" />
       </div>
 
@@ -158,11 +197,9 @@ export default async function ReviewPage({
 
       {items.length === 0 ? (
         <Card>
-          <p className="text-copy text-neutral-500">
-            {all.length === 0
-              ? "Review queue is empty. Items arrive as research runs — sampled by source trust, plus anything the cross-checker disputed."
-              : "Nothing matches this filter."}
-          </p>
+          {/* The all-empty branch is handled above; reaching here means a filter
+              excluded everything, which is a different state and says so (§12). */}
+          <p className="text-copy text-neutral-500">Nothing matches this filter.</p>
         </Card>
       ) : (
         <div className="space-y-3">
@@ -207,8 +244,11 @@ export default async function ReviewPage({
                         <form action={resolveReviewAction.bind(null, item.id, "inaccurate")}>
                           <button className={buttonClass("destructive", "sm")}>Inaccurate</button>
                         </form>
+                        {/* §13: "Accurate" and "Unsure" were both filled primaries —
+                            two identical-looking controls recording opposite degrees
+                            of confidence. Deferring is not an endorsement. */}
                         <form action={resolveReviewAction.bind(null, item.id, "unsure")}>
-                          <button className={buttonClass("primary", "sm")}>Unsure</button>
+                          <button className={buttonClass("subtle", "sm")}>Unsure</button>
                         </form>
                       </div>
                     </div>
@@ -218,6 +258,8 @@ export default async function ReviewPage({
             </Card>
           ))}
         </div>
+      )}
+      </>
       )}
     </main>
   );

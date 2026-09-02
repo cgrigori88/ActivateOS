@@ -2,6 +2,8 @@ import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
 import { Bento, Card, PageHeader, StatusBadge, fieldClass, BlockLabel } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
+import { ExecutionModel } from "@/components/execution-model";
+import { resendConfigured } from "@/lib/comms/resend";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
 import {
@@ -58,6 +60,10 @@ export default async function CampaignsPage({
 }) {
   const sp = await searchParams;
   const notice = sp.notice;
+  /* §6/§10: one source of truth for whether this workspace can reach the outside
+     world. `resendConfigured()` is the same check the send path itself uses, so the
+     banner cannot claim readiness the runtime would refuse. */
+  const canSendExternally = resendConfigured();
 
   const { campaigns, goals, motions, accounts } = await withTenant(async (db, orgId) => {
     const { rows: campaigns } = await db.query<CampaignRow>(
@@ -129,9 +135,41 @@ export default async function CampaignsPage({
     <main>
       <PageHeader
         title="Campaigns"
-        subtitle="Multi-touch sequences from approved motions. Approve per touch, then send."
+        subtitle="One governed way a motion reaches the market. Nothing leaves without a person."
       />
       <RoomTabs tabs={[{ href: "/campaigns", label: "Campaigns" }, { href: "/upcoming", label: "Scheduled sends" }]} />
+
+      {/* Wave 4 §2/§6/§8: Campaigns is the execution stage — one channel, not the
+          centre of the product. The strip says so by showing it in its place. */}
+      <ExecutionModel
+        current="execution"
+        steps={{ execution: { label: `${campaigns.length} campaign${campaigns.length === 1 ? "" : "s"}` } }}
+      />
+
+      {/*
+        §6/§9/§12 — the execution-readiness state, stated once, at the top.
+
+        A room whose entire purpose is reaching the outside world must say plainly
+        whether it can. This is an UNCONFIGURED state in §12's sense: the capability
+        exists, setup is incomplete, and the product must not imply otherwise. The
+        limitation is not softened — the word is "cannot" — and what still works is
+        named so the state reads as a boundary rather than a breakage.
+      */}
+      {!canSendExternally && (
+        <Card className="mb-4">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="rounded-full px-2 py-0.5 text-micro font-bold uppercase tracking-[0.04em]"
+              style={{ background: "color-mix(in srgb, var(--color-accent-attention) 14%, transparent)", color: "var(--color-accent-attention)" }}>
+              External sending not configured
+            </span>
+            <span className="text-body ink-muted">
+              PursuitOS cannot send email from this workspace. Sequences can still be generated, approved and
+              scheduled — a person sends them.
+            </span>
+            <Link href="/admin" className="text-body font-semibold text-accent hover:underline dark:text-blue-400">Set up sending →</Link>
+          </div>
+        </Card>
+      )}
 
       {notice && (
         <div className="mb-4 rounded-inner border border-amber-300 bg-amber-50 px-4 py-2.5 text-copy text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
@@ -139,15 +177,36 @@ export default async function CampaignsPage({
         </div>
       )}
 
-      {/* Bentos */}
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Bento label="campaigns" value={rest.length} href="/campaigns" />
-        <Bento label="live" value={liveN} subs={["launched / completed"]} href="/campaigns?status=launched" />
-        <Bento label="accounts in reach" value={reachTotal} subs={[`${listsLinked} list${listsLinked === 1 ? "" : "s"} linked`]} href="/contacts" />
-        <Bento label="touches sent" value={touchesSent} href="/analytics" />
-        <Bento label="avg engagement" value={avgEng ?? "—"} href="/analytics" />
-        <Bento label="AI suggestions" value={suggestions.length} subs={["awaiting review"]} href="/campaigns?source=ai_suggested" />
-      </div>
+      {/*
+        Wave 4 §12/§13 — the six instruments only exist once there is something to
+        instrument.
+
+        With no campaign in the workspace this band rendered six tiles reading
+        0 · 0 · 0 · 0 · — · 0, which is the "empty dashboard" the brief names: it
+        looks like a reporting failure rather than a workspace that has not started
+        yet. EMPTY is a distinct state from zero-valued, and it deserves a sentence
+        and the action that resolves it — which is the composer directly below.
+      */}
+      {rest.length === 0 && suggestions.length === 0 ? (
+        <Card className="mb-5">
+          <p className="text-copy ink-muted">
+            <b className="ink">No campaigns yet.</b> A campaign is how an approved motion reaches the market —
+            generate one from a motion below, or build one by hand.
+          </p>
+        </Card>
+      ) : (
+        <div className="mb-5 flex flex-wrap gap-2">
+          <Bento label="campaigns" value={rest.length} href="/campaigns" />
+          {liveN > 0 && <Bento label="live" value={liveN} subs={["launched / completed"]} href="/campaigns?status=launched" />}
+          {reachTotal > 0 && <Bento label="accounts in reach" value={reachTotal} subs={[`${listsLinked} list${listsLinked === 1 ? "" : "s"} linked`]} href="/contacts" />}
+          {/* §9: "touches sent" must mean SENT. It stays visible at zero when
+              campaigns exist, because "we have campaigns and have sent nothing" is
+              a real and important state — not an absence. */}
+          <Bento label="touches sent" value={touchesSent} href="/analytics" />
+          {avgEng != null && <Bento label="avg engagement" value={avgEng} href="/analytics" />}
+          {suggestions.length > 0 && <Bento label="AI suggestions" value={suggestions.length} subs={["awaiting review"]} href="/campaigns?source=ai_suggested" />}
+        </div>
+      )}
 
       {/* Compose — two paths: AI-generated from a motion, or hand-authored from an
           account. The id is the landing spot for the approve-motion next-step pull

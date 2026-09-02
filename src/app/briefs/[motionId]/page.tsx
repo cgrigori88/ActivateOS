@@ -363,10 +363,17 @@ export default async function BriefPage({
                   Package for seller
                 </button>
               </div>
+              {/* Wave 4 §6/§11: this named an environment variable to a commercial
+                  operator — "until Resend is configured (RESEND_API_KEY)". The vendor
+                  and the secret are implementation; what the reader needs is the
+                  business state, whether it blocks them, and what still works. The
+                  limitation is not softened: sending is off, and the copy says so
+                  plainly rather than hinting it might already work. */}
               {!canSendDirect && (
                 <p className="text-body text-neutral-400">
-                  Direct sending is disabled until Resend is configured (RESEND_API_KEY) —
-                  “Package for seller” works now.
+                  <b className="ink-muted">External sending is not configured</b>, so PursuitOS cannot
+                  send anything from here. “Package for seller” prepares the outreach for a person to
+                  send. An administrator can enable direct sending in <Link href="/admin" className="underline">Admin</Link>.
                 </p>
               )}
             </form>

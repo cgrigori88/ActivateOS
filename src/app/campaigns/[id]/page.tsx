@@ -368,10 +368,14 @@ export default async function CampaignDetailPage({
               Approve all &amp; schedule
             </button>
           </form>
+          {/* Wave 4 §6/§9: "unless the worker is explicitly armed" is transport
+              wiring, and it also undercut the guarantee it was making — a reader
+              could not tell whether "nothing sends automatically" applied to them.
+              The states are named instead: approved is not scheduled, and scheduled
+              is not sent. Each word means one thing. */}
           <p className="mt-2 text-label text-neutral-400">
-            Nothing sends automatically — scheduled touches wait on <Link href="/upcoming" className="underline">Upcoming</Link> for
-            your &ldquo;send now,&rdquo; unless the worker is explicitly armed. Prefer to vet each touch first? Approve or reject them
-            individually below, then schedule.
+            Approving does not send. Scheduled touches wait on <Link href="/upcoming" className="underline">Upcoming</Link> until
+            a person sends them. Prefer to vet each touch first? Approve or reject them individually below, then schedule.
           </p>
         </Card>
       )}

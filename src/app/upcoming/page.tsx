@@ -57,9 +57,15 @@ export default async function UpcomingPage() {
       {/* items-stretch + a sub line on both tiles keeps the pair the same height */}
       <div className="mb-4 flex flex-wrap items-stretch gap-3">
         <Bento label="scheduled" value={rows.length} subs={["queued sends with a date"]} />
-        <Bento label="due now" value={dueCount} subs={[dueCount > 0 ? "waiting on you (or the armed worker)" : "all future-dated"]} />
-        <span className={`ml-auto self-start rounded-inner px-2 py-0.5 text-label font-medium ${autosend ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
-          worker auto-send: {autosend ? "armed" : "off (manual)"}
+        <Bento label="due now" value={dueCount} subs={[dueCount > 0 ? "waiting on a person to send" : "all future-dated"]} />
+        {/* Wave 4 §6/§12: "worker auto-send: armed / off (manual)" described the
+            transport, not the guarantee. This is a DISABLED state in §12's sense —
+            the capability exists and is switched off — and that is what an operator
+            needs to know, because it determines whether a scheduled touch will leave
+            the building without them. Same flag, same two states, named in the terms
+            of the promise rather than the machinery. */}
+        <span className={`ml-auto self-start rounded-inner px-2.5 py-1 text-label font-semibold ${autosend ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"}`}>
+          {autosend ? "Automatic sending is ON" : "Automatic sending is off — every send is a person's action"}
         </span>
       </div>
 

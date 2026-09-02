@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { Card, PageHeader } from "@/components/ui";
+import { ExecutionModel } from "@/components/execution-model";
 import { ROUTINE_CATALOG, listRoutines } from "@/lib/routines/routines";
 import { resendConfigured } from "@/lib/comms/resend";
 import { withTenant } from "@/lib/db/tenant";
@@ -39,10 +41,26 @@ export default async function RoutinesPage() {
 
   return (
     <main>
+      {/* Wave 4 §5: "scheduled jobs from a known catalog, each with a visible
+          guardrail" is how an engineer describes a scheduler. The reader needs the
+          promise: these are the things the product remembers to check so a person
+          does not have to. The subtitle also draws the boundary the brief asks for
+          explicitly — a Skill is HOW work is performed, a Routine is WHEN. */}
       <PageHeader
         title="Routines"
-        subtitle="Scheduled jobs from a known catalog, each with a visible guardrail."
+        subtitle="What PursuitOS checks on a schedule, so nobody has to remember to."
       />
+
+      <ExecutionModel
+        current="routine"
+        steps={{ routine: { label: routines.length > 0 ? `${routines.length} in place` : "none running yet" } }}
+      />
+
+      <p className="mb-4 text-body ink-faint">
+        A <Link href="/skills" className="font-medium text-accent hover:underline dark:text-blue-400">Skill</Link> says
+        how a kind of work is performed. A Routine says when it recurs. Every routine below is read-only —
+        it prepares and surfaces, and never sends or decides on its own.
+      </p>
 
       <div className="space-y-4">
         {ROUTINE_CATALOG.map((cat) => {
@@ -94,7 +112,9 @@ export default async function RoutinesPage() {
                 {cat.kind === "morning_brief" && (
                   <label className="text-copy">
                     <span className="mb-1 block text-body text-neutral-500">
-                      Email to{!canEmail ? " (email delivery needs Resend configured — the brief still runs and shows here)" : ""}
+                      {/* §6: named the email vendor to an operator. The state that
+                          matters is that delivery is off and the brief still runs. */}
+                      Email to{!canEmail ? " (email delivery is not configured — the brief still runs and appears here)" : ""}
                     </span>
                     <input name="recipient" type="email" defaultValue={r.config.recipient ?? ""} placeholder="you@company.com" className={`${input} w-64`} />
                   </label>

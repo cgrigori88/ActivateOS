@@ -6,6 +6,8 @@ import { withTenant } from "@/lib/db/tenant";
 import { getScopeContext } from "@/lib/scope/server";
 import { resolveActionAction, resolveCommActionAction } from "./actions";
 import { buttonClass } from "@/components/ui";
+import { ExecutionModel } from "@/components/execution-model";
+import { formatMoney } from "@/lib/format/money";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +31,8 @@ interface Item {
   partnerName: string | null;
   owner: string | null;
   meta: string | null;
+  /** Motion-level value of the work this item advances. Null when not applicable. */
+  valueUsd: number | null;
 }
 
 const DAY = 86_400_000;
@@ -58,8 +62,14 @@ export default async function QueuePage({
   const { cadence, comms, recent } = await withTenant(async (db) => ({
     cadence: (
       await db.query(
+        /* Wave 4 §3: `estimated_value_usd` joins the existing select so a queue row
+           can state the commercial consequence of the work. The queue previously
+           carried dates, a step number and a sentence — everything except what the
+           item is worth, which is the one field that lets an operator choose
+           between two rows. Additive read on a query that already joined the
+           motion; no new table, no new predicate, no semantic change. */
         `select a.id, a.step, a.action, a.due_at,
-            m.id as motion_id, c.id as company_id, c.legal_name,
+            m.id as motion_id, m.estimated_value_usd, c.id as company_id, c.legal_name,
             pa.name as partner_name, s.name as seller_name
      from motion_actions a
      join revenue_motions m on m.id = a.motion_id
@@ -112,7 +122,11 @@ export default async function QueuePage({
       legalName: a.legal_name as string,
       partnerName: (a.partner_name as string) ?? null,
       owner: (a.seller_name as string) ?? null,
+      /* §3/§11: "step 1" is the cadence engine's internal counter, not something a
+         business operator acts on. It moves behind the fold with the rest of the
+         mechanism; the row leads with the work and what it is worth. */
       meta: `step ${a.step}`,
+      valueUsd: a.estimated_value_usd == null ? null : Number(a.estimated_value_usd),
     })),
     ...comms.map((a) => ({
       id: a.id as string,
@@ -126,6 +140,10 @@ export default async function QueuePage({
       partnerName: null,
       owner: (a.owner_name as string) ?? null,
       meta: a.confidence ? `${a.confidence} confidence` : null,
+      /* Conversation follow-ups are not motion-scoped, so they carry no motion
+         value. Left null rather than defaulted to zero — an unknown value and a
+         zero value are different claims (§12). */
+      valueUsd: null,
     })),
   ];
 
@@ -182,18 +200,29 @@ export default async function QueuePage({
   return (
     <main>
       <PageHeader
-        title="Action queue"
-        subtitle="One worklist across active motions and live conversations. Overdue floats up."
+        title="Queue"
+        subtitle="What needs to happen now — across active motions and live conversations."
       />
       <RoomTabs tabs={[{ href: "/", label: "Today" }, { href: "/queue", label: "Queue" }]} />
 
-      {/* Bentos */}
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      {/* Wave 4 §2/§8: the stage of the execution model this room occupies. */}
+      <ExecutionModel
+        current="queue"
+        steps={{
+          queue: { label: `${items.length} open`, detail: overdueN > 0 ? `${overdueN} overdue` : undefined },
+        }}
+      />
+
+      {/* §12/§13: five tiles, one of which read "0 from conversations" — an empty
+          instrument at the top of a work surface. A count earns its tile while it
+          has something to report; the filters that act on these numbers are the
+          row directly below, unchanged. */}
+      <div className="mb-4 flex flex-wrap gap-2">
         <Bento label="open actions" value={items.length} href="/queue" />
-        <Bento label="overdue" value={overdueN} href="/queue?window=overdue" />
+        {overdueN > 0 && <Bento label="overdue" value={overdueN} href="/queue?window=overdue" intent="warning" />}
         <Bento label="due today" value={todayN} href="/queue?window=today" />
         <Bento label="due this week" value={weekN} href="/queue?window=7" />
-        <Bento label="from conversations" value={convoN} href="/queue?source=conversation" />
+        {convoN > 0 && <Bento label="from conversations" value={convoN} href="/queue?source=conversation" />}
       </div>
 
       {/* Filters */}
@@ -231,56 +260,97 @@ export default async function QueuePage({
                 {groups.get(k)!.map((i) => {
                   const overdue = i.dueAt != null && i.dueAt.getTime() < today0;
                   return (
+                    /*
+                      Wave 4 §2/§3/§9 — the row, and the most important correction
+                      in this wave.
+
+                      THE DEFECT. Every row ended in two filled primary buttons
+                      labelled "Done" and "Skip". `Done` writes
+                      motion_actions.status='done' — it resolves the REMINDER. It
+                      does not approve a route, does not authorize anything, and
+                      sends nothing. Yet it sat, at primary weight, on a row reading
+                      "Approve WWT route brief before sending to partner". A
+                      reasonable operator would read that button as performing the
+                      approval. That is exactly the collapse §2 forbids: a queued
+                      reminder and a governed decision are different objects, and
+                      the UI implied one control did both.
+
+                      THE FIX, presentation only. The control is renamed to what it
+                      actually does — "Mark handled" — and demoted to subtle, because
+                      book-keeping is not the primary act. The primary act is opening
+                      the place where the real decision is made, which the row now
+                      links to as its leading affordance. No server action, authority
+                      check or status value changed.
+
+                      The rest is §3's hierarchy: the work first, then the commercial
+                      object and what it is worth, then who owns it, then the date.
+                      Mechanism ("cadence", "step 1") moves to the end at metadata
+                      weight, where it can still be read but no longer leads.
+                    */
                     <Card key={`${i.kind}:${i.id}`}>
                       <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0">
-                          <p className="text-copy">
-                            <span className={overdue ? "font-semibold text-red-700 dark:text-red-400" : "font-medium text-neutral-500"}>
-                              {i.dueAt ? `${overdue ? "overdue · " : ""}${i.dueAt.toISOString().slice(0, 10)}` : "no date"}
+                        <div className="min-w-0 flex-1">
+                          {/* WHAT needs to happen */}
+                          <p className="text-copy font-semibold leading-snug ink">{i.title}</p>
+                          {i.detail && <p className="mt-0.5 text-body ink-muted">{i.detail}</p>}
+
+                          {/* WHICH commercial object, and what it is worth */}
+                          <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-body">
+                            {i.companyId ? (
+                              <Link href={`/accounts/${i.companyId}`} className="font-semibold hover:underline">{i.legalName}</Link>
+                            ) : (
+                              <span className="font-semibold">{i.legalName}</span>
+                            )}
+                            {i.partnerName && <span className="ink-muted">via {i.partnerName}</span>}
+                            {i.valueUsd != null && i.valueUsd > 0 && (
+                              <span className="tnum ink-muted"><b className="ink">{formatMoney(i.valueUsd)}</b> motion value</span>
+                            )}
+                            {i.owner && <span className="ink-faint">owner {i.owner}</span>}
+                          </p>
+
+                          {/* WHEN, and the mechanism that produced it — last, and quiet */}
+                          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-label ink-faint">
+                            <span className={overdue ? "font-semibold" : ""} style={overdue ? { color: "var(--color-accent-risk)" } : undefined}>
+                              {i.dueAt ? `${overdue ? "overdue · " : "due "}${i.dueAt.toISOString().slice(0, 10)}` : "no date"}
                             </span>
-                            <span className="text-neutral-400"> · </span>
-                            <span className={`rounded-inner px-1.5 py-0.5 text-micro font-medium ${i.kind === "conversation" ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
-                              {i.kind === "conversation" ? "conversation" : "cadence"}
-                            </span>
-                            {i.meta && <span className="ml-1 text-body text-neutral-400">{i.meta}</span>}
-                            {groupKey !== "account" && (
+                            <span aria-hidden>·</span>
+                            <span>{i.kind === "conversation" ? "raised by a conversation" : "from the motion's play cadence"}</span>
+                            {i.meta && <><span aria-hidden>·</span><span>{i.meta}</span></>}
+                          </p>
+                        </div>
+
+                        <div className="flex shrink-0 flex-col items-end gap-1.5">
+                          {/* The real work lives where the governed control is. */}
+                          {i.motionId ? (
+                            <Link href={`/briefs/${i.motionId}`} className={buttonClass("primary", "sm")}>Open the work →</Link>
+                          ) : i.companyId ? (
+                            <Link href={`/accounts/${i.companyId}`} className={buttonClass("primary", "sm")}>Open the account →</Link>
+                          ) : null}
+                          {/* A dot between them: two adjacent subtle buttons read as
+                              one phrase ("Mark handled Skip") without a separator. */}
+                          <div className="flex items-center gap-1.5 text-label ink-faint">
+                            {i.kind === "cadence" ? (
                               <>
-                                {" · "}
-                                {i.motionId ? (
-                                  <Link href={`/briefs/${i.motionId}`} className="font-semibold hover:underline">{i.legalName}</Link>
-                                ) : i.companyId ? (
-                                  <Link href={`/accounts/${i.companyId}`} className="font-semibold hover:underline">{i.legalName}</Link>
-                                ) : (
-                                  <span className="font-semibold">{i.legalName}</span>
-                                )}
+                                <form action={resolveActionAction.bind(null, i.id, "done")}>
+                                  <button className={buttonClass("subtle", "sm")} title="Removes this reminder from the queue. It does not approve, authorize or send anything.">Mark handled</button>
+                                </form>
+                                <span aria-hidden>·</span>
+                                <form action={resolveActionAction.bind(null, i.id, "skipped")}>
+                                  <button className={buttonClass("subtle", "sm")} title="Skip this cadence step.">Skip</button>
+                                </form>
+                              </>
+                            ) : (
+                              <>
+                                <form action={resolveCommActionAction.bind(null, i.id, "done")}>
+                                  <button className={buttonClass("subtle", "sm")} title="Removes this follow-up from the queue. It does not send anything.">Mark handled</button>
+                                </form>
+                                <span aria-hidden>·</span>
+                                <form action={resolveCommActionAction.bind(null, i.id, "dismissed")}>
+                                  <button className={buttonClass("subtle", "sm")}>Dismiss</button>
+                                </form>
                               </>
                             )}
-                            {i.partnerName && <span className="text-neutral-500"> via {i.partnerName}</span>}
-                            {i.owner && <span className="text-neutral-400"> → {i.owner}</span>}
-                          </p>
-                          <p className="mt-1 text-copy leading-relaxed text-neutral-700 dark:text-neutral-300">{i.title}</p>
-                          {i.detail && <p className="mt-0.5 text-copy text-neutral-600 dark:text-neutral-400">{i.detail}</p>}
-                        </div>
-                        <div className="flex shrink-0 gap-2">
-                          {i.kind === "cadence" ? (
-                            <>
-                              <form action={resolveActionAction.bind(null, i.id, "done")}>
-                                <button className={buttonClass("primary", "sm")}>Done</button>
-                              </form>
-                              <form action={resolveActionAction.bind(null, i.id, "skipped")}>
-                                <button className={buttonClass("primary", "sm")}>Skip</button>
-                              </form>
-                            </>
-                          ) : (
-                            <>
-                              <form action={resolveCommActionAction.bind(null, i.id, "done")}>
-                                <button className={buttonClass("primary", "sm")}>Done</button>
-                              </form>
-                              <form action={resolveCommActionAction.bind(null, i.id, "dismissed")}>
-                                <button className={buttonClass("primary", "sm")}>Dismiss</button>
-                              </form>
-                            </>
-                          )}
+                          </div>
                         </div>
                       </div>
                     </Card>

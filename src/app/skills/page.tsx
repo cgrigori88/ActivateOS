@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Card, PageHeader, BlockLabel } from "@/components/ui";
+import { ExecutionModel } from "@/components/execution-model";
 import { SKILL_KINDS, listSkills, sharedInSkills, type SkillKind } from "@/lib/skills/skills";
 import { editIntensity } from "@/lib/insights/calibration";
 import { withTenant } from "@/lib/db/tenant";
@@ -82,9 +83,22 @@ export default async function SkillsPage({
 
   return (
     <main>
+      {/* Wave 4 §4: the room described its own implementation — "typed instructions
+          your agents follow, attributed to the runs they grounded". That is what a
+          Skill IS in the codebase; it is not what a Skill MEANS to the business,
+          which is the standing answer to "how does this organization want this kind
+          of work done". The mechanism is unchanged and still visible on each card;
+          only the framing moved from the machine's side of the screen to the
+          reader's. §5: the subtitle also draws the line against Routines — a Skill
+          is HOW work is performed, a Routine is WHEN it recurs. */}
       <PageHeader
         title="Skills"
-        subtitle="Typed instructions your agents follow, attributed to the runs they grounded."
+        subtitle="How this organization wants each kind of work performed — written once, followed everywhere."
+      />
+
+      <ExecutionModel
+        current="skill"
+        steps={{ skill: { label: `${skills.length} in the library` } }}
       />
 
       {sp.notice && (
@@ -110,10 +124,14 @@ export default async function SkillsPage({
 
       {/* ── The library ── */}
       <Card className="mb-6">
-        <BlockLabel>Library</BlockLabel>
+        <BlockLabel>In force</BlockLabel>
         <p className="mb-3 text-copy text-neutral-500">
-          Every skill declares what it is, where it applies, and which agents read it — and the uses count is
-          real: it counts the AI runs each skill actually grounded.
+          {/* §4: each card already carries what it is, where it applies and how many
+              runs it grounded. The paragraph restated that inventory instead of
+              saying what the reader is looking at. The one claim worth keeping is
+              that the usage figure is earned rather than declared. */}
+          Each of these governs a kind of work wherever it happens. Usage is counted, not asserted —
+          it is the number of runs the skill actually grounded.
         </p>
         {active.length === 0 ? (
           <p className="text-copy text-neutral-500">
@@ -229,10 +247,19 @@ export default async function SkillsPage({
         </Card>
       )}
 
-      {/* ── Add a skill ── */}
+      {/* ── Add a skill ──
+          Wave 4 §4/§11: this was a 400px authoring form sitting open beneath a
+          one-item library, so the room's dominant visual message was "configure
+          something" rather than "here is how we work". Writing a skill is a
+          deliberate, occasional act; reading which ones are in force is the daily
+          one. The form is unchanged and one click away — the same treatment Goals
+          gave its target form in Wave 3. */}
       <span id="add" />
-      <Card className="mb-6">
-        <BlockLabel>Add a skill</BlockLabel>
+      <details className="mb-6" open={!!sp.kind}>
+        <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-body font-semibold text-accent hover:underline dark:text-blue-400">
+          <span className="text-title leading-none" aria-hidden>+</span> Write a new skill
+        </summary>
+      <Card className="mt-2.5">
         <p className="mb-3 text-copy text-neutral-500">
           Write it once; every drafting run on its surfaces follows it. Keep one skill per topic — if a{" "}
           {SKILL_KINDS[0].label.toLowerCase()} skill for the same scope already exists above, edit it instead.
@@ -286,7 +313,10 @@ export default async function SkillsPage({
             {SKILL_KINDS.map((k) => `${k.label}: ${k.hint}`).join(" ")}
           </p>
           <label className="block text-copy">
-            <span className="mb-1 block text-body text-neutral-500">Instructions the agents will follow</span>
+            {/* §4/§11: "instructions the agents will follow" describes the consumer,
+                not the content. What the author is writing is the organization's
+                standing rule for this work. */}
+            <span className="mb-1 block text-body text-neutral-500">How the work should be done</span>
             <textarea
               name="body"
               rows={4}
@@ -301,6 +331,7 @@ export default async function SkillsPage({
           </button>
         </form>
       </Card>
+      </details>
 
       {/* ── The rest of the org's standing grounding ── */}
       <Card muted>
