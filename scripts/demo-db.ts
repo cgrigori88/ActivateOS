@@ -239,7 +239,126 @@ async function main() {
     }
 
     const pool = new Pool({ connectionString: EFFECTIVE_URL });
+
+    /*
+     * CLEAR BEFORE SEEDING — the in-place equivalent of the local path's
+     * `drop database`.
+     *
+     * `seed()` opens with a bare `insert into organizations ('Vertex Systems')`.
+     * Locally that is always safe because the database was just recreated. In
+     * place it is only safe the FIRST time: re-running against an
+     * already-seeded demo dies on organizations_name_key, which is what
+     * happened the first time this path met a hosted demo that had already been
+     * seeded. A reseed that only works once is not a reseed.
+     *
+     * Two rows must survive, and they are the reason this is a targeted clear
+     * rather than a blanket truncate:
+     *
+     *   schema_migrations   — the parity check above reads it. Wiping it would
+     *                         make the next run believe the database is
+     *                         unmigrated and refuse.
+     *   environment_identity — the marker that proves this database is
+     *                         synthetic. Wiping it would make the next run
+     *                         refuse to write at all, and correctly so.
+     *
+     * And `org_members` must be CARRIED, not preserved. Supabase auth users
+     * live in the `auth` schema, so the operator's credential survives a public
+     * truncate untouched — but their membership row does not, and the reseed
+     * mints a NEW Vertex Systems with a new id, so even a preserved row would
+     * point at an organization that no longer exists. The operator would then
+     * sign in successfully and land in a tenant-less app. So: read the
+     * memberships, clear, seed, re-link them to the new vendor org.
+     *
+     * Reached only after assertSyntheticDatabase has passed — the same guard the
+     * local path gets from refusing any non-loopback host.
+     */
+    const carried = (await pool.query<{ user_id: string; role: string }>(
+      `select user_id, role from org_members`,
+    )).rows;
+
+    /*
+     * WHAT SURVIVES THE CLEAR, and why the obvious rule is wrong.
+     *
+     * The first version of this preserved two tables — schema_migrations and
+     * environment_identity — and truncated the other 150. It failed immediately,
+     * and the way it failed is the point: `pursuit_role_types` is REFERENCE DATA
+     * inserted by a migration, not by seed(). Truncating it left a database that
+     * could not be seeded at all without replaying 102 migrations, which is a
+     * far worse state than the duplicate-key error this was written to fix.
+     *
+     * The local path never has this problem because it drops the database and
+     * replays every migration, which repopulates reference data on the way past.
+     * In place there is no replay, so anything a migration inserted has to be
+     * left alone.
+     *
+     * The rule, derived rather than listed so it cannot go stale:
+     *
+     *   preserve  = tables a migration INSERTs into, minus those carrying org_id
+     *
+     * "A migration populates it" makes it reference data; "it has no org_id"
+     * confirms it is not tenant data that merely got a seed row (audit_log and
+     * pursuit_team_requirements are both migration-touched AND tenant-scoped, so
+     * they are demo world and get cleared).
+     *
+     * Plus the two structural tables: schema_migrations (the parity check above
+     * reads it — wiping it makes the next run believe the database is unmigrated
+     * and refuse) and environment_identity (the marker proving this database is
+     * synthetic — wiping it makes the next run refuse to write at all, correctly).
+     *
+     * org_members is CARRIED, not preserved. Supabase auth users live in the
+     * `auth` schema, so the operator's credential survives a public-schema
+     * truncate untouched — but the membership row does not, and the reseed mints
+     * a NEW vendor org with a new id, so even a preserved row would point at an
+     * organization that no longer exists. The operator would sign in
+     * successfully and land in a tenant-less app.
+     *
+     * Reached only after assertSyntheticDatabase has passed.
+     */
+    const migrationDir = join(process.cwd(), "supabase", "migrations");
+    const seededByMigration = new Set<string>();
+    for (const f of readdirSync(migrationDir).filter((f) => f.endsWith(".sql"))) {
+      const sql = readFileSync(join(migrationDir, f), "utf8");
+      for (const m of sql.matchAll(/insert\s+into\s+([a-z_][a-z0-9_]*)/gi)) {
+        seededByMigration.add(m[1].toLowerCase());
+      }
+    }
+
+    const { rows: tenantScoped } = await pool.query<{ tablename: string }>(
+      `select table_name as tablename from information_schema.columns
+        where table_schema = 'public' and column_name = 'org_id'`,
+    );
+    const hasOrgId = new Set(tenantScoped.map((r) => r.tablename.toLowerCase()));
+
+    const preserve = new Set<string>(["schema_migrations", "environment_identity"]);
+    for (const t of seededByMigration) if (!hasOrgId.has(t)) preserve.add(t);
+
+    const { rows: allTables } = await pool.query<{ tablename: string }>(
+      `select tablename from pg_catalog.pg_tables where schemaname = 'public'`,
+    );
+    const toClear = allTables.map((r) => r.tablename).filter((t) => !preserve.has(t.toLowerCase()));
+    if (toClear.length) {
+      await pool.query(
+        `truncate table ${toClear.map((t) => `public."${t.replace(/"/g, '""')}"`).join(", ")} restart identity cascade`,
+      );
+    }
+    console.log(
+      `[demo-db] cleared ${toClear.length} table(s); preserved ${preserve.size} ` +
+        `(migrations + reference data)${carried.length ? `, carrying ${carried.length} org membership(s)` : ""}`,
+    );
+
     const ids = await seed(pool);
+
+    // Re-link the operator(s) to the freshly seeded vendor tenant. Without this
+    // the demo login authenticates and then has no organization to resolve.
+    for (const m of carried) {
+      await pool.query(
+        `insert into org_members (org_id, user_id, role) values ($1, $2, $3)
+         on conflict do nothing`,
+        [ids.vendor, m.user_id, m.role],
+      );
+    }
+    if (carried.length) console.log(`[demo-db] re-linked ${carried.length} operator(s) to the seeded vendor org`);
+
     await pool.end();
     console.log(`[demo-db] seeded in place:\n  vendor(sole)=${ids.vendor}\n  guest=${ids.partnerOrg}\n  HERO=${ids.hero}`);
     return;
