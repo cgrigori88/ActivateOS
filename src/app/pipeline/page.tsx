@@ -47,6 +47,7 @@ import { PipelineAllTable } from "@/components/pipeline/all-table";
 import { getAccountIntel } from "@/lib/accounts/intel";
 import { IntelDrawer } from "@/components/intel/intel-drawer";
 import { formatMoney } from "@/lib/format/money";
+import { OperatingModel } from "@/components/operating-model";
 
 const MEDDPICC_STATUSES: Status[] = ["unknown", "gap", "weak", "strong"];
 
@@ -458,7 +459,24 @@ export default async function PipelinePage({
     <main>
       <PageHeader
         title="Pipeline"
-        subtitle="Opportunities advanced from motions, weighted by declared stage probability."
+        subtitle="The revenue the motions produced — what condition it is in, and where to intervene."
+      />
+
+      {/* Wave 3 §2/§6: the consequence layer of the model, and the way back up it.
+          `opportunities.motion_id` is the real edge — every opportunity here names
+          the motion that produced it — so "Motion" is a true link, not a gesture. */}
+      <OperatingModel
+        current="pipeline"
+        steps={{
+          goal: { href: "/goals", detail: "the number this rolls into" },
+          motion: { href: "/motions", detail: "the plays that produced these" },
+          pursuit: { href: "/pursuits", detail: "the account-level work" },
+          /* §10: this is the WHOLE book, not a goal's slice. A reader arriving from
+             a goal that reports its own open pipeline would otherwise read two
+             different totals for what looks like the same measure — they are the
+             same measure over different scopes, and the label says which. */
+          pipeline: { label: `${open.length} open`, detail: `${formatMoney(open.reduce((s, o) => s + Number(o.amount_usd ?? 0), 0))} across every motion` },
+        }}
       />
 
       {(() => {
@@ -482,7 +500,10 @@ export default async function PipelinePage({
               <Bento label="weighted" value={`${formatMoney(weighted)}`} subs={["by stage probability"]} />
               <Bento label="avg qualification" value={avgQual == null ? "—" : `${avgQual}`} subs={["MEDDPICC health"]} />
               <Bento label="won" value={wonCount} intent="positive" subs={[`${formatMoney(wonUsd)}`]} href="/pipeline?stage=closed_won" />
-              <Bento label="reg'd deals" value={regRows.length} href="/pipeline?view=review" />
+              {/* §11 KPI overload: registered deals is a governance count that reads
+                  zero in most tenants. It keeps its tile only when it has something
+                  to report; the Review view is one tab away regardless. */}
+              {regRows.length > 0 && <Bento label="registered deals" value={regRows.length} href="/pipeline?view=review" />}
             </SummaryBand>
 
             {/* ── Tie-out (task #87): one place where the numbers reconcile ── */}
@@ -633,8 +654,14 @@ export default async function PipelinePage({
                   contradiction. Quiet engagement is decay risk; the partners column is who to attach
                   before the clock runs out.
                 </Disclosure>
+                {/* Wave 3 §5/§8: the radar is already sorted by how close the clock
+                    is, so the rows past the first few are the ones with the most
+                    time left — genuinely lower priority. Showing the nearest three
+                    keeps the room's primary control (Attention / Portfolio / All)
+                    inside the first viewport, which is the point of the room. The
+                    rest are one click away and nothing is dropped. */}
                 <ul className="space-y-1.5">
-                  {renewals.map((r) => (
+                  {renewals.slice(0, 3).map((r) => (
                     <li key={r.companyId} className="flex flex-wrap items-center gap-2 text-copy">
                       <Link href={`/accounts/${r.companyId}`} className="min-w-0 font-medium hover:underline">
                         {r.legalName}
@@ -671,6 +698,29 @@ export default async function PipelinePage({
                     </li>
                   ))}
                 </ul>
+                {renewals.length > 3 && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-label font-semibold text-accent hover:underline dark:text-blue-400">
+                      {renewals.length - 3} more inside the window
+                    </summary>
+                    <ul className="mt-1.5 space-y-1.5">
+                      {renewals.slice(3).map((r) => (
+                        <li key={r.companyId} className="flex flex-wrap items-center gap-2 text-copy">
+                          <Link href={`/accounts/${r.companyId}`} className="min-w-0 font-medium hover:underline">{r.legalName}</Link>
+                          <span className="tnum rounded-full bg-amber/14 px-2 py-0.5 text-label font-bold text-amber dark:text-amber-300">
+                            {r.state === "CONFLICTING_DATE" ? "conflicting" : r.precise ? `in ${r.daysOut}d` : `~${r.daysOut}d`}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-label text-neutral-400">
+                            {r.label} {r.phrase} · {r.sourceNote}
+                          </span>
+                          <span className={r.openUsd > 0 ? "tnum ml-auto font-semibold" : "ml-auto text-label text-neutral-400"}>
+                            {r.openUsd > 0 ? `${formatMoney(r.openUsd)} open` : "no open opp"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
               </Card>
             )}
 
@@ -714,10 +764,30 @@ export default async function PipelinePage({
                 </div>
               );
             })()}
-            {/* The two read-outs are the same size of idea and were stacked as two
-                full-width cards, pushing the Attention list — the thing an
-                operator came here to act on — a further 220px down the page.
-                Side by side they cost one row. */}
+            {/*
+              Wave 3 §5 — "do not lead with aggregate BI."
+
+              Below this point sat three analytical blocks: qualification-vs-outcome,
+              open-opportunities-by-stage, and the base/joint revenue roll-up with its
+              per-partner bars. Together with the radar and the chips above them they
+              put roughly a thousand pixels of aggregate reporting BETWEEN the page
+              title and the Attention/Portfolio/All switcher — so on a 1000px viewport
+              an operator could not see a single pipeline row, or even the control that
+              chooses which rows to see, without scrolling.
+
+              Pipeline's job is "what condition is this revenue in and where should
+              someone intervene". These blocks answer a different, slower question:
+              how is the book performing in aggregate. Both belong in the room; only
+              one belongs first. Nothing is removed, no figure changes, and one click
+              restores the previous layout exactly.
+            */}
+            <details className="mb-3 group">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-body font-semibold text-accent hover:underline dark:text-blue-400">
+                <span aria-hidden className="ink-faint transition-transform group-open:rotate-90">▸</span>
+                Pipeline analytics
+                <span className="font-normal ink-faint">— qualification vs outcome, stage mix, base vs co-sell</span>
+              </summary>
+              <div className="mt-3">
             {((wonQual != null || lostQual != null) || stageRows.length > 0) && (
               <div className="mb-3 grid gap-3 lg:grid-cols-2 lg:items-start">
                 {(wonQual != null || lostQual != null) && (
@@ -799,6 +869,8 @@ export default async function PipelinePage({
                 </Card>
               );
             })()}
+              </div>
+            </details>
           </>
         );
       })()}

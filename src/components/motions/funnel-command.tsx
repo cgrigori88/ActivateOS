@@ -43,19 +43,76 @@ export function MotionFunnelCommand({ funnels, qs }: { funnels: MotionFunnelView
             </div>
             {f.hypothesis.thesis && <p className="mt-1 max-w-[90ch] text-body leading-snug text-neutral-500">{f.hypothesis.thesis}</p>}
 
-            {/* The funnel — each stage count is a drill-in, derived at read time. */}
-            <div className="mt-3 flex flex-wrap items-center gap-y-1.5 text-copy">
-              {f.stages.map((s, i) => (
-                <span key={s.key} className="inline-flex items-center">
-                  {i > 0 && <span aria-hidden className="mx-2 text-neutral-300 dark:text-neutral-600">→</span>}
-                  <Link href={qs({ mdrawer: f.hypothesis.taxonomyNodeId, mstage: s.key })} scroll={false}
-                    className="group inline-flex items-baseline gap-1 rounded-control px-1.5 py-0.5 hover:bg-neutral-900/[0.05] dark:hover:bg-white/[0.06]">
-                    <b className="tnum text-copy" style={s.key === "execution_ready" ? { color: "var(--color-accent-verified)" } : undefined}>{s.count}</b>
-                    <span className="text-neutral-500 group-hover:underline">{s.label}</span>
-                  </Link>
-                </span>
-              ))}
-            </div>
+            {/*
+              Wave 3 §4 — the funnel, as a funnel.
+
+              Every number below was already on this page, rendered as one line of
+              running text: "10 evaluated → 8 qualify → 8 route-viable → 7 timing
+              verified → 1 team ready → 1 execution-ready". Set at body size with
+              equal weight on every stage, the single most important fact in the
+              room — that six of seven accounts fall out at team readiness — was
+              invisible. A funnel that does not narrow visually is not a funnel;
+              it is a sentence about one.
+
+              Same stages, same counts, same drill-in links, same read model. The
+              bar is scaled to the first stage so the drop is the shape, and the
+              largest single fall-off is named in words underneath, because the
+              answer to "where is this breaking down" should not have to be
+              measured off a chart by eye.
+            */}
+            {(() => {
+              const first = f.stages[0]?.count ?? 0;
+              // The biggest single stage-to-stage drop. Ties resolve to the earliest,
+              // which is the one worth fixing first.
+              let worst: { from: string; to: string; lost: number } | null = null;
+              for (let i = 1; i < f.stages.length; i++) {
+                const lost = f.stages[i - 1].count - f.stages[i].count;
+                if (lost > 0 && (!worst || lost > worst.lost)) {
+                  worst = { from: f.stages[i - 1].label, to: f.stages[i].label, lost };
+                }
+              }
+              return (
+                <div className="mt-3">
+                  <div className="flex items-end gap-1">
+                    {f.stages.map((s, i) => {
+                      const pct = first > 0 ? Math.max(4, Math.round((s.count / first) * 100)) : 0;
+                      const last = s.key === "execution_ready";
+                      const dropped = i > 0 && f.stages[i - 1].count > s.count;
+                      return (
+                        <Link key={s.key} href={qs({ mdrawer: f.hypothesis.taxonomyNodeId, mstage: s.key })} scroll={false}
+                          className="group min-w-0 flex-1 rounded-control p-1 transition-colors hover:bg-neutral-900/[0.04] dark:hover:bg-white/[0.06]"
+                          title={`${s.count} at ${s.label} — open these accounts`}>
+                          <div className="flex items-baseline gap-1">
+                            <b className="tnum text-title font-extrabold leading-none"
+                              style={last ? { color: "var(--color-accent-verified)" } : undefined}>{s.count}</b>
+                            {dropped && (
+                              <span className="text-micro font-semibold" style={{ color: "var(--color-accent-attention)" }}>
+                                −{f.stages[i - 1].count - s.count}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: "var(--surface-inset)" }}>
+                            <div className="h-full rounded-full transition-[width]" style={{
+                              width: `${pct}%`,
+                              background: last ? "var(--color-accent-verified)" : "var(--color-priority)",
+                              opacity: last ? 1 : 0.35 + (0.5 * pct) / 100,
+                            }} />
+                          </div>
+                          <div className="mt-1 truncate text-label text-neutral-500 group-hover:underline">{s.label}</div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                  {worst && worst.lost > 0 && (
+                    <p className="mt-2 text-body">
+                      <span className="ink-faint">Largest fall-off: </span>
+                      <b style={{ color: "var(--color-accent-attention)" }}>{worst.lost} account{worst.lost === 1 ? "" : "s"}</b>
+                      <span className="ink-muted"> between <b className="ink">{worst.from}</b> and <b className="ink">{worst.to}</b>.</span>
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Cohorts + the signature interaction */}
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -74,6 +131,48 @@ export function MotionFunnelCommand({ funnels, qs }: { funnels: MotionFunnelView
                 </Link>
               )}
             </div>
+
+            {/*
+              Wave 3 §4 — "avoid forcing users to infer blockers from raw rows."
+
+              The blocker breakdown lived entirely behind the Constraints tab. The
+              overview said "8 blocked" and offered a button; a reader had to leave
+              the room to learn that the blockage was, say, partner acceptance
+              rather than missing evidence — which is the difference between a
+              phone call and a research task.
+
+              The top causes now sit under the funnel that produced them, with the
+              same aggregation, the same exposure figures and the same drill-in the
+              Constraints tab uses — it is the identical `aggregateConstraints`
+              call, so the two surfaces cannot disagree. The tab keeps the full
+              breakdown; this is the headline, where the question is asked.
+            */}
+            {(() => {
+              const agg = aggregateConstraints(f);
+              const top = agg.rows.slice(0, 3);
+              if (top.length === 0) return null;
+              return (
+                <div className="mt-3 border-t pt-2.5" style={{ borderColor: "var(--border-subtle)" }}>
+                  <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span className="text-micro font-bold uppercase tracking-[0.05em] ink-faint">What is blocking the rest</span>
+                    {agg.totalUsd > 0 && (
+                      <span className="text-label ink-muted"><b className="ink">{usd(agg.totalUsd)}</b> held behind these</span>
+                    )}
+                  </div>
+                  <div className="space-y-px">
+                    {top.map((r) => (
+                      <ConstraintAggregateRow key={r.family} label={r.label} count={r.count} exposureUsd={r.exposureUsd}
+                        severity={r.severity} href={qs({ mdrawer: f.hypothesis.taxonomyNodeId, mstage: `family:${r.family}` })} />
+                    ))}
+                  </div>
+                  {agg.rows.length > top.length && (
+                    <Link href={qs({ view: "constraints" })} className="mt-1 inline-block px-2.5 text-label font-semibold text-accent hover:underline dark:text-blue-400">
+                      All {agg.rows.length} causes →
+                    </Link>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Canonical outcome rollup — conservative with small samples (P1A.4). Depth lives in
                 Insights (the analytical destination) — deliberately not duplicated here. */}

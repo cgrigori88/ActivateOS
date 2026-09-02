@@ -20,6 +20,7 @@ import { initiativeOptions } from "@/lib/partnerships/initiatives";
 import { getScopeContext } from "@/lib/scope/server";
 import { getMotionFunnels } from "@/lib/motions/funnel";
 import { formatMoney } from "@/lib/format/money";
+import { OperatingModel } from "@/components/operating-model";
 import { buttonClass } from "@/components/ui";
 import {
   MotionFunnelCommand,
@@ -198,6 +199,21 @@ export default async function MotionsPage({
   const estPipe = motions.reduce((s, m) => s + Number(m.estimated_value_usd ?? 0), 0);
   const expected = motions.reduce((s, m) => s + (Number(m.estimated_value_usd ?? 0) * Number(m.propensity ?? 0)) / 100, 0);
   const wonN = motions.filter((m) => m.outcome === "won").length;
+  const draftN = motions.filter((m) => m.status === "draft").length;
+
+  /* Wave 3 §6: which goals these motions actually serve, from `goal_id` — the
+     relationship the domain already carries. Derived from the rows already
+     loaded, so this costs no extra query and cannot disagree with the table. */
+  const goalLinks = (() => {
+    const by = new Map<string, { id: string; name: string; motions: number }>();
+    for (const m of motions) {
+      if (!m.goal_id) continue;
+      const hit = by.get(m.goal_id) ?? { id: m.goal_id, name: m.goal_name ?? "Goal", motions: 0 };
+      hit.motions++;
+      by.set(m.goal_id, hit);
+    }
+    return [...by.values()].sort((a, b) => b.motions - a.motions);
+  })();
 
   // Group + chart
   const groups = new Map<string, MotionRow[]>();
@@ -218,7 +234,31 @@ export default async function MotionsPage({
 
   return (
     <main>
-      <PageHeader title="Motions" subtitle="Each commercial hypothesis as a live funnel — and exactly what blocks the rest." />
+      <PageHeader title="Motions" subtitle="The repeatable play we are running — as a live funnel, and exactly what blocks the rest." />
+
+      {/*
+        Wave 3 §2/§6 — where this room sits, and what it answers to.
+
+        Motions is the bridge between a business goal and account-level work, and
+        it never named the goal. Every figure here rolls up into one; the link is
+        `revenue_motions.goal_id`, which the demo tenant sets on five motions. The
+        goal step is a real link when exactly one goal is being served, and stays
+        unlinked text when several are — a spine that guesses is worse than one
+        that admits the fan-out.
+      */}
+      <OperatingModel
+        current="motion"
+        steps={{
+          goal: goalLinks.length === 1
+            ? { href: `/goals/${goalLinks[0].id}`, label: goalLinks[0].name, detail: `${goalLinks[0].motions} motion${goalLinks[0].motions === 1 ? "" : "s"} here` }
+            : goalLinks.length > 1
+              ? { href: "/goals", label: `${goalLinks.length} goals served`, detail: "these motions span several" }
+              : { href: "/goals", detail: "no goal linked yet" },
+          motion: { label: `${motions.length} motion${motions.length === 1 ? "" : "s"}`, detail: `${activeN} active · ${draftN} draft` },
+          pursuit: { href: "/pursuits", detail: "accounts these run on" },
+          pipeline: { href: "/pipeline", detail: "opportunities produced" },
+        }}
+      />
 
       {/* ── View modes (UX normalization): one surface, four densities ── */}
       <div className="mb-5 inline-flex rounded-inner p-0.5" style={{ background: "var(--surface-inset)" }}>

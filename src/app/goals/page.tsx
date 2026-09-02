@@ -7,6 +7,8 @@ import { withTenant } from "@/lib/db/tenant";
 import { createGoalAction, setGoalStatusAction, upsertTargetAction, deleteTargetAction } from "./actions";
 import { formatMoney } from "@/lib/format/money";
 import { buttonClass } from "@/components/ui";
+import { OperatingModel } from "@/components/operating-model";
+import { goalChain, goalBlockers, type GoalChain } from "@/lib/goals/chain";
 
 export const dynamic = "force-dynamic";
 
@@ -35,15 +37,25 @@ export default async function GoalsPage({
   // RISK-1 adoption (task #67): all reads run under withTenant, which pins the
   // session to the caller's org. Inert on the owner connection; real isolation
   // once DATABASE_URL points at app_rw.
-  const { all, targets, partnerRows } = await withTenant(async (db, orgId) => ({
-    all: await listGoals(db, orgId),
-    targets: await listTargets(db, orgId),
-    // org-scoped: the target-scope dropdown must not list other tenants' partners.
-    partnerRows: (await db.query<{ id: string; name: string }>(
-      `select id, name from partners where org_id = $1 order by name`,
-      [orgId],
-    )).rows,
-  }));
+  const { all, targets, partnerRows, chains } = await withTenant(async (db, orgId) => {
+    const all = await listGoals(db, orgId);
+    // Wave 3 §3/§6: the chain behind each goal — which motions carry it, what
+    // pipeline they have produced, and what is standing in the way. Walked from
+    // existing foreign keys by one shared read model so Goals, Motions and
+    // Pipeline cannot disagree about the spine.
+    const chains = new Map<string, GoalChain>();
+    for (const g of all) chains.set(g.id, await goalChain(db, g.id));
+    return {
+      all,
+      targets: await listTargets(db, orgId),
+      // org-scoped: the target-scope dropdown must not list other tenants' partners.
+      partnerRows: (await db.query<{ id: string; name: string }>(
+        `select id, name from partners where org_id = $1 order by name`,
+        [orgId],
+      )).rows,
+      chains,
+    };
+  });
   const currentYear = new Date().getFullYear();
 
   const dueDays = ["7", "30", "90"].includes(sp.due ?? "") ? Number(sp.due) : null;
@@ -65,22 +77,41 @@ export default async function GoalsPage({
     <main>
       <PageHeader
         title="Goals"
-        subtitle="Targets with progress computed from the linked motions and campaigns."
+        subtitle="What we are trying to achieve — and the motions carrying it."
       />
 
-      {/* Bentos */}
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Bento label="active goals" value={active.length} href="/goals?status=active" />
-        <Bento label="behind pace" value={behind} subs={["need attention"]} href="/goals?status=active" />
-        <Bento label="at target" value={achieved} href="/goals?status=achieved" />
-        <Bento label="all goals" value={all.length} href="/goals?status=all" />
-      </div>
+      {/* Wave 3 §2/§6: the level of the operating model this room occupies. */}
+      <OperatingModel
+        current="goal"
+        steps={{
+          goal: { label: active.length === 1 ? active[0].name : `${active.length} active`, detail: `${active.length + (all.length - active.length)} total` },
+          motion: { href: "/motions", detail: `${all.reduce((s, g) => s + g.motionsLinked, 0)} linked to goals` },
+          pursuit: { href: "/pursuits" },
+          pipeline: { href: "/pipeline" },
+        }}
+      />
 
-      {/* Filters */}
+      {/*
+        Wave 3 §3 — the KPI band is gone.
+
+        Four tiles sat above what was, in this tenant, a single goal: "1 active
+        goals", "0 behind pace", "0 at target", "1 all goals". Two of them counted
+        the same one goal twice and two read zero, so 200px of the first viewport
+        was spent restating the thing directly beneath it. A count of goals is not
+        an instrument; it is a fact about a list, and the list is right there.
+
+        Where the counts still say something — how many need attention — they now
+        sit on the filter row as a clause, and the filters that act on them are the
+        same controls they always were.
+      */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <QuerySelect param="status" value={sp.status ?? "active"} label="Status" options={[{ value: "all", label: "All" }, { value: "active", label: "Active" }, { value: "achieved", label: "Achieved" }, { value: "missed", label: "Missed" }, { value: "archived", label: "Archived" }]} />
         <QuerySelect param="due" value={sp.due ?? "all"} label="Due within" options={[{ value: "all", label: "Any time" }, { value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }]} />
-        <span className="ml-auto text-body text-neutral-500">{goals.length} goal(s)</span>
+        <span className="ml-auto text-body text-neutral-500">
+          {goals.length} goal{goals.length === 1 ? "" : "s"}
+          {behind > 0 && <span style={{ color: "var(--color-accent-risk)" }}> · {behind} behind pace</span>}
+          {achieved > 0 && <span className="ink-faint"> · {achieved} at target</span>}
+        </span>
       </div>
 
       {/* Create — behind a fold. Setting a goal is a rare act; reading how the
@@ -118,7 +149,7 @@ export default async function GoalsPage({
             return (
               <Card key={g.id}>
                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className="font-semibold">{g.name}</span>
+                  <Link href={`/goals/${g.id}`} className="font-semibold hover:underline">{g.name}</Link>
                   {/* pace only means something while the goal is live; done/archived goals keep just their status */}
                   {g.status === "active" && <span className={`rounded-inner px-1.5 py-0.5 text-micro font-medium ${PACE_TONE[g.pace]}`}>{PACE_LABEL[g.pace]}</span>}
                   {g.status !== "active" && <span className="rounded-inner bg-neutral-100 px-1.5 py-0.5 text-micro font-medium uppercase text-neutral-500 dark:bg-neutral-800">{g.status}</span>}
@@ -195,6 +226,60 @@ export default async function GoalsPage({
                     </div>
                   </div>
                 )}
+                {/*
+                  Wave 3 §3 — "Why are we ahead/behind?"
+
+                  The card could show a percentage and a partner split but never
+                  what was CARRYING the number: which motions are linked, what
+                  pipeline they have produced, and what is standing in the way. A
+                  reader could see 25% and had nowhere to go with it.
+
+                  This is the chain, walked from the same foreign keys the progress
+                  bar is computed over, and it is where the reader leaves this room
+                  for the next level of the model.
+                */}
+                {(() => {
+                  const chain = chains.get(g.id);
+                  if (!chain || chain.motions.length === 0) return null;
+                  const blockers = goalBlockers(chain);
+                  return (
+                    <div className="mt-3 border-t border-neutral-100 pt-2.5 dark:border-neutral-800">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <span className="text-micro font-bold uppercase tracking-[0.05em] ink-faint">Carried by</span>
+                        <Link href={`/goals/${g.id}`} className="text-label font-semibold text-accent hover:underline dark:text-blue-400">
+                          Open the goal →
+                        </Link>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-body">
+                        <span className="ink-muted">
+                          <b className="ink">{chain.motions.length}</b> motion{chain.motions.length === 1 ? "" : "s"}
+                        </span>
+                        <span className="ink-muted">
+                          <b className="ink">{chain.oppCount}</b> opportunit{chain.oppCount === 1 ? "y" : "ies"} produced
+                        </span>
+                        <span className="ink-muted">
+                          <b className="ink">{formatMoney(chain.openPipelineUsd)}</b> open pipeline
+                          <span className="ink-faint"> (opportunity-level)</span>
+                        </span>
+                      </div>
+
+                      {blockers.length > 0 && (
+                        <div className="mt-2.5 space-y-1">
+                          {blockers.map((b, i) => (
+                            <Link key={i} href={b.href}
+                              className="flex flex-wrap items-baseline gap-x-2 rounded-control px-2 py-1 text-body transition-colors hover:bg-[var(--surface-inset)]"
+                              style={{ background: "color-mix(in srgb, var(--color-accent-attention) 7%, transparent)" }}>
+                              <span aria-hidden className="h-1.5 w-1.5 shrink-0 self-center rounded-full" style={{ background: "var(--color-accent-attention)" }} />
+                              <b className="ink">{b.label}</b>
+                              {b.usd != null && b.usd > 0 && <span className="tnum ink-muted">{formatMoney(b.usd)} held up</span>}
+                              <span className="ink-faint">— {b.detail}</span>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 {g.description && <p className="mt-2.5 text-body ink-faint">{g.description}</p>}
               </Card>
             );
@@ -202,7 +287,13 @@ export default async function GoalsPage({
         </div>
       )}
 
-      {/* ── Revenue & pipeline targets — per period, overall and per partner ── */}
+      {/* ── Revenue & pipeline targets — per period, overall and per partner ──
+          Wave 3 §3/§8: the period targets are a real instrument, but the FORM that
+          types one is configuration, and it led this section with four inputs and a
+          button directly under the goals. Setting a target is a quarterly act;
+          reading attainment is the daily one. The bars stay in the open; the form
+          that authors them goes behind disclosure, the same treatment "New goal"
+          already had. Nothing is removed and no figure moves. */}
       <section className="mt-10">
         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
           <BlockLabel>Revenue &amp; pipeline targets</BlockLabel>
@@ -210,7 +301,11 @@ export default async function GoalsPage({
         </div>
 
         {/* Set a target */}
-        <Card className="mb-4">
+        <details className="group mb-4">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-body font-semibold text-accent hover:underline dark:text-blue-400">
+            <span className="text-title leading-none" aria-hidden>+</span> Set a period target
+          </summary>
+          <Card className="mt-2.5">
           <form action={upsertTargetAction} className="flex flex-wrap items-end gap-3">
             <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Year</span>
               <input name="periodYear" type="number" defaultValue={currentYear} min="2000" max="2100" className="w-24 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900" />
@@ -232,7 +327,8 @@ export default async function GoalsPage({
             </label>
             <button className={buttonClass("primary", "md")}>Set target</button>
           </form>
-        </Card>
+          </Card>
+        </details>
 
         {targets.length === 0 ? (
           <Card><p className="text-copy text-neutral-500">No targets or tracked pipeline yet — set a target above; the bars fill from real opportunities.</p></Card>
