@@ -653,11 +653,22 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
 
     return (
       <>
-        {/* Partner picker + organize + hide */}
-        <div className="mb-4 flex flex-wrap items-center gap-6">
-          <div className="ml-auto flex flex-col items-end gap-2">
-            <PartnerSelect current={isAll ? "all" : selected} hideEmpty={hideEmpty} partners={partners.map((p) => ({ id: p.id, name: p.name }))} />
-            <div className="flex items-center gap-3">
+        {/*
+          Wave 2 §7 — one control strip.
+
+          These controls were laid out as a right-aligned COLUMN: the partner select
+          on one line, "Organize matrix / Hide empty lists" stacked beneath it — and
+          the view select for the whole room sat separately at the far left, above
+          them. Three clusters, three alignments, three vertical positions, all doing
+          the same job: choosing what the matrix shows. A reader looking for "how do
+          I change the partner" had three places to look before finding it.
+
+          One row now, left-aligned with the room's own content, reading in the order
+          you'd say it: which partner, how it's organized, whether empties show.
+        */}
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <PartnerSelect current={isAll ? "all" : selected} hideEmpty={hideEmpty} partners={partners.map((p) => ({ id: p.id, name: p.name }))} />
+          <div className="flex items-center gap-4">
               {/* Organize matrix — choose which populations are rows / columns */}
               <details className="relative">
                 <summary className="cursor-pointer text-label font-medium text-accent hover:underline dark:text-blue-400">Organize matrix</summary>
@@ -691,7 +702,6 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
               <Link href={q({ hide: hideEmpty ? undefined : "1" })} className="text-label text-neutral-500 hover:underline">
                 {hideEmpty ? "Show empty lists" : "Hide empty lists"}
               </Link>
-            </div>
           </div>
         </div>
 
@@ -727,7 +737,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
             </p>
           </Card>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
+          <div className="glass overflow-x-auto rounded-card scroll-thin">
             <table className="data-table">
               <thead>
                 <tr>
@@ -785,11 +795,28 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                 </tr>
               </tbody>
             </table>
-            <div className="border-t border-neutral-100 px-3 py-2 dark:border-neutral-800">
+            {/*
+              Wave 2 §7 — overlap is an input, not a destination.
+
+              The matrix produced a number and stopped. A cell has always been a link
+              into the shared accounts, and from there into a target list or drafted
+              motions — but the only thing that said so was a hover state on the cell
+              and a clause buried in the fourth sentence of a collapsed legend. A
+              reader who did not hover learned that overlap was the answer, when it is
+              the beginning of the question.
+
+              The exit is now stated where the matrix ends, in the open, as the next
+              step it actually is. Nothing new is wired; the same link is announced.
+            */}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t px-3 py-2.5" style={{ borderColor: "var(--border-subtle)" }}>
+              <p className="text-body ink-muted">
+                A count here is a starting point, not a result — <b className="ink">open a cell</b> to see those
+                shared accounts, then turn them into a target list or drafted motions.
+              </p>
               <Disclosure summary="How to read this matrix">
                 A cell is the accounts on both lists, shaded by average propensity; hot is the
                 high/very-high band. Total is distinct accounts.{" "}
-                {isAll ? "Columns span every partner." : "Click a cell to drill in."} Use Organize matrix
+                {isAll ? "Columns span every partner." : ""} Use Organize matrix
                 to choose which lists are rows and columns.
               </Disclosure>
             </div>
@@ -836,7 +863,11 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
 
           {/* Mapping → targeting: turn this cell into a target list */}
           <details className="relative ml-auto">
-            <summary className="cursor-pointer rounded-control bg-green-700 px-3 py-1.5 text-copy font-medium text-white hover:bg-green-800">
+            {/* Wave 2 §17: this was a bespoke green fill — the only green button in
+                the product — for what is the primary action of this view. Primary
+                actions wear the primary treatment; a second colour for "positive"
+                just teaches the reader that button colour means nothing. */}
+            <summary className={`cursor-pointer ${buttonClass("primary", "sm")}`}>
               Build target list
             </summary>
             <div className="absolute right-0 z-20 mt-1 w-72 rounded-inner border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
@@ -850,7 +881,7 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
           </details>
 
           <details className="relative">
-            <summary className="cursor-pointer rounded-control px-3 py-1.5 text-copy font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900">
+            <summary className={`cursor-pointer ${buttonClass("secondary", "sm")}`}>
               Columns
             </summary>
             <div className="absolute right-0 z-10 mt-1 w-56 rounded-inner border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">

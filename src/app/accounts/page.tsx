@@ -10,6 +10,7 @@ import {
   SearchBox,
   SortHeader,
   Toolbar,
+  buttonClass,
 } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { getAccountIntel, type AccountIntel } from "@/lib/accounts/intel";
@@ -233,8 +234,14 @@ export default async function AccountsPage({
         subtitle={`${rows.length} of ${all.length} scored accounts — every number filters, every row explains itself.`}
       />
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <CountChip label="Total" value={counts.all} href={`/accounts${buildQS(params, { band: undefined })}`} active={!band} />
+      {/* Wave 2 §5 — the workhorse.
+          These are filters. They were rendered as five 70px tiles spanning the
+          width, which put more ink on the CONTROLS for the table than the table
+          itself got, and made a band filter look like a headline statistic. They
+          keep every count, every link and the active state; they are sized as what
+          they are — a filter row — so the rows below lead the room. */}
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        <CountChip label="Total" value={counts.all} href={`/accounts${buildQS(params, { band: undefined })}`} active={!band} compact />
         {BANDS.map((b) => (
           <CountChip
             key={b}
@@ -243,6 +250,7 @@ export default async function AccountsPage({
             tone={BAND_TONES[b]}
             href={`/accounts${buildQS(params, { band: band === b ? undefined : b })}`}
             active={band === b}
+            compact
           />
         ))}
       </div>
@@ -251,8 +259,12 @@ export default async function AccountsPage({
         actions={
           <div className="flex items-center gap-2">
             {/* Configure columns — same popover methodology as the mapping matrix */}
+            {/* Wave 2 §17: both of these were hand-rolled button surfaces —
+                their own border, their own hover, their own white — sitting
+                beside the toolbar's real controls. They now wear the one button
+                grammar, so the room has a single kind of secondary control. */}
             <details className="relative">
-              <summary className="cursor-pointer rounded-control border border-neutral-200 bg-white px-3 py-1.5 text-copy font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800">
+              <summary className={`cursor-pointer ${buttonClass("secondary", "sm")}`}>
                 ☰ Columns
               </summary>
               <div className="absolute right-0 z-20 mt-1 w-56 rounded-inner border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
@@ -273,16 +285,15 @@ export default async function AccountsPage({
                 <Link href={`/accounts${buildQS(params, { cols: undefined })}`} className="mt-1 block px-1.5 py-1 text-body text-neutral-500 hover:underline">Reset to default</Link>
               </div>
             </details>
-            <a
-              href={`/accounts/export${buildQS(params, {})}`}
-              className="rounded-control border border-neutral-200 bg-white px-3 py-1.5 text-copy font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
-            >
+            <a href={`/accounts/export${buildQS(params, {})}`} className={buttonClass("secondary", "sm")}>
               ↓ CSV
             </a>
           </div>
         }
       >
-        <SearchBox placeholder="Search accounts, industries, partners…" defaultValue={q} hidden={{ band, sort: params.sort, industry, partner, cols: params.cols, scope: params.scope }} />
+        {/* The full placeholder was clipped mid-word by the box it sits in
+            ("Search accounts, industries,"), which reads as a broken control. */}
+        <SearchBox placeholder="Search accounts…" defaultValue={q} hidden={{ band, sort: params.sort, industry, partner, cols: params.cols, scope: params.scope }} />
         {industryOptions.length > 0 && (
           <QuerySelect param="industry" value={industry ?? "all"} label="Industry" options={[{ value: "all", label: "Any industry" }, ...industryOptions.map((i) => ({ value: i, label: i }))]} />
         )}
@@ -309,7 +320,10 @@ export default async function AccountsPage({
       </Toolbar>
 
       <div className={intel ? "grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start" : ""}>
-      <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white scroll-thin dark:border-neutral-800 dark:bg-neutral-900">
+      {/* Wave 2 §17: `rounded-xl` and a literal white/neutral border were this
+          room's own surface recipe, one step off the `rounded-card` glass every
+          other room's content sits on. Same shape, the shared material. */}
+      <div className="glass overflow-x-auto rounded-card scroll-thin">
         <table className="data-table">
           <thead>
             <tr>
@@ -345,11 +359,18 @@ export default async function AccountsPage({
               const selected = params.sel === r.company_id;
               return (
                 <tr key={r.company_id} className={selected ? "bg-[color-mix(in_srgb,var(--color-priority)_7%,transparent)]" : ""}>
+                  {/* Wave 2 §5/§17. Two things were wrong here.
+                      The name was link-blue on every row, so the primary column
+                      shouted while the data beside it whispered — it is ink now, and
+                      behaves as a link on hover.
+                      And it sat beside a SECOND link, to a different destination,
+                      once per row: ten identical "open the room" affordances that
+                      only made the reader choose between two ways to open the same
+                      account. One row does one thing — it opens the intelligence
+                      pane — and the pane's own heading is the link into the full
+                      room, at the point where the reader has decided they want it. */}
                   <td>
-                    <span className="flex items-center gap-1.5">
-                      <Link href={`/accounts${buildQS(params, { sel: selected ? undefined : r.company_id })}`} scroll={false} className={`font-medium hover:underline ${selected ? "text-blue-900 dark:text-blue-200" : "text-blue-800 dark:text-blue-300"}`} title="Show intelligence">{r.legal_name}</Link>
-                      <Link href={`/accounts/${r.company_id}`} className="text-label text-neutral-300 hover:text-neutral-500 dark:text-neutral-600" title="Open account room" aria-label="Open account room">↗</Link>
-                    </span>
+                    <Link href={`/accounts${buildQS(params, { sel: selected ? undefined : r.company_id })}`} scroll={false} className={`font-semibold hover:underline ${selected ? "text-accent dark:text-blue-300" : "ink"}`} title="Show intelligence">{r.legal_name}</Link>
                   </td>
                   {show("industry") && <td className="text-neutral-500">{r.industry ?? "—"}</td>}
                   {show("score") && <td className="tnum text-title font-semibold">{Number(r.score).toFixed(0)}</td>}

@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
  * their identity. `tint` false gives a plain raised card.
  */
 export function Panel({
-  title, eyebrow, hint, aside, accent, children, className = "", tint = false,
+  title, eyebrow, hint, aside, accent, children, className = "", tint = false, id,
 }: {
   title?: string;
   /**
@@ -24,10 +24,12 @@ export function Panel({
   children: ReactNode;
   className?: string;
   tint?: boolean;
+  /** Anchor target. Wave 2 §10 navigates the Pursuit by section rather than by scroll. */
+  id?: string;
 }) {
   const bg = tint && accent ? `color-mix(in srgb, ${accent} 4%, var(--surface-primary))` : undefined;
   return (
-    <section className={`glass rounded-card p-5 ${className}`} style={bg ? { background: bg } : undefined}>
+    <section id={id} className={`glass rounded-card p-5 ${className}`} style={bg ? { background: bg } : undefined}>
       {(title || aside) && (
         <div className="mb-3.5 flex items-start justify-between gap-3">
           <div className="min-w-0">

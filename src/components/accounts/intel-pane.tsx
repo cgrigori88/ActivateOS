@@ -21,7 +21,10 @@ function Section({ label, accent, children }: { label: string; accent: string; c
 function Row({ k, children }: { k: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-2">
-      <span className="w-[104px] shrink-0 text-neutral-400">{k}</span>
+      {/* 104px could not hold "Priority · propensity" or "Recommended", so the
+          longest labels wrapped onto two lines while their values sat on one —
+          every wrap knocking the pane's rhythm out by half a row. */}
+      <span className="w-[118px] shrink-0 text-neutral-400">{k}</span>
       <span className="min-w-0 flex-1 text-neutral-700 dark:text-neutral-200">{children}</span>
     </div>
   );
@@ -40,7 +43,14 @@ export function AccountIntelPane({ intel, closeHref, flat }: { intel: AccountInt
     >
       <div className="mb-3 flex items-start justify-between gap-2">
         <div>
-          <Link href={`/accounts/${intel.companyId}`} className="text-title font-bold hover:underline">{intel.legalName}</Link>
+          {/* This heading is the way into the full account room, and now the only
+              one — the table stopped repeating a room link on every row. So it says
+              where it goes rather than leaving the reader to discover the title is
+              clickable. */}
+          <Link href={`/accounts/${intel.companyId}`} className="group inline-flex items-baseline gap-1.5 text-title font-bold hover:underline">
+            {intel.legalName}
+            <span className="text-label font-medium ink-faint transition-colors group-hover:text-accent">open room ↗</span>
+          </Link>
           <div className="text-label text-neutral-500">{intel.industry ?? "—"}</div>
         </div>
         <Link href={closeHref} className="rounded-control px-1.5 py-0.5 text-label text-neutral-400 hover:bg-[var(--surface-inset)]" aria-label="Close">✕</Link>
@@ -140,15 +150,39 @@ export function AccountIntelPane({ intel, closeHref, flat }: { intel: AccountInt
           )}
         </Section>
 
+        {/* Wave 2 §6/§14: "Motion" and "Governed action" reach this pane from two
+            different sources, and on a routed pursuit they arrive carrying the SAME
+            sentence — the drawer printed "Approve WWT route brief before sending to
+            partner" twice, on consecutive lines. Two labels over one fact reads as a
+            bug in the product, not a coincidence in the data. When they agree, the
+            governed name is the one that survives, because it says what will
+            actually run. Neither field is changed; one is simply not said twice. */}
         <Section label="What next" accent="var(--color-readiness)">
-          {intel.whatNext.motion && <Row k="Motion">{intel.whatNext.motion}</Row>}
+          {intel.whatNext.motion && intel.whatNext.motion !== intel.whatNext.governedAction && (
+            <Row k="Motion">{intel.whatNext.motion}</Row>
+          )}
           {intel.whatNext.governedAction && <Row k="Governed action">{intel.whatNext.governedAction}</Row>}
           {intel.whatNext.humanDecision && <Row k="Human decision"><b>{intel.whatNext.humanDecision}</b></Row>}
           {intel.stakeholders?.gapNote && (
             <Row k="Stakeholders"><span style={{ color: "var(--color-accent-attention)" }}>{intel.stakeholders.gapNote}</span></Row>
           )}
           {!intel.whatNext.motion && !intel.whatNext.governedAction && !intel.whatNext.humanDecision && !intel.stakeholders?.gapNote && <span className="text-neutral-400">No pending action.</span>}
-          <div className="pt-1"><Link href={`/pursuits`} className="text-label font-medium text-accent hover:underline dark:text-blue-400">Open in Pursuits →</Link></div>
+          {/* Wave 2 §16 — continuity. This always went to the Pursuits INDEX, so
+              the one gesture that carries you out of the drawer dropped the account
+              you were reading about and handed you a list to find it again. The
+              pane already holds this account's pursuit id wherever a pursuit exists;
+              when it does, go there. When it does not, the index is the honest
+              destination and the label says so. */}
+          {(() => {
+            const pid = intel.valueCase?.pursuitId ?? intel.stakeholders?.pursuitId ?? null;
+            return (
+              <div className="pt-1">
+                <Link href={pid ? `/pursuits/${pid}` : "/pursuits"} className="text-label font-medium text-accent hover:underline dark:text-blue-400">
+                  {pid ? "Open this pursuit →" : "Browse pursuits →"}
+                </Link>
+              </div>
+            );
+          })()}
         </Section>
       </div>
     </aside>

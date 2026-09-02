@@ -5,7 +5,7 @@ import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
 import { getPursuitDetail } from "@/lib/pursuits/read-models/detail";
 import { callerFor } from "@/lib/pursuits/read-models/caller";
 import { Panel } from "@/components/pursuit/panel";
-import { PursuitHero, MetricBand, WhyNowBento, FactsBento, MaterialChangeTimeline } from "@/components/pursuit/surfaces";
+import { PursuitHero, PursuitRail, MetricBand, WhyNowBento, FactsBento, MaterialChangeTimeline } from "@/components/pursuit/surfaces";
 import { RoutePath, RecommendationChange, RouteCandidateTable, RouteComparisonInsight } from "@/components/pursuit/route";
 import { RouteDecision } from "@/components/pursuit/route-decision";
 import { ExecutionPlan } from "@/components/pursuit/team-decision";
@@ -109,6 +109,18 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
   // Disclosure-aware Pursuit Brief (F1) — a presentation over the already-authorized detail view.
   const brief = buildPursuitBrief(d, loaded.outcome, loaded.motion);
 
+  /* Wave 2 §10: the five sections a reader actually navigates between, in the
+     order the page tells its story. Each points at an anchor that already
+     existed, so Today's deep links, the Brief and ⌘K keep working unchanged.
+     Conditional sections drop out of the nav rather than dead-linking. */
+  const sections = [
+    { href: "#overview", label: "Overview" },
+    ...(d.valueCase ? [{ href: "#value", label: "Economics" }] : []),
+    { href: "#evidence", label: "Evidence" },
+    { href: "#route", label: "Route & team" },
+    { href: "#activity", label: "Activity" },
+  ];
+
   return (
     <div className="mx-auto max-w-[1240px] px-4 py-6">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -118,6 +130,8 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
           <PursuitBriefButton brief={brief} />
         </div>
       </div>
+
+      <PursuitRail d={d} lifecycleWord={LIFECYCLE_WORD[d.lifecycle] ?? d.lifecycle} sections={sections} />
 
       {/*
         Decision-first composition (D.5 §2/§24). One flow that reorders per
@@ -129,7 +143,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
       */}
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start">
         {/* Identity + decision band */}
-        <Panel className="order-1 lg:order-1 lg:col-span-2">
+        <Panel id="overview" className="order-1 scroll-mt-16 lg:order-1 lg:col-span-2">
           <PursuitHero d={d} lifecycleWord={LIFECYCLE_WORD[d.lifecycle] ?? d.lifecycle} />
           {/* Motion context strip (P1A) — which commercial hypothesis this pursuit serves. */}
           {loaded.motion && (
@@ -161,7 +175,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
 
         {/* Why Now (carries unknowns + contradictions) + lifecycle timing (P2A).
             `#whynow` is the deep-link anchor from Today, the horizon and ⌘K. */}
-        <div id="whynow" className="order-2 scroll-mt-6 lg:order-2">
+        <div id="whynow" className="order-2 scroll-mt-16 lg:order-2">
         <Panel eyebrow="Assembled from the fact & signal graph — traceable" title="Why now" accent="var(--color-priority)">
           <WhyNowBento w={d.whyNow} />
           <div className="mt-3 border-t border-neutral-200/70 pt-2.5 dark:border-neutral-800">
@@ -174,7 +188,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         {/* Value Case (P2B §12) — economics on the Pursuit, not in a room of its own. `#value` is
             the deep-link anchor from Today, the Brief and ⌘K. */}
         {d.valueCase && (
-          <div id="value" className="order-2 scroll-mt-6 lg:order-3">
+          <div id="value" className="order-2 scroll-mt-16 lg:order-3">
             <Panel eyebrow="What is at stake, and what supports it" title="Value case" accent="var(--color-readiness)">
               <ValueCaseCard vc={d.valueCase} />
             </Panel>
@@ -184,7 +198,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         {/* Route decision — recommended + human selection above the dense compare. `#route` is the
             Today deep-link anchor; scroll-mt keeps it clear of the sticky chrome. The governed
             decision control (RouteDecision) is the first human governed mutation in the platform. */}
-        <div id="route" className="order-3 scroll-mt-6 lg:order-5 lg:col-span-2">
+        <div id="route" className="order-3 scroll-mt-16 lg:order-5 lg:col-span-2">
         <Panel eyebrow="Recommendation is not selection" title="Route decision" accent="var(--color-route)"
           aside={r.changeEvents.length > 0 ? (
             <span className="inline-flex flex-wrap items-center gap-1.5 text-label">
@@ -199,7 +213,16 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
             <RecommendationChange view={r} />
             <RouteDecision view={r} pursuitId={d.pursuitId} canDecide={loaded.canDecide} />
             <RouteComparisonInsight view={r} />
-            <RouteCandidateTable view={r} />
+            {/* Wave 2 §15: the five-dimension candidate matrix is how you CHECK the
+                recommendation, not how you read it. Permanently open it added ~250px
+                of table between the decision and the disclosure moment that explains
+                it — so the page's most important interaction sat below the fold behind
+                a grid most readers scrolled past. The insight line above already states
+                what the comparison concludes; this is the working underneath it, one
+                click away and never more. */}
+            <Disclosure summary="Compare all routes, dimension by dimension">
+              <RouteCandidateTable view={r} />
+            </Disclosure>
           </div>
         </Panel>
         </div>
@@ -223,7 +246,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
 
         {/* Pursuit team — the Multi-Party Execution Plan. `#team` is the Today deep-link anchor for a
             "waiting on this participant" item. Governed confirm/accept lives inline (operators only). */}
-        <div id="team" className="order-5 scroll-mt-6 lg:order-7">
+        <div id="team" className="order-5 scroll-mt-16 lg:order-7">
         <Panel title="Pursuit team" accent="var(--color-readiness)"
           aside={<span className="inline-flex items-center gap-1.5 text-label text-neutral-500">Readiness <BandPill band={d.team.activationReadiness.band} /></span>}>
           <ExecutionPlan team={d.team} pursuitId={d.pursuitId} canDecide={loaded.canDecide} />
@@ -233,20 +256,20 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         {/* Stakeholder Intelligence (P1C) — coverage and missing roles, never an address book.
             `#stakeholders` is the deep-link anchor from Today, Motion overlays and constraint remedies. */}
         {d.stakeholders && (
-          <div id="stakeholders" className="order-5 scroll-mt-6 lg:order-7">
+          <div id="stakeholders" className="order-5 scroll-mt-16 lg:order-7">
             <Panel eyebrow="Roles and coverage — verified ≠ inferred ≠ unverified" title="Stakeholders" accent="var(--color-accent-violet)">
               <StakeholderPanel c={d.stakeholders} pursuitId={d.pursuitId} accountLabel={d.accountLabel} canDecide={loaded.canDecide} contacts={loaded.contacts} />
             </Panel>
           </div>
         )}
 
-        {/* Facts / evidence */}
-        <Panel eyebrow="Trusted intelligence" title="Facts behind this" accent="var(--color-evidence)" tint className="order-6 lg:order-4 lg:col-span-2">
+        {/* Facts / evidence — the verification layer. `#evidence` is the section anchor. */}
+        <Panel id="evidence" eyebrow="Trusted intelligence" title="Facts behind this" accent="var(--color-evidence)" tint className="order-6 scroll-mt-16 lg:order-4 lg:col-span-2">
           <FactsBento facts={d.facts} />
         </Panel>
 
-        {/* Material changes */}
-        <Panel eyebrow="Material events only" title="What changed" accent="var(--color-accent-violet)" className="order-7 lg:order-8">
+        {/* Material changes — `#activity` anchors the last section of the rail. */}
+        <Panel id="activity" eyebrow="Material events only" title="What changed" accent="var(--color-accent-violet)" className="order-7 scroll-mt-16 lg:order-8">
           <MaterialChangeTimeline timeline={d.timeline} />
         </Panel>
 

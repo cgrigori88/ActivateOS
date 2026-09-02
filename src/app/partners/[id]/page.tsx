@@ -123,43 +123,86 @@ export default async function PartnerRoomPage({
           where to activate — before any administration. ── */}
       {profile && <ActivationProfile p={profile} pattern={pattern} />}
 
-      {/* ── Scorecard v1: settlement truth, not self-reporting ── */}
-      <BlockLabel>Scorecard</BlockLabel>
-      <div className="mb-6 flex flex-wrap gap-3">
-        <Bento
-          label="joint win rate"
-          value={scorecard.jointWinRate == null ? "—" : `${scorecard.jointWinRate}%`}
-          subs={[scorecard.settledN + scorecard.lostN > 0 ? `${scorecard.settledN} won · ${scorecard.lostN} lost` : "no settled joint deals yet"]}
-        />
-        <Bento
-          label="avg joint cycle"
-          value={scorecard.avgCycleDays == null ? "—" : `${scorecard.avgCycleDays}d`}
-          subs={["open → closed-won"]}
-        />
-        <Bento label="sourced revenue" value={money(scorecard.sourcedUsd)} subs={["registration-based (settlement)"]} />
-        <Bento label="influenced revenue" value={money(scorecard.influencedUsd)} subs={["registration-based (settlement)"]} />
-        <Bento
-          label="responsiveness"
-          value={scorecard.responsivenessDays == null ? "—" : scorecard.responsivenessDays < 1 ? "<1d" : `${Math.round(scorecard.responsivenessDays)}d`}
-          subs={["pursuit proposal → decision"]}
-        />
-        <Bento
-          label="motion win rate"
-          value={scorecard.motionWinRate == null ? "—" : `${scorecard.motionWinRate}%`}
-          subs={[`your motions with ${partner.name}`]}
-        />
-      </div>
+      {/*
+        Wave 2 §9 — hierarchy.
 
-      {/* ── Execution with this partner (your tenant's own work) — intelligence, so it stays in the first tier ── */}
-      <BlockLabel>Execution</BlockLabel>
-      <div className="mb-6 flex flex-wrap gap-3">
-        <Bento label="motions" value={hub.motionsTotal} subs={[`${hub.motionsActive} active`]} href={`/motions?partner=${encName}`} />
-        <Bento label="campaigns" value={hub.campaignsTotal} subs={[`${hub.campaignsLive} live`]} href={`/campaigns?partner=${encName}`} />
-        <Bento label="touches sent" value={hub.touchesSent} href="/analytics" />
-        <Bento label="open pipeline" value={money(hub.pipelineUsd)} subs={[`${hub.oppsOpen} opportunities`]} href="/pipeline" />
-        <Bento label="won" value={money(hub.wonUsd)} subs={[`${hub.oppsWon} closed-won`]} href="/pipeline" />
-        <Bento label="accounts" value={hub.populations} subs={["approved lists"]} href={`/accounts?partner=${encName}`} />
-      </div>
+        This room rendered twelve instrument tiles in two rows of six, every one at
+        display scale. On a real partnership eight of the twelve read "—", "$0" or
+        "0", because a partnership that has not settled a joint deal HAS no joint win
+        rate, no cycle time, no sourced revenue. The result inverted the room: eight
+        oversized blanks led the page, while the activation narrative above them —
+        the sentence that actually says whether this relationship is working — was set
+        at body size and scrolled past.
+
+        Nothing is removed and no figure is changed. What changes is that a metric
+        with a value keeps the tile, and a metric without one is stated as what it
+        is: not established yet, and why. An unestablished measure is a real finding
+        — it just isn't a number, and rendering it as a 26px "—" claims otherwise.
+      */}
+      {(() => {
+        type Tile = { label: string; value: string | number; subs?: string[]; href?: string; known: boolean };
+        const settlement: Tile[] = [
+          { label: "joint win rate", value: scorecard.jointWinRate == null ? "—" : `${scorecard.jointWinRate}%`,
+            subs: [scorecard.settledN + scorecard.lostN > 0 ? `${scorecard.settledN} won · ${scorecard.lostN} lost` : "no settled joint deals yet"],
+            known: scorecard.jointWinRate != null },
+          { label: "avg joint cycle", value: scorecard.avgCycleDays == null ? "—" : `${scorecard.avgCycleDays}d`,
+            subs: ["open → closed-won"], known: scorecard.avgCycleDays != null },
+          { label: "sourced revenue", value: money(scorecard.sourcedUsd), subs: ["registration-based (settlement)"],
+            known: scorecard.sourcedUsd > 0 },
+          { label: "influenced revenue", value: money(scorecard.influencedUsd), subs: ["registration-based (settlement)"],
+            known: scorecard.influencedUsd > 0 },
+          { label: "responsiveness", value: scorecard.responsivenessDays == null ? "—" : scorecard.responsivenessDays < 1 ? "<1d" : `${Math.round(scorecard.responsivenessDays)}d`,
+            subs: ["pursuit proposal → decision"], known: scorecard.responsivenessDays != null },
+          { label: "motion win rate", value: scorecard.motionWinRate == null ? "—" : `${scorecard.motionWinRate}%`,
+            subs: [`your motions with ${partner.name}`], known: scorecard.motionWinRate != null },
+        ];
+        const execution: Tile[] = [
+          { label: "motions", value: hub.motionsTotal, subs: [`${hub.motionsActive} active`], href: `/motions?partner=${encName}`, known: hub.motionsTotal > 0 },
+          { label: "campaigns", value: hub.campaignsTotal, subs: [`${hub.campaignsLive} live`], href: `/campaigns?partner=${encName}`, known: hub.campaignsTotal > 0 },
+          { label: "touches sent", value: hub.touchesSent, href: "/analytics", known: hub.touchesSent > 0 },
+          { label: "open pipeline", value: money(hub.pipelineUsd), subs: [`${hub.oppsOpen} opportunities`], href: "/pipeline", known: hub.pipelineUsd > 0 },
+          { label: "won", value: money(hub.wonUsd), subs: [`${hub.oppsWon} closed-won`], href: "/pipeline", known: hub.wonUsd > 0 },
+          { label: "accounts", value: hub.populations, subs: ["approved lists"], href: `/accounts?partner=${encName}`, known: hub.populations > 0 },
+        ];
+
+        const block = (label: string, hint: string, tiles: Tile[], quiet: string) => {
+          const known = tiles.filter((t) => t.known);
+          const unknown = tiles.filter((t) => !t.known);
+          return (
+            <div className="mb-6">
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <BlockLabel className="mb-0">{label}</BlockLabel>
+                <span className="text-label ink-faint">{hint}</span>
+              </div>
+              {/* A fixed six-column track, not flex-wrap: a tile must be the same
+                  size whether the block has six values or one. Under flex the
+                  three surviving execution tiles stretched to a third of the page
+                  each, so removing empty tiles made the remaining ones LOUDER —
+                  the opposite of the point. */}
+              {known.length > 0 && (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                  {known.map((t) => <Bento key={t.label} label={t.label} value={t.value} subs={t.subs} href={t.href} />)}
+                </div>
+              )}
+              {unknown.length > 0 && (
+                <p className={`text-body ink-faint ${known.length > 0 ? "mt-2.5" : ""}`}>
+                  {quiet}{" "}
+                  <span className="ink-muted">{unknown.map((t) => t.label).join(", ")}</span>.
+                </p>
+              )}
+            </div>
+          );
+        };
+
+        return (
+          <>
+            {block("Settled with this partner", "settlement truth — never self-reported", settlement,
+              "Not established yet, so no figure is shown for")}
+            {block("Your execution", "your own work on this relationship", execution,
+              "Nothing recorded yet for")}
+          </>
+        );
+      })()}
 
       {/* ── Partnership operations (UX normalization §4): everything you administer — targets,
           disclosure, sharing, playbook, settlement — under one progressive disclosure. Every

@@ -58,6 +58,66 @@ export function MetricBand({ scores }: { scores: PursuitDetailView["decisionBand
   );
 }
 
+/**
+ * PursuitRail (Wave 2 §10) — the persistent summary.
+ *
+ * The Pursuit is the longest surface in the product: at 1440 it runs past 3200px
+ * of continuous scroll across ten panels. Everything below the fold was being read
+ * without its subject. By the time a reader reached the disclosure moment — the
+ * point of the whole page — the account, the thesis and the amount at stake had
+ * been off-screen for two thousand pixels, so the confidential figure appeared
+ * with nothing to be confidential ABOUT.
+ *
+ * This is the summary that stays: who, what, how much, what state. It is a
+ * COMPRESSION of the hero directly above it, never a second source — every value
+ * comes from the same view object PursuitHero renders, so the two cannot drift.
+ *
+ * The section links are jumps to anchors that already existed for Today, the
+ * Brief and ⌘K deep links. They read as tabs and behave as tabs, but nothing is
+ * hidden behind them: a tabbed Pursuit would break every one of those deep links
+ * and put the reader's evidence one click further away than it is today. §15's
+ * disclosure test is "does the reader lose access to the thing they were about to
+ * verify" — hiding evidence behind a tab fails it, so the sections stay on the
+ * page and this navigates them.
+ */
+export function PursuitRail({
+  d, lifecycleWord, sections,
+}: {
+  d: PursuitDetailView;
+  lifecycleWord: string;
+  sections: { href: string; label: string }[];
+}) {
+  return (
+    <div
+      className="sticky top-0 z-20 -mx-4 mb-4 border-b px-4 py-2.5 backdrop-blur"
+      style={{ borderColor: "var(--border-subtle)", background: "color-mix(in srgb, var(--surface-primary) 88%, transparent)" }}
+    >
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
+          <span className="truncate text-copy font-bold tracking-[-0.01em] ink">{d.accountLabel}</span>
+          <span className="hidden min-w-0 flex-1 truncate text-body ink-faint sm:block">{d.thesis}</span>
+        </div>
+        <div className="flex flex-none items-center gap-3 text-label">
+          <span className="ink-muted">
+            <span className="ink-faint">worth </span>
+            <b className="ink">{money(d.expectedValue, d.currency)}</b>
+          </span>
+          <span className="rounded-full px-2 py-0.5 text-micro font-bold uppercase tracking-[0.04em]"
+            style={{ background: "var(--surface-inset)", color: "var(--color-priority)" }}>{lifecycleWord}</span>
+        </div>
+        <nav aria-label="Pursuit sections" className="flex w-full flex-wrap items-center gap-x-1 gap-y-1 lg:w-auto">
+          {sections.map((s) => (
+            <a key={s.href} href={s.href}
+              className="rounded-control px-2 py-1 text-label font-semibold ink-muted transition-colors hover:bg-[var(--surface-inset)] hover:text-[var(--color-priority)]">
+              {s.label}
+            </a>
+          ))}
+        </nav>
+      </div>
+    </div>
+  );
+}
+
 const WHY_ICON: Record<string, string> = {
   business_trigger: "⚡", technology_condition: "▣", timing_anchor: "◷", signal_convergence: "⌁", route_relevance: "↗",
 };

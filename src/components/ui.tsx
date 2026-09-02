@@ -505,7 +505,11 @@ export function StatusBadge({ status }: { status: string }) {
   return (
     <span
       data-status={status}
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-label font-bold capitalize ${STATUS_STYLES[status] ?? STATUS_STYLES.completed}`}
+      /* Wave 2 §17: a pill is a single token. Without nowrap the two-word statuses
+         ("closed won", "opportunity advanced", "meeting booked") broke across two
+         lines inside the pill wherever the column was narrow, so the badge stopped
+         reading as one thing and the row height jumped per status. */
+      className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-label font-bold capitalize ${STATUS_STYLES[status] ?? STATUS_STYLES.completed}`}
     >
       {STATUS_DOTS[status] && (
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOTS[status]}`} />
@@ -575,12 +579,21 @@ export function CountChip({
   href,
   active = false,
   tone,
+  compact = false,
 }: {
   label: string;
   value: number | string;
   href?: string;
   active?: boolean;
   tone?: "green" | "sky" | "amber" | "neutral" | "red";
+  /**
+   * Wave 2 §5. A CountChip is a filter, and on a table room a row of them is the
+   * table's control strip — not a headline. `compact` lays the figure and the
+   * label on ONE line at reading size, so five filters cost one line of height
+   * instead of a 70px band that outweighs the rows it filters. Same counts, same
+   * links, same active state, same tone vocabulary: only the geometry changes.
+   */
+  compact?: boolean;
 }) {
   const empty = Number(value) === 0;
   /* The figure carries the hue. `data-tone` opts the tile out of the positional
@@ -596,14 +609,20 @@ export function CountChip({
     neutral: "text-neutral-500",
     red: "text-rose",
   };
-  const cls = `pos-bento min-w-[6.5rem] rounded-card px-4 py-3 ${
-    active
-      ? "border border-accent bg-accent text-white shadow-[var(--shadow-float)]"
-      : empty
-        ? "border border-dashed border-neutral-200 dark:border-neutral-800"
-        : "glass"
-  }`;
-  const inner = (
+  const surface = active
+    ? "border border-accent bg-accent text-white shadow-[var(--shadow-float)]"
+    : empty
+      ? "border border-dashed border-neutral-200 dark:border-neutral-800"
+      : "glass";
+  const cls = compact
+    ? `inline-flex items-baseline gap-1.5 rounded-full px-3 py-1.5 ${surface}`
+    : `pos-bento min-w-[6.5rem] rounded-card px-4 py-3 ${surface}`;
+  const inner = compact ? (
+    <>
+      <span className={`tnum text-copy font-bold ${active ? "text-white" : (tone && figure[tone]) || ""}`}>{value}</span>
+      <span className={`text-body font-semibold ${active ? "text-white/80" : "text-neutral-500 dark:text-neutral-400"}`}>{label}</span>
+    </>
+  ) : (
     <>
       <div
         className={`pos-bento-fig pos-metric-fig ${
@@ -627,7 +646,7 @@ export function CountChip({
     "data-active": active ? "true" : undefined,
   };
   return href ? (
-    <Link href={href} {...attrs} className={`pos-lift block ${cls}`}>
+    <Link href={href} {...attrs} className={`pos-lift ${compact ? "" : "block "}${cls}`}>
       {inner}
     </Link>
   ) : (
@@ -877,10 +896,22 @@ export function Assurance({
   label,
   mechanism,
   note,
+  control,
 }: {
   label: string;
   mechanism: string;
   note?: string;
+  /**
+   * Wave 2 §12 — Trust is a control surface, not a brochure.
+   *
+   * A guarantee the reader can only read about is a claim; a guarantee they can
+   * walk to and operate is a control. Where the product actually exposes the
+   * mechanism — the consent ladder, the approval queue, the audit ledger, the
+   * key that can be revoked — the tile carries the way there. Where it does not,
+   * this is omitted rather than pointed at something approximate: a link that
+   * lands somewhere unrelated is worse than no link on a page about trust.
+   */
+  control?: { href: string; label: string };
 }) {
   return (
     <div
@@ -897,6 +928,11 @@ export function Assurance({
       </div>
       <div className="mt-1.5 text-copy font-semibold leading-snug ink">{mechanism}</div>
       {note && <div className="mt-1 text-label ink-faint">{note}</div>}
+      {control && (
+        <Link href={control.href} className="mt-2 text-label font-semibold text-accent hover:underline dark:text-blue-400">
+          {control.label} →
+        </Link>
+      )}
     </div>
   );
 }

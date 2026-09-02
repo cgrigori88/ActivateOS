@@ -47,11 +47,14 @@ export function TodayDecisionCard({
   item,
   drawerBase,
   showReason = true,
+  showUrgency = true,
 }: {
   item: DecisionItem;
   drawerBase?: string;
   /** False when this reason repeats across the queue — see TodayQueue. */
   showReason?: boolean;
+  /** False when every visible row shares this urgency — see TodayQueue. */
+  showUrgency?: boolean;
 }) {
   const hue = CLASS_HUE[item.decisionClass];
   const action = item.allowedActions[0];
@@ -70,7 +73,11 @@ export function TodayDecisionCard({
     >
       <div className="flex flex-none items-center gap-2">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: hue }} aria-hidden />
-        <span className="inline-block rounded-control px-2 py-1 text-center text-micro font-bold uppercase leading-tight tracking-[0.03em]" style={{ color: hue, background: `color-mix(in srgb, ${hue} 12%, transparent)`, width: 92 }}>
+        {/* Wave 2 §17: the chip was a fixed 92px box, which is narrower than the
+            longest label it has to carry — so "Decision required", the most common
+            class in the queue, broke onto two lines on every single row. A minimum
+            keeps the column aligned; nowrap keeps the label a label. */}
+        <span className="inline-block whitespace-nowrap rounded-control px-2 py-1 text-center text-micro font-bold uppercase leading-tight tracking-[0.03em]" style={{ color: hue, background: `color-mix(in srgb, ${hue} 12%, transparent)`, minWidth: 92 }}>
           {CLASS_WORD[item.decisionClass]}
         </span>
       </div>
@@ -94,7 +101,7 @@ export function TodayDecisionCard({
             act moved into the disclosure below, beside the other ranking facts. */}
         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-label">
           <BandPill band={item.commercialPriority} />
-          {(item.operationalUrgency === "critical" || item.operationalUrgency === "high") && (
+          {showUrgency && (item.operationalUrgency === "critical" || item.operationalUrgency === "high") && (
             <span className="rounded-full px-2 py-px text-micro font-bold uppercase tracking-[0.04em]"
               style={{ color: "var(--color-accent-attention)", background: "color-mix(in srgb, var(--color-accent-attention) 12%, transparent)" }}>
               {item.operationalUrgency} urgency
@@ -143,10 +150,32 @@ export function TodayQueue({ items, drawerBase }: { items: DecisionItem[]; drawe
   for (const it of items) if (it.reason) seen.set(it.reason, (seen.get(it.reason) ?? 0) + 1);
   const repeated = (r: string | null | undefined) => !!r && (seen.get(r) ?? 0) > items.length / 2;
 
+  /*
+   * Wave 2 §14 — the same rule, applied to the elevated-urgency chip.
+   *
+   * On the demo queue every visible row carried "HIGH URGENCY", so the chip
+   * appeared four times and discriminated between exactly none of them. A field
+   * whose value is constant across everything you can see is a property of the
+   * QUEUE, not of any row in it — and repeating it per row spends the reader's
+   * most valuable glance on the one thing that cannot help them choose.
+   *
+   * So it is stated once, above, and dropped from the rows. Nothing is hidden:
+   * the same word, the same source field, one place instead of N. The moment the
+   * queue is mixed the chips come back, because then they do discriminate.
+   */
+  const urgencies = new Set(items.map((it) => it.operationalUrgency));
+  const shared = urgencies.size === 1 && items.length > 1 ? [...urgencies][0] : null;
+  const sharedElevated = shared === "critical" || shared === "high" ? shared : null;
+
   return (
     <div className="flex flex-col gap-2.5">
+      {sharedElevated && (
+        <p className="text-label ink-faint">
+          All {items.length} carry <b style={{ color: "var(--color-accent-attention)" }}>{sharedElevated} operational urgency</b> — ordered below by commercial materiality.
+        </p>
+      )}
       {items.map((it) => (
-        <TodayDecisionCard key={it.id} item={it} drawerBase={drawerBase} showReason={!repeated(it.reason)} />
+        <TodayDecisionCard key={it.id} item={it} drawerBase={drawerBase} showReason={!repeated(it.reason)} showUrgency={!sharedElevated} />
       ))}
     </div>
   );

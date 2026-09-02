@@ -43,7 +43,21 @@ export default async function TrustPage() {
       {/* The six guarantees, stated as mechanisms rather than counters. Each line
           says only what the running system enforces — no certification is
           claimed, and where a live figure exists it sits under the mechanism it
-          evidences rather than in a separate strip of its own. */}
+          evidences rather than in a separate strip of its own.
+
+          Wave 2 §12/§13: five of the six now carry the way to the control that
+          enforces them, because a guarantee you can operate is worth more than one
+          you can only read. Tenant isolation carries none — it is a property of
+          every query in the product, with no switch to walk to, and inventing a
+          destination for it would be the one dishonest link on the page.
+
+          §13, on the isolation claim specifically: "forced on every table" is a
+          literal statement about this schema, not a posture. Verified against the
+          running database at the time of this pass — 151 of 151 public tables have
+          row-level security both ENABLED and FORCED (relrowsecurity and
+          relforcerowsecurity), and no table carrying an org_id is exempt. FORCE is
+          the load-bearing half: without it the table owner silently bypasses the
+          predicate. If that ever stops being true, this wording has to change. */}
       <div className="mb-7 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
         <Assurance
           label="Tenant isolation"
@@ -54,11 +68,13 @@ export default async function TrustPage() {
           label="Governed sharing"
           mechanism="Offer → accept, rung by rung"
           note="Partner data crosses only at a rung both owners approved"
+          control={{ href: "/admin", label: "Open the trust ladder" }}
         />
         <Assurance
           label="Human approval"
           mechanism="Nothing sends, registers or discloses on its own"
           note="Agents draft; a person decides"
+          control={{ href: "/queue", label: "See what is awaiting a person" }}
         />
         <Assurance
           label="Auditability"
@@ -66,11 +82,13 @@ export default async function TrustPage() {
           note={Number(s.audit_n) > 0
             ? `${Number(s.audit_n).toLocaleString()} entries recorded in this tenant`
             : "This tenant has not recorded a consequential act yet"}
+          control={{ href: "/admin", label: "Read this tenant's ledger" }}
         />
         <Assurance
           label="Revocable access"
           mechanism="Recipients hold live reads, never copies"
           note="Revoking stops the read immediately"
+          control={{ href: "/admin", label: "Review and revoke access" }}
         />
         <Assurance
           label="Grounded AI"
@@ -78,6 +96,7 @@ export default async function TrustPage() {
           note={Number(s.evidence_n) > 0
             ? `${Number(s.evidence_n).toLocaleString()} claims held · ${s.verified_n} verified, rest quarantined`
             : "No claims held in this tenant yet"}
+          control={{ href: "/review", label: "Inspect the verified record" }}
         />
       </div>
 

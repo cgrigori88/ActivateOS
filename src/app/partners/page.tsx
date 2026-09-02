@@ -38,7 +38,7 @@ export default async function PartnersPage({
     <main>
       <PageHeader
         title="Partners"
-        subtitle="One room per partner — their book, the ladder, and what has settled."
+        subtitle={`${partners.length} partner${partners.length === 1 ? "" : "s"}${connected.length ? `, ${connected.length} on a live partnership` : ""} — one room each: their book, the ladder, and what has settled.`}
       />
       <RoomTabs tabs={[{ href: "/partners", label: "Partners" }, { href: "/joint", label: "Joint pursuits" }]} />
 
@@ -56,13 +56,32 @@ export default async function PartnersPage({
         />
       )}
 
-      <div className="mb-6 flex flex-wrap gap-3">
-        <Bento label="partners" value={partners.length} />
-        <Bento label="connected tenants" value={connected.length} subs={["live partnership"]} />
-        <Bento label="open joint rooms" value={openPursuits} href="/joint" />
-        <Bento label="settled joint revenue" value={money(settledTotal)} />
-        <Bento label="active partner motions" value={activeMotions} href="/motions" />
-      </div>
+      {/*
+        Wave 2 §8 — the ecosystem view.
+
+        Five aggregate tiles sat above two partner cards. "2 partners" counted the
+        two cards directly beneath it; three of the remaining four read 0 or $0. The
+        summary was physically larger than the thing it summarized, and it led with
+        the emptiest numbers in the room.
+
+        A roll-up earns its space when it says something the cards below cannot —
+        which, with a handful of partners, is nothing. So the band drops to the two
+        cross-partner totals that are genuinely portfolio-level, and only while they
+        carry a value; the count itself becomes a clause on the page subtitle, where
+        a count belongs. At real ecosystem scale these totals stop being zero and the
+        band fills back out on its own.
+      */}
+      {/* A fixed track, not flex-wrap: under flex the surviving tiles share the
+          full width between them, so dropping the empty ones made the remaining
+          one span the page — a single figure at the scale of a hero. A tile is
+          the same size whether there are three of them or one. */}
+      {(openPursuits > 0 || settledTotal > 0 || activeMotions > 0) && (
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {openPursuits > 0 && <Bento label="open joint rooms" value={openPursuits} href="/joint" />}
+          {activeMotions > 0 && <Bento label="active partner motions" value={activeMotions} href="/motions" />}
+          {settledTotal > 0 && <Bento label="settled joint revenue" value={money(settledTotal)} />}
+        </div>
+      )}
 
       {partners.length === 0 && (
         <Card muted>
@@ -106,18 +125,23 @@ export default async function PartnersPage({
                   <div className="mt-1 text-micro font-semibold text-neutral-500">settled</div>
                 </div>
               </div>
-              <p className="mt-3 text-label text-neutral-400">
+              {/* Wave 2 §8: the activation chain is the one line on this card that
+                  says whether the relationship is WORKING — overlap is presence,
+                  accepted is behaviour, and the gap between them is the finding. It
+                  was set at 11px in the palest ink on the card, below a list/motion
+                  tally the three figures above already imply. The two have swapped
+                  places and weights; both still say exactly what they said. */}
+              {(() => { const h = headlineBy.get(p.id); if (!h) return null; return (
+                <p className="mt-3 text-body ink-muted">
+                  <b className="ink">{h.overlap} overlap</b> → {h.selected} selected → <b className="ink">{h.accepted} accepted</b>
+                  {h.pending > 0 && <span className="font-semibold" style={{ color: "var(--color-timing)" }}> · {h.pending} pending</span>}
+                  {h.sample > 0 && <span style={{ color: "var(--color-accent-verified)" }}> · {h.won} won</span>}
+                </p>
+              ); })()}
+              <p className="mt-1.5 text-label ink-faint">
                 {p.bookLists} list{p.bookLists === 1 ? "" : "s"} · {p.motionsActive} active motion
                 {p.motionsActive === 1 ? "" : "s"} · {p.motionsWon} won
               </p>
-              {(() => { const h = headlineBy.get(p.id); if (!h) return null; return (
-                <p className="mt-1.5 text-label">
-                  <span className="text-neutral-500">activation:</span>{" "}
-                  <span className="font-semibold">{h.overlap} overlap → {h.selected} selected → {h.accepted} accepted</span>
-                  {h.pending > 0 && <span className="font-semibold" style={{ color: "var(--color-timing)" }}> · {h.pending} pending</span>}
-                  {h.sample > 0 && <span style={{ color: "var(--color-accent-verified)" }}> · {h.won} won (canonical)</span>}
-                </p>
-              ); })()}
             </Card>
           </Link>
         ))}

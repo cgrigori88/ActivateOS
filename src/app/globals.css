@@ -298,6 +298,41 @@ summary:focus-visible {
   border-radius: var(--radius-inner);
 }
 
+/* Wave 2 §17 — one disclosure indicator for the whole product.
+ *
+ * Thirty-odd <summary> elements had never suppressed the browser's default
+ * marker, so the UA's raw black ▶ rendered inside controls styled as buttons and
+ * links: "▶ ☰ Columns" on Accounts, "▶ Organize matrix" on Mapping, a triangle
+ * inside Mapping's filled propose button. Meanwhile the handful of summaries that
+ * DID suppress it drew their own indicator — the `Disclosure` component's ▸/▾, the
+ * rotating chevron on the Today card — so the same affordance appeared in three
+ * different shapes depending on which file you were looking at.
+ *
+ * So: kill the UA marker (both selectors — WebKit ignores `list-style` here), and
+ * generate the product's own indicator for every summary that isn't already
+ * drawing one. The opt-out is a signal the codebase already carries: a summary
+ * that sets `list-none` is precisely one whose author took over the marker, and
+ * every such call site pairs it with a glyph or chevron of its own.
+ *
+ * The result is that a disclosure looks like a disclosure everywhere, and no file
+ * had to be edited to get there.
+ */
+summary { list-style: none; }
+summary::-webkit-details-marker { display: none; }
+
+summary:not(.list-none)::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.4em;
+  color: var(--ink-faint);
+  font-size: 0.85em;
+  transition: transform 160ms ease;
+}
+details[open] > summary:not(.list-none)::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) {
+  summary:not(.list-none)::before { transition: none; }
+}
+
 /* ---------------------------------------------------------------------------
    Micro-interactions. One physical grammar everywhere: interactive surfaces
    LIFT on hover (2px + a popped shadow) and PRESS on activation (back down,

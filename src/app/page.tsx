@@ -158,24 +158,20 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
   // Reality-divergence detection (task #83): where the systems disagree —
   // with each other, or with the partner's side of the deal.
-  const { divergences: allDivergences, counts, drafts, top, activity } = await withTenant(async (db, orgId) => {
+  const { divergences: allDivergences, counts, top, activity } = await withTenant(async (db, orgId) => {
     const rawDiv = await accountDivergences(db, orgId, 12);
     // Scope narrowing (§1): keep only conditions on in-scope accounts.
     const divergences = scopeIds == null ? rawDiv : rawDiv.filter((d) => scopeIds.includes(d.companyId));
-    const [countsRes, draftsRes, topRes, activityRes] = await Promise.all([
+    // Wave 2 §4: the draft-motion detail query went with the "Pending approvals"
+    // card it fed. Those same drafts still reach the reader through the ranked
+    // queue and the "Awaiting approval" count — this was the third telling.
+    const [countsRes, topRes, activityRes] = await Promise.all([
       db.query(
         `select
            (select count(*) from revenue_motions where status = 'draft') as draft_motions,
            (select count(*) from review_queue where status = 'pending') as pending_review,
            (select count(distinct company_id) from propensity_scores) as scored_accounts,
            (select count(*) from evidence where status = 'verified') as verified_evidence`,
-      ),
-      db.query(
-        `select m.id, m.trigger_summary, m.confidence, c.legal_name, c.id as company_id, n.slug
-         from revenue_motions m
-         join companies c on c.id = m.company_id
-         join taxonomy_nodes n on n.id = m.taxonomy_node_id
-         where m.status = 'draft' order by m.created_at limit 5`,
       ),
       db.query(
         `select distinct on (p.company_id) p.company_id, p.score, p.band, c.legal_name, n.slug
@@ -194,7 +190,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         [scopeIds ?? [], scopeIds != null],
       ),
     ]);
-    return { divergences, counts: countsRes.rows, drafts: draftsRes.rows, top: topRes.rows, activity: activityRes.rows };
+    return { divergences, counts: countsRes.rows, top: topRes.rows, activity: activityRes.rows };
   });
   const c = counts[0];
   const topRanked = [...top].sort((a, b) => Number(b.score) - Number(a.score)).slice(0, 5);
@@ -298,67 +294,48 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         </div>
       </div>
 
-      {nextActions.length > 0 && (
-        <Card className="mb-6">
-          <BlockLabel>
-            Next best actions
-          </BlockLabel>
-          <ol className="space-y-2">
-            {nextActions.map((a, i) => (
-              <li key={i} className="flex items-baseline gap-3 text-copy">
-                <span className="tnum w-5 text-right font-semibold text-neutral-400">{i + 1}</span>
-                <span>
-                  <Link href={a.href} className="font-medium hover:underline">
-                    {a.title}
-                  </Link>
-                  <span className="ml-2 text-neutral-500">— {a.reason}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
-        </Card>
-      )}
+      {/* Wave 2 §4: Today used to end in four more cards — "Next best actions",
+          "Pending approvals", "Top opportunities" and "Recent activity" — each its
+          own full-width block at the same weight as the decision queue above them.
+          Two of the four were the SAME facts said twice: a draft motion appeared
+          as "Review motion draft — Stark Industries" in Next best actions AND as
+          "Stark Industries — virtualization" in Pending approvals, while the
+          "Awaiting approval" chip counted it a third time. Three renderings of two
+          rows taught the reader that no list on this page is the authoritative one.
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <BlockLabel>
-            Pending approvals
-          </BlockLabel>
-          {drafts.length === 0 ? (
-            <p className="text-copy text-neutral-500">
-              All clear — new motions appear here when the designer drafts them.
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {drafts.map((m) => (
-                <li key={m.id} className="text-copy">
-                  <Link href="/motions" className="font-medium hover:underline">
-                    {m.legal_name}
-                  </Link>{" "}
-                  <span className="text-neutral-500">— {m.slug}</span>
-                  <p className="mt-0.5 line-clamp-2 text-neutral-600 dark:text-neutral-400">
-                    {m.trigger_summary}
-                  </p>
+          The decision queue is now the only ranked worklist. What remains here is
+          what it is: standing context, one row of cards, visibly secondary — the
+          things you look UP, not the things you act on. */}
+      <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {nextActions.length > 0 && (
+          <Card>
+            <BlockLabel>Also queued</BlockLabel>
+            <ol className="space-y-2">
+              {nextActions.slice(0, 5).map((a, i) => (
+                <li key={i} className="flex items-baseline gap-2.5 text-body">
+                  <span className="tnum w-4 shrink-0 text-right font-semibold ink-faint">{i + 1}</span>
+                  <span className="min-w-0">
+                    <Link href={a.href} className="font-medium hover:underline">{a.title}</Link>
+                    <span className="ink-faint"> — {a.reason}</span>
+                  </span>
                 </li>
               ))}
-            </ul>
-          )}
-        </Card>
+            </ol>
+          </Card>
+        )}
 
         <Card>
-          <BlockLabel>
-            Top opportunities
-          </BlockLabel>
+          <BlockLabel>Top opportunities</BlockLabel>
           {topRanked.length === 0 ? (
-            <p className="text-copy text-neutral-500">Run the scoring pipeline to populate.</p>
+            <p className="text-body ink-faint">Run the scoring pipeline to populate.</p>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-1.5">
               {topRanked.map((r) => (
-                <li key={r.company_id} className="flex items-center justify-between text-copy">
-                  <Link href={drawerHref(r.company_id)} scroll={false} className="font-medium hover:underline" title="Open account intelligence">
+                <li key={r.company_id} className="flex items-center justify-between gap-2 text-body">
+                  <Link href={drawerHref(r.company_id)} scroll={false} className="min-w-0 truncate font-medium hover:underline" title="Open account intelligence">
                     {r.legal_name}
                   </Link>
-                  <span className="flex items-center gap-2">
+                  <span className="flex flex-none items-center gap-2">
                     <span className="tnum font-semibold">{Number(r.score).toFixed(0)}</span>
                     <BandBadge band={r.band} />
                   </span>
@@ -367,28 +344,26 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
             </ul>
           )}
         </Card>
-      </div>
 
-      <Card className="mt-6">
-        <BlockLabel>
-          Recent activity
-        </BlockLabel>
-        {activity.length === 0 ? (
-          <p className="text-copy text-neutral-500">Outcome events land here.</p>
-        ) : (
-          <ul className="space-y-1.5">
-            {activity.map((a, i) => (
-              <li key={i} className="flex items-center gap-2 text-copy text-neutral-600 dark:text-neutral-400">
-                <StatusBadge status={a.event_type.toLowerCase().replace(/_/g, " ")} />
-                <span>{a.legal_name}</span>
-                <span className="ml-auto text-body text-neutral-400">
-                  {new Date(a.occurred_at).toISOString().slice(0, 10)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+        <Card>
+          <BlockLabel>Recent activity</BlockLabel>
+          {activity.length === 0 ? (
+            <p className="text-body ink-faint">Outcome events land here.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {activity.map((a, i) => (
+                <li key={i} className="flex items-center gap-2 text-body ink-muted">
+                  <StatusBadge status={a.event_type.toLowerCase().replace(/_/g, " ")} />
+                  <span className="min-w-0 truncate">{a.legal_name}</span>
+                  <span className="ml-auto flex-none text-label ink-faint">
+                    {new Date(a.occurred_at).toISOString().slice(0, 10)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
 
       {drawerIntel && <IntelDrawer intel={drawerIntel} closeHref={drawerCloseHref} />}
     </main>
