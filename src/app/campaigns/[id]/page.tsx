@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Bento, Card, NextStep, PageHeader, StatusBadge, fieldClass } from "@/components/ui";
+import { Bento, Card, NextStep, PageHeader, StatusBadge, fieldClass, BlockLabel } from "@/components/ui";
 import { ListPicker } from "./list-picker";
 import { CcPicker, type CcContact } from "./cc-picker";
 import { QuerySelect } from "@/components/query-select";
@@ -273,7 +273,7 @@ export default async function CampaignDetailPage({
       {/* Reach — the target lists that roll into this campaign, and the accounts they resolve to. */}
       <Card className="mb-6">
         <div className="mb-3 flex flex-wrap items-center gap-3">
-          <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Reach</h2>
+          <BlockLabel>Reach</BlockLabel>
           <span className="text-body text-neutral-400">{accounts.length} account{accounts.length === 1 ? "" : "s"} · {lists.length} list{lists.length === 1 ? "" : "s"}</span>
         </div>
 
@@ -386,7 +386,7 @@ export default async function CampaignDetailPage({
       {accounts.length > 0 && (
         <Card className="mb-6">
           <div className="mb-3 flex flex-wrap items-center gap-3">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Personalize per recipient</h2>
+            <BlockLabel>Personalize per recipient</BlockLabel>
             <QuerySelect
               param="preview"
               value={previewId ?? ""}

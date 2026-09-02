@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
 import { rankNextActions, type NextAction, type PortfolioState } from "@/lib/portfolio/next-best";
-import { BandBadge, Card, CountChip, PageHeader, StatusBadge, Metric, SummaryBand } from "@/components/ui";
+import { BandBadge, Card, CountChip, PageHeader, StatusBadge, Metric, SummaryBand, BlockLabel } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { accountDivergences } from "@/lib/context/divergence";
 import { enabledTriggers } from "@/lib/triggers/catalog";
@@ -254,9 +254,9 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       {divergences.length > 0 && (
         <Card tone="amber" className="mb-6">
           <div className="mb-2.5 flex items-baseline justify-between gap-2">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
+            <BlockLabel>
               Where your systems disagree
-            </h2>
+            </BlockLabel>
             {!viewAll && allDivergences.length > divergences.length ? (
               <Link href={{ query: { ...cleanQuery(sp), today: "all" } }} className="text-label font-semibold text-accent hover:underline dark:text-blue-400">View all {allDivergences.length} →</Link>
             ) : (
@@ -281,11 +281,11 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       {/* Instrumentation is secondary to decisions (D.5 §4): when the decision
           queue leads, the KPI strip steps back — smaller and dimmer — so Today
           is dominated by what needs acting on, not empty counters. */}
-      <div className={pursuitQueue && pursuitQueue.items.length > 0 ? "mb-6" : "mb-6"}>
+      <div className="mb-6">
         {pursuitQueue && pursuitQueue.items.length > 0 && (
-          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">At a glance</h2>
+          <BlockLabel>At a glance</BlockLabel>
         )}
-        <div className={`flex flex-wrap gap-2 ${pursuitQueue && pursuitQueue.items.length > 0 ? "scale-[0.92] origin-left opacity-75" : ""}`}>
+        <div className="flex flex-wrap gap-2">
           <CountChip label="Awaiting approval" value={c.draft_motions} href="/motions" tone={Number(c.draft_motions) > 0 ? "amber" : "neutral"} />
           <CountChip label="Evidence to review" value={c.pending_review} href="/review" tone={Number(c.pending_review) > 0 ? "amber" : "neutral"} />
           <CountChip label="Scored accounts" value={c.scored_accounts} href="/accounts" tone="sky" />
@@ -295,9 +295,9 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
       {nextActions.length > 0 && (
         <Card className="mb-6">
-          <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+          <BlockLabel>
             Next best actions
-          </h2>
+          </BlockLabel>
           <ol className="space-y-2">
             {nextActions.map((a, i) => (
               <li key={i} className="flex items-baseline gap-3 text-copy">
@@ -316,9 +316,9 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
-          <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+          <BlockLabel>
             Pending approvals
-          </h2>
+          </BlockLabel>
           {drafts.length === 0 ? (
             <p className="text-copy text-neutral-500">
               All clear — new motions appear here when the designer drafts them.
@@ -341,9 +341,9 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         </Card>
 
         <Card>
-          <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+          <BlockLabel>
             Top opportunities
-          </h2>
+          </BlockLabel>
           {topRanked.length === 0 ? (
             <p className="text-copy text-neutral-500">Run the scoring pipeline to populate.</p>
           ) : (
@@ -365,9 +365,9 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       </div>
 
       <Card className="mt-6">
-        <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+        <BlockLabel>
           Recent activity
-        </h2>
+        </BlockLabel>
         {activity.length === 0 ? (
           <p className="text-copy text-neutral-500">Outcome events land here.</p>
         ) : (

@@ -11,7 +11,7 @@ import {
   weightedPipelineValue,
   type Stage,
 } from "@/lib/opportunities/lifecycle";
-import { Bento, Card, MiniBar, PageHeader, StatusBadge, SectionHeading, Disclosure, SummaryBand, buttonClass, fieldClass } from "@/components/ui";
+import { Bento, Card, MiniBar, PageHeader, StatusBadge, SectionHeading, Disclosure, SummaryBand, buttonClass, fieldClass, BlockLabel } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import {
   ELEMENTS,
@@ -488,7 +488,7 @@ export default async function PipelinePage({
             {tieOut && (
               <Card className="mb-3">
                 <div className="mb-1 flex items-baseline justify-between gap-2">
-                  <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Does it tie out?</h2>
+                  <BlockLabel>Does it tie out?</BlockLabel>
                   <span className="text-label text-neutral-400">CRM export vs live record, account by account</span>
                 </div>
                 <div className="mb-2 flex flex-wrap gap-x-6 gap-y-1 text-copy">
@@ -538,7 +538,7 @@ export default async function PipelinePage({
             {tieOut && (tieOut.deltas.length > 0 || writebacks.length > 0) && (
               <Card className="mb-3">
                 <div className="mb-1 flex items-baseline justify-between gap-3">
-                  <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Fix the CRM</h2>
+                  <BlockLabel>Fix the CRM</BlockLabel>
                   <span className="text-body text-neutral-400">corrections proposed from the tie-out — nothing touches the CRM without approval</span>
                 </div>
                 {writebacks.length === 0 ? (
@@ -596,7 +596,7 @@ export default async function PipelinePage({
             {calibration.length > 0 && (
               <Card className="mb-3">
                 <div className="mb-1 flex items-baseline justify-between gap-3">
-                  <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Was the forecast right?</h2>
+                  <BlockLabel>Was the forecast right?</BlockLabel>
                   <span className="text-body text-neutral-400">what the weighted pipeline said, vs what closed since</span>
                 </div>
                 <div className="space-y-1">
@@ -713,23 +713,35 @@ export default async function PipelinePage({
                 </div>
               );
             })()}
-            {(wonQual != null || lostQual != null) && (
-              <Card className="mb-3">
-                <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">AI learned signal · qualification vs outcome</h2>
-                <p className="text-copy text-neutral-600 dark:text-neutral-300">
-                  Closed-won deals qualified at <span className="font-semibold text-positive dark:text-green-400">{wonQual ?? "—"}</span> MEDDPICC health on average;
-                  closed-lost at <span className="font-semibold text-red-700 dark:text-red-400">{lostQual ?? "—"}</span>.
-                  {wonQual != null && lostQual != null && wonQual > lostQual && (
-                    <> The <span className="font-medium">+{wonQual - lostQual}</span> gap is the pattern the model banks at each close — stronger qualification, higher conversion.</>
-                  )}
-                </p>
-              </Card>
-            )}
-            {stageRows.length > 0 && (
-              <Card className="mb-3">
-                <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">Open opportunities by stage</h2>
-                <MiniBar rows={stageRows} series="ordered" />
-              </Card>
+            {/* The two read-outs are the same size of idea and were stacked as two
+                full-width cards, pushing the Attention list — the thing an
+                operator came here to act on — a further 220px down the page.
+                Side by side they cost one row. */}
+            {((wonQual != null || lostQual != null) || stageRows.length > 0) && (
+              <div className="mb-3 grid gap-3 lg:grid-cols-2 lg:items-start">
+                {(wonQual != null || lostQual != null) && (
+                  <Card>
+                    <BlockLabel>Qualification vs outcome</BlockLabel>
+                    <p className="text-copy ink-soft">
+                      Closed-won qualified at <span className="font-semibold text-positive dark:text-green-400">{wonQual ?? "—"}</span> MEDDPICC health on average;
+                      closed-lost at <span className="font-semibold text-red-700 dark:text-red-400">{lostQual ?? "—"}</span>.
+                      {wonQual != null && lostQual != null && wonQual > lostQual && (
+                        <> A <span className="font-medium">+{wonQual - lostQual}</span> gap.</>
+                      )}
+                    </p>
+                    <Disclosure summary="What the model does with this" className="mt-2">
+                      The gap is the pattern banked at each close — stronger qualification, higher
+                      conversion. It is an observation over closed deals, not a forecast.
+                    </Disclosure>
+                  </Card>
+                )}
+                {stageRows.length > 0 && (
+                  <Card>
+                    <BlockLabel>Open opportunities by stage</BlockLabel>
+                    <MiniBar rows={stageRows} series="ordered" />
+                  </Card>
+                )}
+              </div>
             )}
 
             {/* Pipeline & revenue roll-up — base (direct) vs joint (partner co-sell),
@@ -753,7 +765,7 @@ export default async function PipelinePage({
               return (
                 <Card className="mb-3">
                   <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                    <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Pipeline &amp; revenue roll-up</h2>
+                    <BlockLabel>Pipeline &amp; revenue roll-up</BlockLabel>
                     <span className="text-label text-neutral-400">open pipeline · base (direct) vs joint (co-sell)</span>
                   </div>
                   {/* Base vs joint split bar */}

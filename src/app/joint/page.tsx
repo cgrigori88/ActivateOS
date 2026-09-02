@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
-import { Card, NextStep, PageHeader } from "@/components/ui";
+import { Card, NextStep, PageHeader, BlockLabel } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { listPartnerships } from "@/lib/partnerships/partnerships";
 import { listJointPursuits, namedOverlapAccounts } from "@/lib/partnerships/joint";
@@ -122,9 +122,9 @@ export default async function JointPage({
         return (
           <Card key={s.partnershipId} className="mb-6">
             <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
+              <BlockLabel>
                 Settlement — with {s.otherOrgName}
-              </h2>
+              </BlockLabel>
               <span className="text-label text-neutral-400">identical on both sides · only jointly pursued accounts settle jointly</span>
             </div>
             <p className="mb-3 text-body text-neutral-500">
@@ -177,7 +177,7 @@ export default async function JointPage({
 
       {proposable.length > 0 && (
         <Card>
-          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Open a new room</h2>
+          <BlockLabel>Open a new room</BlockLabel>
           <p className="mb-3 text-body text-neutral-500">
             Only accounts from an approved named overlap are eligible — both sides already know they share them.
             The partner&apos;s owner accepts before the room opens.

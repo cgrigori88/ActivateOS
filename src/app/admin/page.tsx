@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { getOwnerPool } from "@/db/client";
-import { Bento, Button, Card, PageHeader, fieldClass } from "@/components/ui";
+import { Bento, Button, Card, PageHeader, fieldClass, BlockLabel } from "@/components/ui";
 import { currentRole } from "@/lib/auth/org";
 import { withTenant } from "@/lib/db/tenant";
 import { byoModelAvailable, hasOrgAnthropicKey } from "@/lib/ai/org-keys";
@@ -256,7 +256,7 @@ export default async function AdminPage({
       {/* ── Guest workspace identity (B+2) ── */}
       {isGuest && (
         <Card tone="amber" className="mb-4">
-          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Guest workspace</h2>
+          <BlockLabel>Guest workspace</BlockLabel>
           <p className="max-w-[88ch] text-copy text-neutral-600 dark:text-neutral-300">
             This is a free seat, created from a partner&apos;s invite. Everything in it is yours — your book, your
             contacts, your side of the trust ladder — behind the same tenant isolation as any workspace, and your
@@ -268,7 +268,7 @@ export default async function AdminPage({
       )}
 
       {/* ── Access ── */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Access</h2>
+      <BlockLabel>Access</BlockLabel>
       <Card className="mb-4">
         {!authConfigured() ? (
           <p className="text-copy text-neutral-500">
@@ -333,7 +333,7 @@ export default async function AdminPage({
       </Card>
 
       {/* ── Targeting: ICP + suppression (task #83) ── */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Targeting</h2>
+      <BlockLabel>Targeting</BlockLabel>
       <Card className="mb-4">
         <div className="grid gap-6 lg:grid-cols-2">
           <div>
@@ -408,7 +408,7 @@ export default async function AdminPage({
       </Card>
 
       {/* ── Partnerships ── */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Partnerships</h2>
+      <BlockLabel>Partnerships</BlockLabel>
       <Card className="mb-4">
         <p className="mb-4 text-body text-neutral-500">
           A partnership connects two tenants. You invite with a code bound to one of your partners; their owner
@@ -499,7 +499,7 @@ export default async function AdminPage({
       {/* ── Blind overlap (task #72) ── */}
       {ladders.length > 0 && (
         <>
-          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Blind overlap</h2>
+          <BlockLabel>Blind overlap</BlockLabel>
           {ladders.map((ladder) => (
             <Card key={ladder.partnershipId} className="mb-4">
               <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
@@ -657,13 +657,13 @@ export default async function AdminPage({
       )}
 
       {/* ── Agent access (task #76) ── */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Agent access</h2>
+      <BlockLabel>Agent access</BlockLabel>
       <Card className="mb-4">
         <AgentKeys keys={keyRows} endpoint={mcpEndpoint} mint={mintApiKeyAction} revoke={revokeApiKeyAction} />
       </Card>
 
       {/* ── Bring your own model (slice C): their data, their AI contract ── */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Bring your own model</h2>
+      <BlockLabel>Bring your own model</BlockLabel>
       <Card className="mb-4">
         {!byoAvailable ? (
           <p className="text-copy text-neutral-500">
@@ -701,7 +701,7 @@ export default async function AdminPage({
       </Card>
 
       {/* ── Shared lists ── */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Shared lists</h2>
+      <BlockLabel>Shared lists</BlockLabel>
       <Card className="mb-4">
         {grants.length === 0 ? (
           <p className="mb-4 text-copy text-neutral-500">Nothing shared in either direction yet.</p>
@@ -789,7 +789,7 @@ export default async function AdminPage({
       </Card>
 
       {/* ── Privacy: GDPR data-subject rights (RISK-2) ── */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Privacy &amp; data-subject rights</h2>
+      <BlockLabel>Privacy &amp; data-subject rights</BlockLabel>
       <Card className="mb-4">
         <p className="mb-4 max-w-[92ch] text-copy text-neutral-600 dark:text-neutral-300">
           Serve a person&apos;s GDPR request against the personal data this workspace holds about them — CRM
@@ -841,7 +841,7 @@ export default async function AdminPage({
       </Card>
 
       {/* ── Audit log ── */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Audit log</h2>
+      <BlockLabel>Audit log</BlockLabel>
       <Card className="mb-6">
         {ledger.length === 0 ? (
           <p className="text-copy text-neutral-500">No entries yet — membership and cross-tenant events land here.</p>
@@ -871,7 +871,7 @@ export default async function AdminPage({
       </Card>
 
       {/* ── AI operations ── */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">AI operations</h2>
+      <BlockLabel>AI operations</BlockLabel>
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Bento label="agent runs" value={totalRuns} />
         <Bento label="AI spend" value={formatCost(totalCost)} />

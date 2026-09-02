@@ -3,7 +3,7 @@ import { withTenant } from "@/lib/db/tenant";
 import { getLifecycleHorizon } from "@/lib/lifecycle/horizon";
 import { aggregateValue } from "@/lib/value/aggregate";
 import { bounds as vcBounds } from "@/lib/value/case";
-import { Bento, Card, MiniBar, NextStep, PageHeader, StatusBadge, Disclosure, fieldClass } from "@/components/ui";
+import { Bento, Card, MiniBar, NextStep, PageHeader, StatusBadge, Disclosure, fieldClass, BlockLabel } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
 import {
@@ -420,7 +420,7 @@ export default async function MotionsPage({
         <>
           {/* Chart */}
           <Card className="mb-6">
-            <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">Motions by {group.label.toLowerCase()}</h2>
+            <BlockLabel>Motions by {group.label.toLowerCase()}</BlockLabel>
             <MiniBar rows={chartRows} />
           </Card>
 

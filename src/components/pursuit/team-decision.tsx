@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { PursuitTeamView, TeamMemberView } from "@/lib/pursuits/read-models/types";
 import { decideTeamAction } from "@/app/pursuits/[id]/actions";
 import { TeamStatusBadge, BandPill } from "./parts";
-import { buttonClass } from "@/components/ui";
+import { buttonClass, Disclosure } from "@/components/ui";
 
 /**
  * Multi-Party Execution Plan (Phase C2/C3). The pursuit team as a governed worklist, folded into
@@ -61,9 +61,10 @@ export function ExecutionPlan({ team, pursuitId, canDecide }: { team: PursuitTea
           <b style={{ color: "var(--color-accent-attention)" }}>Readiness held.</b> Required role(s) not yet accepted: {team.missingRequiredRoles.map(ROLE).join(", ")}.
         </div>
       )}
-      <p className="mt-2 text-micro text-neutral-400">
-        Confirm and accept are governed decisions — a recompute may change the recommended team, never a confirmed assignment.
-      </p>
+      <Disclosure summary="What confirming does" className="mt-2.5">
+        Confirm and accept are governed decisions. A recompute may change the <i>recommended</i> team;
+        it never changes a confirmed assignment.
+      </Disclosure>
     </div>
   );
 }

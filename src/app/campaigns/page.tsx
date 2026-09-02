@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
-import { Bento, Card, PageHeader, StatusBadge, fieldClass } from "@/components/ui";
+import { Bento, Card, PageHeader, StatusBadge, fieldClass, BlockLabel } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
@@ -154,7 +154,7 @@ export default async function CampaignsPage({
           (#79), which arrives with ?motion= preselecting the play. */}
       <div id="composer" className="mb-6 grid gap-4 lg:grid-cols-2">
         <Card>
-          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Generate from a motion</h2>
+          <BlockLabel>Generate from a motion</BlockLabel>
           <p className="mb-3 text-body text-neutral-500">AI drafts a grounded sequence from an approved/active motion. Each touch is a draft until you approve it.</p>
           <form action={suggestCampaignsAction} className="mb-3">
             <button className={buttonClass("primary", "sm")}>
@@ -195,7 +195,7 @@ export default async function CampaignsPage({
         </Card>
 
         <Card>
-          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Build by hand</h2>
+          <BlockLabel>Build by hand</BlockLabel>
           <p className="mb-3 text-body text-neutral-500">Start an empty campaign on any account, then add and schedule your own touches — no motion needed.</p>
           <form action={createBlankCampaignAction} className="flex flex-wrap items-end gap-3">
             <label className="text-copy">
@@ -248,7 +248,7 @@ export default async function CampaignsPage({
 
       {/* Sequences */}
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Campaigns</h2>
+        <BlockLabel>Campaigns</BlockLabel>
         <QuerySelect param="status" value={sp.status ?? "all"} label="Status" options={[{ value: "all", label: "Any status" }, ...statusOptions.map((s) => ({ value: s, label: s }))]} />
         <QuerySelect param="partner" value={sp.partner ?? "all"} label="Partner" options={[{ value: "all", label: "Any partner" }, { value: "Direct", label: "Direct" }, ...partnerOptions.map((p) => ({ value: p, label: p }))]} />
         {solutionOptions.length > 0 && (

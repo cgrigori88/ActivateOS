@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bento, Card, PageHeader } from "@/components/ui";
+import { Bento, Card, PageHeader, BlockLabel } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { QuerySelect } from "@/components/query-select";
 import { withTenant } from "@/lib/db/tenant";
@@ -294,7 +294,7 @@ export default async function QueuePage({
 
       {recent.length > 0 && (
         <Card className="mt-8">
-          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Recently resolved</h2>
+          <BlockLabel>Recently resolved</BlockLabel>
           <ul className="space-y-1.5">
             {recent.map((r, i) => (
               <li key={i} className="flex items-center gap-2 text-copy text-neutral-600 dark:text-neutral-400">

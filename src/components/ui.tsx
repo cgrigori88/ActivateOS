@@ -279,13 +279,36 @@ export function SummaryBand({ children, className = "" }: { children: ReactNode;
 }
 
 /**
- * SectionHeading — one treatment for the heading inside a page (§1, §3).
+ * The page has exactly TWO heading levels below the PageHeader.
  *
- * The app wrote this inline as `text-micro font-bold uppercase tracking-[0.08em]`,
- * `text-micro ... tracking-[0.06em]`, `text-copy font-semibold uppercase` and
- * several more. Uppercase micro-type reads as chrome, so a page built entirely
- * from it has no hierarchy — everything is a label and nothing is a title.
+ * `SectionHeading` is a real section — a thing with a name the reader would say
+ * out loud ("Renewal radar", "Decisions that move revenue"). It gets title-size
+ * ink and an optional one-clause hint.
+ *
+ * `BlockLabel` is the minor label over a list or a stat block ("At a glance",
+ * "Recent activity"). It is chrome: small, uppercase, quiet.
+ *
+ * Both existed already, but only by accident. The label treatment was written
+ * inline 96 times across 21 files with FOUR different bottom margins — no
+ * margin, `mb-1`, `mb-2`, `mb-3` — so blocks that were visually identical sat
+ * at four different distances from their own content. That is the kind of
+ * inconsistency nobody can name and everybody feels.
  */
+export function BlockLabel({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <h2 className={`mb-2 text-copy font-semibold uppercase tracking-wide ink-faint ${className}`}>
+      {children}
+    </h2>
+  );
+}
+
+/** A real section: title-size, with an optional one-clause hint and actions. */
 export function SectionHeading({
   children,
   hint,
@@ -835,6 +858,49 @@ export function Badge({ tone = "neutral", children }: { tone?: BadgeTone; childr
  * `zero` is not in this component on purpose: a known zero is a value, so it is
  * rendered by the normal value path (formatMoney gives "$0"), never here.
  */
+/**
+ * Assurance — one guarantee, stated as a mechanism (Trust center).
+ *
+ * Distinct from `Metric`, which answers "how much". This answers "how is that
+ * prevented", and its value is a short mechanism rather than a figure. Trust
+ * opened on four counters, three of which read 0 in a young tenant — which
+ * makes an architecture that IS enforced look like an architecture nobody uses.
+ * A guarantee does not become weaker because no one has exercised it yet.
+ *
+ * `note` is the live figure where one exists, so the mechanism and the evidence
+ * for it sit together instead of in separate halves of the page.
+ *
+ * Carries no width of its own — the page owns the grid, so a set of six lays out
+ * as two rows of three rather than as five and an orphan.
+ */
+export function Assurance({
+  label,
+  mechanism,
+  note,
+}: {
+  label: string;
+  mechanism: string;
+  note?: string;
+}) {
+  return (
+    <div
+      className="flex flex-col rounded-card p-3.5"
+      style={{ background: "var(--surface-primary)", boxShadow: "var(--shadow-low)", border: "1px solid var(--border-subtle)" }}
+    >
+      <div className="flex items-center gap-1.5">
+        <span
+          aria-hidden
+          className="h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ background: "var(--color-accent-verified)" }}
+        />
+        <span className="text-micro font-bold uppercase tracking-[0.05em] ink-faint">{label}</span>
+      </div>
+      <div className="mt-1.5 text-copy font-semibold leading-snug ink">{mechanism}</div>
+      {note && <div className="mt-1 text-label ink-faint">{note}</div>}
+    </div>
+  );
+}
+
 export type AbsenceKind = "unknown" | "unavailable" | "disabled" | "empty";
 
 const ABSENCE_LABEL: Record<AbsenceKind, string> = {

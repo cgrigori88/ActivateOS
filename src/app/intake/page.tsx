@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
-import { Card, PageHeader, StatusBadge, fieldClass } from "@/components/ui";
+import { Card, PageHeader, StatusBadge, fieldClass, BlockLabel } from "@/components/ui";
 import { analyzeUploadAction } from "./actions";
 import { buttonClass } from "@/components/ui";
 
@@ -84,7 +84,7 @@ export default async function IntakePage({
 
       {/* Upload → analyze → mapping review */}
       <Card className="mb-6">
-        <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">Upload a file</h2>
+        <BlockLabel>Upload a file</BlockLabel>
         <form action={analyzeUploadAction} className="flex flex-wrap items-end gap-3">
           <label className="text-copy">
             <span className="mb-1 block text-body text-neutral-500">CSV file — any columns, any naming</span>
@@ -121,7 +121,7 @@ export default async function IntakePage({
       </Card>
 
       {/* Per-partner cards */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Last ingested per partner</h2>
+      <BlockLabel>Last ingested per partner</BlockLabel>
       {partners.length === 0 ? (
         <p className="mb-6 text-copy text-neutral-500">No partner uploads yet — upload a CSV above to get started.</p>
       ) : (
@@ -164,7 +164,7 @@ export default async function IntakePage({
       )}
 
       {/* Runs log */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Intake runs</h2>
+      <BlockLabel>Intake runs</BlockLabel>
       {runs.length === 0 ? (
         <p className="text-copy text-neutral-500">No runs yet.</p>
       ) : (

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { DecisionItem, DecisionClass } from "@/lib/pursuits/read-models/types";
 import { BandPill } from "./parts";
 import { skillLabel } from "./vocab";
+import { buttonClass } from "@/components/ui";
 
 /**
  * Today decision queue (Workstream D.5 §20). The operating queue: what needs my
@@ -31,15 +32,27 @@ const CLASS_WORD: Record<DecisionClass, string> = {
 function whyHere(item: DecisionItem): string[] {
   const ageDays = Math.max(0, Math.floor((Date.now() - new Date(item.at).getTime()) / 86_400_000));
   const band = item.commercialPriority.replace(/_/g, " ");
+  const governed = item.allowedActions[0];
   return [
     `Class: ${CLASS_WORD[item.decisionClass]} — the primary rank`,
     `Operational urgency: ${item.operationalUrgency}`,
     `Commercial priority: ${band}`,
     `Unresolved ${ageDays === 0 ? "today" : `${ageDays} day${ageDays === 1 ? "" : "s"}`} — older decisions break ties upward`,
+    ...(governed ? [`Acting on it runs the governed skill: ${skillLabel(governed.skill)}`] : []),
+    ...(item.reason ? [item.reason] : []),
   ];
 }
 
-export function TodayDecisionCard({ item, drawerBase }: { item: DecisionItem; drawerBase?: string }) {
+export function TodayDecisionCard({
+  item,
+  drawerBase,
+  showReason = true,
+}: {
+  item: DecisionItem;
+  drawerBase?: string;
+  /** False when this reason repeats across the queue — see TodayQueue. */
+  showReason?: boolean;
+}) {
   const hue = CLASS_HUE[item.decisionClass];
   const action = item.allowedActions[0];
   const factors = whyHere(item);
@@ -68,10 +81,25 @@ export function TodayDecisionCard({ item, drawerBase }: { item: DecisionItem; dr
             : <span className="truncate">{item.accountLabel}</span>}
           <span className="truncate text-body font-medium text-neutral-500">{item.title}</span>
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-label text-neutral-500">
-          <span>Operational urgency <b className="capitalize text-neutral-700 dark:text-neutral-200">{item.operationalUrgency}</b></span>
-          <span className="flex items-center gap-1.5">Commercial priority <BandPill band={item.commercialPriority} /></span>
-          {action && <span>Governed by <b className="text-neutral-600 dark:text-neutral-300">{skillLabel(action.skill)}</b></span>}
+        {/* WHY NOW — the one thing a reader cannot reconstruct from the rest of
+            the row, and which this card never rendered at all. Shown only when
+            it is specific to this item; see TodayQueue. */}
+        {showReason && item.reason && <p className="mt-1 line-clamp-2 text-body text-neutral-500">{item.reason}</p>}
+        {/* Status, not a label sentence. Every row previously carried
+            "Operational urgency · Commercial priority · Governed by" spelled out
+            in full, so six rows repeated the same three field names eighteen
+            times and the values had to be read out of them. The band pill is
+            self-describing; urgency earns a chip only when it is elevated,
+            because "normal" on every row is not information. What runs when you
+            act moved into the disclosure below, beside the other ranking facts. */}
+        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-label">
+          <BandPill band={item.commercialPriority} />
+          {(item.operationalUrgency === "critical" || item.operationalUrgency === "high") && (
+            <span className="rounded-full px-2 py-px text-micro font-bold uppercase tracking-[0.04em]"
+              style={{ color: "var(--color-accent-attention)", background: "color-mix(in srgb, var(--color-accent-attention) 12%, transparent)" }}>
+              {item.operationalUrgency} urgency
+            </span>
+          )}
         </div>
         <details className="mt-1.5 group">
           <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-label font-medium text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200">
@@ -85,11 +113,11 @@ export function TodayDecisionCard({ item, drawerBase }: { item: DecisionItem; dr
           </ol>
         </details>
       </div>
-      <Link
-        href={item.deepLink}
-        className="flex-none rounded-full px-4 py-2 text-body font-bold text-white transition"
-        style={{ background: hue }}
-      >
+      {/* One CTA grammar. This was filled with the row's class hue, so the same
+          control was blue, red, violet or green depending on which kind of item
+          it sat on — four colours for one action. The class is already stated by
+          the chip on the left. */}
+      <Link href={item.deepLink} className={`flex-none ${buttonClass("primary", "md")}`}>
         {action?.label ?? "Open"} →
       </Link>
     </div>
@@ -98,5 +126,28 @@ export function TodayDecisionCard({ item, drawerBase }: { item: DecisionItem; dr
 
 export function TodayQueue({ items, drawerBase }: { items: DecisionItem[]; drawerBase?: string }) {
   if (!items.length) return <p className="text-copy text-neutral-500">Nothing needs a decision right now.</p>;
-  return <div className="flex flex-col gap-2.5">{items.map((it) => <TodayDecisionCard key={it.id} item={it} drawerBase={drawerBase} />)}</div>;
+
+  /*
+   * A reason that appears on every row is not a reason — it is the decision
+   * class restated once per card. Six route approvals all read "Recommended
+   * route is awaiting your approval", which the class chip, the title and the
+   * CTA had each already said. So the QUEUE decides: a reason earns its line
+   * only where it distinguishes this item from its neighbours, which is exactly
+   * when it carries a finding (a stalled deal, a contradiction, a date) rather
+   * than a restatement.
+   *
+   * This is a display rule, not a filter. Nothing is dropped from the queue, the
+   * ordering is untouched, and the full reason stays in "Why is this here?".
+   */
+  const seen = new Map<string, number>();
+  for (const it of items) if (it.reason) seen.set(it.reason, (seen.get(it.reason) ?? 0) + 1);
+  const repeated = (r: string | null | undefined) => !!r && (seen.get(r) ?? 0) > items.length / 2;
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      {items.map((it) => (
+        <TodayDecisionCard key={it.id} item={it} drawerBase={drawerBase} showReason={!repeated(it.reason)} />
+      ))}
+    </div>
+  );
 }

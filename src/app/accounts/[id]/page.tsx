@@ -8,8 +8,7 @@ import {
   FEATURE_LABELS,
   PageHeader,
   StatusBadge,
-  fieldClass,
-} from "@/components/ui";
+  fieldClass, BlockLabel } from "@/components/ui";
 import { loadCompanyIntel } from "@/lib/intel/company-intel";
 import { CONFIDENCE_FORMULA, confidenceTone, contextConfidence } from "@/lib/context/confidence";
 import { addMeetingNoteAction, setTeamStatusAction } from "./actions";
@@ -314,9 +313,9 @@ export default async function AccountPage({
       {digest && (digest.items as { type: string; text: string; at: string }[]).length > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex items-baseline justify-between gap-2">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
+            <BlockLabel>
               What&apos;s new on this account
-            </h2>
+            </BlockLabel>
             <span className="text-label text-neutral-400">
               digest through {new Date(digest.period_end).toISOString().slice(0, 10)} ·{" "}
               <Link href="/routines" className="text-accent hover:underline dark:text-blue-400">Routines</Link>
@@ -344,7 +343,7 @@ export default async function AccountPage({
       {timeline.length > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex items-baseline justify-between gap-2">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Deal timeline</h2>
+            <BlockLabel>Deal timeline</BlockLabel>
             <span className="text-label text-neutral-400">
               every system, one record — each event names its source
             </span>
@@ -390,7 +389,7 @@ export default async function AccountPage({
       {/* ── Meetings (task #86): the engagement signal email can't see ── */}
       <Card className="mb-6">
         <div className="mb-2 flex items-baseline justify-between gap-2">
-          <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Meetings</h2>
+          <BlockLabel>Meetings</BlockLabel>
           <span className="text-label text-neutral-400">
             each note lands as first-party evidence and counts as engagement
           </span>
@@ -485,9 +484,9 @@ export default async function AccountPage({
             </p>
           )}
 
-          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+          <BlockLabel>
             Why now
-          </h2>
+          </BlockLabel>
           {features.map((f) => (
             <div key={f.feature} className="mb-3 last:mb-0">
               <p className="text-copy font-medium">
@@ -522,9 +521,9 @@ export default async function AccountPage({
 
       <Card className="mb-6">
         <div className="mb-3 flex items-center gap-2">
-          <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
+          <BlockLabel>
             Data completeness
-          </h2>
+          </BlockLabel>
           <span className="text-body text-neutral-400">how thoroughly researched — not propensity</span>
         </div>
         <CompletenessGrid byCategory={intel.completeness.byCategory} overall={intel.completeness.overall} />
@@ -560,9 +559,9 @@ export default async function AccountPage({
       {intel.evidence.length > 0 && (
         <Card className="mb-6">
           <div className="mb-3 flex items-center gap-2">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
+            <BlockLabel>
               Evidence
-            </h2>
+            </BlockLabel>
             <span className="text-body text-neutral-400">
               {intel.counts.verified} verified · {intel.counts.quarantined} quarantined ·{" "}
               {intel.counts.rejected} rejected
@@ -593,9 +592,9 @@ export default async function AccountPage({
 
       {partnerFits.length > 0 && (
         <Card className="mb-6">
-          <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+          <BlockLabel>
             Pursuit team
-          </h2>
+          </BlockLabel>
           <div className="space-y-3">
             {partnerFits.map((f) => {
               const isRouted = team?.partner_id === f.partner_id;
@@ -668,9 +667,9 @@ export default async function AccountPage({
       {motions.length > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex items-center gap-2">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
+            <BlockLabel>
               Revenue motion
-            </h2>
+            </BlockLabel>
             <StatusBadge status={motions[0].status} />
             <span className="text-body text-neutral-400">confidence: {motions[0].confidence}</span>
           </div>
@@ -713,9 +712,9 @@ export default async function AccountPage({
 
       {events.length > 0 && (
         <Card>
-          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+          <BlockLabel>
             Timeline
-          </h2>
+          </BlockLabel>
           <ul className="space-y-1.5">
             {events.map((e, i) => (
               <li key={i} className="flex items-center gap-2 text-copy text-neutral-600 dark:text-neutral-400">

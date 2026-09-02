@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { BackLink } from "@/components/ui";
+import { BackLink, Disclosure } from "@/components/ui";
 import { withTenant } from "@/lib/db/tenant";
 import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
 import { getPursuitDetail } from "@/lib/pursuits/read-models/detail";
@@ -184,7 +184,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         {/* Route decision — recommended + human selection above the dense compare. `#route` is the
             Today deep-link anchor; scroll-mt keeps it clear of the sticky chrome. The governed
             decision control (RouteDecision) is the first human governed mutation in the platform. */}
-        <div id="route" className="order-3 scroll-mt-6 lg:order-4 lg:col-span-2">
+        <div id="route" className="order-3 scroll-mt-6 lg:order-5 lg:col-span-2">
         <Panel eyebrow="Recommendation is not selection" title="Route decision" accent="var(--color-route)"
           aside={r.changeEvents.length > 0 ? (
             <span className="inline-flex flex-wrap items-center gap-1.5 text-label">
@@ -206,17 +206,24 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
 
         {/* Why (disclosure split) — the centerpiece */}
         {r.recommended && (
-          <Panel eyebrow="Enforced server-side, not in the browser" title={`Why ${recWord}`} accent="var(--color-band-high)" className="order-4 lg:order-5 lg:col-span-2">
-            <p className="mb-3.5 max-w-[80ch] text-body text-neutral-500">
-              The same recommendation, two audiences. Toggle the audience — what a partner may see is decided in the read model before it reaches a screen, so the confidential figure is never serialized into the shareable payload.
-            </p>
+          <Panel eyebrow="Enforced server-side, not in the browser" title={`Why ${recWord}`} accent="var(--color-band-high)" className="order-4 lg:order-6 lg:col-span-2">
+            {/* The toggle IS the explanation — a reader who flips it sees the
+                confidential line disappear. The mechanism behind that goes in
+                disclosure, below the thing it describes, so the demo moment is
+                the first thing on the panel rather than the fourth line of a
+                paragraph about it. */}
             <DisclosureTheater internal={r.recommended.reasonsInternal} shareable={r.recommended.reasonsShareable} candidateLabel={r.recommended.label} />
+            <Disclosure summary="How this works" className="mt-3.5">
+              What a partner may see is decided in the read model, before it reaches a screen. The
+              confidential figure is never serialized into the shareable payload — the browser is not
+              trusted to hide it.
+            </Disclosure>
           </Panel>
         )}
 
         {/* Pursuit team — the Multi-Party Execution Plan. `#team` is the Today deep-link anchor for a
             "waiting on this participant" item. Governed confirm/accept lives inline (operators only). */}
-        <div id="team" className="order-5 scroll-mt-6 lg:order-6">
+        <div id="team" className="order-5 scroll-mt-6 lg:order-7">
         <Panel title="Pursuit team" accent="var(--color-readiness)"
           aside={<span className="inline-flex items-center gap-1.5 text-label text-neutral-500">Readiness <BandPill band={d.team.activationReadiness.band} /></span>}>
           <ExecutionPlan team={d.team} pursuitId={d.pursuitId} canDecide={loaded.canDecide} />
@@ -226,7 +233,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         {/* Stakeholder Intelligence (P1C) — coverage and missing roles, never an address book.
             `#stakeholders` is the deep-link anchor from Today, Motion overlays and constraint remedies. */}
         {d.stakeholders && (
-          <div id="stakeholders" className="order-5 scroll-mt-6 lg:order-6">
+          <div id="stakeholders" className="order-5 scroll-mt-6 lg:order-7">
             <Panel eyebrow="Roles and coverage — verified ≠ inferred ≠ unverified" title="Stakeholders" accent="var(--color-accent-violet)">
               <StakeholderPanel c={d.stakeholders} pursuitId={d.pursuitId} accountLabel={d.accountLabel} canDecide={loaded.canDecide} contacts={loaded.contacts} />
             </Panel>
@@ -234,25 +241,25 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         )}
 
         {/* Facts / evidence */}
-        <Panel eyebrow="Trusted intelligence" title="Facts behind this" accent="var(--color-evidence)" tint className="order-6 lg:order-3">
+        <Panel eyebrow="Trusted intelligence" title="Facts behind this" accent="var(--color-evidence)" tint className="order-6 lg:order-4 lg:col-span-2">
           <FactsBento facts={d.facts} />
         </Panel>
 
         {/* Material changes */}
-        <Panel eyebrow="Material events only" title="What changed" accent="var(--color-accent-violet)" className="order-7 lg:order-7">
+        <Panel eyebrow="Material events only" title="What changed" accent="var(--color-accent-violet)" className="order-7 lg:order-8">
           <MaterialChangeTimeline timeline={d.timeline} />
         </Panel>
 
         {/* Outcome & attribution — the learning half (Phase B). Only when an outcome exists. */}
         {loaded.outcome.latest && (
-          <Panel eyebrow="What happened ≠ who moved it" title="Outcome & attribution" accent="var(--color-accent-verified)" className="order-8 lg:order-9 lg:col-span-2">
+          <Panel eyebrow="What happened ≠ who moved it" title="Outcome & attribution" accent="var(--color-accent-verified)" className="order-8 lg:order-8">
             <OutcomePanel summary={loaded.outcome} />
           </Panel>
         )}
 
         {/* Federation — participants, shared context, governed actions, outcome trail (disclosure-safe) */}
         {federation && (
-          <Panel eyebrow="One pursuit, many organizations — disclosure decided server-side" title="Federation" accent="var(--color-route)" className="order-8 lg:order-8 lg:col-span-2">
+          <Panel eyebrow="One pursuit, many organizations — disclosure decided server-side" title="Federation" accent="var(--color-route)" className="order-9 lg:order-9 lg:col-span-2">
             <FederationBento fed={federation.fed} actions={federation.actions} outcomes={federation.outcomes} />
           </Panel>
         )}

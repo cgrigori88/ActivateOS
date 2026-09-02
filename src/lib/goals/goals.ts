@@ -10,6 +10,9 @@ type Db = Pool | PoolClient;
  * due date, which is what turns a target into a signal.
  */
 
+/** One partner's (or Direct's) share of a goal, from the motions linked to it. */
+export interface GoalContributor { name: string; motions: number; usd: number }
+
 export type Metric = "pipeline_usd" | "won_usd" | "opps_won" | "motions_won" | "touches_sent" | "custom";
 
 export interface MetricMeta {
@@ -44,6 +47,8 @@ export interface Goal {
   owner: string | null;
   motionsLinked: number;
   campaignsLinked: number;
+  /** Who is carrying it, largest share first. Empty when nothing is linked. */
+  contributors: GoalContributor[];
   progressPct: number; // 0..100 toward target
   timePct: number | null; // 0..100 of the window elapsed (null if no dates)
   daysLeft: number | null;
@@ -85,6 +90,7 @@ export async function listGoals(db: Db, orgId: string): Promise<Goal[]> {
     opps_won: string;
     motions_linked: string;
     campaigns_linked: string;
+    contributors: GoalContributor[];
   }>(
     `select g.*,
        (select coalesce(sum(m.estimated_value_usd),0) from revenue_motions m where m.goal_id = g.id) as motions_pipeline,
@@ -93,7 +99,19 @@ export async function listGoals(db: Db, orgId: string): Promise<Goal[]> {
        (select count(*) from campaign_touches t join campaigns ca on ca.id = t.campaign_id where ca.goal_id = g.id and t.status = 'sent') as touches_sent,
        (select count(*) from opportunities o join revenue_motions m on m.id = o.motion_id where m.goal_id = g.id and o.stage = 'closed_won') as opps_won,
        (select count(*) from revenue_motions m where m.goal_id = g.id) as motions_linked,
-       (select count(*) from campaigns ca where ca.goal_id = g.id) as campaigns_linked
+       (select count(*) from campaigns ca where ca.goal_id = g.id) as campaigns_linked,
+       -- Who is actually carrying this goal. A target that rolls up from linked
+       -- commercial objects can also say WHICH ones, and for a co-sell goal that
+       -- is the partner split — the difference between a number on a slide and a
+       -- number you can act on.
+       (select coalesce(json_agg(x order by x.usd desc), '[]'::json) from (
+          select coalesce(p.name, 'Direct') as name, count(*)::int as motions,
+                 coalesce(sum(m.estimated_value_usd), 0)::float8 as usd
+            from revenue_motions m
+            left join partners p on p.id = m.partner_id
+           where m.goal_id = g.id
+           group by 1
+        ) x) as contributors
      from goals g
      where g.org_id = $1
      order by (g.status = 'active') desc, g.due_date asc nulls last, g.created_at desc`,
@@ -144,6 +162,7 @@ export async function listGoals(db: Db, orgId: string): Promise<Goal[]> {
       owner: r.owner,
       motionsLinked: Number(r.motions_linked),
       campaignsLinked: Number(r.campaigns_linked),
+      contributors: (r.contributors ?? []).filter((c) => c.usd > 0),
       progressPct,
       timePct,
       daysLeft,

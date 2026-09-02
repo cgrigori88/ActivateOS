@@ -3,7 +3,7 @@ import type { StakeholderCoverage, RoleCoverage, WarmPathStatement } from "@/lib
 import { bestWarmPath, ROLE_WORD } from "@/lib/stakeholders/coverage";
 import { assertStakeholderAction } from "@/app/pursuits/[id]/actions";
 import { usd } from "@/components/intel/constraint-language";
-import { buttonClass } from "@/components/ui";
+import { buttonClass, Disclosure } from "@/components/ui";
 
 /**
  * Stakeholder Intelligence panel (P1C §5/§16/§17). The hero is COVERAGE — roles and their
@@ -196,10 +196,14 @@ export function StakeholderPanel({ c, pursuitId, accountLabel, canDecide, contac
         </details>
       )}
 
-      <p className="text-micro text-neutral-400">
-        Coverage reads the canonical stakeholder assertions on this pursuit&rsquo;s linked opportunit{c.opportunityIds.length === 1 ? "y" : "ies"} — verified / inferred / unverified stay distinct, and{" "}
-        <Link href="/contacts" className="hover:underline">Contacts</Link> remains the directory. Assertions are governed (assert_stakeholder_role); titles are context, never authority.
-      </p>
+      {/* Provenance methodology, not a finding. The coverage states themselves
+          (verified / inferred / unverified / missing) stay on the surface — this
+          only explains where they come from. */}
+      <Disclosure summary="Where coverage comes from">
+        Canonical stakeholder assertions on this pursuit&rsquo;s linked opportunit{c.opportunityIds.length === 1 ? "y" : "ies"}. Verified,
+        inferred and unverified stay distinct and are never averaged; <Link href="/contacts" className="hover:underline">Contacts</Link> remains
+        the directory. Assertions are governed, and a title is context, never authority.
+      </Disclosure>
     </div>
   );
 }

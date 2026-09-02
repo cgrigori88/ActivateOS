@@ -5,7 +5,7 @@ import { calibrateStages, editIntensity } from "@/lib/insights/calibration";
 import { computeFunnel } from "@/lib/insights/funnel";
 import { STAGES, type Stage } from "@/lib/opportunities/lifecycle";
 import { loadStageWeights } from "@/lib/opportunities/stage-weights";
-import { Bento, Card, PageHeader, SectionHeading, Disclosure, SummaryBand } from "@/components/ui";
+import { Bento, Card, PageHeader, SectionHeading, Disclosure, SummaryBand, BlockLabel } from "@/components/ui";
 import { sourceOutcomeAttribution } from "@/lib/opportunities/autopsy";
 import { QuerySelect } from "@/components/query-select";
 import { saveStageWeightsAction, setTriggerEnabledAction } from "./actions";
@@ -121,7 +121,7 @@ export default async function InsightsPage({
       {canonicalTotal > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Canonical outcomes · attribution</h2>
+            <BlockLabel>Canonical outcomes · attribution</BlockLabel>
             <span className="text-body text-neutral-400">{canonicalTotal} terminal outcome{canonicalTotal === 1 ? "" : "s"} — small sample; honest by design</span>
           </div>
           <div className="flex flex-wrap gap-2 text-copy">
@@ -146,7 +146,7 @@ export default async function InsightsPage({
       {partnerHeadlines.length > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Partner activation vs presence</h2>
+            <BlockLabel>Partner activation vs presence</BlockLabel>
             <span className="text-body text-neutral-400">separate truths — presence, activation, acceptance, canonical outcomes</span>
           </div>
           <div className="overflow-x-auto">
@@ -175,10 +175,14 @@ export default async function InsightsPage({
         </Card>
       )}
 
+      <SectionHeading hint="What the record says happened. Counts, not conclusions.">
+        Observed outcomes
+      </SectionHeading>
+
       <Card className="mb-6">
-        <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+        <BlockLabel>
           Commercial funnel
-        </h2>
+        </BlockLabel>
         <div className="space-y-2">
           {funnel.map((s) => (
             <div key={s.key} className="flex items-center gap-3 text-copy">
@@ -200,11 +204,15 @@ export default async function InsightsPage({
         </div>
       </Card>
 
+      <SectionHeading hint="Numbers a human chose. They stay declared until enough outcomes replace them.">
+        Declared assumptions
+      </SectionHeading>
+
       <Card className="mb-6">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
+          <BlockLabel>
             Stage probability calibration
-          </h2>
+          </BlockLabel>
           <QuerySelect
             param="wscope"
             value={wscope || "all"}
@@ -298,9 +306,9 @@ export default async function InsightsPage({
       </Card>
 
       <Card>
-        <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+        <BlockLabel>
           Conversation outcomes
-        </h2>
+        </BlockLabel>
         {replies.length === 0 ? (
           <p className="text-copy text-neutral-500">No customer replies analyzed yet.</p>
         ) : (
@@ -326,7 +334,7 @@ export default async function InsightsPage({
       {attribution.length > 0 && (
         <Card className="mb-6">
           <div className="mb-1 flex items-baseline justify-between gap-3">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">What sat behind the outcomes</h2>
+            <BlockLabel>What sat behind the outcomes</BlockLabel>
             <span className="text-body text-neutral-400">early sample — {attributionDeals} closed deal{attributionDeals === 1 ? "" : "s"}; patterns firm up with volume</span>
           </div>
           <ul className="space-y-1 text-copy">
@@ -348,6 +356,9 @@ export default async function InsightsPage({
 
       {/* Attention triggers (task #83): the named catalog of deterministic
           "this deserves attention" rules, each with an org-level switch. */}
+      <SectionHeading hint="Deterministic rules, not a model. Each one is named and switchable.">
+        What raises an account
+      </SectionHeading>
       <Card>
         <SectionHeading hint="Every rule that raises an account for attention, by name.">
           Attention triggers
@@ -380,7 +391,7 @@ export default async function InsightsPage({
                 <form action={setTriggerEnabledAction} className="shrink-0 pt-0.5">
                   <input type="hidden" name="trigger" value={t.key} />
                   <input type="hidden" name="enabled" value={isOn ? "0" : "1"} />
-                  <button className={buttonClass("primary", "sm")}>
+                  <button className={buttonClass("secondary", "sm")}>
                     {isOn ? "Turn off" : "Turn on"}
                   </button>
                 </form>

@@ -1,5 +1,5 @@
 import { getPool } from "@/db/client";
-import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
+import { Bento, Card, PageHeader, StatusBadge, BlockLabel } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { loadProviderHealth, TIER_LABELS, type ProviderHealthRow } from "@/lib/intel/provider-health";
 
@@ -45,9 +45,9 @@ export default async function ProviderHealthPage() {
 
       {groups.map((g) => (
         <div key={g.tier} className="mb-6">
-          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+          <BlockLabel>
             {TIER_LABELS[g.tier] ?? g.tier}
-          </h2>
+          </BlockLabel>
           <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
             <table className="data-table">
               <thead>

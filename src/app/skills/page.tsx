@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, PageHeader, BlockLabel } from "@/components/ui";
 import { SKILL_KINDS, listSkills, sharedInSkills, type SkillKind } from "@/lib/skills/skills";
 import { editIntensity } from "@/lib/insights/calibration";
 import { withTenant } from "@/lib/db/tenant";
@@ -95,9 +95,9 @@ export default async function SkillsPage({
 
       {suggestStyle && (
         <Card tone="amber" className="mb-6">
-          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+          <BlockLabel>
             Turn your edits into a skill
-          </h2>
+          </BlockLabel>
           <p className="text-copy text-neutral-600 dark:text-neutral-300">
             Your team rewrites AI drafts heavily (edit intensity{" "}
             <span className="tnum font-semibold">{intensity}</span>, where 0 = sent as drafted) and there&rsquo;s
@@ -110,7 +110,7 @@ export default async function SkillsPage({
 
       {/* ── The library ── */}
       <Card className="mb-6">
-        <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Library</h2>
+        <BlockLabel>Library</BlockLabel>
         <p className="mb-3 text-copy text-neutral-500">
           Every skill declares what it is, where it applies, and which agents read it — and the uses count is
           real: it counts the AI runs each skill actually grounded.
@@ -198,9 +198,9 @@ export default async function SkillsPage({
       {/* ── Shared with you (task #85): partners' skills, accepted through consent ── */}
       {shared.length > 0 && (
         <Card tone="violet" className="mb-6">
-          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+          <BlockLabel>
             Shared with you
-          </h2>
+          </BlockLabel>
           <p className="mb-3 text-copy text-neutral-500">
             Skills partner organizations shared and you accepted. Read live from their tenant — their edits
             apply instantly, and each grounds your agents only on deals with that partner.
@@ -232,7 +232,7 @@ export default async function SkillsPage({
       {/* ── Add a skill ── */}
       <span id="add" />
       <Card className="mb-6">
-        <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Add a skill</h2>
+        <BlockLabel>Add a skill</BlockLabel>
         <p className="mb-3 text-copy text-neutral-500">
           Write it once; every drafting run on its surfaces follows it. Keep one skill per topic — if a{" "}
           {SKILL_KINDS[0].label.toLowerCase()} skill for the same scope already exists above, edit it instead.
@@ -304,9 +304,9 @@ export default async function SkillsPage({
 
       {/* ── The rest of the org's standing grounding ── */}
       <Card muted>
-        <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+        <BlockLabel>
           Also grounding your agents
-        </h2>
+        </BlockLabel>
         <p className="mb-2 text-copy text-neutral-500">
           Typed grounding that lives in its own room — listed here so this page stays the one map of everything
           the agents follow.

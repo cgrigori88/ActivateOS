@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { withTenant } from "@/lib/db/tenant";
-import { Card, PageHeader, fieldClass } from "@/components/ui";
+import { Card, PageHeader, fieldClass, BlockLabel } from "@/components/ui";
 import { namedOverlapAccounts, pursuitEvents } from "@/lib/partnerships/joint";
 import { addNoteAction, closePursuitAction, decidePursuitAction, refreshBrokerAction, saveJointPlaybookAction } from "../actions";
 import { loadJointPlaybook } from "@/lib/playbooks/playbooks";
@@ -89,7 +89,7 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Ledger — the shared record, identical on both sides */}
         <Card className="lg:col-span-2">
-          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Shared ledger</h2>
+          <BlockLabel>Shared ledger</BlockLabel>
           <p className="mb-3 text-body text-neutral-500">
             Both sides read exactly this — entries are written once, with org names, never a private version.
           </p>
@@ -128,7 +128,7 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
         <div className="space-y-6">
           {/* What they can see — the trust panel */}
           <Card>
-            <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">What {pursuit.other_name ?? "they"} can see</h2>
+            <BlockLabel>What {pursuit.other_name ?? "they"} can see</BlockLabel>
             <p className="mb-2 text-body text-neutral-500">The other side&apos;s complete surface for this account — nothing beyond this list crosses the boundary.</p>
             <ul className="space-y-1.5 text-copy">
               <li className="flex items-start gap-2">
@@ -151,7 +151,7 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
 
           {/* Broker */}
           <Card>
-            <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Broker</h2>
+            <BlockLabel>Broker</BlockLabel>
             <p className="mb-2 text-body text-neutral-500">
               A neutral proposal from the platform — composed only from data both sides approved, said identically to both.
             </p>
@@ -171,7 +171,7 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
 
           {/* Joint playbook (task #83): one shared text per partnership, symmetric like the ledger */}
           <Card tone="violet">
-            <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Joint playbook</h2>
+            <BlockLabel>Joint playbook</BlockLabel>
             <p className="mb-2 text-body text-neutral-500">
               How the two companies work together — one text, co-edited. {pursuit.other_name ?? "The partner"} sees
               this identically, and every save lands on both audit ledgers. The broker cites it.

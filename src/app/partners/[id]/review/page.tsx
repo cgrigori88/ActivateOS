@@ -7,6 +7,7 @@ import { loadPartnerPlaybook } from "@/lib/playbooks/playbooks";
 import { renewalProjection } from "@/lib/lifecycle/projection";
 import { PrintButton } from "./print-button";
 import { formatMoney } from "@/lib/format/money";
+import { BlockLabel } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ function Section({ title, note, children }: { title: string; note?: string; chil
   return (
     <section className="mb-6 break-inside-avoid">
       <div className="mb-2 flex items-baseline justify-between gap-3 border-b border-neutral-200 pb-1 dark:border-neutral-800 print:border-neutral-300">
-        <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">{title}</h2>
+        <BlockLabel>{title}</BlockLabel>
         {note && <span className="text-body text-neutral-400">{note}</span>}
       </div>
       {children}

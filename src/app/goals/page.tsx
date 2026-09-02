@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bento, Card, PageHeader, fieldClass } from "@/components/ui";
+import { Bento, Card, PageHeader, fieldClass, BlockLabel } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { listGoals, METRICS, METRIC_LABEL, formatMetric, type Goal } from "@/lib/goals/goals";
 import { listTargets, type TargetRow } from "@/lib/goals/targets";
@@ -83,9 +83,14 @@ export default async function GoalsPage({
         <span className="ml-auto text-body text-neutral-500">{goals.length} goal(s)</span>
       </div>
 
-      {/* Create */}
-      <Card className="mb-6">
-        <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">New goal</h2>
+      {/* Create — behind a fold. Setting a goal is a rare act; reading how the
+          live ones are tracking is the daily one, and an eight-field form at the
+          top of the room made the rare act the page's headline. */}
+      <details className="group mb-6">
+        <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-body font-semibold text-accent hover:underline dark:text-blue-400">
+          <span className="text-title leading-none" aria-hidden>+</span> New goal
+        </summary>
+        <Card className="mt-2.5">
         <form action={createGoalAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-copy sm:col-span-2"><span className="mb-1 block text-body text-neutral-500">Specific goal</span><input name="name" required placeholder="e.g. $2M co-sell pipeline in H2" className={`${fieldClass("md")} w-full`} /></label>
           <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Measure</span>
@@ -99,8 +104,9 @@ export default async function GoalsPage({
           <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Owner</span><input name="owner" placeholder="Dana" className={`${fieldClass("md")} w-full`} /></label>
           <div className="flex items-end"><button className={buttonClass("primary", "md")}>Create goal</button></div>
         </form>
-        <p className="mt-2 text-label text-neutral-400">Link motions and campaigns to a goal from their pages — progress rolls up automatically from what&rsquo;s linked.</p>
-      </Card>
+        <p className="mt-2 text-label ink-faint">Link motions and campaigns to a goal from their pages — progress rolls up automatically from what&rsquo;s linked.</p>
+        </Card>
+      </details>
 
       {goals.length === 0 ? (
         <p className="text-copy text-neutral-500">No goals match — {all.length === 0 ? "create your first above." : "clear a filter."}</p>
@@ -158,7 +164,28 @@ export default async function GoalsPage({
                     )}
                   </span>
                 </div>
-                {g.description && <p className="mt-2 text-body text-neutral-500">{g.description}</p>}
+                {/* Who is carrying it (Wave 2 §8). A rolled-up target that cannot
+                    say which partners produced it is still a slide; this is the
+                    difference between reporting and operating. Shares come from
+                    the same linked motions the progress bar is computed over. */}
+                {g.contributors.length > 0 && (
+                  <div className="mt-3 border-t border-neutral-100 pt-2.5 dark:border-neutral-800">
+                    <div className="mb-1.5 text-micro font-bold uppercase tracking-[0.05em] ink-faint">Contributing partners</div>
+                    <div className="space-y-1">
+                      {g.contributors.map((c) => (
+                        <div key={c.name} className="flex items-center gap-3 text-body">
+                          <span className="w-28 shrink-0 truncate font-medium ink-soft">{c.name}</span>
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+                            <div className="h-full rounded-full" style={{ width: `${g.current > 0 ? Math.round((c.usd / g.current) * 100) : 0}%`, background: "var(--color-route)" }} />
+                          </div>
+                          <span className="tnum w-16 shrink-0 text-right font-semibold">{formatMoney(c.usd)}</span>
+                          <span className="w-20 shrink-0 text-right text-label ink-faint">{c.motions} motion{c.motions === 1 ? "" : "s"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {g.description && <p className="mt-2.5 text-body ink-faint">{g.description}</p>}
               </Card>
             );
           })}
@@ -168,7 +195,7 @@ export default async function GoalsPage({
       {/* ── Revenue & pipeline targets — per period, overall and per partner ── */}
       <section className="mt-10">
         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Revenue &amp; pipeline targets</h2>
+          <BlockLabel>Revenue &amp; pipeline targets</BlockLabel>
           <span className="text-label text-neutral-400">targets are typed; actuals compute from opportunities — base (direct) vs joint (co-sell)</span>
         </div>
 

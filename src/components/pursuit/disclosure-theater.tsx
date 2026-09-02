@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { ScoreReason } from "@/lib/pursuits/read-models/types";
 import { humanizeReason } from "./vocab";
+import { segmentClass, segmentTrackClass } from "@/components/room-tabs";
 
 /**
  * DisclosureTheater — the hero interaction. A view-only Sponsor ⇄ Partner toggle over
@@ -31,19 +32,18 @@ export function DisclosureTheater({ internal, shareable, candidateLabel }: {
 
   return (
     <div>
-      {/* Segmented audience control */}
-      <div className="mb-3 inline-flex rounded-control p-0.5" style={{ background: "var(--surface-inset)", boxShadow: "inset 0 0 0 1px var(--border-subtle)" }} role="tablist" aria-label="Disclosure audience">
-        {([["sponsor", "Sponsor view"], ["partner", "Partner view"]] as const).map(([k, label]) => {
-          const on = audience === k;
-          const kHue = k === "sponsor" ? "var(--color-band-high)" : "var(--color-accent-verified)";
-          return (
-            <button key={k} type="button" role="tab" aria-selected={on} onClick={() => setAudience(k)}
-              className="rounded-[calc(var(--radius-control)-2px)] px-3.5 py-1.5 text-body font-semibold transition-colors"
-              style={on ? { background: "var(--surface-primary)", color: kHue, boxShadow: "var(--shadow-low)" } : { color: "var(--color-neutral-500)" }}>
-              {label}
-            </button>
-          );
-        })}
+      {/* The audience control is the demo's hero interaction, and it was a fifth
+          hand-rolled segmented control: its own track, its own radius arithmetic,
+          and a selected colour that changed with the audience. It now wears the
+          one segmented grammar, so switching audience reads the same way as
+          switching any other view in the product. */}
+      <div className={`mb-3 ${segmentTrackClass()}`} role="tablist" aria-label="Disclosure audience">
+        {([["sponsor", "Sponsor view"], ["partner", "Partner view"]] as const).map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={audience === k}
+            onClick={() => setAudience(k)} className={segmentClass(audience === k)}>
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* The morphing payload — one card, two audiences */}

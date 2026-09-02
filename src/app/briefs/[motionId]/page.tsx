@@ -3,7 +3,7 @@ import { withTenant } from "@/lib/db/tenant";
 import { commsConfig } from "@/lib/comms/provider";
 import { resendConfigured } from "@/lib/comms/resend";
 import { threadAddress } from "@/lib/comms/alias";
-import { BackLink, Card, EvidenceLine, PageHeader, StatusBadge } from "@/components/ui";
+import { BackLink, Card, EvidenceLine, PageHeader, StatusBadge, BlockLabel } from "@/components/ui";
 import { CONFIDENCE_FORMULA, contextConfidence } from "@/lib/context/confidence";
 import { promoteMotionAction } from "@/app/pipeline/actions";
 import { generateDraftAction, sendDraftAction } from "./actions";
@@ -154,9 +154,9 @@ export default async function BriefPage({
             </span>
           )}
         </div>
-        <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+        <BlockLabel>
           Why this account, why now
-        </h2>
+        </BlockLabel>
         <p className="mb-3 leading-relaxed">{m.thesis}</p>
         <p className="text-copy text-neutral-600 dark:text-neutral-400">
           <span className="font-medium text-neutral-800 dark:text-neutral-200">Trigger: </span>
@@ -186,9 +186,9 @@ export default async function BriefPage({
           explains where its content comes from, rather than vanishing and
           making two briefs look like two different products. */}
       <Card className="mb-6">
-        <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+        <BlockLabel>
           Evidence behind this motion
-        </h2>
+        </BlockLabel>
         {cited.length > 0 ? (
           <ul className="ml-4 list-disc space-y-1">
             {cited.map((e) => (
@@ -212,9 +212,9 @@ export default async function BriefPage({
       </Card>
 
       <Card className="mb-6">
-        <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+        <BlockLabel>
           Cadence
-        </h2>
+        </BlockLabel>
         {steps.length === 0 ? (
           <p className="text-copy text-neutral-400">
             No cadence yet — dated pursuit steps are generated when the motion is activated with a
@@ -254,9 +254,9 @@ export default async function BriefPage({
       </Card>
 
       <Card className="mb-6">
-        <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+        <BlockLabel>
           Conversation
-        </h2>
+        </BlockLabel>
         {!["approved", "active"].includes(m.status) && threadMessages.length === 0 ? (
           <p className="text-copy text-neutral-400">
             {m.status === "completed"
@@ -395,9 +395,9 @@ export default async function BriefPage({
 
       {assets.length > 0 && (
         <Card>
-          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
+          <BlockLabel>
             Campaign assets
-          </h2>
+          </BlockLabel>
           {assets.map((a) => (
             <details key={a.asset_type} className="mb-2" open={a.asset_type === "outreach_email"}>
               <summary className="cursor-pointer text-copy font-medium hover:underline">

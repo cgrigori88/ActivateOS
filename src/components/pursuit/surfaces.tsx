@@ -36,11 +36,8 @@ export function PursuitHero({ d, lifecycleWord }: { d: PursuitDetailView; lifecy
         <span>{d.accountLabel}</span>
         {d.synthetic && <SyntheticBadge text="demo" />}
       </div>
-      <h1 className="mt-1.5 text-hero font-extrabold leading-[1.08] tracking-[-0.03em]">{d.thesis}</h1>
-      <p className="mt-2 max-w-[70ch] text-title text-neutral-500 dark:text-neutral-400">
-        One governed commercial Pursuit connecting intent, evidence, route, team and execution.
-      </p>
-      <div className="mt-3.5 flex flex-wrap gap-x-7 gap-y-2">
+      <h1 className="mt-1.5 max-w-[34ch] text-hero font-extrabold leading-[1.08] tracking-[-0.03em] text-balance">{d.thesis}</h1>
+      <div className="mt-4 flex flex-wrap gap-x-7 gap-y-2">
         {meta.map(([k, v]) => (
           <div key={k}>
             <div className="text-micro font-bold uppercase tracking-[0.05em] text-neutral-400">{k}</div>
@@ -116,7 +113,7 @@ export function WhyNowBento({ w }: { w: WhyNowView }) {
 export function FactsBento({ facts }: { facts: FactItem[] }) {
   if (!facts.length) return <p className="text-copy italic text-neutral-500">No facts surfaced yet.</p>;
   return (
-    <div className="space-y-2.5">
+    <div className="grid gap-2.5 lg:grid-cols-2">
       {facts.map((f) => {
         const proposed = f.state !== "CURRENT";
         const hue = proposed ? "var(--color-accent-violet)" : "var(--color-accent-verified)";

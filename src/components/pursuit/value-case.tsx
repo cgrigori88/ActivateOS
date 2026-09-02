@@ -3,6 +3,7 @@ import {
   type ValueCase, type ValueCaseState,
 } from "@/lib/value/case";
 import { LADDER_LABEL, type Driver, type Ladder } from "@/lib/value/drivers";
+import { Disclosure } from "@/components/ui";
 
 /**
  * The Value Case section on Pursuit Detail (P2B §12).
@@ -199,10 +200,10 @@ export function ValueCaseCard({ vc }: { vc: ValueCase }) {
                 </li>
               ))}
             </ol>
-            <p className="text-label text-neutral-400">
-              Range widths are interval arithmetic over the drivers below. No confidence percentage is
-              claimed, because no calibrated model for one exists.
-            </p>
+            <Disclosure summary="How the range is derived">
+              Interval arithmetic over the drivers below. No confidence percentage is claimed, because
+              no calibrated model for one exists.
+            </Disclosure>
           </div>
         </details>
       )}

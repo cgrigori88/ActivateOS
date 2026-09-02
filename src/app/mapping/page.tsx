@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BandBadge, Bento, Card, PageHeader, fieldClass } from "@/components/ui";
+import { BandBadge, Bento, Card, Disclosure, PageHeader, fieldClass, BlockLabel } from "@/components/ui";
 import {
   CATEGORIES,
   CATEGORY_LABEL,
@@ -537,7 +537,7 @@ async function RecommendSection() {
         {plays.length > 0 && (
           <div className="mb-6">
             <div className="mb-2 flex items-baseline justify-between">
-              <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Multi-vendor plays · suggested</h2>
+              <BlockLabel>Multi-vendor plays · suggested</BlockLabel>
               <span className="text-label text-neutral-400">One click builds the package: named list → campaign → partners in roles. You still approve every touch.</span>
             </div>
             {(mp || spn) && mp && mp.closed > 0 && (
@@ -571,7 +571,7 @@ async function RecommendSection() {
 
         {/* Ranked opportunities — filter, select one or many, then act */}
         <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Ranked co-sell opportunities</h2>
+          <BlockLabel>Ranked co-sell opportunities</BlockLabel>
           <span className="text-label text-neutral-400">Filter, select accounts, then create a target list or draft motions.</span>
         </div>
         <SelectableAccounts
@@ -698,7 +698,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
         {/* Partner hub — aggregate rollups (one partner, or all rolled up) */}
         <Card className="mb-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <h2 className="text-copy font-semibold">{selectedName}</h2>
+            <h2 className="text-title font-bold tracking-[-0.015em] ink">{selectedName}</h2>
             <span className="rounded-inner px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 ring-1 ring-inset ring-neutral-300/50 dark:ring-neutral-700">
               {isAll ? "all partners" : "connected partner"}
             </span>
@@ -711,11 +711,11 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
             <Bento label="campaigns" value={hub.campaignsTotal.toLocaleString()} subs={[`${hub.campaignsLive} live`, `${hub.touchesSent} sent`]} href="/campaigns" />
             <Bento label="open pipeline" value={`${formatMoney(hub.pipelineUsd)}`} subs={[`${hub.oppsOpen} open`, hub.oppsWon ? `${hub.oppsWon} won ${formatMoney(hub.wonUsd)}` : ""]} href="/pipeline" />
           </div>
-          <p className="mt-3 text-label text-neutral-400">
+          <Disclosure summary="What counts toward these numbers" className="mt-3">
             {isAll
-              ? "Rolled up across every connected partner. Each partner's lists + fields stay scoped to them; totals here aggregate all partner-attributed motions, campaigns, and pipeline."
-              : `Scoped to ${selectedName}: their lists + fields stay theirs; motions, campaigns, and pipeline count here when attributed to this partner. Your own lists (the vendor side) map against every partner.`}
-          </p>
+              ? "Rolled up across every connected partner. Each partner's lists and fields stay scoped to them; totals here aggregate all partner-attributed motions, campaigns and pipeline."
+              : `Scoped to ${selectedName}: their lists and fields stay theirs; motions, campaigns and pipeline count here when attributed to this partner. Your own lists — the vendor side — map against every partner.`}
+          </Disclosure>
         </Card>
 
         {rows.length === 0 || cols.length === 0 ? (
@@ -780,10 +780,14 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                 </tr>
               </tbody>
             </table>
-            <p className="border-t border-neutral-100 px-3 py-2 text-label text-neutral-500 dark:border-neutral-800">
-              Cell = accounts on both lists, shaded by avg propensity · hot = high/very-high band · Total = distinct
-              accounts · {isAll ? "columns span every partner" : "click a cell to drill in"} · use Organize matrix to choose rows/columns.
-            </p>
+            <div className="border-t border-neutral-100 px-3 py-2 dark:border-neutral-800">
+              <Disclosure summary="How to read this matrix">
+                A cell is the accounts on both lists, shaded by average propensity; hot is the
+                high/very-high band. Total is distinct accounts.{" "}
+                {isAll ? "Columns span every partner." : "Click a cell to drill in."} Use Organize matrix
+                to choose which lists are rows and columns.
+              </Disclosure>
+            </div>
           </div>
         )}
       </>
@@ -917,7 +921,7 @@ async function PopulationManager() {
 
     return (
       <Card className="mt-6">
-        <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">Account lists</h2>
+        <BlockLabel>Account lists</BlockLabel>
 
         {allPending.length > 0 && (
           <div className="mb-4 rounded-inner border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
@@ -963,10 +967,11 @@ async function PopulationManager() {
             Propose list
           </button>
         </form>
-        <p className="mt-2 text-label text-neutral-400">
-          Members + fields (territory, vertical, segment, owner, contacts) come from a CSV ingest — the attributes model
-          is ready; the ingest wiring is the next step. Proposed lists start pending until approved.
-        </p>
+        <Disclosure summary="Where list members come from" className="mt-2">
+          Members and fields — territory, vertical, segment, owner, contacts — come from a CSV ingest.
+          The attributes model is ready; the ingest wiring is the next step. A proposed list starts
+          pending until it is approved.
+        </Disclosure>
       </Card>
     );
   });

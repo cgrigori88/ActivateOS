@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { withTenant } from "@/lib/db/tenant";
-import { BackLink, Bento, Card, PageHeader, StatusBadge, fieldClass } from "@/components/ui";
+import { BackLink, Bento, Card, PageHeader, StatusBadge, fieldClass, BlockLabel } from "@/components/ui";
 import { partnerRoom } from "@/lib/partners/hub";
 import { getObservedActivationPattern, getPartnerActivationProfile } from "@/lib/partners/intelligence";
 import { ActivationProfile } from "@/components/partners/activation-profile";
@@ -124,7 +124,7 @@ export default async function PartnerRoomPage({
       {profile && <ActivationProfile p={profile} pattern={pattern} />}
 
       {/* ── Scorecard v1: settlement truth, not self-reporting ── */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Scorecard</h2>
+      <BlockLabel>Scorecard</BlockLabel>
       <div className="mb-6 flex flex-wrap gap-3">
         <Bento
           label="joint win rate"
@@ -151,7 +151,7 @@ export default async function PartnerRoomPage({
       </div>
 
       {/* ── Execution with this partner (your tenant's own work) — intelligence, so it stays in the first tier ── */}
-      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Execution</h2>
+      <BlockLabel>Execution</BlockLabel>
       <div className="mb-6 flex flex-wrap gap-3">
         <Bento label="motions" value={hub.motionsTotal} subs={[`${hub.motionsActive} active`]} href={`/motions?partner=${encName}`} />
         <Bento label="campaigns" value={hub.campaignsTotal} subs={[`${hub.campaignsLive} live`]} href={`/campaigns?partner=${encName}`} />
@@ -183,7 +183,7 @@ export default async function PartnerRoomPage({
           deals to them. Progress here is computed, never reported. ── */}
       <Card className="mb-6">
         <div className="mb-1 flex items-baseline justify-between gap-3">
-          <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Initiatives</h2>
+          <BlockLabel>Initiatives</BlockLabel>
           <span className="flex items-baseline gap-3 text-body">
             <span className="text-neutral-400">targets the pipeline moves — nothing here is self-reported</span>
             <Link href={`/partners/${partner.id}/review`} className="whitespace-nowrap font-medium text-accent hover:underline dark:text-blue-400" title="the document version — every figure pulled live, printable for whoever still wants a PDF">
@@ -285,7 +285,7 @@ export default async function PartnerRoomPage({
         {/* ── Trust ladder (read-only; Admin decides) ── */}
         <Card tone="violet">
           <div className="mb-2 flex items-baseline justify-between">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Trust ladder</h2>
+            <BlockLabel>Trust ladder</BlockLabel>
             {partnership?.status === "active" && (
               <Link href="/admin" className="text-body font-semibold text-accent hover:underline dark:text-blue-300">
                 Decide on Admin →
@@ -328,7 +328,7 @@ export default async function PartnerRoomPage({
         {/* ── Their book (your imported copy) ── */}
         <Card>
           <div className="mb-2 flex items-baseline justify-between">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Their book</h2>
+            <BlockLabel>Their book</BlockLabel>
             <Link href="/mapping" className="text-body font-semibold text-accent hover:underline dark:text-blue-300">
               Work it on Mapping →
             </Link>
@@ -354,7 +354,7 @@ export default async function PartnerRoomPage({
         {/* ── Shared lists (grants both ways) ── */}
         <Card>
           <div className="mb-2 flex items-baseline justify-between">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Shared lists</h2>
+            <BlockLabel>Shared lists</BlockLabel>
             {partnership?.status === "active" && (
               <Link href="/admin" className="text-body font-semibold text-accent hover:underline dark:text-blue-300">
                 Share on Admin →
@@ -384,7 +384,7 @@ export default async function PartnerRoomPage({
         {/* ── Joint rooms ── */}
         <Card tone="violet">
           <div className="mb-2 flex items-baseline justify-between">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Joint rooms</h2>
+            <BlockLabel>Joint rooms</BlockLabel>
             <Link href="/joint" className="text-body font-semibold text-accent hover:underline dark:text-blue-300">
               All joint pursuits →
             </Link>
@@ -418,7 +418,7 @@ export default async function PartnerRoomPage({
       {/* ── Warm intros — the ecosystem-qualified lead (B+3) ── */}
       {partnership?.status === "active" && (
         <Card tone="violet" className="mb-6">
-          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Warm intros</h2>
+          <BlockLabel>Warm intros</BlockLabel>
           <p className="mb-3 max-w-[88ch] text-body text-neutral-500">
             Ask {partner.name} for an introduction at any account in the approved named overlap. Accepting is the
             disclosure: they choose which one contact to reveal — nothing else moves.
@@ -519,7 +519,7 @@ export default async function PartnerRoomPage({
 
       {/* ── Playbook (task #83): org-private; grounds the AI when this partner is on the pursuit ── */}
       <Card className="mb-6">
-        <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Playbook</h2>
+        <BlockLabel>Playbook</BlockLabel>
         <p className="mb-3 text-copy text-neutral-500">
           How your team sells with {partner.name}. Private to your workspace — the motion designer reads
           this whenever {partner.name} is on the pursuit team.
@@ -578,7 +578,7 @@ export default async function PartnerRoomPage({
       {partnership?.status === "active" && (
         <Card tone="violet" className="mb-6">
           <div className="mb-1 flex items-baseline justify-between gap-3">
-            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Evidence exchange</h2>
+            <BlockLabel>Evidence exchange</BlockLabel>
             <span className="text-body text-neutral-400">verified claims, shared live across the fence — provenance intact, revocable</span>
           </div>
           {evidenceShares.length === 0 && (
@@ -636,7 +636,7 @@ export default async function PartnerRoomPage({
       {/* ── Skill sharing (task #85): consent-gated, live-read, audited both sides ── */}
       {room.partnership?.status === "active" && (
         <Card tone="violet" className="mb-6">
-          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Skill sharing</h2>
+          <BlockLabel>Skill sharing</BlockLabel>
           <p className="mb-3 text-copy text-neutral-500">
             Share a skill and {partner.name}&rsquo;s agents follow it on your joint deals — they read it live,
             so your edits (and a revoke) apply instantly. Their offers need your accept before anything grounds.
@@ -710,7 +710,7 @@ export default async function PartnerRoomPage({
       {/* ── Settlement ── */}
       {settlement && (
         <Card className="mb-6">
-          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Settlement</h2>
+          <BlockLabel>Settlement</BlockLabel>
           {settlement.settled.length === 0 ? (
             <p className="text-copy text-neutral-500">
               Nothing settled yet — {settlement.inFlight.length} opportunit{settlement.inFlight.length === 1 ? "y" : "ies"} in

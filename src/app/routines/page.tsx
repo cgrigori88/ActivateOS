@@ -58,22 +58,27 @@ export default async function RoutinesPage() {
                 <span className="rounded-full bg-green-50 px-2 py-0.5 text-micro font-medium text-green-800 ring-1 ring-inset ring-green-200 dark:bg-green-950/40 dark:text-green-300 dark:ring-green-900">
                   {cat.guardrail}
                 </span>
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-micro font-bold uppercase tracking-[0.04em] ${
+                  r.enabled ? "text-positive" : "ink-faint"
+                }`} style={r.enabled ? { background: "color-mix(in srgb, var(--intent-positive) 12%, transparent)" } : { background: "var(--surface-inset)" }}>
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: r.enabled ? "var(--intent-positive)" : "var(--ink-faint)" }} />
+                  {r.enabled ? "Running" : "Paused"}
+                </span>
                 <form action={toggleRoutineAction.bind(null, r.id)} className="ml-auto">
                   <input type="hidden" name="enable" value={r.enabled ? "0" : "1"} />
-                  <button
-                    className={`rounded-control px-3 py-1 text-body font-medium ${
-                      r.enabled
-                        ? "bg-green-700 text-white hover:bg-green-800"
-                        : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900"
-                    }`}
-                  >
-                    {r.enabled ? "On — click to pause" : "Off — click to enable"}
+                  <button className={buttonClass(r.enabled ? "secondary" : "primary", "sm")}>
+                    {r.enabled ? "Pause" : "Enable"}
                   </button>
                 </form>
               </div>
               <p className="mb-3 max-w-2xl text-body text-neutral-500">{cat.description}</p>
 
-              <form action={saveRoutineConfigAction.bind(null, r.id)} className="mb-3 flex flex-wrap items-end gap-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+              <details className="mb-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+              <summary className="mb-2 cursor-pointer list-none text-body ink-muted underline-offset-2 hover:underline">
+                Schedule &amp; delivery
+                <span className="ml-1 ink-faint" aria-hidden>▸</span>
+              </summary>
+              <form action={saveRoutineConfigAction.bind(null, r.id)} className="flex flex-wrap items-end gap-3">
                 <label className="text-copy">
                   <span className="mb-1 block text-body text-neutral-500">Run at (UTC hour)</span>
                   <input name="hourUtc" type="number" min={0} max={23} defaultValue={r.config.hourUtc ?? 7} className={`${input} w-20 tnum`} />
@@ -94,13 +99,14 @@ export default async function RoutinesPage() {
                     <input name="recipient" type="email" defaultValue={r.config.recipient ?? ""} placeholder="you@company.com" className={`${input} w-64`} />
                   </label>
                 )}
-                <button className={buttonClass("primary", "sm")}>
+                <button className={buttonClass("secondary", "sm")}>
                   Save
                 </button>
               </form>
+              </details>
               <div className="mb-3 flex flex-wrap items-center gap-3">
                 <form action={runRoutineNowAction.bind(null, r.id)}>
-                  <button className={buttonClass("primary", "sm")}>Run now</button>
+                  <button className={buttonClass("secondary", "sm")}>Run now</button>
                 </form>
                 <span className="text-label text-neutral-400">
                   {r.last_run_at ? `last ran ${new Date(r.last_run_at).toISOString().slice(0, 16).replace("T", " ")} UTC` : "never ran"}
