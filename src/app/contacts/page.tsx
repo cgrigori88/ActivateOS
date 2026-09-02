@@ -362,11 +362,15 @@ export default async function ContactsPage({
       </Card>
 
       {/* Bentos */}
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Bento label="contacts" value={rows.length} href="/contacts" />
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {/* Wave 6 §7: the card directly above states the total and how many are
+            reachable, in a sentence. Repeating both as tiles — alongside the two
+            type counts that already sum to the total — was six tiles carrying
+            three facts. What survives is the four that are genuinely different
+            cuts, each still a filter entry point. Nothing is lost: the total and
+            the reachable count are the headline. */}
         <Bento label="end users" value={endUsers} href="/contacts?type=end_user" />
         <Bento label="partner reps" value={reps} href="/contacts?group=partner" />
-        <Bento label="reachable" value={reachable} subs={[`${Math.round((reachable / Math.max(1, rows.length)) * 100)}% w/ address`]} href="/contacts?eng=reachable" />
         <Bento label="companies" value={companies} href="/contacts?group=company" />
         <Bento label="partners" value={partnerOptions.length} href="/mapping" />
       </div>

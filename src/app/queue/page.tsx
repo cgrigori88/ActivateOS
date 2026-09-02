@@ -217,11 +217,16 @@ export default async function QueuePage({
           instrument at the top of a work surface. A count earns its tile while it
           has something to report; the filters that act on these numbers are the
           row directly below, unchanged. */}
+      {/* Wave 6 §7: these counts are NESTED, not peers — "this week" already
+          contains overdue and today, and "open actions" contains all three. Four
+          nested totals shown as four equal tiles is four ways of saying one
+          thing. The total moved to the spine above (which states it once), and
+          the window tile now says what it includes rather than implying it is a
+          separate bucket. Every filter these tiles drove still exists, below. */}
       <div className="mb-4 flex flex-wrap gap-2">
-        <Bento label="open actions" value={items.length} href="/queue" />
         {overdueN > 0 && <Bento label="overdue" value={overdueN} href="/queue?window=overdue" intent="warning" />}
         <Bento label="due today" value={todayN} href="/queue?window=today" />
-        <Bento label="due this week" value={weekN} href="/queue?window=7" />
+        <Bento label="due within 7 days" value={weekN} subs={["includes overdue and today"]} href="/queue?window=7" />
         {convoN > 0 && <Bento label="from conversations" value={convoN} href="/queue?source=conversation" />}
       </div>
 

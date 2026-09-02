@@ -496,8 +496,13 @@ export default async function PipelinePage({
           <>
             <SummaryBand className="mb-3">
               <Bento label="open opportunities" value={open.length} href="/pipeline" />
-              <Bento label="total pipeline" value={`${formatMoney(total)}`} />
-              <Bento label="weighted" value={`${formatMoney(weighted)}`} subs={["by stage probability"]} />
+              {/* Wave 6 §4: "total pipeline" reads as the whole book, including
+                  what has already closed. It is neither — it is the unweighted
+                  sum of the OPEN opportunities in the current filter, which is
+                  exactly the population the tile beside it is weighting. Both
+                  now say which population and which basis they are on. */}
+              <Bento label="open pipeline" value={`${formatMoney(total)}`} subs={["opportunity amounts, unweighted"]} />
+              <Bento label="weighted" value={`${formatMoney(weighted)}`} subs={["same deals × stage probability"]} />
               <Bento label="avg qualification" value={avgQual == null ? "—" : `${avgQual}`} subs={["MEDDPICC health"]} />
               <Bento label="won" value={wonCount} intent="positive" subs={[`${formatMoney(wonUsd)}`]} href="/pipeline?stage=closed_won" />
               {/* §11 KPI overload: registered deals is a governance count that reads
@@ -505,6 +510,27 @@ export default async function PipelinePage({
                   to report; the Review view is one tab away regardless. */}
               {regRows.length > 0 && <Bento label="registered deals" value={regRows.length} href="/pipeline?view=review" />}
             </SummaryBand>
+
+            {/*
+              Wave 6 §8 — Attention is the operational hero.
+
+              Everything between here and the records below is aggregate analysis:
+              does the CRM tie out, what to fix in it, was the forecast right, and
+              the renewal clock. All four are genuinely useful and none is removed.
+              But in the Attention view they stood between the operator and the
+              actual intervention records — roughly a full screen of reading before
+              the first deal that needs a human. Analysis is depth here, not the
+              lede, so in Attention it opens on request; in Portfolio, All and
+              Review — the views whose whole purpose IS the aggregate picture — it
+              stays open exactly as before.
+            */}
+            <details open={view !== "attention"} className="group mb-3">
+              <summary className="cursor-pointer list-none text-body ink-muted underline-offset-2 hover:underline">
+                Portfolio analysis — tie-out, CRM fixes, forecast accuracy, renewal radar
+                <span className="ml-1 ink-faint group-open:hidden" aria-hidden>▸</span>
+                <span className="ml-1 hidden ink-faint group-open:inline" aria-hidden>▾</span>
+              </summary>
+              <div className="mt-2">
 
             {/* ── Tie-out (task #87): one place where the numbers reconcile ── */}
             {tieOut && (
@@ -869,6 +895,8 @@ export default async function PipelinePage({
                 </Card>
               );
             })()}
+              </div>
+            </details>
               </div>
             </details>
           </>

@@ -438,8 +438,14 @@ export default async function MotionsPage({
         <Bento label="motions" value={motions.length} href="/motions" />
         <Bento label="active" value={activeN} subs={[`${wonN} won`]} href="/motions?status=active" />
         <Bento label="avg propensity" value={avgProp ?? "—"} />
-        <Bento label="est. pipeline" value={`${formatMoney(estPipe)}`} href="/pipeline" />
-        <Bento label="expected" value={`${formatMoney(expected)}`} subs={["value × propensity"]} />
+        {/* Wave 6 §4: this is MOTION-level value — what the plays are estimated
+            to be worth — and it is a different quantity from the Pipeline room's
+            opportunity-level figure. Labelling it "est. pipeline" and linking it
+            to /pipeline invited an operator to expect the same number there. The
+            layer is now named, and the link is gone: these two figures answer
+            different questions and reconciling them is not a click. */}
+        <Bento label="motion value" value={`${formatMoney(estPipe)}`} subs={["estimated, across the plays"]} />
+        <Bento label="expected" value={`${formatMoney(expected)}`} subs={["motion value × propensity"]} />
         <Bento label="partners" value={partnerOptions.length} href="/motions?group=partner" />
       </div>
 

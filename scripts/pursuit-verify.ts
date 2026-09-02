@@ -63,13 +63,19 @@ interface Seed {
 }
 
 async function seed(): Promise<Seed> {
+  // taxonomy_nodes.slug has been `not null unique` since 0001_core_schema.sql.
+  // These fixtures COMMIT, so a fixed slug would also collide on the second run
+  // and with the demo seed. Per-run id, matching every other verifier here.
+  const RID = Math.random().toString(36).slice(2, 8);
   return asOwner(async (db) => {
     const org = async (name: string) => (await db.query<{ id: string }>(`insert into organizations (name) values ($1) returning id`, [name])).rows[0].id;
-    const orgA = await org("Tenant A");
-    const orgB = await org("Tenant B");
+    // organizations.name is unique; these fixtures COMMIT, so fixed names
+    // collide with every previous run and with the sibling verifiers.
+    const orgA = await org(`Tenant A ${RID}`);
+    const orgB = await org(`Tenant B ${RID}`);
     const vendor = (await db.query<{ id: string }>(`insert into vendors (name) values ('Acme') returning id`)).rows[0].id;
     const product = (await db.query<{ id: string }>(`insert into products (vendor_id, name) values ($1,'Platform') returning id`, [vendor])).rows[0].id;
-    const taxonomy = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name) values ('Cloud Migration') returning id`)).rows[0].id;
+    const taxonomy = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name, slug) values ($1,$2) returning id`, [`Cloud Migration ${RID}`, `cloud-migration-${RID}`])).rows[0].id;
     const company = async (n: string) => (await db.query<{ id: string }>(`insert into companies (legal_name, normalized_name) values ($1,$1) returning id`, [n])).rows[0].id;
     const companyA = await company("Globex");
     const companyB = await company("Initech");
@@ -79,7 +85,10 @@ async function seed(): Promise<Seed> {
     const seller = async (o: string, n: string) => (await db.query<{ id: string }>(`insert into sellers (org_id, name) values ($1,$2) returning id`, [o, n])).rows[0].id;
     const seller1 = await seller(orgA, "Rep A");
     const sellerB = await seller(orgB, "Rep B");
-    const scoreVersion = (await db.query<{ id: string }>(`insert into score_versions (label, description) values ('v-test','test') returning id`)).rows[0].id;
+    // score_versions.weights is `jsonb not null` with no default, and label is
+    // unique — both since the schema was written. Same stale-fixture class as
+    // the taxonomy slug: the verifier, not the schema, was out of date.
+    const scoreVersion = (await db.query<{ id: string }>(`insert into score_versions (label, description, weights) values ($1,'test','{}'::jsonb) returning id`, [`v-test-${RID}`])).rows[0].id;
 
     // Legacy motions for the backfill test (org A): two distinct theses + one dup-shaped.
     const mk = async (o: string, co: string, thesis: string, status: string) =>

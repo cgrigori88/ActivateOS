@@ -38,10 +38,16 @@ const limitedCaller = (orgId: string): Caller => ({ orgId, canSeeInternal: false
 
 async function main() {
   console.log(`[experience-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
+  // taxonomy_nodes.slug has been `not null unique` since 0001_core_schema.sql.
+  // These fixtures COMMIT, so a fixed slug would also collide on the second run
+  // and with the demo seed. Per-run id, matching every other verifier here.
+  const RID = Math.random().toString(36).slice(2, 8);
   const s = await asOwner(async (db) => {
     const org = async (n: string) => (await db.query<{ id: string }>(`insert into organizations (name) values ($1) returning id`, [n])).rows[0].id;
-    const orgA = await org("Tenant A"); const orgB = await org("Tenant B");
-    const node = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name) values ('Virtualization') returning id`)).rows[0].id;
+    // organizations.name is unique; these fixtures COMMIT, so fixed names
+    // collide with every previous run and with the sibling verifiers.
+    const orgA = await org(`Tenant A ${RID}`); const orgB = await org(`Tenant B ${RID}`);
+    const node = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name, slug) values ($1,$2) returning id`, [`Virtualization ${RID}`, `virtualization-${RID}`])).rows[0].id;
     const co = async (n: string) => (await db.query<{ id: string }>(`insert into companies (legal_name, normalized_name, industry, country) values ($1,$1,'Technology','US') returning id`, [n])).rows[0].id;
     const companyA = await co("Globex"); const companyB = await co("Initech");
     const partner = async (o: string, n: string) => (await db.query<{ id: string }>(`insert into partners (org_id, name, partner_type, capacity) values ($1,$2,'reseller',10) returning id`, [o, n])).rows[0].id;

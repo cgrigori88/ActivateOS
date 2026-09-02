@@ -59,16 +59,23 @@ async function seedSignal(db: PoolClient, orgId: string, companyId: string, sign
 }
 
 async function seed(): Promise<Seed> {
+  // taxonomy_nodes.slug has been `not null unique` since 0001_core_schema.sql.
+  // These fixtures COMMIT, so a fixed slug would also collide on the second run
+  // and with the demo seed. Per-run id, matching every other verifier here.
+  const RID = Math.random().toString(36).slice(2, 8);
   return asOwner(async (db) => {
     const org = async (n: string) => (await db.query<{ id: string }>(`insert into organizations (name) values ($1) returning id`, [n])).rows[0].id;
-    const orgA = await org("Tenant A"); const orgB = await org("Tenant B");
+    // organizations.name is unique; these fixtures COMMIT, so fixed names
+    // collide with every previous run and with the sibling verifiers.
+    const orgA = await org(`Tenant A ${RID}`); const orgB = await org(`Tenant B ${RID}`);
     const vendor = (await db.query<{ id: string }>(`insert into vendors (name) values ('Acme') returning id`)).rows[0].id;
     await db.query(`insert into products (vendor_id, name) values ($1,'Platform')`, [vendor]);
-    const techNode = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name) values ('Kubernetes') returning id`)).rows[0].id;
-    const vmwareNode = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name) values ('VMware') returning id`)).rows[0].id;
+    const techNode = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name, slug) values ($1,$2) returning id`, [`Kubernetes ${RID}`, `kubernetes-${RID}`])).rows[0].id;
+    const vmwareNode = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name, slug) values ($1,$2) returning id`, [`VMware ${RID}`, `vmware-${RID}`])).rows[0].id;
     const company = async (n: string) => (await db.query<{ id: string }>(`insert into companies (legal_name, normalized_name) values ($1,$1) returning id`, [n])).rows[0].id;
     const companyA = await company("Globex"); const companyB = await company("Initech");
-    const scoreVersion = (await db.query<{ id: string }>(`insert into score_versions (label, description) values ('v-facts-test','t') returning id`)).rows[0].id;
+    // score_versions.weights is `jsonb not null` with no default, and label is unique.
+    const scoreVersion = (await db.query<{ id: string }>(`insert into score_versions (label, description, weights) values ($1,'t','{}'::jsonb) returning id`, [`v-facts-test-${RID}`])).rows[0].id;
     return { orgA, orgB, companyA, companyB, techNode, vmwareNode, scoreVersion, pursuitA: "" };
   });
 }

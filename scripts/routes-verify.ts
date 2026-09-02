@@ -35,10 +35,16 @@ async function asOwner<T>(fn: (db: PoolClient) => Promise<T>): Promise<T> {
 interface Seed { orgA: string; orgB: string; companyA: string; companyB: string; node: string; cdw: string; wwt: string; insight: string; distr: string; nocap: string; vendorSeller: string; cdwSeller: string; pursuitA: string; pursuitB: string; }
 
 async function seed(): Promise<Seed> {
+  // taxonomy_nodes.slug has been `not null unique` since 0001_core_schema.sql.
+  // These fixtures COMMIT, so a fixed slug would also collide on the second run
+  // and with the demo seed. Per-run id, matching every other verifier here.
+  const RID = Math.random().toString(36).slice(2, 8);
   const s = await asOwner(async (db) => {
     const org = async (n: string) => (await db.query<{ id: string }>(`insert into organizations (name) values ($1) returning id`, [n])).rows[0].id;
-    const orgA = await org("Tenant A"); const orgB = await org("Tenant B");
-    const node = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name) values ('Virtualization') returning id`)).rows[0].id;
+    // organizations.name is unique; these fixtures COMMIT, so fixed names
+    // collide with every previous run and with the sibling verifiers.
+    const orgA = await org(`Tenant A ${RID}`); const orgB = await org(`Tenant B ${RID}`);
+    const node = (await db.query<{ id: string }>(`insert into taxonomy_nodes (name, slug) values ($1,$2) returning id`, [`Virtualization ${RID}`, `virtualization-${RID}`])).rows[0].id;
     const company = async (n: string, ind = "Technology", country = "US") => (await db.query<{ id: string }>(`insert into companies (legal_name, normalized_name, industry, country) values ($1,$1,$2,$3) returning id`, [n, ind, country])).rows[0].id;
     const companyA = await company("Globex"); const companyB = await company("Initech");
     const partner = async (o: string, n: string, type = "reseller", ind: string[] = [], ctry: string[] = []) => (await db.query<{ id: string }>(`insert into partners (org_id, name, partner_type, industries, countries, capacity) values ($1,$2,$3,$4,$5,10) returning id`, [o, n, type, ind, ctry])).rows[0].id;
@@ -68,7 +74,8 @@ async function seed(): Promise<Seed> {
     await db.query(`update companies set duns='150483782' where id=$1`, [companyA]);
     // Parent/child hierarchy.
     const childCo = await company("Globex Canada", "Technology", "CA");
-    await db.query(`insert into company_hierarchies (parent_company_id, child_company_id, relation) values ($1,$2,'subsidiary')`, [companyA, childCo]);
+    // The column is `relationship`, and always has been — `relation` never existed.
+    await db.query(`insert into company_hierarchies (parent_company_id, child_company_id, relationship) values ($1,$2,'subsidiary')`, [companyA, childCo]);
     return { orgA, orgB, companyA, companyB, node, cdw, wwt, insight, distr, nocap, vendorSeller, cdwSeller, pursuitA: "", pursuitB: "" };
   });
   s.pursuitA = (await asOrg(s.orgA, (db) => upsertPursuit(db, { orgId: s.orgA, accountId: s.companyA, productId: null, productCategoryId: s.node, pursuitType: "MODERNIZATION", useCase: "virtualization exit", createdVia: "SYSTEM_DETECTED" }))).id;
