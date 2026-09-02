@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { getPool } from "@/db/client";
 import { Card, PageHeader } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
+import { EvidenceModel } from "@/components/evidence-model";
 
 export const dynamic = "force-dynamic";
 
@@ -25,13 +27,41 @@ export default async function SourcesPage() {
 
   return (
     <main>
+      {/* Wave 5 §5: "verification outcomes, audit history and sampling" lists the
+          room's mechanics. The question it answers is whose evidence this is and
+          how far it can be trusted — and trust here is earned from checked
+          outcomes rather than declared, which is the claim worth leading with. */}
       <PageHeader
         title="Sources"
-        subtitle="Verification outcomes, audit history and sampling, per source."
+        subtitle="Where the evidence comes from, and how much each source has earned your trust."
       />
       <RoomTabs tabs={[{ href: "/sources", label: "Sources" }, { href: "/provider-health", label: "Provider health" }]} />
+      <EvidenceModel
+        current="sources"
+        steps={{ sources: { detail: `${sources.length} source${sources.length === 1 ? "" : "s"} contributing` } }}
+      />
+      {/* Wave 5 §4 applies here as much as to Analytics: a room with nothing in it
+          should say what it will hold and how it gets there, not leave one grey
+          sentence floating on an empty page. */}
       {sources.length === 0 && (
-        <p className="text-copy text-neutral-500">Sources register automatically as evidence flows in.</p>
+        <Card>
+          <p className="text-title font-semibold ink">No source has contributed evidence yet.</p>
+          <p className="mt-1 text-body ink-muted">
+            A source registers itself the first time a claim is attributed to it — nothing to
+            configure here.
+          </p>
+          <p className="mt-3 text-body ink-muted">Once evidence is flowing, this room answers:</p>
+          <ul className="mt-1 space-y-0.5 text-body ink-faint">
+            <li>· how much of what each source told us survived verification</li>
+            <li>· how much of it was quarantined or rejected outright</li>
+            <li>· whether a source&rsquo;s claims actually precede won deals</li>
+          </ul>
+          <p className="mt-3 text-body">
+            <Link href="/provider-health" className="text-accent hover:underline dark:text-blue-400">
+              Check which feeds are configured and running →
+            </Link>
+          </p>
+        </Card>
       )}
       <div className="grid gap-4 sm:grid-cols-2">
         {sources.map((s) => {

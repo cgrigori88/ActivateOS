@@ -6,6 +6,8 @@ import { computeFunnel } from "@/lib/insights/funnel";
 import { STAGES, type Stage } from "@/lib/opportunities/lifecycle";
 import { loadStageWeights } from "@/lib/opportunities/stage-weights";
 import { Bento, Card, PageHeader, SectionHeading, Disclosure, SummaryBand, BlockLabel } from "@/components/ui";
+import { EvidenceModel } from "@/components/evidence-model";
+import { RoomTabs } from "@/components/room-tabs";
 import { sourceOutcomeAttribution } from "@/lib/opportunities/autopsy";
 import { QuerySelect } from "@/components/query-select";
 import { saveStageWeightsAction, setTriggerEnabledAction } from "./actions";
@@ -15,11 +17,83 @@ import { buttonClass } from "@/components/ui";
 export const dynamic = "force-dynamic";
 
 /**
- * Insights (BLUEPRINT Phase 7): what the outcome log says about how the
- * machine is performing — funnel conversion, declared-vs-observed stage
- * probabilities, source predictive value, agent spend, and how heavily
- * humans edit AI drafts. Every number reproducible from stored events.
+ * Insights (Wave 5 §3) — what the outcome log says about how the machine is
+ * performing: funnel conversion, declared-vs-observed stage probabilities,
+ * source predictive value, and how heavily humans edit AI drafts. Every number
+ * reproducible from stored events.
+ *
+ * WHAT WAS WRONG. The room was a wall of correct numbers with no reading. A
+ * four-deal win rate sat in the same weight of type as a rule; a table of
+ * declared-vs-observed probabilities said "review" without saying what a
+ * reviewer would conclude; and a source attribution list showed "behind 2 won ·
+ * 1 lost" with no statement of whether three deals mean anything. A number a
+ * reader cannot weigh is not an insight, it is a measurement left on the floor.
+ *
+ * There was also a straightforward IA error: two observed measurements —
+ * conversation outcomes and source attribution — sat underneath the "Declared
+ * assumptions" heading, which claimed the opposite of what they are.
+ *
+ * WHAT IT DOES NOW. Each block carries a Reading: what was observed, what it
+ * may suggest, how much confidence the sample supports, and what would
+ * strengthen it. The confidence band is derived from the sample size alone and
+ * says so — it is a statement about how much evidence there is, not a
+ * statistical claim about the effect. Nothing is concluded that the counts do
+ * not support, and where the sample is too thin the Reading says that instead
+ * of offering an interpretation.
+ *
+ * Presentation only: no scoring, weighting or calibration logic changes.
  */
+
+/** Sample-size bands. A statement about evidence volume, never about effect size. */
+function band(n: number): { word: string; tone?: string } {
+  if (n === 0) return { word: "no sample yet", tone: "var(--ink-faint)" };
+  if (n < 10) return { word: "too thin to read", tone: "var(--color-accent-risk)" };
+  if (n < 30) return { word: "provisional", tone: "var(--color-timing)" };
+  return { word: "reasonable", tone: "var(--color-positive)" };
+}
+
+/**
+ * The Reading: the four things a number needs before a person can act on it.
+ * `suggests` is omitted deliberately when the sample cannot carry a reading —
+ * an interpretation offered over four data points is worse than none.
+ */
+function Reading({
+  suggests,
+  n,
+  unit,
+  strengthen,
+}: {
+  suggests?: string;
+  n: number;
+  unit: string;
+  strengthen: string;
+}) {
+  const b = band(n);
+  return (
+    <div className="mt-3 border-t pt-2.5 text-body" style={{ borderColor: "var(--border-subtle)" }}>
+      <dl className="grid gap-x-3 gap-y-1" style={{ gridTemplateColumns: "auto 1fr" }}>
+        <dt className="text-label font-semibold uppercase tracking-[0.04em] ink-faint">Suggests</dt>
+        <dd className="ink-soft">
+          {suggests ?? (
+            <span className="ink-muted">
+              {n === 0
+                ? `Nothing has been recorded here yet, so there is no direction to read.`
+                : `${n} ${unit}${n === 1 ? "" : "s"} cannot carry a reading. The counts stand; the interpretation is withheld.`}
+            </span>
+          )}
+        </dd>
+        <dt className="text-label font-semibold uppercase tracking-[0.04em] ink-faint">Confidence</dt>
+        <dd>
+          <span className="font-semibold" style={{ color: b.tone }}>{b.word}</span>
+          <span className="ink-muted"> — {n} {unit}{n === 1 ? "" : "s"} behind it</span>
+        </dd>
+        <dt className="text-label font-semibold uppercase tracking-[0.04em] ink-faint">Strengthen</dt>
+        <dd className="ink-muted">{strengthen}</dd>
+      </dl>
+    </div>
+  );
+}
+
 export default async function InsightsPage({
   searchParams,
 }: {
@@ -102,6 +176,18 @@ export default async function InsightsPage({
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   })();
 
+  // Readings that depend on the data are computed here so the JSX stays a layout.
+  const unknownWins = byClass.find(([cls]) => cls === "UNKNOWN")?.[1] ?? 0;
+  const funnelTotal = funnel.reduce((t, s) => t + s.count, 0);
+  const biggestDrop = funnel
+    .map((s, i) => ({ s, prev: funnel[i - 1], drop: i > 0 ? funnel[i - 1].count - s.count : 0 }))
+    .filter((x) => x.prev && x.drop > 0)
+    .sort((a, b) => b.drop - a.drop)[0];
+  const divergent = calibration.filter((c) => c.divergent);
+  const readable = calibration.filter((c) => c.observed != null);
+  const attributionSpread = attribution.filter((a) => a.wonDeals + a.lostDeals > 0);
+  const pendingReps = partnerHeadlines.filter((h) => h.pending > 0);
+  const partnerSample = partnerHeadlines.reduce((t, h) => t + h.sample, 0);
 
   return (
     <main>
@@ -109,6 +195,30 @@ export default async function InsightsPage({
         title="Insights"
         subtitle="What the outcome log says. Declared assumptions stay declared until data replaces them."
       />
+      {/* §11: Insights and Outreach analytics are the two halves of "what did we
+          learn" — one from closed outcomes, one from what was sent. They were
+          two unrelated rail entries. */}
+      <RoomTabs tabs={[{ href: "/insights", label: "Insights" }, { href: "/analytics", label: "Outreach analytics" }]} />
+      <EvidenceModel
+        current="insights"
+        steps={{ insights: { detail: `${closedN} closed deal${closedN === 1 ? "" : "s"} on record` } }}
+      />
+
+      {/* The single most important thing about this room is the size of what it
+          is reading from. Stating it once up front is what stops every figure
+          below from being read as a measurement. */}
+      <Card className="mb-4">
+        <p className="text-title font-semibold ink">
+          {closedN === 0
+            ? "Nothing has closed yet, so there is nothing to learn from."
+            : `Everything here is read from ${closedN} closed deal${closedN === 1 ? "" : "s"}.`}
+        </p>
+        <p className="mt-1 text-body ink-muted">
+          {closedN >= 30
+            ? "That is enough history to treat the directions below as real, though not enough to treat any single figure as precise."
+            : "That is a direction, not a measurement. Each block below states what it may suggest, how much the sample supports it, and what would make it firmer."}
+        </p>
+      </Card>
 
       <SummaryBand className="mb-6">
         <Bento label="closed deals" value={closedN} href="/pipeline" />
@@ -117,10 +227,7 @@ export default async function InsightsPage({
         <Bento label="edit intensity" value={intensity ?? "—"} subs={["0 sent as-is · 1 rewritten"]} />
       </SummaryBand>
 
-      {/* The three bands are the room's argument: what happened, what we assumed,
-          and what raises an account. Flat, they let a four-deal count read with
-          the same authority as a rule. */}
-      <SectionHeading hint="What the record says happened. Counts, not conclusions.">
+      <SectionHeading hint="What the record says happened. Counts first, then what they may mean.">
         Observed outcomes
       </SectionHeading>
 
@@ -128,8 +235,8 @@ export default async function InsightsPage({
       {canonicalTotal > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <BlockLabel>Canonical outcomes · attribution</BlockLabel>
-            <span className="text-body text-neutral-400">{canonicalTotal} terminal outcome{canonicalTotal === 1 ? "" : "s"} — small sample; honest by design</span>
+            <BlockLabel className="mb-0">Canonical outcomes · attribution</BlockLabel>
+            <span className="text-body text-neutral-400">{canonicalTotal} terminal outcome{canonicalTotal === 1 ? "" : "s"}</span>
           </div>
           <div className="flex flex-wrap gap-2 text-copy">
             {byClass.length === 0 ? (
@@ -142,9 +249,21 @@ export default async function InsightsPage({
             ))}
           </div>
           <Disclosure summary="Outcome ≠ Attribution" className="mt-2">
-            The count is what happened; the class is PursuitOS’s evidence-bound claim about who moved
+            The count is what happened; the class is PursuitOS&rsquo;s evidence-bound claim about who moved
             it. UNKNOWN is preserved where no partner route was selected.
           </Disclosure>
+          <Reading
+            n={canonicalTotal}
+            unit="terminal outcome"
+            suggests={
+              canonicalTotal === 0
+                ? undefined
+                : unknownWins > 0
+                  ? `${unknownWins} of the recorded wins carry no attributable partner route. Either those deals genuinely ran direct, or a route was taken that nobody selected in the system — those are very different problems and the record cannot currently tell them apart.`
+                  : "Every win recorded as a canonical outcome carries an attributable route, so the settlement ledger and the outcome log are telling the same story about the deals both of them see."
+            }
+            strengthen="Selecting a route on a pursuit before it closes — an outcome attributed after the fact is a reconstruction, not a record."
+          />
         </Card>
       )}
 
@@ -153,7 +272,7 @@ export default async function InsightsPage({
       {partnerHeadlines.length > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <BlockLabel>Partner activation vs presence</BlockLabel>
+            <BlockLabel className="mb-0">Partner activation vs presence</BlockLabel>
             <span className="text-body text-neutral-400">separate truths — presence, activation, acceptance, canonical outcomes</span>
           </div>
           <div className="overflow-x-auto">
@@ -179,13 +298,21 @@ export default async function InsightsPage({
               </tbody>
             </table>
           </div>
+          <Reading
+            n={partnerSample}
+            unit="attributed deal"
+            suggests={
+              pendingReps.length > 0
+                ? `${pendingReps.map((h) => h.name).join(", ")} ${pendingReps.length === 1 ? "has" : "have"} routes selected on our side that the partner has not accepted. Presence is not activation: an unaccepted route buys nothing, however large the overlap.`
+                : "Every selected route has been accepted, so activation is keeping pace with presence."
+            }
+            strengthen="Enough accepted routes per partner to give median acceptance time a sample — the latency column is the one that separates an engaged partner from a listed one."
+          />
         </Card>
       )}
 
       <Card className="mb-6">
-        <BlockLabel>
-          Commercial funnel
-        </BlockLabel>
+        <BlockLabel>Commercial funnel</BlockLabel>
         <div className="space-y-2">
           {funnel.map((s) => (
             <div key={s.key} className="flex items-center gap-3 text-copy">
@@ -205,6 +332,81 @@ export default async function InsightsPage({
             </div>
           ))}
         </div>
+        <Reading
+          n={funnelTotal}
+          unit="recorded event"
+          suggests={
+            biggestDrop
+              ? `The largest fall-off is between ${biggestDrop.prev.label.toLowerCase()} and ${biggestDrop.s.label.toLowerCase()} — ${biggestDrop.drop} of ${biggestDrop.prev.count}. If one stage is where the machine loses most of its work, that is the stage worth instrumenting before any other.`
+              : undefined
+          }
+          strengthen="Events logged at every stage rather than at the ones that happen to have automation behind them — a stage that is never written to reads as a fall-off it did not cause."
+        />
+      </Card>
+
+      {/* Source→outcome attribution (slice E) — the learning loop's first visible dividend. */}
+      {attribution.length > 0 && (
+        <Card className="mb-6">
+          <div className="mb-1 flex items-baseline justify-between gap-3">
+            <BlockLabel className="mb-0">What sat behind the outcomes</BlockLabel>
+            <span className="text-body text-neutral-400">deals whose account carried verified claims from each source</span>
+          </div>
+          <ul className="space-y-1 text-copy">
+            {attribution.map((a) => (
+              <li key={a.sourceType} className="flex items-center justify-between gap-3">
+                <span className="font-mono text-body text-neutral-500">{a.sourceType}</span>
+                <span className="tnum text-neutral-600 dark:text-neutral-300">
+                  behind <b className="text-positive dark:text-green-400">{a.wonDeals} won</b> · <b className="text-red-700 dark:text-red-400">{a.lostDeals} lost</b>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Reading
+            n={attributionDeals}
+            unit="closed deal"
+            suggests={
+              attributionDeals >= 10 && attributionSpread.length > 0
+                ? "Sources are beginning to separate on outcome. Treat the ordering as a hypothesis about which telemetry forecasts wins, and test it before letting it change what gets collected."
+                : undefined
+            }
+            strengthen="Closed deals, mostly. Below roughly ten per source a single lost deal reverses the ordering, which is why no source is ranked here yet."
+          />
+        </Card>
+      )}
+
+      <Card className="mb-6">
+        <BlockLabel>Conversation outcomes</BlockLabel>
+        {replies.length === 0 ? (
+          <p className="text-copy text-neutral-500">No customer replies analyzed yet.</p>
+        ) : (
+          <ul className="space-y-1 text-copy">
+            {replies.map((r) => (
+              <li key={r.response_type} className="flex justify-between">
+                <span>{(r.response_type ?? "unknown").toLowerCase().replace(/_/g, " ")}</span>
+                <span className="tnum font-semibold">{r.n}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-3 border-t border-neutral-100 pt-2 text-copy text-neutral-500 dark:border-neutral-800">
+          Seller edit intensity:{" "}
+          <span className="font-semibold text-neutral-800 dark:text-neutral-200">
+            {intensity != null ? intensity : "no edited drafts yet"}
+          </span>
+          {intensity != null && <span className="text-body"> (0 = sent as drafted, 1 = rewritten)</span>}
+        </p>
+        <Reading
+          n={edits.length}
+          unit="edited draft"
+          suggests={
+            intensity == null
+              ? undefined
+              : intensity >= 0.5
+                ? "Sellers are rewriting more of each draft than they keep. That is a verdict on the drafting, not on the seller — the skill behind these messages is the thing to change."
+                : "Sellers are keeping most of what is drafted, which is the signal that the drafting is close enough to be worth reviewing rather than replacing."
+          }
+          strengthen="More edited drafts across more sellers. One seller's habits are not a measure of draft quality."
+        />
       </Card>
 
       <SectionHeading hint="Numbers a human chose. They stay declared until enough outcomes replace them.">
@@ -213,9 +415,7 @@ export default async function InsightsPage({
 
       <Card className="mb-6">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-          <BlockLabel>
-            Stage probability calibration
-          </BlockLabel>
+          <BlockLabel className="mb-0">Stage probability calibration</BlockLabel>
           <QuerySelect
             param="wscope"
             value={wscope || "all"}
@@ -264,6 +464,19 @@ export default async function InsightsPage({
           </tbody>
         </table>
 
+        <Reading
+          n={closedN}
+          unit="closed deal"
+          suggests={
+            readable.length === 0
+              ? undefined
+              : divergent.length > 0
+                ? `${divergent.map((c) => c.stage.replace(/_/g, " ")).join(", ")} ${divergent.length === 1 ? "is" : "are"} more than 15 points away from the declared weight. The weight is a human assumption and stays one until somebody changes it here — nothing recalibrates itself.`
+                : "Where there is enough history to compare, the declared weights and observed outcomes agree. The assumptions are holding."
+          }
+          strengthen="Ten closed deals per stage. Until then the observed column is blank by design rather than filled with a number a reader would act on."
+        />
+
         {/* The editor — same card, so declared numbers and their controls live together. */}
         <details className="mt-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
           <summary className="cursor-pointer text-body font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
@@ -308,64 +521,12 @@ export default async function InsightsPage({
         </details>
       </Card>
 
-      <Card>
-        <BlockLabel>
-          Conversation outcomes
-        </BlockLabel>
-        {replies.length === 0 ? (
-          <p className="text-copy text-neutral-500">No customer replies analyzed yet.</p>
-        ) : (
-          <ul className="space-y-1 text-copy">
-            {replies.map((r) => (
-              <li key={r.response_type} className="flex justify-between">
-                <span>{(r.response_type ?? "unknown").toLowerCase().replace(/_/g, " ")}</span>
-                <span className="tnum font-semibold">{r.n}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="mt-3 border-t border-neutral-100 pt-2 text-copy text-neutral-500 dark:border-neutral-800">
-          Seller edit intensity:{" "}
-          <span className="font-semibold text-neutral-800 dark:text-neutral-200">
-            {intensity != null ? intensity : "no edited drafts yet"}
-          </span>
-          {intensity != null && <span className="text-body"> (0 = sent as drafted, 1 = rewritten)</span>}
-        </p>
-      </Card>
-
-      {/* Source→outcome attribution (slice E) — the learning loop's first visible dividend. */}
-      {attribution.length > 0 && (
-        <Card className="mb-6">
-          <div className="mb-1 flex items-baseline justify-between gap-3">
-            <BlockLabel>What sat behind the outcomes</BlockLabel>
-            <span className="text-body text-neutral-400">early sample — {attributionDeals} closed deal{attributionDeals === 1 ? "" : "s"}; patterns firm up with volume</span>
-          </div>
-          <ul className="space-y-1 text-copy">
-            {attribution.map((a) => (
-              <li key={a.sourceType} className="flex items-center justify-between gap-3">
-                <span className="font-mono text-body text-neutral-500">{a.sourceType}</span>
-                <span className="tnum text-neutral-600 dark:text-neutral-300">
-                  behind <b className="text-positive dark:text-green-400">{a.wonDeals} won</b> · <b className="text-red-700 dark:text-red-400">{a.lostDeals} lost</b>
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-label text-neutral-400">
-            Counts deals whose account carried verified claims from each source. With volume this
-            becomes source predictive value — which telemetry actually forecasts wins.
-          </p>
-        </Card>
-      )}
-
       {/* Attention triggers (task #83): the named catalog of deterministic
           "this deserves attention" rules, each with an org-level switch. */}
       <SectionHeading hint="Deterministic rules, not a model. Each one is named and switchable.">
         What raises an account
       </SectionHeading>
       <Card>
-        <SectionHeading hint="Every rule that raises an account for attention, by name.">
-          Attention triggers
-        </SectionHeading>
         <Disclosure summary="What switching one off does" className="mb-3">
           Switch a rule off and it stops running everywhere it&rsquo;s surfaced — there are no
           hidden heuristics behind these.

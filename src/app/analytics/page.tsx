@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
 import { Card, PageHeader, BlockLabel } from "@/components/ui";
+import { RoomTabs } from "@/components/room-tabs";
 import { QuerySelect } from "@/components/query-select";
 import { formatMoney } from "@/lib/format/money";
 
@@ -196,19 +197,52 @@ export default async function AnalyticsPage({
         title="Outreach analytics"
         subtitle="Outreach performance — funnel, trend, cadence, conversion by band."
       />
+      {/* §11: the other half of "what did we learn" is Insights, which reads the
+          same question from closed outcomes rather than from what was sent. */}
+      <RoomTabs tabs={[{ href: "/insights", label: "Insights" }, { href: "/analytics", label: "Outreach analytics" }]} />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <QuerySelect param="window" value={sp.window ?? "all"} label="Timeframe" options={[{ value: "all", label: "All time" }, { value: "30", label: "Last 30 days" }, { value: "90", label: "Last 90 days" }]} />
-        <span className="text-body text-neutral-400">funnel &amp; segment conversion; the daily trend is fixed at 28 days</span>
-      </div>
+      {/* §4: a timeframe selector over nothing is an instrument with no reading. */}
+      {hasData && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <QuerySelect param="window" value={sp.window ?? "all"} label="Timeframe" options={[{ value: "all", label: "All time" }, { value: "30", label: "Last 30 days" }, { value: "90", label: "Last 90 days" }]} />
+          <span className="text-body text-neutral-400">funnel &amp; segment conversion; the daily trend is fixed at 28 days</span>
+        </div>
+      )}
 
+      {/*
+        Wave 5 §4 — the empty BI graveyard.
+
+        The room already knew it had no data and said so honestly in this banner,
+        and then rendered the entire dashboard anyway: an eight-row funnel of
+        zeros, five "—" conversion figures, an empty cadence chart, a trend chart
+        drawn as a flat line, and an empty propensity table. Roughly a thousand
+        pixels of charts, each of which answers a real question — but only once
+        there is something to answer it with. Drawn empty they teach a reader that
+        the room's charts do not work.
+
+        §4's instruction is to make empty visualizations purposeful empty states,
+        not to delete capability. So with no outreach recorded the room states the
+        questions it will answer and where the data comes from; every panel below
+        returns intact the moment a send exists. Nothing was removed.
+      */}
       {!hasData && (
         <Card className="mb-6">
-          <p className="text-copy text-neutral-500">
-            No outreach activity yet. Compose and send a sequence on the{" "}
-            <Link href="/campaigns" className="text-accent hover:underline dark:text-blue-400">Campaigns</Link> page —
-            every send, open, and reply lands here.
+          <p className="text-title font-semibold ink">Nothing to analyse yet.</p>
+          <p className="mt-1 text-copy ink-muted">
+            No outreach has been sent from this workspace, so there is no funnel, cadence or conversion
+            to measure.
           </p>
+          <div className="mt-3 border-t pt-2.5 text-body ink-faint" style={{ borderColor: "var(--border-subtle)" }}>
+            <span className="ink-muted">Once sequences are running, this room answers:</span>
+            <ul className="mt-1 space-y-0.5">
+              <li>· where outreach drops off — sent, opened, replied, meeting, registered</li>
+              <li>· which step in a multi-touch sequence actually earns the reply</li>
+              <li>· whether higher propensity bands really do convert better</li>
+            </ul>
+            <Link href="/campaigns" className="mt-2 inline-block font-semibold text-accent hover:underline dark:text-blue-400">
+              Compose a sequence on Campaigns →
+            </Link>
+          </div>
         </Card>
       )}
 
@@ -275,6 +309,10 @@ export default async function AnalyticsPage({
         </Card>
       )}
 
+      {/* §4: every panel below answers a real question, and each is gated on there
+          being something to answer it with. Capability is untouched — this is a
+          render condition, not a deletion. */}
+      {hasData && (<>
       {/* Funnel — account cohorts as bars, $ of associated pipeline on the right */}
       <Card className="mb-6">
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
@@ -462,6 +500,7 @@ export default async function AnalyticsPage({
           If higher bands don&apos;t convert better, propensity needs recalibration — this table is the feedback signal.
         </p>
       </Card>
+      </>)}
     </main>
   );
 }

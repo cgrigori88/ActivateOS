@@ -217,14 +217,20 @@ export default async function AdminPage({
   const totalRuns = agents.reduce((s, a) => s + Number(a.n), 0);
   const totalCost = agents.reduce((s, a) => s + Number(a.cost ?? 0), 0);
 
-  // Worker heartbeat (only when configured; never blocks the page long).
-  let workerStatus = "not configured";
+  /* Background-processing heartbeat (only when configured; never blocks the page
+     long). Wave 5 §10: the four outcomes are stated in the shared health
+     vocabulary rather than as transport detail — an HTTP status code told an
+     administrator nothing they could act on, and "unhealthy (503)" and
+     "unreachable" call for the same response anyway. The distinction that does
+     matter, and is kept, is between NOT CONFIGURED (a setup decision) and
+     UNAVAILABLE (something to investigate). */
+  let workerStatus = "Not configured";
   if (process.env.WORKER_URL) {
     try {
       const res = await fetch(`${process.env.WORKER_URL.replace(/\/$/, "")}/health`, { signal: AbortSignal.timeout(3000) });
-      workerStatus = res.ok ? "healthy" : `unhealthy (${res.status})`;
+      workerStatus = res.ok ? "Healthy" : "Degraded";
     } catch {
-      workerStatus = "unreachable";
+      workerStatus = "Unavailable";
     }
   }
 
@@ -271,9 +277,13 @@ export default async function AdminPage({
       <BlockLabel>Access</BlockLabel>
       <Card className="mb-4">
         {!authConfigured() ? (
+          /* Wave 5 §9: `NEXT_PUBLIC_SUPABASE_*` named an environment variable to
+             an administrator who cannot act on it from this screen. The state and
+             what it means for access are what belong here; the variable name is a
+             deployment detail. The limitation is unchanged and still explicit. */
           <p className="text-copy text-neutral-500">
-            Identity isn&apos;t configured on this deployment — member management activates once
-            <code className="mx-1">NEXT_PUBLIC_SUPABASE_*</code> is set. Basic Auth gates everything meanwhile.
+            <b className="ink-muted">Sign-in is not configured</b> on this deployment, so members cannot be
+            invited or managed here yet. Access is currently gated at the edge for everyone.
           </p>
         ) : (
           <>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
-import { Bento, Card, PageHeader } from "@/components/ui";
+import { Bento, Card, PageHeader, Disclosure } from "@/components/ui";
+import { EvidenceModel } from "@/components/evidence-model";
 import { QuerySelect } from "@/components/query-select";
 import { captureContactsFromPopulations } from "@/lib/contacts/capture";
 
@@ -16,6 +17,26 @@ export const dynamic = "force-dynamic";
  * Deep filters (type · partner · seniority · engagement · search) and a group-by
  * lens (company / partner / type) keep it usable at scale, and it doubles as the
  * cleanest training signal we hold: who the real decision + selling unit is.
+ *
+ * WAVE 5 §8. The room knew all of this and showed almost none of it. Each person
+ * was a twelve-column row — Contact, Company, Type, Email, Phone, Partner, Brand,
+ * Territory, Vertical, Segment, Location, Engagement — in which nine cells were
+ * an em-dash for a typical end user, because territory, vertical and segment are
+ * attributes only a captured partner rep carries. A grid that is mostly dashes
+ * teaches the reader to stop reading it.
+ *
+ * The row is now the six things a seller actually decides on:
+ *
+ *   Person · Role · Company · Relationship · Reach · Pursuits
+ *
+ * Nothing was dropped. Coverage attributes move to a quiet line under the person
+ * and appear only where the person has them; the rest is one click away on the
+ * contact's own page, which is new in this wave and is where the full record,
+ * every buying-role assertion and the interaction history now live.
+ *
+ * One honesty constraint shapes the linking: people discovered by intelligence
+ * have no contact row, so they get no detail link. A page for a person the
+ * system cannot act on would be a fiction, and a dead link is worse than none.
  */
 
 const TYPE_LABELS: Record<string, string> = {
@@ -88,6 +109,8 @@ interface Row {
   engagementScore: number | null;
   /** P1C §14: lightweight link to the canonical assertion — role · state · pursuit. */
   stakeholder: { role: string; state: string; pursuitId: string | null } | null;
+  /** True only for rows backed by a contacts record — the ones with a detail page. */
+  linkable: boolean;
 }
 
 export default async function ContactsPage({
@@ -134,8 +157,13 @@ export default async function ContactsPage({
        from contacts c
        left join companies co on co.id = c.company_id
        left join partners p on p.id = c.partner_id
+       /* pu.id, not s.pursuit_id. A stakeholder row survives a pursuit its reader
+          cannot see — RLS is right to hide it, and stakeholders carries no org_id
+          of its own. Taking the id from the joined row means a link is offered
+          only where the destination is actually readable by this tenant. */
        left join lateral (
-         select s.role, s.assertion_state, s.pursuit_id from stakeholders s
+         select s.role, s.assertion_state, pu.id as pursuit_id from stakeholders s
+          left join pursuits pu on pu.id = s.pursuit_id
           where s.contact_id = c.id
           order by case s.assertion_state when 'verified' then 3 when 'inferred' then 2 else 1 end desc,
                    s.asserted_at desc nulls last limit 1) sh on true`,
@@ -203,6 +231,7 @@ export default async function ContactsPage({
       engagementStatus: t.contact_type === "end_user" ? t.engagement_status : null,
       engagementScore: t.engagement_score == null ? null : Number(t.engagement_score),
       stakeholder: t.sh_role ? { role: t.sh_role, state: t.sh_state ?? "unverified", pursuitId: t.sh_pursuit } : null,
+      linkable: true,
     });
   }
   // discovered — only if not already an end-user contact of the same name at the company.
@@ -232,6 +261,7 @@ export default async function ContactsPage({
       engagementStatus: null,
       engagementScore: null,
       stakeholder: null,
+      linkable: false,
     });
   }
 
@@ -306,6 +336,30 @@ export default async function ContactsPage({
         title="Contacts"
         subtitle="The full co-sell committee — end users and the partner reps who own each account."
       />
+      <EvidenceModel
+        current="contacts"
+        steps={{ contacts: { detail: `${reachable} of ${rows.length} reachable` } }}
+      />
+
+      {/* What the room's counts actually mean before anyone reads a row: a
+          contact the system knows about and a contact you can reach are two
+          different things, and most of these are the first kind. */}
+      <Card className="mb-4">
+        <p className="text-title font-semibold ink">
+          {rows.length === 0
+            ? "No people known yet."
+            : reachable === rows.length
+              ? `All ${rows.length} people here can be reached.`
+              : `${reachable} of ${rows.length} people here can actually be reached.`}
+        </p>
+        <p className="mt-1 text-body ink-muted">
+          {rows.length === 0
+            ? "End users appear once an account crosses the research gate; partner reps are captured from approved account lists."
+            : reachable === rows.length
+              ? "Everyone listed carries an address. As intelligence finds more of each account's committee, people will appear here who are known but not contactable — this room keeps those two facts apart."
+              : "The rest are known — named on a partner's account list or found by intelligence — but carry no address. Knowing who somebody is and being able to contact them are separate facts, and this room keeps them separate."}
+        </p>
+      </Card>
 
       {/* Bentos */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -360,6 +414,9 @@ export default async function ContactsPage({
             for (const r of g.items) byType.set(r.contactType, (byType.get(r.contactType) ?? 0) + 1);
             const reachableN = g.items.filter((r) => r.email).length;
             const showCompanyCol = groupKey !== "company";
+            /* Grouping by type already states the role in the group header —
+               repeating it in every row is a column of the same word. */
+            const showRoleCol = groupKey !== "type";
             return (
               <Card key={g.companyId ?? g.name} className="p-0">
                 <details open={grouped.length === 1} className="group">
@@ -384,68 +441,92 @@ export default async function ContactsPage({
                     <table className="data-table">
                       <thead>
                         <tr>
-                          <th>Contact</th>
+                          <th>Person</th>
+                          {showRoleCol && <th>Role</th>}
                           {showCompanyCol && <th>Company</th>}
-                          <th>Type</th>
-                          <th>Email</th>
-                          <th>Phone</th>
-                          <th>Partner</th>
-                          <th>Brand / product</th>
-                          <th>Territory</th>
-                          <th>Vertical</th>
-                          <th>Segment</th>
-                          <th>Location</th>
-                          <th>Engagement</th>
+                          <th>Relationship</th>
+                          <th>Reach</th>
+                          <th>Pursuits</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {g.items.map((r) => (
+                        {g.items.map((r) => {
+                          /* Coverage attributes only a captured rep carries. Rendered
+                             where they exist, absent where they do not — never as a
+                             column of dashes. */
+                          const coverage = [r.brand, r.territory, r.vertical, r.segment, r.location].filter(Boolean);
+                          return (
                           <tr key={r.id}>
                             <td>
                               <div className="font-medium">
-                                {r.name}
-                                {/* P1C §14: light indicator only — the interpretation lives on the Pursuit. */}
-                                {r.stakeholder && (
-                                  <Link href={r.stakeholder.pursuitId ? `/pursuits/${r.stakeholder.pursuitId}#stakeholders` : "/pipeline"}
-                                    className={`ml-1.5 rounded-full px-1.5 py-px text-micro font-semibold hover:underline ${r.stakeholder.state === "verified" ? "bg-emerald/12 text-emerald-700 dark:text-emerald-300" : r.stakeholder.state === "inferred" ? "bg-violet/12 text-violet-700 dark:text-violet-300" : "bg-neutral-500/10 text-neutral-500"}`}
-                                    title={`Buying-role assertion on the linked pursuit — ${r.stakeholder.state}`}>
-                                    {r.stakeholder.role.replace(/_/g, " ")} · {r.stakeholder.state}
-                                  </Link>
+                                {r.linkable ? (
+                                  <Link href={`/contacts/${r.id}`} className="text-accent hover:underline dark:text-blue-400">{r.name}</Link>
+                                ) : (
+                                  r.name
                                 )}
                               </div>
                               <div className="text-label text-neutral-400">
-                                {r.title ?? "—"}
+                                {r.title ?? "role not recorded"}
                                 {r.contactType === "end_user" && r.level !== "other" && <span className="ml-1 text-neutral-500">· {LEVEL_LABEL[r.level]}</span>}
                               </div>
+                              {coverage.length > 0 && (
+                                <div className="text-label text-neutral-400">{coverage.join(" · ")}</div>
+                              )}
                             </td>
+                            {showRoleCol && (
+                              <td>
+                                <span className={`rounded-inner px-1.5 py-0.5 text-micro font-medium ring-1 ring-inset ${TYPE_TONE[r.contactType] ?? TYPE_TONE.other}`}>{TYPE_LABELS[r.contactType] ?? r.contactType}</span>
+                              </td>
+                            )}
                             {showCompanyCol && (
                               <td className="text-body">
                                 {r.companyId ? <Link href={`/accounts/${r.companyId}`} className="text-accent hover:underline dark:text-blue-400">{r.legalName}</Link> : r.legalName}
                               </td>
                             )}
-                            <td>
-                              <span className={`rounded-inner px-1.5 py-0.5 text-micro font-medium ring-1 ring-inset ${TYPE_TONE[r.contactType] ?? TYPE_TONE.other}`}>{TYPE_LABELS[r.contactType] ?? r.contactType}</span>
+                            <td className="text-body">
+                              {r.partnerName ? (
+                                <span className="text-neutral-600 dark:text-neutral-300">via {r.partnerName}</span>
+                              ) : (
+                                <span className="text-neutral-500">Direct</span>
+                              )}
                             </td>
-                            <td className="text-body">{r.email ? <a href={`mailto:${r.email}`} className="text-accent hover:underline dark:text-blue-400">{r.email}</a> : <span className="text-neutral-300 dark:text-neutral-600">—</span>}</td>
-                            <td className="text-body text-neutral-500">{r.phone ?? "—"}</td>
-                            <td className="text-body text-neutral-500">{r.partnerName ?? "—"}</td>
-                            <td className="text-body text-neutral-500">{r.brand ?? "—"}</td>
-                            <td className="text-body text-neutral-500">{r.territory ?? "—"}</td>
-                            <td className="text-body text-neutral-500">{r.vertical ?? "—"}</td>
-                            <td className="text-body text-neutral-500">{r.segment ?? "—"}</td>
-                            <td className="text-body text-neutral-500">{r.location ?? "—"}</td>
+                            {/* Reach is one answer, not three columns: can we contact
+                                them, by what, and did it work. */}
                             <td className="text-body">
                               {r.email ? (
-                                <span className={ENGAGEMENT_TONE[r.engagementStatus ?? "unknown"]}>
-                                  {r.engagementScore != null && r.engagementScore > 0 ? `${r.engagementScore.toFixed(0)} · ` : ""}
-                                  {r.engagementStatus ?? "reachable"}
-                                </span>
+                                <>
+                                  <a href={`mailto:${r.email}`} className="text-accent hover:underline dark:text-blue-400">{r.email}</a>
+                                  {/* §10: "unknown" is the stored value, not the fact.
+                                      The fact is that nothing has come back. */}
+                                  <div className={`text-label ${ENGAGEMENT_TONE[r.engagementStatus ?? "unknown"]}`}>
+                                    {r.engagementScore != null && r.engagementScore > 0 ? `${r.engagementScore.toFixed(0)} · ` : ""}
+                                    {r.engagementStatus == null || r.engagementStatus === "unknown"
+                                      ? "no reply yet"
+                                      : r.engagementStatus.replace(/_/g, " ")}
+                                    {r.phone && <span className="text-neutral-400"> · {r.phone}</span>}
+                                  </div>
+                                </>
+                              ) : r.phone ? (
+                                <span className="text-neutral-600 dark:text-neutral-300">{r.phone}</span>
                               ) : (
-                                <span className="text-neutral-300 dark:text-neutral-600">no address</span>
+                                <span className="text-neutral-400">no address</span>
+                              )}
+                            </td>
+                            {/* P1C §14: light indicator only — the interpretation lives on the Pursuit. */}
+                            <td className="text-body">
+                              {r.stakeholder ? (
+                                <Link href={r.stakeholder.pursuitId ? `/pursuits/${r.stakeholder.pursuitId}#stakeholders` : "/pipeline"}
+                                  className={`rounded-full px-1.5 py-px text-micro font-semibold hover:underline ${r.stakeholder.state === "verified" ? "bg-emerald/12 text-emerald-700 dark:text-emerald-300" : r.stakeholder.state === "inferred" ? "bg-violet/12 text-violet-700 dark:text-violet-300" : "bg-neutral-500/10 text-neutral-500"}`}
+                                  title={`Buying-role assertion on the linked pursuit — ${r.stakeholder.state}`}>
+                                  {r.stakeholder.role.replace(/_/g, " ")} · {r.stakeholder.state}
+                                </Link>
+                              ) : (
+                                <span className="text-neutral-400">none asserted</span>
                               )}
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -453,6 +534,12 @@ export default async function ContactsPage({
               </Card>
             );
           })}
+          <Disclosure summary="Why some names are links and others are not" className="px-1 pt-1">
+            A name is a link when the person has a contact record — that is what a detail page reads
+            from. People found by intelligence on an account&rsquo;s public committee are listed
+            because knowing they exist is useful, but nothing is stored about them beyond a name and
+            a title, so there is no page to open and no action to take.
+          </Disclosure>
         </div>
       )}
     </main>

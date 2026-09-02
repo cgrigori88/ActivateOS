@@ -1,5 +1,6 @@
 import { withTenant } from "@/lib/db/tenant";
 import { Card, PageHeader } from "@/components/ui";
+import { EvidenceModel } from "@/components/evidence-model";
 import { askAction } from "./actions";
 import { buttonClass } from "@/components/ui";
 
@@ -58,17 +59,34 @@ interface Exchange {
   unapplied: string[] | null;
 }
 
+/*
+ * Wave 5 §2 — "surface a small set of high-value example questions only. Do not
+ * show a wall of prompt suggestions."
+ *
+ * Six chips wrapping onto two rows read as a prompt palette, which is the
+ * chatbot affordance this room must not have. Three remain, chosen to show the
+ * range rather than to fill the space: one compound multi-constraint query (the
+ * question that demonstrates what a governed query engine can do that a search
+ * box cannot), one portfolio question, one temporal one. The rest were not
+ * deleted — every one of them is still answerable, and the ones that have been
+ * asked are in the history below.
+ */
 const SUGGESTIONS = [
-  "What should I focus on today?",
-  "What renews in the next 90 days?",
-  "Which high-value pursuits lack an economic buyer?",
-  "Which value cases contain conflicting economic facts?",
+  "Show WWT pursuits over $500K renewing in 90 days without a verified economic buyer",
   "Where is revenue blocked?",
   "What materially changed in the last 30 days?",
 ];
 
-/** Outcome is part of the answer, so it is stated in words rather than only coloured. */
-const OUTCOME: Record<string, { label: string; meaning: string; tone: string }> = {
+/**
+ * Outcome is part of the answer, so it is stated in words rather than only coloured.
+ *
+ * Wave 5 §2: "UNSUPPORTED and AMBIGUOUS should feel intentional, not broken.
+ * Explain what could not be resolved, and what clarification would make the
+ * question answerable." Each non-answer now carries a `next` clause doing exactly
+ * that. The outcomes themselves are unchanged — this is the wording of a state the
+ * resolver already returns, not a new state, and nothing here fabricates an answer.
+ */
+const OUTCOME: Record<string, { label: string; meaning: string; next?: string; tone: string }> = {
   MATCHED: {
     label: "Answered",
     meaning: "The record holds this answer.",
@@ -77,16 +95,19 @@ const OUTCOME: Record<string, { label: string; meaning: string; tone: string }> 
   UNKNOWN: {
     label: "Unknown",
     meaning: "The question was understood. The record does not hold the answer — this is not a zero.",
+    next: "Nothing was guessed. If you expected a result, the underlying evidence may not have been captured yet — check the account, or Sources for what has been collected.",
     tone: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-300",
   },
   AMBIGUOUS: {
     label: "Needs one more word",
     meaning: "The question admits more than one reading, so none was chosen.",
+    next: "Name the thing you mean — a partner, an account, a solution or a period — and ask again. Choosing a reading on your behalf would risk answering a different question.",
     tone: "border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-900 dark:bg-sky-950/60 dark:text-sky-300",
   },
   UNSUPPORTED: {
     label: "Not supported yet",
     meaning: "No registered capability covers this question.",
+    next: "Ask is deliberately limited to questions it can answer from the governed record — it will not improvise one. Questions about pursuits, renewals, partners, stakeholders, value cases and what changed are covered.",
     tone: "border-neutral-300 bg-neutral-50 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400",
   },
 };
@@ -189,7 +210,11 @@ function AnswerBody({ ex, hero }: { ex: Exchange; hero: boolean }) {
 
       {/* The outcome's meaning, in words. Never softened, never behind a click. */}
       {ex.outcome && ex.outcome !== "MATCHED" && (
-        <p className={`mt-3 rounded-inner border px-3 py-2 text-body ${o.tone}`}>{o.meaning}</p>
+        <div className={`mt-3 rounded-inner border px-3 py-2 text-body ${o.tone}`}>
+          <p>{o.meaning}</p>
+          {/* §2: what would make it answerable, on the non-answers only. */}
+          {o.next && <p className="mt-1 opacity-80">{o.next}</p>}
+        </div>
       )}
 
       {ex.next_action && (
@@ -228,10 +253,16 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
 
   return (
     <main>
+      {/* §2/§12: the old subtitle led with methodology — how the answer is
+          produced — before the reader knew what the room was for. What it is for
+          comes first; how it is guaranteed is stated at the foot of the page and
+          in "Why this answer", which is where a reader goes to check rather than
+          to orient. */}
       <PageHeader
         title="Ask"
-        subtitle="The question is interpreted; the answer is retrieved from the record — never written."
+        subtitle="Ask a commercial question in plain language. Every answer is read from the governed record."
       />
+      <EvidenceModel current="ask" steps={{ ask: { label: "what the record answers" } }} />
 
       {sp.notice && (
         <div className="mb-4 rounded-inner border border-amber-300 bg-amber-50 px-4 py-2.5 text-copy text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
@@ -283,12 +314,16 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
             <AnswerBody ex={latest} hero />
           </Card>
 
-          {/* ── History: compact by default, the same layout when expanded ───────────────── */}
+          {/* ── History: compact by default, the same layout when expanded ─────────────────
+              §12: eleven rows of history ran longer than the answer they sat under,
+              so the room's tallest element was its transcript. The four most recent
+              stay open; the rest are one click away. Nothing is dropped, and each
+              row still expands to the identical answer body. */}
           {history.length > 0 && (
             <>
               <h3 className="mb-2 text-label text-neutral-400">Earlier questions ({history.length})</h3>
               <div className="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
-                {history.map((ex) => {
+                {history.slice(0, 4).map((ex) => {
                   const o = OUTCOME[ex.outcome ?? "MATCHED"] ?? OUTCOME.MATCHED;
                   return (
                     <details key={ex.id} className="group bg-white dark:bg-neutral-950">
@@ -311,6 +346,31 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
                   );
                 })}
               </div>
+              {history.length > 4 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-label font-semibold text-accent hover:underline dark:text-blue-400">
+                    {history.length - 4} earlier question{history.length - 4 === 1 ? "" : "s"}
+                  </summary>
+                  <div className="mt-2 divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
+                    {history.slice(4).map((ex) => {
+                      const o = OUTCOME[ex.outcome ?? "MATCHED"] ?? OUTCOME.MATCHED;
+                      return (
+                        <details key={ex.id} className="group bg-white dark:bg-neutral-950">
+                          <summary className="flex cursor-pointer list-none items-baseline gap-3 px-4 py-2.5 hover:bg-neutral-50 dark:hover:bg-neutral-900">
+                            <span className={`shrink-0 rounded-full border px-1.5 py-0 text-micro leading-4 ${o.tone}`}>{o.label}</span>
+                            <span className="min-w-0 flex-1 truncate text-copy text-neutral-800 dark:text-neutral-200" title={ex.question}>{ex.question}</span>
+                            {ex.significance && <span className="shrink-0 text-body tabular-nums text-neutral-500">{ex.significance.value}</span>}
+                            <span className="shrink-0 text-label text-neutral-400">{new Date(ex.created_at).toISOString().slice(5, 10)}</span>
+                          </summary>
+                          <div className="border-t border-neutral-200 px-4 py-3 dark:border-neutral-800">
+                            <AnswerBody ex={ex} hero={false} />
+                          </div>
+                        </details>
+                      );
+                    })}
+                  </div>
+                </details>
+              )}
             </>
           )}
         </>
