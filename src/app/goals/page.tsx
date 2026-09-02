@@ -170,7 +170,17 @@ export default async function GoalsPage({
                     the same linked motions the progress bar is computed over. */}
                 {g.contributors.length > 0 && (
                   <div className="mt-3 border-t border-neutral-100 pt-2.5 dark:border-neutral-800">
-                    <div className="mb-1.5 text-micro font-bold uppercase tracking-[0.05em] ink-faint">Contributing partners</div>
+                    <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
+                      <span className="text-micro font-bold uppercase tracking-[0.05em] ink-faint">Contributing partners</span>
+                      {/* The two figures on this page are different measures and a
+                          reader will notice. Named here, at the number, before the
+                          question forms — not as a paragraph, and not implying they
+                          should reconcile. */}
+                      <span className="text-label ink-faint"
+                        title="Goal progress counts motion-level contribution linked to this goal. The pipeline roll-up below counts opportunity-level joint/co-sell pipeline. Different objects, different totals.">
+                        motion-level · the roll-up below is opportunity-level
+                      </span>
+                    </div>
                     <div className="space-y-1">
                       {g.contributors.map((c) => (
                         <div key={c.name} className="flex items-center gap-3 text-body">

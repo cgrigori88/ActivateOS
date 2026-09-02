@@ -19,7 +19,12 @@ import { formatMoney } from "@/lib/format/money";
 
 export const dynamic = "force-dynamic";
 
-const TODAY_TOP_DECISIONS = 6;
+/* Four is what a reader holds at once. Six made the fifth and sixth cards look
+   exactly as urgent as the first, and pushed "Where your systems disagree" — the
+   materially-changed answer — out of the first viewport. This is a LIMIT on an
+   already-ranked read model: ordering, materiality and decision logic are
+   untouched, and "View all N decisions" still reaches every one of them. */
+const TODAY_TOP_DECISIONS = 4;
 const TODAY_VIEWALL_CAP = 50;   // scale guard (R5): view-all never becomes an unbounded card stack
 const TODAY_TOP_CONDITIONS = 4;
 const usdShort = (n: number) => formatMoney(n);
@@ -260,7 +265,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
             {!viewAll && allDivergences.length > divergences.length ? (
               <Link href={{ query: { ...cleanQuery(sp), today: "all" } }} className="text-label font-semibold text-accent hover:underline dark:text-blue-400">View all {allDivergences.length} →</Link>
             ) : (
-              <span className="text-label text-neutral-400">the record and the deal have parted ways — each row names both</span>
+              <span className="text-label ink-faint">record vs deal</span>
             )}
           </div>
           <ul className="space-y-px">

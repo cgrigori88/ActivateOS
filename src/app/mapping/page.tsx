@@ -751,19 +751,24 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                       </span>
                       <div className="text-micro text-neutral-400">{r.members} accounts</div>
                     </td>
-                    <td className="text-center tnum font-semibold text-neutral-500">{(rowTotals.get(r.id) ?? 0).toLocaleString()}</td>
+                    <td className="text-center tnum text-body ink-faint">{(rowTotals.get(r.id) ?? 0).toLocaleString()}</td>
                     {cols.map((c) => {
                       const cell = cells.get(`${r.id}:${c.id}`);
                       if (!cell || cell.count === 0) {
-                        return <td key={c.id} className="text-center text-neutral-300 dark:text-neutral-700">None</td>;
+                        return <td key={c.id} className="text-center text-label ink-faint opacity-60">None</td>;
                       }
                       return (
                         <td key={c.id} className="p-0 text-center" style={{ backgroundColor: cellShade(cell.avgScore) }}>
-                          <Link href={q({ row: r.id, col: c.id })} className="flex flex-col items-center px-3 py-2.5 hover:ring-2 hover:ring-inset hover:ring-blue-500">
-                            <span className="tnum text-section font-semibold text-blue-800 dark:text-blue-300">{cell.count.toLocaleString()}</span>
-                            <span className="text-micro text-neutral-600 dark:text-neutral-400">
+                          <Link href={q({ row: r.id, col: c.id })}
+                            title={`${cell.count} shared account${cell.count === 1 ? "" : "s"} — open the list`}
+                            className="group/cell flex flex-col items-center px-3 py-3 transition-shadow hover:ring-2 hover:ring-inset hover:ring-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent">
+                            <span className="tnum text-display font-extrabold leading-none tracking-[-0.02em] text-blue-800 dark:text-blue-300">{cell.count.toLocaleString()}</span>
+                            <span className="mt-1 text-micro text-neutral-600 dark:text-neutral-400">
                               {cell.avgScore != null ? `avg ${cell.avgScore.toFixed(0)}` : "—"}
                               {cell.highCount > 0 ? ` · ${cell.highCount} hot` : ""}
+                            </span>
+                            <span className="mt-0.5 text-micro font-semibold text-accent opacity-0 transition-opacity group-hover/cell:opacity-100" aria-hidden>
+                              open →
                             </span>
                           </Link>
                         </td>
@@ -775,7 +780,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                   <td className="sticky left-0 z-10 bg-white text-body font-semibold text-neutral-500 dark:bg-neutral-900">Total (distinct)</td>
                   <td className="text-center tnum font-bold">{kpi.accounts.toLocaleString()}</td>
                   {cols.map((c) => (
-                    <td key={c.id} className="text-center tnum font-semibold text-neutral-500">{(colTotals.get(c.id) ?? 0).toLocaleString()}</td>
+                    <td key={c.id} className="text-center tnum text-body ink-faint">{(colTotals.get(c.id) ?? 0).toLocaleString()}</td>
                   ))}
                 </tr>
               </tbody>

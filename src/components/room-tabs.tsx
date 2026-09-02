@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { segmentClass, segmentTrackClass } from "./segmented";
+
+// Re-exported so existing client call sites keep one import path.
+export { segmentClass, segmentTrackClass };
 
 /**
  * The one segmented-control grammar (Wave 1 §6).
@@ -17,25 +21,6 @@ import { usePathname } from "next/navigation";
  * segmented control does — rather than as saturation.
  */
 
-const TRACK =
-  "inline-flex items-center gap-0.5 rounded-full p-1 " +
-  "bg-[var(--surface-inset)] ring-1 ring-inset ring-[var(--border-subtle)]";
-
-const SEGMENT =
-  "rounded-full px-3.5 py-1.5 text-body font-semibold transition-all duration-[var(--dur-react)] " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50";
-
-const SELECTED = "bg-[var(--surface-primary)] text-[var(--ink)] shadow-[var(--shadow-low)]";
-const UNSELECTED = "text-[var(--ink-muted)] hover:text-[var(--ink)]";
-
-export function segmentClass(selected: boolean): string {
-  return `${SEGMENT} ${selected ? SELECTED : UNSELECTED}`;
-}
-
-export function segmentTrackClass(): string {
-  return TRACK;
-}
-
 /**
  * Room-pair tabs (#78): rooms that merged in the rail (Today+Queue,
  * Campaigns+Scheduled, Sources+Provider health) stay separate ROUTES — the
@@ -47,7 +32,7 @@ export function RoomTabs({ tabs }: { tabs: { href: string; label: string }[] }) 
   const active = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
   return (
-    <nav aria-label="Room sections" className={`-mt-3 mb-6 ${TRACK}`}>
+    <nav aria-label="Room sections" className={`-mt-3 mb-6 ${segmentTrackClass()}`}>
       {tabs.map((t) => (
         <Link
           key={t.href}
@@ -80,7 +65,7 @@ export function Segmented<T extends string>({
   ariaLabel: string;
 }) {
   return (
-    <div role="tablist" aria-label={ariaLabel} className={TRACK}>
+    <div role="tablist" aria-label={ariaLabel} className={segmentTrackClass()}>
       {options.map((o) => (
         <button
           key={o.value}

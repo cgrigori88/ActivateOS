@@ -117,6 +117,13 @@ export default async function InsightsPage({
         <Bento label="edit intensity" value={intensity ?? "—"} subs={["0 sent as-is · 1 rewritten"]} />
       </SummaryBand>
 
+      {/* The three bands are the room's argument: what happened, what we assumed,
+          and what raises an account. Flat, they let a four-deal count read with
+          the same authority as a rule. */}
+      <SectionHeading hint="What the record says happened. Counts, not conclusions.">
+        Observed outcomes
+      </SectionHeading>
+
       {/* Canonical outcome rollup (Phase B): terminal pursuit_outcomes by attribution class. */}
       {canonicalTotal > 0 && (
         <Card className="mb-6">
@@ -174,10 +181,6 @@ export default async function InsightsPage({
           </div>
         </Card>
       )}
-
-      <SectionHeading hint="What the record says happened. Counts, not conclusions.">
-        Observed outcomes
-      </SectionHeading>
 
       <Card className="mb-6">
         <BlockLabel>

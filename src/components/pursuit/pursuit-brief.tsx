@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { PursuitBrief, BriefLine } from "@/lib/pursuits/read-models/brief";
 import { buttonClass } from "@/components/ui";
+import { segmentClass, segmentTrackClass } from "@/components/room-tabs";
 
 /**
  * Disclosure-aware Pursuit Brief drawer (Phase F1). A contextual slide-over — NOT a /briefs room —
@@ -47,16 +48,16 @@ export function PursuitBriefButton({ brief }: { brief: PursuitBrief }) {
               </div>
               {/* Audience toggle */}
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <div className="inline-flex rounded-control p-0.5" style={{ background: "var(--surface-inset)", boxShadow: "inset 0 0 0 1px var(--border-subtle)" }} role="tablist" aria-label="Brief audience">
-                  {([["sponsor", "Sponsor brief"], ["partner", "Partner-safe brief"]] as const).map(([k, label]) => {
-                    const on = audience === k;
-                    const hue = k === "sponsor" ? "var(--color-band-high)" : "var(--color-accent-verified)";
-                    return (
-                      <button key={k} type="button" role="tab" aria-selected={on} onClick={() => setAudience(k)}
-                        className="rounded-[7px] px-3 py-1 text-body font-semibold transition-colors"
-                        style={on ? { background: hue, color: "white" } : { color: "var(--text-secondary, #6b7280)" }}>{label}</button>
-                    );
-                  })}
+                {/* The brief's audience toggle was a SIXTH hand-rolled segmented
+                    control — its own track, a 7px radius off the token set, and a
+                    filled colour that changed with the audience. It is the same
+                    Sponsor/Partner choice the disclosure panel offers, so it takes
+                    the same grammar and the reader learns the control once. */}
+                <div className={segmentTrackClass()} role="tablist" aria-label="Brief audience">
+                  {([["sponsor", "Sponsor brief"], ["partner", "Partner-safe brief"]] as const).map(([k, label]) => (
+                    <button key={k} type="button" role="tab" aria-selected={audience === k}
+                      onClick={() => setAudience(k)} className={segmentClass(audience === k)}>{label}</button>
+                  ))}
                 </div>
                 {partner && (
                   <span className="inline-flex items-center gap-1.5 text-label font-medium" style={{ color: "var(--color-accent-verified)" }}>

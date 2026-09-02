@@ -63,7 +63,9 @@ export default async function TrustPage() {
         <Assurance
           label="Auditability"
           mechanism="Every consequential act is on a ledger"
-          note={`${Number(s.audit_n).toLocaleString()} entries recorded in this tenant`}
+          note={Number(s.audit_n) > 0
+            ? `${Number(s.audit_n).toLocaleString()} entries recorded in this tenant`
+            : "This tenant has not recorded a consequential act yet"}
         />
         <Assurance
           label="Revocable access"
@@ -73,7 +75,9 @@ export default async function TrustPage() {
         <Assurance
           label="Grounded AI"
           mechanism="Agents read the verified record and must cite it"
-          note={`${Number(s.evidence_n).toLocaleString()} claims held · ${s.verified_n} verified, rest quarantined`}
+          note={Number(s.evidence_n) > 0
+            ? `${Number(s.evidence_n).toLocaleString()} claims held · ${s.verified_n} verified, rest quarantined`
+            : "No claims held in this tenant yet"}
         />
       </div>
 

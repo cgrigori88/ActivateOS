@@ -37,13 +37,30 @@ export function DisclosureTheater({ internal, shareable, candidateLabel }: {
           and a selected colour that changed with the audience. It now wears the
           one segmented grammar, so switching audience reads the same way as
           switching any other view in the product. */}
-      <div className={`mb-3 ${segmentTrackClass()}`} role="tablist" aria-label="Disclosure audience">
-        {([["sponsor", "Sponsor view"], ["partner", "Partner view"]] as const).map(([k, label]) => (
-          <button key={k} type="button" role="tab" aria-selected={audience === k}
-            onClick={() => setAudience(k)} className={segmentClass(audience === k)}>
-            {label}
-          </button>
-        ))}
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className={segmentTrackClass()} role="tablist" aria-label="Disclosure audience">
+          {([["sponsor", "Sponsor view"], ["partner", "Partner view"]] as const).map(([k, label]) => (
+            <button key={k} type="button" role="tab" aria-selected={audience === k}
+              onClick={() => setAudience(k)} className={segmentClass(audience === k)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* The stake, stated BEFORE the click and in both states.
+            Until now the control announced nothing: a reader had to switch to
+            Partner and notice an absence to learn what the toggle was for, and an
+            absence is the hardest thing to notice. Naming the count up front makes
+            the switch a verification of a claim already made rather than a hunt
+            for a difference. Same number, same source (`figuresRemoved`) that the
+            partner caption already reports — nothing new is computed and no
+            behaviour changes. */}
+        {figuresRemoved.length > 0 && (
+          <span className="inline-flex items-center gap-1.5 text-label ink-muted">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-accent-verified)" }} />
+            <b className="ink">{figuresRemoved.length} confidential figure{figuresRemoved.length === 1 ? "" : "s"}</b>
+            {figuresRemoved.length === 1 ? " is" : " are"} never sent to the partner
+          </span>
+        )}
       </div>
 
       {/* The morphing payload — one card, two audiences */}

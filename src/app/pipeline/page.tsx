@@ -13,6 +13,7 @@ import {
 } from "@/lib/opportunities/lifecycle";
 import { Bento, Card, MiniBar, PageHeader, StatusBadge, SectionHeading, Disclosure, SummaryBand, buttonClass, fieldClass, BlockLabel } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
+import { segmentClass, segmentTrackClass } from "@/components/segmented";
 import {
   ELEMENTS,
   STATUS_LABEL,
@@ -818,10 +819,18 @@ export default async function PipelinePage({
         ];
         return (
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-inner p-0.5" style={{ background: "var(--surface-inset)" }}>
+            {/* The room's primary view switcher was a SEVENTH segmented grammar —
+                its own track radius, a hard white selected chip and a hard-coded
+                dark-mode pair. It carried no `role="tablist"`, which is why the
+                earlier sweep for hand-rolled controls did not see it. Same
+                grammar as every other segmented control now, so the Pipeline
+                switcher, the room-pair tabs and the Sponsor/Partner toggle all
+                behave and read alike. */}
+            <div className={segmentTrackClass()}>
               {seg.map((v) => (
                 <Link key={v.key} href={viewHref(v.key)} title={v.hint}
-                  className={`rounded-control px-3 py-1.5 text-copy font-semibold transition-colors ${view === v.key ? "bg-white text-neutral-900 shadow-[var(--shadow-low)] dark:bg-neutral-700 dark:text-white" : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"}`}>
+                  aria-current={view === v.key ? "page" : undefined}
+                  className={segmentClass(view === v.key)}>
                   {v.label}
                 </Link>
               ))}
@@ -992,16 +1001,25 @@ export default async function PipelinePage({
           <Link href="/pipeline?view=portfolio" className="font-medium text-accent hover:underline dark:text-blue-400">Portfolio</Link>.
         </p>
       )}
-      {view === "attention" && attentionVisible.length > 0 && (
-      <div className="space-y-3">
-        {[...attentionVisible]
+      {/* Attention, top-weighted (Wave 3 §6). The list is the same list in the
+          same order — this only decides how much of it is open on arrival. Four
+          cards is what a reader can hold at once; beyond that the page becomes a
+          stack to scroll rather than a set to act on, and the fifth card looks
+          exactly as urgent as the first. The rest are one click away, counted,
+          and nothing is filtered out. Ranking, materiality and intervention
+          logic are untouched. */}
+      {view === "attention" && attentionVisible.length > 0 && (() => {
+        const ordered = [...attentionVisible]
           // Materiality controls order: open deals by weighted value, closed sink to the bottom.
           .sort((a, b) => {
             const ca = a.stage.startsWith("closed"), cb = b.stage.startsWith("closed");
             if (ca !== cb) return ca ? 1 : -1;
             return (Number(b.amount_usd ?? 0) * probOf(b)) - (Number(a.amount_usd ?? 0) * probOf(a));
-          })
-          .map((o) => {
+          });
+        const LEAD = 4;
+        const lead = ordered.slice(0, LEAD);
+        const rest = ordered.slice(LEAD);
+        const card = (o: (typeof ordered)[number]) => {
           const stakeholders = stakeholdersByOpp.get(o.id) ?? [];
           const gaps = o.stage.startsWith("closed") ? [] : stakeholderGaps(stakeholders);
           const stageIdx = STAGES.indexOf(o.stage as (typeof STAGES)[number]);
@@ -1212,10 +1230,24 @@ export default async function PipelinePage({
                 </details>
               )}
             </Card>
-          );
-        })}
-      </div>
-      )}
+          );        };
+        return (
+          <>
+            <div className="space-y-3">{lead.map(card)}</div>
+            {rest.length > 0 && (
+              <details className="group mt-3">
+                <summary className="cursor-pointer list-none rounded-card px-4 py-2.5 text-copy font-semibold ink-muted transition-colors hover:ink"
+                  style={{ background: "var(--surface-inset)" }}>
+                  {rest.length} more needing attention
+                  <span className="ml-1.5 ink-faint group-open:hidden" aria-hidden>▸</span>
+                  <span className="ml-1.5 hidden ink-faint group-open:inline" aria-hidden>▾</span>
+                </summary>
+                <div className="mt-3 space-y-3">{rest.map(card)}</div>
+              </details>
+            )}
+          </>
+        );
+      })()}
 
       {drawerIntel && <IntelDrawer intel={drawerIntel} closeHref={drawerCloseHref} />}
     </main>
