@@ -314,11 +314,11 @@ become permanent.
 | app.pursuitos.io | **NOT YET COMMISSIONED** |
 | Production Supabase | **NOT YET IDENTIFIED** — HALT 3 |
 | Production auth | **NOT YET COMMISSIONED** |
-| Demo deployment | **BLOCKED** — HALT 4 only (Vercel project) |
+| Demo deployment | **PASS** — `pursuitos-demo`, seeded and certified live |
 | demo.pursuitos.io | **NOT YET BOUND** — HALT 4 |
 | Demo Supabase | **PASS** — `qifatlqxfuhwrwvpbwsc`, migrated to parity, marked synthetic |
 | Migration parity | **PASS** — 102 = 102 = 152 tables, on the live demo project |
-| Demo seed | **PENDING** — schema ready and marked; seed runs from a machine with direct Postgres access |
+| Demo seed | **PASS** — canonical world: 14 accounts, 14 pursuits, 20 facts, 64 ledger entries, 10 routes |
 | Demo protection | **NOT YET APPLIED** — HALT 5 |
 | Demo isolation | **PASS** — enforced and tested at DB + edge |
 | Feature flags | **PASS** — fail-closed, verified in code |
@@ -326,7 +326,7 @@ become permanent.
 | Ask deterministic | **PASS** |
 | Ask interpreter | **DEGRADED** — credential invalid, fallback intact |
 | Build fingerprint | **PASS** — `/api/build`, gated, no secrets |
-| Certified demo journey | **PENDING ENVIRONMENT** |
+| Certified demo journey | **PASS** — 15 rooms, all HTTP 200, all carrying navigation |
 | Rollback | **PASS by design** — per-project pinned branch + Vercel rollback |
 
 ---
@@ -342,3 +342,45 @@ decision, three Vercel projects, and demo protection.
 The critical path to Wednesday is **HALT 1 → HALT 2 → HALT 4 (`pursuitos-demo`) → HALT 5**. The public
 site can go live in parallel and depends on nothing. `app.pursuitos.io` should wait for a deliberate
 decision on HALT 3.
+
+---
+
+## 13. Demo certification — against the live deployment
+
+Walked authenticated on `pursuitos-demo.vercel.app` once the feature flags were set.
+
+| Check | Result |
+|---|---|
+| 15 rooms reachable | **all HTTP 200** — Today · Motions · Constraints · CDW · Pursuits · Globex Pursuit · Pipeline · Ask · Insights · Accounts · Globex account · Queue · Partners · Joint · Mapping |
+| Navigation present | **15 / 15** |
+| Pursuit detail beats | Why now · Route · Recommended · Stakeholders · Value · Brief · Team — all present |
+| Disclosure boundary | the sponsor-confidential figure renders on the sponsor's own pursuit room, badged `confidential`, and is **absent from all three partner-facing surfaces** |
+| Normalized visual system | `--ink-faint` · `--text-copy` · `--text-section` · `.pos-summary` · `data-intent` live; **`nth-child(7n` = 0** |
+| External sending | off — `OUTREACH_AUTOSEND` unset, fail-closed |
+
+Two apparent failures were investigated and dismissed. Recorded so the next run
+does not re-litigate them:
+
+- An "error marker" appears identically on all 15 rooms — it is Next's serialized
+  RSC payload carrying the *definition* of the built-in 404 template, shipped in
+  every page's flight data. Not a rendered error.
+- The confidential figure on the Globex pursuit room is the demo's subject, not a
+  leak. The boundary is proven by its absence from partner surfaces, not by its
+  absence everywhere.
+
+### Two defects this pass found
+
+Neither was visible in review; both required the deployed app.
+
+1. **`/joint` rendered with no navigation.** The shell selected its bare,
+   not-signed-in posture using `pathname.startsWith("/join")`, and
+   `"/joint".startsWith("/join")` is true — so a signed-in co-sell room rendered
+   as though the viewer were outside the product, with no way back. Pre-existing
+   since the guest-seat work. Now matched on whole path segments.
+
+2. **The shell could be stripped from any page by a request header.** The root
+   layout treats `x-pursuitos-surface` as the proxy's classification of a request
+   as the public marketing surface; the gate forwarded the client's own value.
+   Introduced by this phase, confirmed against the live deployment, now cleared on
+   every request the gate passes — the same treatment the CSP nonce already had,
+   three lines above it.
