@@ -1,3 +1,4 @@
+import { formatMoney } from "@/lib/format/money";
 /**
  * Commercial significance helpers (TD SYNNEX pre-demo, Ask UX §2).
  *
@@ -11,7 +12,7 @@
  */
 
 export const usd = (n: number): string =>
-  n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : `$${Math.round(n / 1000)}k`;
+  formatMoney(n);
 
 export interface Significance { label: string; value: string; basis: string }
 

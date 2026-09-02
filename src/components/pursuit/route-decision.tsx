@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { RouteComparisonView, RouteCandidateView } from "@/lib/pursuits/read-models/types";
 import { decideRouteAction } from "@/app/pursuits/[id]/actions";
+import { buttonClass, fieldClass } from "@/components/ui";
+import { segmentClass } from "@/components/room-tabs";
 
 /**
  * Governed route decision control (canonical micro-loop). The FIRST human governed commercial
@@ -99,14 +101,12 @@ export function RouteDecision({ view, pursuitId, canDecide }: { view: RouteCompa
       {mode === "idle" ? (
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
           <button type="button" disabled={pending} onClick={() => submit(rec.key, "select", null, null)}
-            className="rounded-control px-3.5 py-1.5 text-copy font-semibold text-white disabled:opacity-60"
-            style={{ background: "var(--color-route)" }}>
+            className={buttonClass("primary", "md")}>
             {pending ? "Approving…" : `Approve ${rec.label}`}
           </button>
           {alternatives.length > 0 && (
             <button type="button" disabled={pending} onClick={() => setMode("override")}
-              className="rounded-control px-3 py-1.5 text-copy font-medium text-neutral-600 dark:text-neutral-300"
-              style={{ boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}>Override…</button>
+              className={buttonClass("secondary", "md")}>Override…</button>
           )}
         </div>
       ) : (
@@ -130,8 +130,7 @@ function OverridePicker({ rec, alternatives, choice, setChoice, reason, setReaso
         <div className="flex flex-wrap gap-1.5">
           {options.map((o) => (
             <button key={o.key} type="button" onClick={() => setChoice(o.key)}
-              className={`rounded-full px-3 py-1 text-body font-medium transition-colors ${choice === o.key ? "text-white" : "text-neutral-600 dark:text-neutral-300"}`}
-              style={choice === o.key ? { background: "var(--color-route)" } : { boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}>
+              className={segmentClass(choice === o.key)}>
               {o.label}{o.key === rec.key ? " · rec" : ""}
             </button>
           ))}
@@ -139,18 +138,17 @@ function OverridePicker({ rec, alternatives, choice, setChoice, reason, setReaso
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <select value={category} onChange={(e) => setCategory(e.target.value)}
-          className="rounded-control px-2.5 py-1.5 text-body" style={{ background: "var(--surface-primary)", boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}>
+          className={fieldClass("md")}>
           {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
         <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why override? (required)"
-          className="min-w-[220px] flex-1 rounded-control px-2.5 py-1.5 text-body" style={{ background: "var(--surface-primary)", boxShadow: "inset 0 0 0 1px var(--border-subtle)" }} />
+          className={`min-w-[220px] flex-1 ${fieldClass("md")}`} />
       </div>
       {error && <p className="text-label" style={{ color: "var(--color-accent-risk)" }}>{error}</p>}
       <div className="flex items-center gap-2">
         <button type="button" disabled={pending || !choice || !reason.trim()} onClick={onSubmit}
-          className="rounded-control px-3.5 py-1.5 text-copy font-semibold text-white disabled:opacity-50"
-          style={{ background: "var(--color-accent-attention)" }}>{pending ? "Recording…" : "Commit override"}</button>
-        <button type="button" disabled={pending} onClick={onCancel} className="text-body font-medium text-neutral-500 hover:underline">Cancel</button>
+          className={buttonClass("primary", "md")}>{pending ? "Recording…" : "Commit override"}</button>
+        <button type="button" disabled={pending} onClick={onCancel} className={buttonClass("subtle", "md")}>Cancel</button>
       </div>
     </div>
   );

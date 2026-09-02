@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { buttonClass, fieldClass } from "@/components/ui";
 
 /**
  * A suggested multi-vendor play, with the accounts individually selectable —
@@ -51,21 +52,21 @@ export function JointPlayCard({
 
       {/* The play being run */}
       {p.play && (
-        <p className="mb-2 text-sm font-medium text-neutral-800 dark:text-neutral-200">
+        <p className="mb-2 text-copy font-medium text-neutral-800 dark:text-neutral-200">
           {p.play.name}
-          {p.play.offer && <span className="block text-xs font-normal text-neutral-500">CTA: {p.play.offer}</span>}
+          {p.play.offer && <span className="block text-body font-normal text-neutral-500">CTA: {p.play.offer}</span>}
         </p>
       )}
 
       {/* Accounts — individually selectable */}
-      <div className="mb-3 max-h-40 overflow-y-auto rounded-lg border border-neutral-200 scroll-thin dark:border-neutral-800">
+      <div className="mb-3 max-h-40 overflow-y-auto rounded-inner border border-neutral-200 scroll-thin dark:border-neutral-800">
         {p.accounts.map((a) => (
           <label
             key={a.companyId}
             className="flex cursor-pointer items-center gap-2.5 border-b border-neutral-100 px-3 py-1.5 last:border-0 hover:bg-violet-50/50 dark:border-neutral-800 dark:hover:bg-violet-950/20"
           >
             <input type="checkbox" checked={sel.has(a.companyId)} onChange={() => toggle(a.companyId)} className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 flex-1 truncate text-sm">{a.name}</span>
+            <span className="min-w-0 flex-1 truncate text-copy">{a.name}</span>
             <span className="tnum shrink-0 text-label text-neutral-400">{a.score != null ? `propensity ${a.score}` : "unscored"}</span>
           </label>
         ))}
@@ -74,13 +75,13 @@ export function JointPlayCard({
       <form action={create} className="flex flex-wrap items-end gap-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
         <input type="hidden" name="companyIds" value={[...sel].join(",")} />
         <input type="hidden" name="partners" value={p.partners.map((x) => `${x.id}:${x.role}`).join(",")} />
-        <label className="text-sm">
-          <span className="mb-1 block text-xs text-neutral-500">Campaign name</span>
-          <input name="name" defaultValue={p.defaultName} className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+        <label className="text-copy">
+          <span className="mb-1 block text-body text-neutral-500">Campaign name</span>
+          <input name="name" defaultValue={p.defaultName} className={`${fieldClass("md")} w-64`} />
         </label>
         <button
           disabled={sel.size === 0}
-          className="rounded-md bg-violet-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-800 disabled:opacity-40"
+          className={buttonClass("primary", "sm")}
         >
           Create joint campaign · {sel.size} account{sel.size === 1 ? "" : "s"}
         </button>

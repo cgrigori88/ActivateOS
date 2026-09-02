@@ -30,6 +30,7 @@ import { proposeGrant, acceptGrant } from "../src/lib/pursuits/federation/grants
 import { recordContribution } from "../src/lib/pursuits/federation/contributions";
 import { recordOutcome, recordAttribution } from "../src/lib/pursuits/federation/outcomes";
 import { enrichMeddpicc } from "./demo-meddpicc";
+import { formatMoneyExact } from "../src/lib/format/money";
 
 const URL = process.env.DEMO_URL ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
 const pool = new Pool({ connectionString: URL, max: 1 });
@@ -196,7 +197,7 @@ async function main() {
         await assembleTeam(db, b.pursuitId, "DEMO").catch(() => {});
         // a confidential, restricted route reason (disclosure story) on the recommended candidate
         const rc = (await db.query<{ id: string }>(`select rc.id from route_candidates rc join pursuit_route_snapshots sn on sn.id=rc.route_snapshot_id where sn.pursuit_id=$1 and sn.is_current and rc.is_recommended`, [b.pursuitId])).rows[0];
-        if (rc) await db.query(`insert into route_candidate_reasons (candidate_id, org_id, reason_code, polarity, detail, disclosure_class) values ($1,$2,'RAW_SPEND',1,$3,'RESTRICTED')`, [rc.id, base.vendor, `${a.route} category spend $${(a.opp.amt * 1.4).toFixed(0)} — vendor-internal`]);
+        if (rc) await db.query(`insert into route_candidate_reasons (candidate_id, org_id, reason_code, polarity, detail, disclosure_class) values ($1,$2,'RAW_SPEND',1,$3,'RESTRICTED')`, [rc.id, base.vendor, `${a.route} category spend ${formatMoneyExact(a.opp.amt * 1.4)} — vendor-internal`]);
       });
       if (a.override && a.override !== a.route) await tx(async (db) => {
         await db.query("select set_config('app.org_id',$1,true)", [base.vendor]);

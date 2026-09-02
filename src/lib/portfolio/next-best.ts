@@ -1,3 +1,4 @@
+import { formatMoney } from "@/lib/format/money";
 /**
  * Next-Best Action v1 (BLUEPRINT Phase 3) — pure, deterministic ranking of
  * "what should the operator do right now". Actions that unblock revenue
@@ -63,7 +64,7 @@ export function rankNextActions(state: PortfolioState, limit = 10): NextAction[]
       type: "APPROVE_MOTION",
       priority: value,
       title: `Review motion draft — ${m.company}`,
-      reason: `unblocks ~$${Math.round(value / 1000)}k expected value awaiting your approval`,
+      reason: `unblocks ~${formatMoney(value)} expected value awaiting your approval`,
       href: "/motions",
     });
   }

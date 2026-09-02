@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { PursuitBrief, BriefLine } from "@/lib/pursuits/read-models/brief";
+import { buttonClass } from "@/components/ui";
 
 /**
  * Disclosure-aware Pursuit Brief drawer (Phase F1). A contextual slide-over — NOT a /briefs room —
@@ -24,9 +25,7 @@ export function PursuitBriefButton({ brief }: { brief: PursuitBrief }) {
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}
-        className="rounded-control px-3 py-1.5 text-body font-semibold"
-        style={{ background: "color-mix(in srgb, var(--color-route) 10%, var(--surface-primary))", color: "var(--color-route)", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-route) 26%, transparent)" }}>
+      <button type="button" onClick={() => setOpen(true)} className={buttonClass("secondary", "sm")}>
         Pursuit brief
       </button>
 
@@ -44,7 +43,7 @@ export function PursuitBriefButton({ brief }: { brief: PursuitBrief }) {
                   <p className="mt-1 max-w-[52ch] text-label text-neutral-500">{brief.subhead}</p>
                 </div>
                 <button type="button" onClick={() => setOpen(false)} aria-label="Close brief"
-                  className="shrink-0 rounded-control px-2 py-1 text-title text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200" style={{ boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}>✕</button>
+                  className={`shrink-0 ${buttonClass("secondary", "sm")}`}>✕</button>
               </div>
               {/* Audience toggle */}
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -101,7 +100,7 @@ function Section({ title, lines, emptyNote, dropped }: { title: string; lines: B
               <span aria-hidden className="mt-[7px] h-1 w-1 shrink-0 rounded-full" style={{ background: l.caution ? "var(--color-accent-risk)" : "var(--color-route)" }} />
               <span style={l.caution ? { color: "var(--color-accent-risk)" } : undefined}>
                 {l.text}
-                {l.confidential && <span className="ml-1.5 rounded px-1 py-px text-micro font-bold uppercase tracking-[0.04em]" style={{ color: "var(--color-band-high)", background: "color-mix(in srgb, var(--color-band-high) 12%, transparent)" }}>sponsor only</span>}
+                {l.confidential && <span className="ml-1.5 rounded-inner px-1 py-px text-micro font-bold uppercase tracking-[0.04em]" style={{ color: "var(--color-band-high)", background: "color-mix(in srgb, var(--color-band-high) 12%, transparent)" }}>sponsor only</span>}
               </span>
             </li>
           ))}

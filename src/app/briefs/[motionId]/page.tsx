@@ -7,6 +7,8 @@ import { BackLink, Card, EvidenceLine, PageHeader, StatusBadge } from "@/compone
 import { CONFIDENCE_FORMULA, contextConfidence } from "@/lib/context/confidence";
 import { promoteMotionAction } from "@/app/pipeline/actions";
 import { generateDraftAction, sendDraftAction } from "./actions";
+import { formatMoney } from "@/lib/format/money";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -127,7 +129,7 @@ export default async function BriefPage({
         subtitle={`${m.slug} · ${m.industry ?? ""}${m.employee_count ? ` · ~${m.employee_count} employees` : ""}`}
       />
       {confidence && (
-        <p className="-mt-3 mb-4 text-xs text-neutral-500" title={CONFIDENCE_FORMULA}>
+        <p className="-mt-3 mb-4 text-body text-neutral-500" title={CONFIDENCE_FORMULA}>
           Grounded in a record at <b className={confidence.score >= 70 ? "text-emerald-700 dark:text-emerald-400" : confidence.score >= 40 ? "text-amber-700 dark:text-amber-400" : "text-rose-700 dark:text-rose-400"}>context confidence {confidence.score}</b> — {confidence.verifiedN} verified claims across {confidence.sourceTypes} source type{confidence.sourceTypes === 1 ? "" : "s"}{confidence.freshDays != null ? `, newest ${confidence.freshDays === 0 ? "today" : `${confidence.freshDays}d ago`}` : ""}.
         </p>
       )}
@@ -136,35 +138,35 @@ export default async function BriefPage({
         <div className="mb-2 flex items-center gap-2">
           <StatusBadge status={m.status} />
           {m.propensity != null && (
-            <span className="text-sm text-neutral-500">
+            <span className="text-copy text-neutral-500">
               propensity {Number(m.propensity).toFixed(0)} ({m.band})
             </span>
           )}
           {m.estimated_value_usd != null && (
-            <span className="text-sm text-neutral-500">
-              · ~${Math.round(Number(m.estimated_value_usd) / 1000)}k estimated
+            <span className="text-copy text-neutral-500">
+              · ~{formatMoney(Number(m.estimated_value_usd))} estimated
             </span>
           )}
           {m.partner_name && (
-            <span className="ml-auto text-sm font-medium">
+            <span className="ml-auto text-copy font-medium">
               {m.partner_name}
               {m.seller_name && ` / ${m.seller_name}`}
             </span>
           )}
         </div>
-        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+        <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">
           Why this account, why now
         </h2>
         <p className="mb-3 leading-relaxed">{m.thesis}</p>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+        <p className="text-copy text-neutral-600 dark:text-neutral-400">
           <span className="font-medium text-neutral-800 dark:text-neutral-200">Trigger: </span>
           {m.trigger_summary}
         </p>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+        <p className="text-copy text-neutral-600 dark:text-neutral-400">
           <span className="font-medium text-neutral-800 dark:text-neutral-200">Personas: </span>
           {m.primary_persona} · {m.secondary_persona}
         </p>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+        <p className="text-copy text-neutral-600 dark:text-neutral-400">
           <span className="font-medium text-neutral-800 dark:text-neutral-200">The ask: </span>
           {m.cta}
         </p>
@@ -172,7 +174,7 @@ export default async function BriefPage({
           <form action={promoteMotionAction.bind(null, motionId)} className="mt-3">
             <button
               type="submit"
-              className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
+              className={buttonClass("primary", "md")}
             >
               Promote to opportunity
             </button>
@@ -184,7 +186,7 @@ export default async function BriefPage({
           explains where its content comes from, rather than vanishing and
           making two briefs look like two different products. */}
       <Card className="mb-6">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+        <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
           Evidence behind this motion
         </h2>
         {cited.length > 0 ? (
@@ -198,7 +200,7 @@ export default async function BriefPage({
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-neutral-400">
+          <p className="text-copy text-neutral-400">
             No cited evidence on this motion yet — citations attach when the AI designer grounds a
             motion in verified evidence, or as research on{" "}
             <Link href={`/accounts/${m.company_id}`} className="text-accent hover:underline dark:text-blue-400">
@@ -210,11 +212,11 @@ export default async function BriefPage({
       </Card>
 
       <Card className="mb-6">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+        <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
           Cadence
         </h2>
         {steps.length === 0 ? (
-          <p className="text-sm text-neutral-400">
+          <p className="text-copy text-neutral-400">
             No cadence yet — dated pursuit steps are generated when the motion is activated with a
             pursuit plan, and they land in the{" "}
             <Link href="/queue" className="text-accent hover:underline dark:text-blue-400">
@@ -225,7 +227,7 @@ export default async function BriefPage({
         ) : (
           <ol className="space-y-1.5">
             {steps.map((s) => (
-              <li key={s.step} className="flex items-center gap-3 text-sm">
+              <li key={s.step} className="flex items-center gap-3 text-copy">
                 <span className="tnum w-5 text-right font-semibold text-neutral-400">
                   {s.step}
                 </span>
@@ -240,7 +242,7 @@ export default async function BriefPage({
                 >
                   {s.action}
                 </span>
-                <span className="ml-auto shrink-0 text-xs text-neutral-400">
+                <span className="ml-auto shrink-0 text-body text-neutral-400">
                   {s.status === "pending"
                     ? `due ${new Date(s.due_at).toISOString().slice(0, 10)}`
                     : s.status}
@@ -252,11 +254,11 @@ export default async function BriefPage({
       </Card>
 
       <Card className="mb-6">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+        <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
           Conversation
         </h2>
         {!["approved", "active"].includes(m.status) && threadMessages.length === 0 ? (
-          <p className="text-sm text-neutral-400">
+          <p className="text-copy text-neutral-400">
             {m.status === "completed"
               ? "This motion is completed — no conversation was captured on it."
               : "Outreach opens when the motion is approved — then a 1:1 draft can be generated and sent (or packaged for the partner seller), with replies captured on a thread alias."}
@@ -264,9 +266,9 @@ export default async function BriefPage({
         ) : (
         <>
           {thread && (
-            <p className="mb-3 text-xs text-neutral-500">
+            <p className="mb-3 text-body text-neutral-500">
               Thread alias:{" "}
-              <code className="rounded bg-neutral-100 px-1 py-0.5 dark:bg-neutral-800">
+              <code className="rounded-inner bg-neutral-100 px-1 py-0.5 dark:bg-neutral-800">
                 {threadAddress(thread.thread_alias, cfg.threadsDomain)}
               </code>{" "}
               — seller-sent replies CC this address to be captured.
@@ -276,13 +278,13 @@ export default async function BriefPage({
           {sentOrStored.map((msg) => (
             <div
               key={msg.id}
-              className={`mb-3 rounded-lg p-3 text-sm ${
+              className={`mb-3 rounded-inner p-3 text-copy ${
                 msg.direction === "inbound"
                   ? "bg-sky-50 dark:bg-sky-950"
                   : "bg-neutral-50 dark:bg-neutral-950"
               }`}
             >
-              <p className="mb-1 text-xs text-neutral-500">
+              <p className="mb-1 text-body text-neutral-500">
                 {msg.direction === "inbound" ? "← " : "→ "}
                 <span className="font-medium">{msg.from_name ?? msg.from_email}</span>
                 {msg.to_emails.length > 0 && ` to ${msg.to_emails.join(", ")}`} ·{" "}
@@ -298,14 +300,14 @@ export default async function BriefPage({
           {packaged.map((msg) => (
             <div
               key={msg.id}
-              className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950"
+              className="mb-3 rounded-inner border border-amber-200 bg-amber-50 p-3 text-copy dark:border-amber-900 dark:bg-amber-950"
             >
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+              <p className="mb-1 text-body font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
                 Ready for seller — send from your own mailbox
               </p>
-              <p className="mb-2 text-xs text-neutral-600 dark:text-neutral-400">
+              <p className="mb-2 text-body text-neutral-600 dark:text-neutral-400">
                 To: {msg.to_emails.join(", ")} · CC{" "}
-                <code className="rounded bg-white/60 px-1 dark:bg-black/30">
+                <code className="rounded-inner bg-white/60 px-1 dark:bg-black/30">
                   {thread && threadAddress(thread.thread_alias, cfg.threadsDomain)}
                 </code>{" "}
                 so PursuitOS captures the conversation.
@@ -319,7 +321,7 @@ export default async function BriefPage({
 
           {draft ? (
             <form action={sendDraftAction.bind(null, motionId)} className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+              <p className="text-body font-medium uppercase tracking-wide text-neutral-500">
                 AI draft — review, edit, then approve
               </p>
               <input
@@ -327,20 +329,20 @@ export default async function BriefPage({
                 type="email"
                 required
                 placeholder="recipient@customer.com"
-                className="w-full rounded-md border border-neutral-300 bg-transparent px-3 py-1.5 text-sm dark:border-neutral-700"
+                className="w-full rounded-control border border-neutral-300 bg-transparent px-3 py-1.5 text-copy dark:border-neutral-700"
               />
               <input
                 name="subject"
                 defaultValue={draft.subject ?? ""}
                 required
-                className="w-full rounded-md border border-neutral-300 bg-transparent px-3 py-1.5 text-sm font-medium dark:border-neutral-700"
+                className="w-full rounded-control border border-neutral-300 bg-transparent px-3 py-1.5 text-copy font-medium dark:border-neutral-700"
               />
               <textarea
                 name="body"
                 defaultValue={draft.text_body ?? ""}
                 required
                 rows={10}
-                className="w-full rounded-md border border-neutral-300 bg-transparent px-3 py-2 text-sm leading-relaxed dark:border-neutral-700"
+                className="w-full rounded-control border border-neutral-300 bg-transparent px-3 py-2 text-copy leading-relaxed dark:border-neutral-700"
               />
               <div className="flex gap-2">
                 <button
@@ -348,7 +350,7 @@ export default async function BriefPage({
                   name="mode"
                   value="facilitated"
                   disabled={!canSendDirect}
-                  className="rounded-md bg-green-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  className={buttonClass("primary", "md")}
                 >
                   Approve &amp; send via PursuitOS
                 </button>
@@ -356,13 +358,13 @@ export default async function BriefPage({
                   type="submit"
                   name="mode"
                   value="seller_assisted"
-                  className="rounded-md px-4 py-1.5 text-sm font-medium text-neutral-700 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900"
+                  className={buttonClass("primary", "md")}
                 >
                   Package for seller
                 </button>
               </div>
               {!canSendDirect && (
-                <p className="text-xs text-neutral-400">
+                <p className="text-body text-neutral-400">
                   Direct sending is disabled until Resend is configured (RESEND_API_KEY) —
                   “Package for seller” works now.
                 </p>
@@ -372,7 +374,7 @@ export default async function BriefPage({
             <form action={generateDraftAction.bind(null, motionId)}>
               <button
                 type="submit"
-                className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
+                className={buttonClass("primary", "md")}
               >
                 Generate outreach draft
               </button>
@@ -393,15 +395,15 @@ export default async function BriefPage({
 
       {assets.length > 0 && (
         <Card>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
             Campaign assets
           </h2>
           {assets.map((a) => (
             <details key={a.asset_type} className="mb-2" open={a.asset_type === "outreach_email"}>
-              <summary className="cursor-pointer text-sm font-medium hover:underline">
+              <summary className="cursor-pointer text-copy font-medium hover:underline">
                 {a.title}
               </summary>
-              <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-neutral-50 p-3 font-sans text-sm leading-relaxed dark:bg-neutral-950">
+              <pre className="mt-2 whitespace-pre-wrap rounded-inner bg-neutral-50 p-3 font-sans text-copy leading-relaxed dark:bg-neutral-950">
                 {a.content}
               </pre>
             </details>

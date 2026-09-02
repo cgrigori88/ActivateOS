@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { loadLifecycleFacts, eventsForAccount, primaryLifecycleEvent, type LifecycleEvent, type LifecycleState } from "./state";
 import type { ConstraintView } from "@/components/intel/constraint-language";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * Lifecycle horizon (P2A) — "what changes in the next N days?".
@@ -125,7 +126,7 @@ function withinDays(d: Date, now: Date, days: number): boolean {
 }
 
 function whyItMatters(e: LifecycleEvent, ev: number | null): string {
-  const money = ev == null ? "This pursuit" : ev >= 1_000_000 ? `$${(ev / 1_000_000).toFixed(1)}M` : `$${Math.round(ev / 1000)}k`;
+  const money = ev == null ? "This pursuit" : formatMoney(ev);
   switch (e.state) {
     case "CONFLICTING_DATE":
       return `${money} sits on a ${e.label.toLowerCase()} that two active sources disagree about — the commercial window cannot be planned until it is resolved.`;

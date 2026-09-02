@@ -31,7 +31,7 @@ export default async function SourcesPage() {
       />
       <RoomTabs tabs={[{ href: "/sources", label: "Sources" }, { href: "/provider-health", label: "Provider health" }]} />
       {sources.length === 0 && (
-        <p className="text-sm text-neutral-500">Sources register automatically as evidence flows in.</p>
+        <p className="text-copy text-neutral-500">Sources register automatically as evidence flows in.</p>
       )}
       <div className="grid gap-4 sm:grid-cols-2">
         {sources.map((s) => {
@@ -41,29 +41,29 @@ export default async function SourcesPage() {
             <Card key={s.name}>
               <div className="mb-2 flex items-baseline justify-between">
                 <h2 className="font-semibold">{s.name}</h2>
-                <span className="text-xs uppercase tracking-wide text-neutral-400">{s.kind}</span>
+                <span className="text-body uppercase tracking-wide text-neutral-400">{s.kind}</span>
               </div>
               <div className="mb-3 flex items-baseline gap-4">
                 <div>
                   <div className="pos-metric-fig">{Number(s.trust_score).toFixed(2)}</div>
-                  <div className="text-xs text-neutral-500">earned trust</div>
+                  <div className="text-body text-neutral-500">earned trust</div>
                 </div>
                 <div>
                   <div className="pos-metric-fig">
                     {Math.round(Number(s.audit_sample_rate) * 100)}%
                   </div>
-                  <div className="text-xs text-neutral-500">audit sampling</div>
+                  <div className="text-body text-neutral-500">audit sampling</div>
                 </div>
                 <div>
                   <div className="pos-metric-fig">{verifiedPct}%</div>
-                  <div className="text-xs text-neutral-500">verified rate</div>
+                  <div className="text-body text-neutral-500">verified rate</div>
                 </div>
                 {s.predictive_value != null && (
                   <div>
                     <div className="pos-metric-fig">
                       {Number(s.predictive_value).toFixed(2)}
                     </div>
-                    <div className="text-xs text-neutral-500">predictive value</div>
+                    <div className="text-body text-neutral-500">predictive value</div>
                   </div>
                 )}
               </div>
@@ -74,7 +74,7 @@ export default async function SourcesPage() {
                   <div className="bg-red-600" style={{ width: `${(Number(s.rejected) / total) * 100}%` }} />
                 </div>
               )}
-              <p className="text-xs text-neutral-500">
+              <p className="text-body text-neutral-500">
                 {s.total} evidence items — {s.verified} verified, {s.quarantined} quarantined,{" "}
                 {s.rejected} rejected · audited {s.audited_count} ({s.accurate_count} accurate)
                 {s.predictive_value != null &&

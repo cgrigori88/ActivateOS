@@ -3,6 +3,7 @@ import { Bento, Card, PageHeader } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { withTenant } from "@/lib/db/tenant";
 import { sendScheduledAction, unscheduleAction } from "./actions";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -57,14 +58,14 @@ export default async function UpcomingPage() {
       <div className="mb-4 flex flex-wrap items-stretch gap-3">
         <Bento label="scheduled" value={rows.length} subs={["queued sends with a date"]} />
         <Bento label="due now" value={dueCount} subs={[dueCount > 0 ? "waiting on you (or the armed worker)" : "all future-dated"]} />
-        <span className={`ml-auto self-start rounded px-2 py-0.5 text-label font-medium ${autosend ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
+        <span className={`ml-auto self-start rounded-inner px-2 py-0.5 text-label font-medium ${autosend ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
           worker auto-send: {autosend ? "armed" : "off (manual)"}
         </span>
       </div>
 
       {rows.length === 0 ? (
         <Card>
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             Nothing scheduled. Launch a sequence on the{" "}
             <Link href="/campaigns" className="text-accent hover:underline dark:text-blue-400">Campaigns</Link> page to
             populate the plan.
@@ -88,7 +89,7 @@ export default async function UpcomingPage() {
                 const due = r.scheduled_at ? new Date(r.scheduled_at).getTime() <= now : false;
                 return (
                   <tr key={r.id}>
-                    <td className={`text-xs ${due ? "font-semibold text-amber-700 dark:text-amber-400" : "text-neutral-500"}`}>
+                    <td className={`text-body ${due ? "font-semibold text-amber-700 dark:text-amber-400" : "text-neutral-500"}`}>
                       {r.scheduled_at ? new Date(r.scheduled_at).toISOString().slice(0, 16).replace("T", " ") : "—"}
                       {due && <span className="ml-1">· due</span>}
                     </td>
@@ -100,26 +101,26 @@ export default async function UpcomingPage() {
                       <span className="text-neutral-400"> · T{r.touch_no}</span>
                     </td>
                     <td className="max-w-xs truncate text-neutral-600 dark:text-neutral-300">{r.subject}</td>
-                    <td className="text-xs text-neutral-500">{r.recipient_email ?? "—"}</td>
+                    <td className="text-body text-neutral-500">{r.recipient_email ?? "—"}</td>
                     <td className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Link
                           href={`/campaigns/${r.campaign_id}`}
-                          className="text-xs font-medium text-neutral-500 hover:underline"
+                          className="text-body font-medium text-neutral-500 hover:underline"
                           title="Edit copy, timing, CC and recipient on the campaign page"
                         >
                           Edit
                         </Link>
                         <form action={unscheduleAction.bind(null, r.id)}>
                           <button
-                            className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-900"
+                            className={buttonClass("primary", "sm")}
                             title="Take it off the calendar — back to approved; re-schedule from the campaign any time"
                           >
                             Unschedule
                           </button>
                         </form>
                         <form action={sendScheduledAction.bind(null, r.id)}>
-                          <button className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs font-medium text-accent hover:bg-blue-50 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-blue-950">
+                          <button className={buttonClass("primary", "sm")}>
                             Send now
                           </button>
                         </form>

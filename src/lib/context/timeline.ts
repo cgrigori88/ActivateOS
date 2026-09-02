@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { sharedInEvidence } from "@/lib/partnerships/evidence-shares";
 import { renewalProjection } from "@/lib/lifecycle/projection";
+import { formatMoney } from "@/lib/format/money";
 
 type Db = Pool | PoolClient;
 
@@ -131,7 +132,7 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
     [companyId, orgId],
   );
   for (const o of opps) {
-    const amt = o.amount_usd ? ` ($${Math.round(Number(o.amount_usd) / 1000)}k)` : "";
+    const amt = o.amount_usd ? ` (${formatMoney(Number(o.amount_usd))})` : "";
     events.push({ at: iso(o.created_at), kind: "opportunity", title: `Opportunity opened: ${o.name}${amt}`, detail: null, source: "pipeline", href: "/pipeline" });
     if (o.stage === "closed_won" || o.stage === "closed_lost") {
       events.push({
@@ -234,7 +235,7 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
     [companyId, orgId],
   );
   for (const s of snaps) {
-    const amt = s.amount_usd ? ` ($${Math.round(Number(s.amount_usd) / 1000)}k)` : "";
+    const amt = s.amount_usd ? ` (${formatMoney(Number(s.amount_usd))})` : "";
     events.push({
       at: iso(s.reported_at),
       kind: "opportunity",

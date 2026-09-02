@@ -3,7 +3,7 @@ import { withTenant } from "@/lib/db/tenant";
 import { getLifecycleHorizon } from "@/lib/lifecycle/horizon";
 import { aggregateValue } from "@/lib/value/aggregate";
 import { bounds as vcBounds } from "@/lib/value/case";
-import { Bento, Card, MiniBar, NextStep, PageHeader, StatusBadge, Disclosure } from "@/components/ui";
+import { Bento, Card, MiniBar, NextStep, PageHeader, StatusBadge, Disclosure, fieldClass } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
 import {
@@ -19,6 +19,8 @@ import {
 import { initiativeOptions } from "@/lib/partnerships/initiatives";
 import { getScopeContext } from "@/lib/scope/server";
 import { getMotionFunnels } from "@/lib/motions/funnel";
+import { formatMoney } from "@/lib/format/money";
+import { buttonClass } from "@/components/ui";
 import {
   MotionFunnelCommand,
   MotionConstraintsPanel,
@@ -219,13 +221,13 @@ export default async function MotionsPage({
       <PageHeader title="Motions" subtitle="Each commercial hypothesis as a live funnel — and exactly what blocks the rest." />
 
       {/* ── View modes (UX normalization): one surface, four densities ── */}
-      <div className="mb-5 inline-flex rounded-lg p-0.5" style={{ background: "var(--surface-inset)" }}>
+      <div className="mb-5 inline-flex rounded-inner p-0.5" style={{ background: "var(--surface-inset)" }}>
         {VIEW_SEGMENTS.map((v) => (
           <Link
             key={v.key}
             href={qs({ view: v.key === "overview" ? null : v.key })}
             title={v.hint}
-            className={`rounded-md px-3 py-1.5 text-copy font-semibold transition-colors ${
+            className={`rounded-control px-3 py-1.5 text-copy font-semibold transition-colors ${
               view === v.key
                 ? "bg-white text-neutral-900 shadow-[var(--shadow-low)] dark:bg-neutral-700 dark:text-white"
                 : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
@@ -295,7 +297,7 @@ export default async function MotionsPage({
       )}
 
       {sp.notice && (
-        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <div className="mb-4 rounded-inner border border-amber-300 bg-amber-50 px-4 py-2.5 text-copy text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
           {sp.notice}
         </div>
       )}
@@ -304,7 +306,7 @@ export default async function MotionsPage({
           skipped (open motion), failed (no score/evidence/AI), still queued. */}
       {draftedN !== null && (
         <div
-          className={`mb-4 rounded-lg border px-4 py-2.5 text-sm ${
+          className={`mb-4 rounded-inner border px-4 py-2.5 text-copy ${
             draftedN > 0
               ? "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300"
               : "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
@@ -325,25 +327,25 @@ export default async function MotionsPage({
         <>
       {/* ── Draft motions (task #83): scalable targeting — a list or a pick ── */}
       <details className="pos-card glass mb-6 rounded-card p-5" open={sp.compose === "1" || draftedN !== null}>
-        <summary className="cursor-pointer text-sm font-semibold">
+        <summary className="cursor-pointer text-copy font-semibold">
           ＋ Draft motions (AI)
-          <span className="ml-2 text-xs font-normal text-neutral-500">
+          <span className="ml-2 text-body font-normal text-neutral-500">
             target a whole list or pick accounts — every draft grounded in that account&apos;s evidence
           </span>
         </summary>
         <div className="mt-4 grid gap-6 lg:grid-cols-2">
           <form action={draftMotionsAction}>
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">From a list</h3>
-            <p className="mb-2 text-xs text-neutral-500">
+            <h3 className="mb-1 text-body font-semibold uppercase tracking-wide text-neutral-500">From a list</h3>
+            <p className="mb-2 text-body text-neutral-500">
               Targets every account on the list. &ldquo;Ready&rdquo; counts members without an open motion.
             </p>
             {draftLists.length === 0 ? (
-              <p className="text-sm text-neutral-500">No approved lists yet — Intake and Mapping create them.</p>
+              <p className="text-copy text-neutral-500">No approved lists yet — Intake and Mapping create them.</p>
             ) : (
               <div className="flex flex-wrap items-end gap-2">
-                <label className="text-sm">
-                  <span className="mb-1 block text-xs text-neutral-500">List</span>
-                  <select name="populationId" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+                <label className="text-copy">
+                  <span className="mb-1 block text-body text-neutral-500">List</span>
+                  <select name="populationId" className={`${fieldClass("md")} w-64`}>
                     {draftLists.map((l) => (
                       <option key={l.id} value={l.id}>
                         {l.name}{l.partner_name ? ` · ${l.partner_name}` : ""} — {l.ready}/{l.members} ready
@@ -351,7 +353,7 @@ export default async function MotionsPage({
                     ))}
                   </select>
                 </label>
-                <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+                <button className={buttonClass("primary", "md")}>
                   Draft motions from list
                 </button>
               </div>
@@ -359,26 +361,26 @@ export default async function MotionsPage({
           </form>
 
           <form action={draftMotionsAction}>
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Pick accounts</h3>
-            <p className="mb-2 text-xs text-neutral-500">
+            <h3 className="mb-1 text-body font-semibold uppercase tracking-wide text-neutral-500">Pick accounts</h3>
+            <p className="mb-2 text-body text-neutral-500">
               Top accounts by propensity without an open motion.
             </p>
             {draftCandidates.length === 0 ? (
-              <p className="text-sm text-neutral-500">
+              <p className="text-copy text-neutral-500">
                 Every scored account already has an open motion — the pipeline scores new ones as intelligence lands.
               </p>
             ) : (
               <>
                 <div className="mb-3 grid max-h-44 gap-1 overflow-y-auto pr-1 scroll-thin sm:grid-cols-2">
                   {draftCandidates.map((c) => (
-                    <label key={c.company_id} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-neutral-900/[0.04] dark:hover:bg-white/5">
+                    <label key={c.company_id} className="flex items-center gap-2 rounded-control px-1.5 py-1 text-copy hover:bg-neutral-900/[0.04] dark:hover:bg-white/5">
                       <input type="checkbox" name="companyIds" value={c.company_id} className="h-4 w-4 shrink-0" />
                       <span className="min-w-0 flex-1 truncate">{c.legal_name}</span>
-                      <span className="tnum text-xs text-neutral-400">{Math.round(Number(c.score))}</span>
+                      <span className="tnum text-body text-neutral-400">{Math.round(Number(c.score))}</span>
                     </label>
                   ))}
                 </div>
-                <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+                <button className={buttonClass("primary", "md")}>
                   Draft motions for selected
                 </button>
               </>
@@ -396,8 +398,8 @@ export default async function MotionsPage({
         <Bento label="motions" value={motions.length} href="/motions" />
         <Bento label="active" value={activeN} subs={[`${wonN} won`]} href="/motions?status=active" />
         <Bento label="avg propensity" value={avgProp ?? "—"} />
-        <Bento label="est. pipeline" value={`$${Math.round(estPipe / 1000)}k`} href="/pipeline" />
-        <Bento label="expected" value={`$${Math.round(expected / 1000)}k`} subs={["value × propensity"]} />
+        <Bento label="est. pipeline" value={`${formatMoney(estPipe)}`} href="/pipeline" />
+        <Bento label="expected" value={`${formatMoney(expected)}`} subs={["value × propensity"]} />
         <Bento label="partners" value={partnerOptions.length} href="/motions?group=partner" />
       </div>
 
@@ -409,43 +411,43 @@ export default async function MotionsPage({
           <QuerySelect param="goal" value={sp.goal ?? "all"} label="Goal" options={[{ value: "all", label: "Any goal" }, { value: "__none", label: "No goal" }, ...goals.map((g) => ({ value: g.id, label: g.name }))]} />
         )}
         <QuerySelect param="group" value={groupKey} label="Group by" options={Object.entries(GROUPS).map(([k, g]) => ({ value: k, label: g.label }))} />
-        <span className="ml-auto text-xs text-neutral-500">{motions.length} motion(s)</span>
+        <span className="ml-auto text-body text-neutral-500">{motions.length} motion(s)</span>
       </div>
 
       {motions.length === 0 ? (
-        <p className="text-sm text-neutral-500">No motions match — clear a filter, or score accounts and run design-motion.</p>
+        <p className="text-copy text-neutral-500">No motions match — clear a filter, or score accounts and run design-motion.</p>
       ) : (
         <>
           {/* Chart */}
           <Card className="mb-6">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Motions by {group.label.toLowerCase()}</h2>
+            <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">Motions by {group.label.toLowerCase()}</h2>
             <MiniBar rows={chartRows} />
           </Card>
 
           {/* Grouped list */}
           {orderKeys([...groups.keys()]).map((k) => (
             <section key={k} className="mb-8">
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              <h2 className="mb-3 flex items-center gap-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
                 {groupKey === "status" ? <StatusBadge status={k} /> : <span>{k}</span>}
                 <span className="tnum text-neutral-400">{groups.get(k)!.length}</span>
               </h2>
               <div className="space-y-3">
                 {groups.get(k)!.map((m) => (
                   <Card key={m.id}>
-                    <p className="mb-1 text-sm">
+                    <p className="mb-1 text-copy">
                       <Link href={`/accounts/${m.company_id}`} className="font-semibold hover:underline">{m.legal_name}</Link>
                       <span className="text-neutral-400"> — {m.slug}</span>
-                      {m.industry && <span className="ml-1 text-xs text-neutral-400">· {m.industry}</span>}
-                      <span className="ml-2 text-xs text-neutral-400">({m.confidence} confidence)</span>
-                      <Link href={`/briefs/${m.id}`} className="ml-2 text-xs font-medium text-accent hover:underline dark:text-blue-400">Brief →</Link>
-                      {m.outcome && <span className={`ml-2 text-xs font-semibold uppercase ${m.outcome === "won" ? "text-positive dark:text-green-400" : "text-neutral-500"}`}>{m.outcome.replace(/_/g, " ")}</span>}
+                      {m.industry && <span className="ml-1 text-body text-neutral-400">· {m.industry}</span>}
+                      <span className="ml-2 text-body text-neutral-400">({m.confidence} confidence)</span>
+                      <Link href={`/briefs/${m.id}`} className="ml-2 text-body font-medium text-accent hover:underline dark:text-blue-400">Brief →</Link>
+                      {m.outcome && <span className={`ml-2 text-body font-semibold uppercase ${m.outcome === "won" ? "text-positive dark:text-green-400" : "text-neutral-500"}`}>{m.outcome.replace(/_/g, " ")}</span>}
                     </p>
                     {(m.estimated_value_usd != null || m.partner_name) && (
-                      <p className="mb-1 text-xs text-neutral-500">
+                      <p className="mb-1 text-body text-neutral-500">
                         {m.estimated_value_usd != null && (
                           <>
-                            ~${Math.round(Number(m.estimated_value_usd) / 1000)}k estimated
-                            {m.propensity != null && ` · $${Math.round((Number(m.estimated_value_usd) * Number(m.propensity)) / 100 / 1000)}k expected at ${Number(m.propensity).toFixed(0)}`}
+                            ~{formatMoney(Number(m.estimated_value_usd))} estimated
+                            {m.propensity != null && ` · ${formatMoney((Number(m.estimated_value_usd) * Number(m.propensity)) / 100)} expected at ${Number(m.propensity).toFixed(0)}`}
                             {m.effort != null && ` · effort ${m.effort}/5`}
                           </>
                         )}
@@ -453,69 +455,69 @@ export default async function MotionsPage({
                       </p>
                     )}
                     {goals.length > 0 && (
-                      <form action={setMotionGoalAction.bind(null, m.id)} className="mb-1 flex items-center gap-1.5 text-xs">
+                      <form action={setMotionGoalAction.bind(null, m.id)} className="mb-1 flex items-center gap-1.5 text-body">
                         <span className="text-neutral-400">Goal:</span>
-                        <select name="goalId" defaultValue={m.goal_id ?? ""} className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-xs dark:border-neutral-700">
+                        <select name="goalId" defaultValue={m.goal_id ?? ""} className={fieldClass("sm")}>
                           <option value="">— none —</option>
                           {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
-                        <button className="font-medium text-accent hover:underline dark:text-blue-400">set</button>
-                        {m.goal_name && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-micro font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">{m.goal_name}</span>}
+                        <button className={buttonClass("subtle", "md")}>set</button>
+                        {m.goal_name && <span className="rounded-inner bg-violet-100 px-1.5 py-0.5 text-micro font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-300">{m.goal_name}</span>}
                       </form>
                     )}
                     {initiativeOpts.length > 0 && (
-                      <form action={setMotionInitiativeAction.bind(null, m.id)} className="mb-1 flex items-center gap-1.5 text-xs" title="initiative this motion's work rolls up into">
+                      <form action={setMotionInitiativeAction.bind(null, m.id)} className="mb-1 flex items-center gap-1.5 text-body" title="initiative this motion's work rolls up into">
                         <span className="text-neutral-400">Initiative:</span>
-                        <select name="initiativeId" defaultValue={m.initiative_id ?? ""} className={`rounded border bg-transparent px-1 py-0.5 text-xs ${m.initiative_id ? "border-violet-300 text-violet-700 dark:border-violet-800 dark:text-violet-300" : "border-neutral-300 dark:border-neutral-700"}`}>
+                        <select name="initiativeId" defaultValue={m.initiative_id ?? ""} className={`rounded-inner border bg-transparent px-1 py-0.5 text-body ${m.initiative_id ? "border-violet-300 text-violet-700 dark:border-violet-800 dark:text-violet-300" : "border-neutral-300 dark:border-neutral-700"}`}>
                           <option value="">— none —</option>
                           {initiativeOpts.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                         </select>
-                        <button className="font-medium text-accent hover:underline dark:text-blue-400">set</button>
+                        <button className={buttonClass("subtle", "md")}>set</button>
                       </form>
                     )}
                     <details className="mb-1">
-                      <summary className="cursor-pointer text-xs font-medium text-accent hover:underline dark:text-blue-400">Thesis &amp; trigger</summary>
-                      <p className="mb-2 mt-2 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{m.thesis}</p>
-                      <p className="text-sm text-neutral-500"><span className="font-medium">Trigger:</span> {m.trigger_summary}<br /><span className="font-medium">CTA:</span> {m.cta}</p>
+                      <summary className="cursor-pointer text-body font-medium text-accent hover:underline dark:text-blue-400">Thesis &amp; trigger</summary>
+                      <p className="mb-2 mt-2 text-copy leading-relaxed text-neutral-700 dark:text-neutral-300">{m.thesis}</p>
+                      <p className="text-copy text-neutral-500"><span className="font-medium">Trigger:</span> {m.trigger_summary}<br /><span className="font-medium">CTA:</span> {m.cta}</p>
                       {m.operator_notes && (
-                        <p className="mt-2 rounded-md bg-amber-50 px-2.5 py-1.5 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                        <p className="mt-2 rounded-control bg-amber-50 px-2.5 py-1.5 text-copy text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
                           <span className="font-medium">Notes:</span> {m.operator_notes}
                         </p>
                       )}
                     </details>
                     <details className="mb-1">
-                      <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:underline">Edit &amp; notes</summary>
+                      <summary className="cursor-pointer text-body font-medium text-neutral-500 hover:underline">Edit &amp; notes</summary>
                       <form action={editMotionAction.bind(null, m.id)} className="mt-2 space-y-2">
-                        <label className="block text-sm"><span className="mb-1 block text-xs text-neutral-500">Thesis</span>
-                          <textarea name="thesis" defaultValue={m.thesis ?? ""} rows={2} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" /></label>
+                        <label className="block text-copy"><span className="mb-1 block text-body text-neutral-500">Thesis</span>
+                          <textarea name="thesis" defaultValue={m.thesis ?? ""} rows={2} className={`${fieldClass("md", { multiline: true })} w-full`} /></label>
                         <div className="grid gap-2 sm:grid-cols-2">
-                          <label className="block text-sm"><span className="mb-1 block text-xs text-neutral-500">Trigger</span>
-                            <input name="trigger" defaultValue={m.trigger_summary ?? ""} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" /></label>
-                          <label className="block text-sm"><span className="mb-1 block text-xs text-neutral-500">CTA</span>
-                            <input name="cta" defaultValue={m.cta ?? ""} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" /></label>
+                          <label className="block text-copy"><span className="mb-1 block text-body text-neutral-500">Trigger</span>
+                            <input name="trigger" defaultValue={m.trigger_summary ?? ""} className={`${fieldClass("md")} w-full`} /></label>
+                          <label className="block text-copy"><span className="mb-1 block text-body text-neutral-500">CTA</span>
+                            <input name="cta" defaultValue={m.cta ?? ""} className={`${fieldClass("md")} w-full`} /></label>
                         </div>
-                        <label className="block text-sm"><span className="mb-1 block text-xs text-neutral-500">Operator notes — the AI reads these when drafting campaigns for this motion (context, do/don&apos;t, who really decides)</span>
-                          <textarea name="notes" defaultValue={m.operator_notes ?? ""} rows={2} placeholder="e.g. CFO owns this decision; avoid mentioning the migration until Q2." className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" /></label>
-                        <button className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700">Save</button>
+                        <label className="block text-copy"><span className="mb-1 block text-body text-neutral-500">Operator notes — the AI reads these when drafting campaigns for this motion (context, do/don&apos;t, who really decides)</span>
+                          <textarea name="notes" defaultValue={m.operator_notes ?? ""} rows={2} placeholder="e.g. CFO owns this decision; avoid mentioning the migration until Q2." className={`${fieldClass("md", { multiline: true })} w-full`} /></label>
+                        <button className={buttonClass("primary", "sm")}>Save</button>
                       </form>
                     </details>
                     {m.status === "draft" && (
                       <div className="mt-3 flex gap-2">
-                        <form action={approveMotionAction.bind(null, m.id)}><button className="rounded-md bg-green-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-800">Approve</button></form>
-                        <form action={rejectMotionAction.bind(null, m.id)}><button className="rounded-md px-4 py-1.5 text-sm font-medium text-red-700 ring-1 ring-inset ring-red-300 hover:bg-red-50 dark:text-red-400 dark:ring-red-800 dark:hover:bg-red-950">Reject</button></form>
+                        <form action={approveMotionAction.bind(null, m.id)}><button className={buttonClass("primary", "md")}>Approve</button></form>
+                        <form action={rejectMotionAction.bind(null, m.id)}><button className={buttonClass("destructive", "md")}>Reject</button></form>
                       </div>
                     )}
                     {m.status === "approved" && (
                       <div className="mt-3 flex gap-2">
-                        <form action={activateMotionAction.bind(null, m.id)}><button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300">Activate</button></form>
-                        <form action={abandonMotionAction.bind(null, m.id)}><button className="rounded-md px-4 py-1.5 text-sm font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900">Abandon</button></form>
+                        <form action={activateMotionAction.bind(null, m.id)}><button className={buttonClass("primary", "md")}>Activate</button></form>
+                        <form action={abandonMotionAction.bind(null, m.id)}><button className={buttonClass("primary", "md")}>Abandon</button></form>
                       </div>
                     )}
                     {m.status === "active" && (
                       <div className="mt-3 flex gap-2">
-                        <form action={completeMotionAction.bind(null, m.id, "won")}><button className="rounded-md bg-green-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-800">Complete — won</button></form>
-                        <form action={completeMotionAction.bind(null, m.id, "lost")}><button className="rounded-md px-4 py-1.5 text-sm font-medium text-red-700 ring-1 ring-inset ring-red-300 hover:bg-red-50 dark:text-red-400 dark:ring-red-800 dark:hover:bg-red-950">Complete — lost</button></form>
-                        <form action={completeMotionAction.bind(null, m.id, "no_decision")}><button className="rounded-md px-4 py-1.5 text-sm font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900">No decision</button></form>
+                        <form action={completeMotionAction.bind(null, m.id, "won")}><button className={buttonClass("primary", "md")}>Complete — won</button></form>
+                        <form action={completeMotionAction.bind(null, m.id, "lost")}><button className={buttonClass("destructive", "md")}>Complete — lost</button></form>
+                        <form action={completeMotionAction.bind(null, m.id, "no_decision")}><button className={buttonClass("primary", "md")}>No decision</button></form>
                       </div>
                     )}
                   </Card>

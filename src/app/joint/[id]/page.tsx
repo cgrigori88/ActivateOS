@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { withTenant } from "@/lib/db/tenant";
-import { Card, PageHeader } from "@/components/ui";
+import { Card, PageHeader, fieldClass } from "@/components/ui";
 import { namedOverlapAccounts, pursuitEvents } from "@/lib/partnerships/joint";
 import { addNoteAction, closePursuitAction, decidePursuitAction, refreshBrokerAction, saveJointPlaybookAction } from "../actions";
 import { loadJointPlaybook } from "@/lib/playbooks/playbooks";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -70,16 +71,16 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
 
       {awaitingYou && (
         <Card className="mb-6 ring-2 ring-violet-300 dark:ring-violet-800">
-          <p className="mb-2 text-sm">
+          <p className="mb-2 text-copy">
             <span className="font-semibold">{pursuit.other_name}</span> proposed working this account together.
             Accepting opens a shared room — they see nothing new beyond the named overlap both owners already approved.
           </p>
           <div className="flex gap-2">
             <form action={decidePursuitAction.bind(null, pursuit.id, true)}>
-              <button className="rounded-md bg-violet-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-800">Accept & open the room</button>
+              <button className={buttonClass("primary", "md")}>Accept & open the room</button>
             </form>
             <form action={decidePursuitAction.bind(null, pursuit.id, false)}>
-              <button className="rounded-md px-4 py-1.5 text-sm font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900">Decline</button>
+              <button className={buttonClass("primary", "md")}>Decline</button>
             </form>
           </div>
         </Card>
@@ -88,15 +89,15 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Ledger — the shared record, identical on both sides */}
         <Card className="lg:col-span-2">
-          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Shared ledger</h2>
-          <p className="mb-3 text-xs text-neutral-500">
+          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Shared ledger</h2>
+          <p className="mb-3 text-body text-neutral-500">
             Both sides read exactly this — entries are written once, with org names, never a private version.
           </p>
           <ol className="space-y-2">
             {events.map((e) => (
               <li
                 key={e.id}
-                className={`rounded-lg border p-3 text-sm ${
+                className={`rounded-inner border p-3 text-copy ${
                   e.side === "broker"
                     ? "border-violet-200 bg-violet-50/60 dark:border-violet-900 dark:bg-violet-950/30"
                     : "border-neutral-200 dark:border-neutral-800"
@@ -115,11 +116,11 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
 
           {pursuit.status === "active" && (
             <form action={addNoteAction.bind(null, pursuit.id)} className="mt-3 flex items-end gap-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-              <label className="flex-1 text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Add to the ledger — the partner sees it verbatim</span>
-                <textarea name="body" rows={2} required className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+              <label className="flex-1 text-copy">
+                <span className="mb-1 block text-body text-neutral-500">Add to the ledger — the partner sees it verbatim</span>
+                <textarea name="body" rows={2} required className={`${fieldClass("md", { multiline: true })} w-full`} />
               </label>
-              <button className="rounded-md bg-violet-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-800">Post</button>
+              <button className={buttonClass("primary", "md")}>Post</button>
             </form>
           )}
         </Card>
@@ -127,9 +128,9 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
         <div className="space-y-6">
           {/* What they can see — the trust panel */}
           <Card>
-            <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">What {pursuit.other_name ?? "they"} can see</h2>
-            <p className="mb-2 text-xs text-neutral-500">The other side&apos;s complete surface for this account — nothing beyond this list crosses the boundary.</p>
-            <ul className="space-y-1.5 text-sm">
+            <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">What {pursuit.other_name ?? "they"} can see</h2>
+            <p className="mb-2 text-body text-neutral-500">The other side&apos;s complete surface for this account — nothing beyond this list crosses the boundary.</p>
+            <ul className="space-y-1.5 text-copy">
               <li className="flex items-start gap-2">
                 <span className="mt-0.5 rounded-full bg-violet-50 px-2 py-0.5 text-micro font-semibold uppercase text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">overlap</span>
                 <span>That you hold this account as: {myCats.map((c) => c.replace(/_/g, " ")).join(", ") || "—"} (named rung, both owners approved)</span>
@@ -143,25 +144,25 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
                 <span className="text-neutral-500">Your evidence, contacts, pipeline, campaigns, scores — none of it, unless separately shared as a field-scoped list grant</span>
               </li>
             </ul>
-            <p className="mt-2 border-t border-neutral-100 pt-2 text-xs text-neutral-500 dark:border-neutral-800">
+            <p className="mt-2 border-t border-neutral-100 pt-2 text-body text-neutral-500 dark:border-neutral-800">
               You see their side the same way: they hold this account as {theirCats.map((c) => c.replace(/_/g, " ")).join(", ") || "—"}.
             </p>
           </Card>
 
           {/* Broker */}
           <Card>
-            <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Broker</h2>
-            <p className="mb-2 text-xs text-neutral-500">
+            <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Broker</h2>
+            <p className="mb-2 text-body text-neutral-500">
               A neutral proposal from the platform — composed only from data both sides approved, said identically to both.
             </p>
             {latestProposal ? (
-              <p className="mb-2 text-xs text-neutral-400">Latest proposal is in the ledger ({latestProposal.createdAt} UTC).</p>
+              <p className="mb-2 text-body text-neutral-400">Latest proposal is in the ledger ({latestProposal.createdAt} UTC).</p>
             ) : (
-              <p className="mb-2 text-xs text-neutral-400">No proposal yet.</p>
+              <p className="mb-2 text-body text-neutral-400">No proposal yet.</p>
             )}
             {pursuit.status === "active" && (
               <form action={refreshBrokerAction.bind(null, pursuit.id)}>
-                <button className="rounded-md px-3 py-1.5 text-xs font-medium text-violet-700 ring-1 ring-inset ring-violet-300 hover:bg-violet-50 dark:text-violet-400 dark:ring-violet-800 dark:hover:bg-violet-950">
+                <button className={buttonClass("primary", "sm")}>
                   {latestProposal ? "Refresh proposal" : "Ask the broker"}
                 </button>
               </form>
@@ -170,8 +171,8 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
 
           {/* Joint playbook (task #83): one shared text per partnership, symmetric like the ledger */}
           <Card tone="violet">
-            <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Joint playbook</h2>
-            <p className="mb-2 text-xs text-neutral-500">
+            <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Joint playbook</h2>
+            <p className="mb-2 text-body text-neutral-500">
               How the two companies work together — one text, co-edited. {pursuit.other_name ?? "The partner"} sees
               this identically, and every save lands on both audit ledgers. The broker cites it.
               {jointPlaybook?.updatedAt && <span className="text-neutral-400"> Last saved {jointPlaybook.updatedAt}.</span>}
@@ -184,10 +185,10 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
                 defaultValue={jointPlaybook?.body ?? ""}
                 readOnly={pursuit.status !== "active"}
                 placeholder="Who opens, how deals register, the joint pitch, escalation paths…"
-                className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                className={`${fieldClass("md", { multiline: true })} w-full`}
               />
               {pursuit.status === "active" && (
-                <button className="mt-2 rounded-md bg-violet-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-800">
+                <button className={buttonClass("primary", "sm")}>
                   Save joint playbook
                 </button>
               )}
@@ -197,7 +198,7 @@ export default async function JointPursuitPage({ params }: { params: Promise<{ i
           {pursuit.status === "active" && (
             <div className="flex justify-end">
               <form action={closePursuitAction.bind(null, pursuit.id)}>
-                <button className="rounded-md px-3 py-1.5 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-300 hover:bg-red-50 dark:text-red-400 dark:ring-red-800 dark:hover:bg-red-950">
+                <button className={buttonClass("destructive", "sm")}>
                   Close pursuit
                 </button>
               </form>

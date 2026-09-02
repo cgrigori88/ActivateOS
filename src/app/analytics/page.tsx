@@ -2,6 +2,7 @@ import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
 import { Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
+import { formatMoney } from "@/lib/format/money";
 
 export const dynamic = "force-dynamic";
 
@@ -140,7 +141,7 @@ export default async function AnalyticsPage({
 
   const valueOf = new Map(valueRows.map((r) => [r.company_id, Number(r.v)]));
   const usd = (set: Set<string>) => [...set].reduce((s, id) => s + (valueOf.get(id) ?? 0), 0);
-  const money = (n: number) => (n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : `$${Math.round(n / 1000)}k`);
+  const money = (n: number) => formatMoney(n);
 
   // Per-stage colors are semantic and row-labeled (identity comes from the row,
   // not a series legend). In-bar text is white on these fills in both modes.
@@ -198,12 +199,12 @@ export default async function AnalyticsPage({
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <QuerySelect param="window" value={sp.window ?? "all"} label="Timeframe" options={[{ value: "all", label: "All time" }, { value: "30", label: "Last 30 days" }, { value: "90", label: "Last 90 days" }]} />
-        <span className="text-xs text-neutral-400">funnel &amp; segment conversion; the daily trend is fixed at 28 days</span>
+        <span className="text-body text-neutral-400">funnel &amp; segment conversion; the daily trend is fixed at 28 days</span>
       </div>
 
       {!hasData && (
         <Card className="mb-6">
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             No outreach activity yet. Compose and send a sequence on the{" "}
             <Link href="/campaigns" className="text-accent hover:underline dark:text-blue-400">Campaigns</Link> page —
             every send, open, and reply lands here.
@@ -215,11 +216,11 @@ export default async function AnalyticsPage({
       {teamRows.length > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex items-baseline justify-between gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Team</h2>
-            <span className="text-xs text-neutral-400">pursuit assignments and the live pipeline on them — the leader lens</span>
+            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Team</h2>
+            <span className="text-body text-neutral-400">pursuit assignments and the live pipeline on them — the leader lens</span>
           </div>
           <div className="overflow-x-auto scroll-thin">
-            <table className="w-full text-sm">
+            <table className="w-full text-copy">
               <thead>
                 <tr className="text-left text-label uppercase tracking-wide text-neutral-400">
                   <th className="py-1 pr-3 font-semibold">Seller</th>
@@ -235,8 +236,8 @@ export default async function AnalyticsPage({
                     <td className="py-1.5 pr-3 font-medium">{t.seller}</td>
                     <td className="py-1.5 pr-3 text-neutral-500">{t.territory ?? "—"}</td>
                     <td className="py-1.5 pr-3 text-neutral-500">{t.accounts.slice(0, 3).join(", ")}{t.accounts.length > 3 ? ` +${t.accounts.length - 3}` : ""}</td>
-                    <td className="tnum py-1.5 pr-3 text-right">{t.open_usd ? `$${Math.round(Number(t.open_usd) / 1000)}k` : "—"}</td>
-                    <td className="tnum py-1.5 text-right text-positive dark:text-green-400">{t.won_usd ? `$${Math.round(Number(t.won_usd) / 1000)}k` : "—"}</td>
+                    <td className="tnum py-1.5 pr-3 text-right">{t.open_usd ? `${formatMoney(Number(t.open_usd))}` : "—"}</td>
+                    <td className="tnum py-1.5 text-right text-positive dark:text-green-400">{t.won_usd ? `${formatMoney(Number(t.won_usd))}` : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -248,7 +249,7 @@ export default async function AnalyticsPage({
       {/* Compelling events — engagement surges feeding the intelligence layer */}
       {surges.length > 0 && (
         <Card className="mb-6">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
             Compelling events — engagement surges
           </h2>
           <div className="flex flex-wrap gap-2">
@@ -259,11 +260,11 @@ export default async function AnalyticsPage({
                 <Link
                   key={i}
                   href={`/accounts/${s.company_id}`}
-                  className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950 dark:hover:bg-amber-900"
+                  className="inline-flex items-center gap-2 rounded-inner border border-amber-300 bg-amber-50 px-3 py-1.5 text-copy hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950 dark:hover:bg-amber-900"
                 >
                   <span aria-hidden>⚡</span>
                   <span className="font-medium">{s.legal_name}</span>
-                  <span className="text-xs text-amber-700 dark:text-amber-400">{bits || "engaged"}</span>
+                  <span className="text-body text-amber-700 dark:text-amber-400">{bits || "engaged"}</span>
                 </Link>
               );
             })}
@@ -277,7 +278,7 @@ export default async function AnalyticsPage({
       {/* Funnel — account cohorts as bars, $ of associated pipeline on the right */}
       <Card className="mb-6">
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Outreach funnel</h2>
+          <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Outreach funnel</h2>
           <span className="text-label text-neutral-400">bar = % of contacted accounts · right = associated pipeline $</span>
         </div>
         <div className="space-y-1.5">
@@ -288,9 +289,9 @@ export default async function AnalyticsPage({
             const label = `${n} account${n === 1 ? "" : "s"}${s.extra ? ` · ${s.extra}` : ""}`;
             return (
               <div key={s.key} className="flex items-center gap-3">
-                <span className="w-16 shrink-0 text-right text-xs text-neutral-500">{s.label}</span>
-                <div className="relative h-6 flex-1 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
-                  <div className="flex h-full items-center rounded" style={{ width: `${w}%`, backgroundColor: s.fill }} title={`${s.label}: ${label}`}>
+                <span className="w-16 shrink-0 text-right text-body text-neutral-500">{s.label}</span>
+                <div className="relative h-6 flex-1 overflow-hidden rounded-inner bg-neutral-100 dark:bg-neutral-800">
+                  <div className="flex h-full items-center rounded-inner" style={{ width: `${w}%`, backgroundColor: s.fill }} title={`${s.label}: ${label}`}>
                     {inBar && <span className="truncate px-2 text-label font-medium text-white">{label}</span>}
                   </div>
                   {!inBar && (
@@ -299,7 +300,7 @@ export default async function AnalyticsPage({
                     </span>
                   )}
                 </div>
-                <span className="tnum w-16 shrink-0 text-right text-xs font-medium">{money(usd(s.set))}</span>
+                <span className="tnum w-16 shrink-0 text-right text-body font-medium">{money(usd(s.set))}</span>
                 <span className="tnum w-10 shrink-0 text-right text-label text-neutral-400">{Math.round((n / cohort) * 100)}%</span>
               </div>
             );
@@ -320,15 +321,15 @@ export default async function AnalyticsPage({
         {/* Multi-touch: sent vs responded, by touch */}
         <Card>
           <div className="mb-4 flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Multi-touch cadence</h2>
+            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Multi-touch cadence</h2>
             <span className="flex gap-3 text-label text-neutral-500">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-blue-600" /> Sent</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-green-600" /> Responded</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-inner bg-blue-600" /> Sent</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-inner bg-green-600" /> Responded</span>
             </span>
           </div>
-          <p className="mb-3 text-xs text-neutral-500">Sent vs responded, by touch — which step in the sequence actually earns replies.</p>
+          <p className="mb-3 text-body text-neutral-500">Sent vs responded, by touch — which step in the sequence actually earns replies.</p>
           {touches.length === 0 ? (
-            <p className="text-sm text-neutral-400">No touches composed yet.</p>
+            <p className="text-copy text-neutral-400">No touches composed yet.</p>
           ) : (
             <div className="flex items-end justify-around gap-4" style={{ height: 170 }}>
               {touches.map((t) => {
@@ -359,10 +360,10 @@ export default async function AnalyticsPage({
         {/* Daily activity trend — 28 days of sends / opens / replies */}
         <Card>
           <div className="mb-1 flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Activity trend</h2>
+            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Activity trend</h2>
             <span className="text-label text-neutral-400">{days[0]?.d} → {days[days.length - 1]?.d}</span>
           </div>
-          <p className="mb-2 text-xs text-neutral-500">Daily sends · opens · replies — hover a point for the day&apos;s exact counts.</p>
+          <p className="mb-2 text-body text-neutral-500">Daily sends · opens · replies — hover a point for the day&apos;s exact counts.</p>
           <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Daily sends, opens and replies over the last 28 days">
             {/* recessive baseline + midline */}
             <line x1={PL} x2={W - PR} y1={py(0)} y2={py(0)} className="stroke-neutral-200 dark:stroke-neutral-800" strokeWidth="1" />
@@ -423,9 +424,9 @@ export default async function AnalyticsPage({
 
       {/* Funnel by segment */}
       <Card className="mt-6">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-neutral-500">Conversion by propensity band</h2>
+        <h2 className="mb-4 text-copy font-semibold uppercase tracking-wide text-neutral-500">Conversion by propensity band</h2>
         {segRows.length === 0 ? (
-          <p className="text-sm text-neutral-400">No sends to segment yet.</p>
+          <p className="text-copy text-neutral-400">No sends to segment yet.</p>
         ) : (
           <div className="overflow-x-auto scroll-thin">
             <table className="data-table">

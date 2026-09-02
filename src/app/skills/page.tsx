@@ -4,6 +4,7 @@ import { SKILL_KINDS, listSkills, sharedInSkills, type SkillKind } from "@/lib/s
 import { editIntensity } from "@/lib/insights/calibration";
 import { withTenant } from "@/lib/db/tenant";
 import { createSkillAction, setSkillStatusAction, updateSkillBodyAction } from "./actions";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
  */
 
 const input =
-  "rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
+  "rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900";
 
 const KIND_STYLE: Record<SkillKind, string> = {
   positioning: "bg-accent/12 text-accent dark:text-blue-300",
@@ -88,16 +89,16 @@ export default async function SkillsPage({
 
       {sp.notice && (
         <Card className="mb-6">
-          <p className="text-sm">{sp.notice}</p>
+          <p className="text-copy">{sp.notice}</p>
         </Card>
       )}
 
       {suggestStyle && (
         <Card tone="amber" className="mb-6">
-          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">
             Turn your edits into a skill
           </h2>
-          <p className="text-sm text-neutral-600 dark:text-neutral-300">
+          <p className="text-copy text-neutral-600 dark:text-neutral-300">
             Your team rewrites AI drafts heavily (edit intensity{" "}
             <span className="tnum font-semibold">{intensity}</span>, where 0 = sent as drafted) and there&rsquo;s
             no style skill on file — the rewrites are a voice the machine hasn&rsquo;t been told about. Capture
@@ -109,13 +110,13 @@ export default async function SkillsPage({
 
       {/* ── The library ── */}
       <Card className="mb-6">
-        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Library</h2>
-        <p className="mb-3 text-sm text-neutral-500">
+        <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Library</h2>
+        <p className="mb-3 text-copy text-neutral-500">
           Every skill declares what it is, where it applies, and which agents read it — and the uses count is
           real: it counts the AI runs each skill actually grounded.
         </p>
         {active.length === 0 ? (
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             No skills yet — add the first one below. Good first skills: how you position against the status quo,
             your deal-registration process, the phrases your team never puts in a customer email.
           </p>
@@ -125,14 +126,14 @@ export default async function SkillsPage({
               <li key={s.id} className="py-2.5">
                 <details>
                   <summary className="flex cursor-pointer flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">{s.name}</span>
+                    <span className="text-copy font-medium">{s.name}</span>
                     <span className={`rounded-full px-2 py-0.5 text-micro font-bold ${KIND_STYLE[s.kind]}`}>
                       {kindLabel(s.kind).label.toLowerCase()}
                     </span>
                     <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-micro font-semibold text-neutral-500">
                       {s.scopeLabel}
                     </span>
-                    <span className="ml-auto text-xs text-neutral-400">
+                    <span className="ml-auto text-body text-neutral-400">
                       Grounds: {kindLabel(s.kind).surfaces.join(" · ")}
                       {" · "}
                       <span className="tnum font-semibold text-neutral-600 dark:text-neutral-300">{s.uses}</span>{" "}
@@ -154,7 +155,7 @@ export default async function SkillsPage({
                     <form action={updateSkillBodyAction.bind(null, s.id)}>
                       <textarea name="body" rows={4} maxLength={6000} defaultValue={s.body} className={`${input} w-full`} />
                       <div className="mt-1.5 flex items-center gap-3">
-                        <button className="rounded-md bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800">
+                        <button className={buttonClass("primary", "sm")}>
                           Save changes
                         </button>
                         <span className="text-label text-neutral-400">
@@ -163,7 +164,7 @@ export default async function SkillsPage({
                       </div>
                     </form>
                     <form action={setSkillStatusAction.bind(null, s.id, "archived")} className="mt-1.5">
-                      <button className="text-label font-medium text-neutral-500 hover:underline">
+                      <button className={buttonClass("subtle", "md")}>
                         Archive — agents stop reading it immediately
                       </button>
                     </form>
@@ -176,16 +177,16 @@ export default async function SkillsPage({
 
         {archived.length > 0 && (
           <details className="mt-3 border-t border-neutral-100 pt-2 dark:border-neutral-800">
-            <summary className="cursor-pointer text-xs font-medium text-neutral-500">
+            <summary className="cursor-pointer text-body font-medium text-neutral-500">
               {archived.length} archived
             </summary>
             <ul className="mt-1 space-y-1">
               {archived.map((s) => (
-                <li key={s.id} className="flex items-center gap-2 text-sm text-neutral-500">
+                <li key={s.id} className="flex items-center gap-2 text-copy text-neutral-500">
                   <span className="min-w-0 flex-1 truncate">{s.name}</span>
                   <span className="text-label">{s.uses} uses</span>
                   <form action={setSkillStatusAction.bind(null, s.id, "active")}>
-                    <button className="text-label font-medium text-accent hover:underline">restore</button>
+                    <button className={buttonClass("subtle", "md")}>restore</button>
                   </form>
                 </li>
               ))}
@@ -197,10 +198,10 @@ export default async function SkillsPage({
       {/* ── Shared with you (task #85): partners' skills, accepted through consent ── */}
       {shared.length > 0 && (
         <Card tone="violet" className="mb-6">
-          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">
             Shared with you
           </h2>
-          <p className="mb-3 text-sm text-neutral-500">
+          <p className="mb-3 text-copy text-neutral-500">
             Skills partner organizations shared and you accepted. Read live from their tenant — their edits
             apply instantly, and each grounds your agents only on deals with that partner.
           </p>
@@ -209,18 +210,18 @@ export default async function SkillsPage({
               <li key={s.id} className="py-2.5">
                 <details>
                   <summary className="flex cursor-pointer flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">{s.name}</span>
+                    <span className="text-copy font-medium">{s.name}</span>
                     <span className={`rounded-full px-2 py-0.5 text-micro font-bold ${KIND_STYLE[s.kind]}`}>
                       {kindLabel(s.kind).label.toLowerCase()}
                     </span>
                     <span className="rounded-full bg-violet-50 px-2 py-0.5 text-micro font-semibold text-violet-700 dark:bg-violet-950/50 dark:text-violet-400">
                       from {s.fromOrgName}
                     </span>
-                    <span className="ml-auto text-xs text-neutral-400">
+                    <span className="ml-auto text-body text-neutral-400">
                       {s.partnerName ? `Grounds deals with ${s.partnerName}` : "Grounds joint deals"}
                     </span>
                   </summary>
-                  <p className="mt-2 whitespace-pre-wrap pl-1 text-sm text-neutral-600 dark:text-neutral-300">{s.body}</p>
+                  <p className="mt-2 whitespace-pre-wrap pl-1 text-copy text-neutral-600 dark:text-neutral-300">{s.body}</p>
                 </details>
               </li>
             ))}
@@ -231,27 +232,27 @@ export default async function SkillsPage({
       {/* ── Add a skill ── */}
       <span id="add" />
       <Card className="mb-6">
-        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Add a skill</h2>
-        <p className="mb-3 text-sm text-neutral-500">
+        <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Add a skill</h2>
+        <p className="mb-3 text-copy text-neutral-500">
           Write it once; every drafting run on its surfaces follows it. Keep one skill per topic — if a{" "}
           {SKILL_KINDS[0].label.toLowerCase()} skill for the same scope already exists above, edit it instead.
         </p>
         <form action={createSkillAction} className="space-y-3">
           <div className="flex flex-wrap items-end gap-3">
-            <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">Name</span>
+            <label className="text-copy">
+              <span className="mb-1 block text-body text-neutral-500">Name</span>
               <input name="name" required maxLength={120} placeholder="How we open enterprise deals" className={`${input} w-64`} />
             </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">Kind</span>
+            <label className="text-copy">
+              <span className="mb-1 block text-body text-neutral-500">Kind</span>
               <select name="kind" defaultValue={SKILL_KINDS.some((k) => k.kind === sp.kind) ? sp.kind : undefined} className={input}>
                 {SKILL_KINDS.map((k) => (
                   <option key={k.kind} value={k.kind}>{k.label}</option>
                 ))}
               </select>
             </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">Applies to</span>
+            <label className="text-copy">
+              <span className="mb-1 block text-body text-neutral-500">Applies to</span>
               <select name="scopeType" className={input}>
                 <option value="org">Whole org</option>
                 {partners.length > 0 && <option value="partner">One partner…</option>}
@@ -259,8 +260,8 @@ export default async function SkillsPage({
               </select>
             </label>
             {partners.length > 0 && (
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Partner (if partner-scoped)</span>
+              <label className="text-copy">
+                <span className="mb-1 block text-body text-neutral-500">Partner (if partner-scoped)</span>
                 <select name="partnerId" className={input}>
                   <option value="">—</option>
                   {partners.map((p) => (
@@ -270,8 +271,8 @@ export default async function SkillsPage({
               </label>
             )}
             {lists.length > 0 && (
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">List (if list-scoped)</span>
+              <label className="text-copy">
+                <span className="mb-1 block text-body text-neutral-500">List (if list-scoped)</span>
                 <select name="listId" className={input}>
                   <option value="">—</option>
                   {lists.map((l) => (
@@ -284,8 +285,8 @@ export default async function SkillsPage({
           <p className="text-label text-neutral-400">
             {SKILL_KINDS.map((k) => `${k.label}: ${k.hint}`).join(" ")}
           </p>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs text-neutral-500">Instructions the agents will follow</span>
+          <label className="block text-copy">
+            <span className="mb-1 block text-body text-neutral-500">Instructions the agents will follow</span>
             <textarea
               name="body"
               rows={4}
@@ -295,7 +296,7 @@ export default async function SkillsPage({
               className={`${input} w-full`}
             />
           </label>
-          <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+          <button className={buttonClass("primary", "md")}>
             Add to the library
           </button>
         </form>
@@ -303,14 +304,14 @@ export default async function SkillsPage({
 
       {/* ── The rest of the org's standing grounding ── */}
       <Card muted>
-        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+        <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">
           Also grounding your agents
         </h2>
-        <p className="mb-2 text-sm text-neutral-500">
+        <p className="mb-2 text-copy text-neutral-500">
           Typed grounding that lives in its own room — listed here so this page stays the one map of everything
           the agents follow.
         </p>
-        <ul className="space-y-1 text-sm">
+        <ul className="space-y-1 text-copy">
           <li>
             <Link className="font-medium text-accent hover:underline" href="/partners">Partner playbooks</Link>{" "}
             <span className="text-neutral-500">— {also.playbooks} written; read by the motion designer when that partner is on the pursuit</span>

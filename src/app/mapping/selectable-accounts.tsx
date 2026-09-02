@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { BandBadge } from "@/components/ui";
+import { BandBadge, buttonClass } from "@/components/ui";
 
 /**
  * Selectable + filterable account table (#3). The user filters by column
@@ -66,7 +66,7 @@ export function SelectableAccounts({
     });
 
   const ids = [...sel].join(",");
-  const input = "rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
+  const input = "rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900";
 
   return (
     <div>
@@ -81,25 +81,25 @@ export function SelectableAccounts({
           <option value="cross-sell / upsell">Cross-sell / upsell</option>
           <option value="net-new">Net-new</option>
         </select>
-        <span className="ml-auto text-xs text-neutral-500">{filtered.length} shown · {sel.size} selected</span>
+        <span className="ml-auto text-body text-neutral-500">{filtered.length} shown · {sel.size} selected</span>
       </div>
 
       {/* Action bar (appears with a selection) */}
       {sel.size > 0 && (
-        <div className="mb-3 flex flex-wrap items-end gap-3 rounded-lg border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-900 dark:bg-blue-950/30">
-          <span className="text-sm font-medium">{sel.size} account{sel.size === 1 ? "" : "s"} selected</span>
+        <div className="mb-3 flex flex-wrap items-end gap-3 rounded-inner border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-900 dark:bg-blue-950/30">
+          <span className="text-copy font-medium">{sel.size} account{sel.size === 1 ? "" : "s"} selected</span>
           <form action={createTarget} className="flex items-end gap-2">
             <input type="hidden" name="companyIds" value={ids} />
             <input name="name" defaultValue="Selected accounts" className={`${input} w-44`} />
-            <button className="rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800">Create target list</button>
+            <button className={buttonClass("primary", "sm")}>Create target list</button>
           </form>
           <form action={generateMotions}>
             <input type="hidden" name="companyIds" value={ids} />
-            <button className="rounded-md border border-blue-300 px-3 py-1.5 text-sm font-medium text-accent hover:bg-blue-100 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-900">
+            <button className={buttonClass("primary", "sm")}>
               Generate motions (AI)
             </button>
           </form>
-          <button type="button" onClick={() => setSel(new Set())} className="text-xs text-neutral-500 hover:underline">clear</button>
+          <button type="button" onClick={() => setSel(new Set())} className="text-body text-neutral-500 hover:underline">clear</button>
         </div>
       )}
 
@@ -130,10 +130,10 @@ export function SelectableAccounts({
                   )}
                 </td>
                 <td>
-                  <span className="text-xs text-neutral-600 dark:text-neutral-300">{a.partners.join(", ")}</span>
-                  {a.partnerCount >= 2 && <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-micro font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300">×{a.partnerCount}</span>}
+                  <span className="text-body text-neutral-600 dark:text-neutral-300">{a.partners.join(", ")}</span>
+                  {a.partnerCount >= 2 && <span className="ml-1 rounded-inner bg-amber-100 px-1 py-0.5 text-micro font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300">×{a.partnerCount}</span>}
                 </td>
-                <td className="text-xs text-neutral-500">{a.motion}</td>
+                <td className="text-body text-neutral-500">{a.motion}</td>
                 <td className="text-right text-label text-neutral-400">{a.hasMotion ? "has motion" : ""}</td>
               </tr>
             ))}

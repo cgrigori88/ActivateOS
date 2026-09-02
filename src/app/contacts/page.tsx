@@ -332,15 +332,15 @@ export default async function ContactsPage({
             name="q"
             defaultValue={sp.q ?? ""}
             placeholder="Search name, title, company…"
-            className="w-56 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            className="w-56 rounded-control border border-neutral-300 bg-white px-2.5 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900"
           />
-          {q && <Link href={{ query: { ...hidden } }} className="text-xs text-neutral-500 hover:underline">clear</Link>}
+          {q && <Link href={{ query: { ...hidden } }} className="text-body text-neutral-500 hover:underline">clear</Link>}
         </form>
       </div>
 
       {filtered.length === 0 ? (
         <Card>
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             {rows.length === 0 ? (
               <>
                 No contacts yet. End users are discovered when accounts cross the research gate; partner reps are captured
@@ -366,18 +366,18 @@ export default async function ContactsPage({
                   <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
                     <span className="text-neutral-400 transition-transform group-open:rotate-90" aria-hidden>▸</span>
                     {groupKey !== "company" && (
-                      <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">{groupKey}</span>
+                      <span className="rounded-inner bg-neutral-100 px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">{groupKey}</span>
                     )}
                     <span className="font-semibold">{g.name}</span>
                     {g.sub && <span className="text-label text-neutral-400">{g.sub}</span>}
                     {groupKey === "company" && g.companyId && (
-                      <Link href={`/accounts/${g.companyId}`} className="text-xs text-accent hover:underline dark:text-blue-400">account →</Link>
+                      <Link href={`/accounts/${g.companyId}`} className="text-body text-accent hover:underline dark:text-blue-400">account →</Link>
                     )}
                     <span className="ml-auto flex flex-wrap items-center gap-1.5">
                       {[...byType.entries()].map(([t, n]) => (
-                        <span key={t} className={`rounded px-1.5 py-0.5 text-micro font-medium ring-1 ring-inset ${TYPE_TONE[t] ?? TYPE_TONE.other}`}>{n} {TYPE_LABELS[t] ?? t}</span>
+                        <span key={t} className={`rounded-inner px-1.5 py-0.5 text-micro font-medium ring-1 ring-inset ${TYPE_TONE[t] ?? TYPE_TONE.other}`}>{n} {TYPE_LABELS[t] ?? t}</span>
                       ))}
-                      <span className="tnum ml-1 text-xs text-neutral-400">{g.items.length} contact{g.items.length === 1 ? "" : "s"} · {reachableN} reachable</span>
+                      <span className="tnum ml-1 text-body text-neutral-400">{g.items.length} contact{g.items.length === 1 ? "" : "s"} · {reachableN} reachable</span>
                     </span>
                   </summary>
                   <div className="overflow-x-auto border-t border-neutral-100 scroll-thin dark:border-neutral-800">
@@ -419,22 +419,22 @@ export default async function ContactsPage({
                               </div>
                             </td>
                             {showCompanyCol && (
-                              <td className="text-xs">
+                              <td className="text-body">
                                 {r.companyId ? <Link href={`/accounts/${r.companyId}`} className="text-accent hover:underline dark:text-blue-400">{r.legalName}</Link> : r.legalName}
                               </td>
                             )}
                             <td>
-                              <span className={`rounded px-1.5 py-0.5 text-micro font-medium ring-1 ring-inset ${TYPE_TONE[r.contactType] ?? TYPE_TONE.other}`}>{TYPE_LABELS[r.contactType] ?? r.contactType}</span>
+                              <span className={`rounded-inner px-1.5 py-0.5 text-micro font-medium ring-1 ring-inset ${TYPE_TONE[r.contactType] ?? TYPE_TONE.other}`}>{TYPE_LABELS[r.contactType] ?? r.contactType}</span>
                             </td>
-                            <td className="text-xs">{r.email ? <a href={`mailto:${r.email}`} className="text-accent hover:underline dark:text-blue-400">{r.email}</a> : <span className="text-neutral-300 dark:text-neutral-600">—</span>}</td>
-                            <td className="text-xs text-neutral-500">{r.phone ?? "—"}</td>
-                            <td className="text-xs text-neutral-500">{r.partnerName ?? "—"}</td>
-                            <td className="text-xs text-neutral-500">{r.brand ?? "—"}</td>
-                            <td className="text-xs text-neutral-500">{r.territory ?? "—"}</td>
-                            <td className="text-xs text-neutral-500">{r.vertical ?? "—"}</td>
-                            <td className="text-xs text-neutral-500">{r.segment ?? "—"}</td>
-                            <td className="text-xs text-neutral-500">{r.location ?? "—"}</td>
-                            <td className="text-xs">
+                            <td className="text-body">{r.email ? <a href={`mailto:${r.email}`} className="text-accent hover:underline dark:text-blue-400">{r.email}</a> : <span className="text-neutral-300 dark:text-neutral-600">—</span>}</td>
+                            <td className="text-body text-neutral-500">{r.phone ?? "—"}</td>
+                            <td className="text-body text-neutral-500">{r.partnerName ?? "—"}</td>
+                            <td className="text-body text-neutral-500">{r.brand ?? "—"}</td>
+                            <td className="text-body text-neutral-500">{r.territory ?? "—"}</td>
+                            <td className="text-body text-neutral-500">{r.vertical ?? "—"}</td>
+                            <td className="text-body text-neutral-500">{r.segment ?? "—"}</td>
+                            <td className="text-body text-neutral-500">{r.location ?? "—"}</td>
+                            <td className="text-body">
                               {r.email ? (
                                 <span className={ENGAGEMENT_TONE[r.engagementStatus ?? "unknown"]}>
                                   {r.engagementScore != null && r.engagementScore > 0 ? `${r.engagementScore.toFixed(0)} · ` : ""}

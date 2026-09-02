@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { getOwnerPool } from "@/db/client";
-import { Bento, Button, Card, PageHeader } from "@/components/ui";
+import { Bento, Button, Card, PageHeader, fieldClass } from "@/components/ui";
 import { currentRole } from "@/lib/auth/org";
 import { withTenant } from "@/lib/db/tenant";
 import { byoModelAvailable, hasOrgAnthropicKey } from "@/lib/ai/org-keys";
@@ -21,10 +21,12 @@ import { icpFit, listSuppressions, loadIcp, type IcpFit } from "@/lib/icp/icp";
 import { AgentKeys, type KeyRow } from "./agent-keys";
 import { auditEntries, listGrantViews, listPartnerships } from "@/lib/partnerships/partnerships";
 import { orgKind } from "@/lib/partnerships/guest";
+import { buttonClass } from "@/components/ui";
 import {
   OVERLAP_LEVELS, LEVEL_LABEL, LEVEL_EXPLAIN, overlapLadder, bookSize,
   type BandsResults, type CountsResults, type NamedResults, type OverlapLadder,
 } from "@/lib/partnerships/overlap";
+import { formatCost } from "@/lib/format/money";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +66,7 @@ export default async function AdminPage({
     return (
       <main>
         <PageHeader title="Admin" subtitle="Platform operations." />
-        <Card><p className="text-sm text-neutral-500">Owner access required — ask an owner of your organization.</p></Card>
+        <Card><p className="text-copy text-neutral-500">Owner access required — ask an owner of your organization.</p></Card>
       </main>
     );
   }
@@ -226,7 +228,7 @@ export default async function AdminPage({
     }
   }
 
-  const input = "rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
+  const input = "rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900";
 
   return (
     <main>
@@ -236,7 +238,7 @@ export default async function AdminPage({
       />
 
       {sp.notice && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-inner border border-blue-300 bg-blue-50 px-4 py-2.5 text-copy text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
           <span>{sp.notice}</span>
           {/* Next-step pull (#79): a named overlap just opened the door to joint rooms. */}
           {sp.next === "joint" && (
@@ -254,8 +256,8 @@ export default async function AdminPage({
       {/* ── Guest workspace identity (B+2) ── */}
       {isGuest && (
         <Card tone="amber" className="mb-4">
-          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Guest workspace</h2>
-          <p className="max-w-[88ch] text-sm text-neutral-600 dark:text-neutral-300">
+          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Guest workspace</h2>
+          <p className="max-w-[88ch] text-copy text-neutral-600 dark:text-neutral-300">
             This is a free seat, created from a partner&apos;s invite. Everything in it is yours — your book, your
             contacts, your side of the trust ladder — behind the same tenant isolation as any workspace, and your
             partner sees only what you explicitly approve. The one cap: a guest workspace can&apos;t invite partners
@@ -266,22 +268,22 @@ export default async function AdminPage({
       )}
 
       {/* ── Access ── */}
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Access</h2>
+      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Access</h2>
       <Card className="mb-4">
         {!authConfigured() ? (
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             Identity isn&apos;t configured on this deployment — member management activates once
             <code className="mx-1">NEXT_PUBLIC_SUPABASE_*</code> is set. Basic Auth gates everything meanwhile.
           </p>
         ) : (
           <>
             {membersUnavailable ? (
-              <p className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+              <p className="mb-3 rounded-inner border border-amber-300 bg-amber-50 px-3 py-2 text-copy text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
                 The identity directory isn&apos;t readable from this deployment&apos;s database, so the member list
                 can&apos;t be shown. Everything else on this page is live — this panel alone is unavailable.
               </p>
             ) : members.length === 0 ? (
-              <p className="mb-3 text-sm text-neutral-500">No members yet — create the owner on the <Link href="/login" className="text-accent hover:underline dark:text-blue-400">sign-in page</Link> first.</p>
+              <p className="mb-3 text-copy text-neutral-500">No members yet — create the owner on the <Link href="/login" className="text-accent hover:underline dark:text-blue-400">sign-in page</Link> first.</p>
             ) : (
               <div className="mb-4 overflow-x-auto scroll-thin">
                 <table className="data-table">
@@ -292,17 +294,17 @@ export default async function AdminPage({
                         <td className="font-medium">{m.email ?? m.user_id}</td>
                         <td>
                           <form action={setMemberRoleAction.bind(null, m.user_id)} className="flex items-center gap-1.5">
-                            <select name="role" defaultValue={m.role} title={ROLE_HINT[m.role]} className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-xs dark:border-neutral-700">
+                            <select name="role" defaultValue={m.role} title={ROLE_HINT[m.role]} className={fieldClass("sm")}>
                               {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                             </select>
-                            <button className="text-label font-medium text-accent hover:underline dark:text-blue-400">set</button>
+                            <button className={buttonClass("subtle", "md")}>set</button>
                           </form>
                         </td>
-                        <td className="text-xs text-neutral-500">{new Date(m.created_at).toISOString().slice(0, 10)}</td>
-                        <td className="text-xs text-neutral-500">{m.last_sign_in_at ? new Date(m.last_sign_in_at).toISOString().slice(0, 10) : "never"}</td>
+                        <td className="text-body text-neutral-500">{new Date(m.created_at).toISOString().slice(0, 10)}</td>
+                        <td className="text-body text-neutral-500">{m.last_sign_in_at ? new Date(m.last_sign_in_at).toISOString().slice(0, 10) : "never"}</td>
                         <td className="text-right">
                           <form action={removeMemberAction.bind(null, m.user_id)}>
-                            <button className="text-label font-medium text-red-700 hover:underline dark:text-red-400">remove</button>
+                            <button className={buttonClass("subtle", "md")}>remove</button>
                           </form>
                         </td>
                       </tr>
@@ -311,91 +313,91 @@ export default async function AdminPage({
                 </table>
               </div>
             )}
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Invite a member</h3>
-            <p className="mb-3 text-xs text-neutral-500">
+            <h3 className="mb-1 text-body font-semibold uppercase tracking-wide text-neutral-500">Invite a member</h3>
+            <p className="mb-3 text-body text-neutral-500">
               You set a temporary password and share it out-of-band — nothing secret travels by URL or email.
               They change it from the sign-in page after first login.
             </p>
             <form action={inviteMemberAction} className="flex flex-wrap items-end gap-3">
-              <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Email</span><input name="email" type="email" required className={`${input} w-56`} /></label>
-              <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Temporary password (12+)</span><input name="password" type="text" required minLength={12} autoComplete="off" className={`${input} w-52`} /></label>
-              <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Role</span>
+              <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Email</span><input name="email" type="email" required className={`${input} w-56`} /></label>
+              <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Temporary password (12+)</span><input name="password" type="text" required minLength={12} autoComplete="off" className={`${input} w-52`} /></label>
+              <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Role</span>
                 <select name="role" defaultValue="operator" className={input}>
                   {ROLES.map((r) => <option key={r} value={r} title={ROLE_HINT[r]}>{r}</option>)}
                 </select>
               </label>
-              <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">Add member</button>
+              <button className={buttonClass("primary", "md")}>Add member</button>
             </form>
           </>
         )}
       </Card>
 
       {/* ── Targeting: ICP + suppression (task #83) ── */}
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Targeting</h2>
+      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Targeting</h2>
       <Card className="mb-4">
         <div className="grid gap-6 lg:grid-cols-2">
           <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Ideal customer profile</h3>
-            <p className="mb-2 text-xs text-neutral-500">
+            <h3 className="mb-1 text-body font-semibold uppercase tracking-wide text-neutral-500">Ideal customer profile</h3>
+            <p className="mb-2 text-body text-neutral-500">
               Advisory, never blocking: fit chips render on named-overlap results and rankings. Unknown attributes
               count as unknown, not misfit.
             </p>
             <form action={saveIcpAction} className="space-y-2">
-              <label className="block text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Industries (comma-separated)</span>
+              <label className="block text-copy">
+                <span className="mb-1 block text-body text-neutral-500">Industries (comma-separated)</span>
                 <input name="industries" defaultValue={icp?.industries.join(", ") ?? ""} placeholder="Financial Services, Manufacturing" className={`${input} w-full`} />
               </label>
               <div className="flex gap-2">
-                <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Employees min</span>
+                <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Employees min</span>
                   <input name="employeeMin" defaultValue={icp?.employeeMin ?? ""} inputMode="numeric" className={`${input} w-28`} />
                 </label>
-                <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Employees max</span>
+                <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Employees max</span>
                   <input name="employeeMax" defaultValue={icp?.employeeMax ?? ""} inputMode="numeric" className={`${input} w-28`} />
                 </label>
               </div>
-              <label className="block text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Countries (comma-separated)</span>
+              <label className="block text-copy">
+                <span className="mb-1 block text-body text-neutral-500">Countries (comma-separated)</span>
                 <input name="geos" defaultValue={icp?.geos.join(", ") ?? ""} placeholder="germany, united states" className={`${input} w-full`} />
               </label>
-              <label className="block text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Notes (who to ignore, in words)</span>
+              <label className="block text-copy">
+                <span className="mb-1 block text-body text-neutral-500">Notes (who to ignore, in words)</span>
                 <input name="icpNotes" defaultValue={icp?.notes ?? ""} placeholder="No agencies; no sub-50-seat shops" className={`${input} w-full`} />
               </label>
-              <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">Save profile</button>
+              <button className={buttonClass("primary", "md")}>Save profile</button>
             </form>
           </div>
           <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Suppression list</h3>
-            <p className="mb-2 text-xs text-neutral-500">
+            <h3 className="mb-1 text-body font-semibold uppercase tracking-wide text-neutral-500">Suppression list</h3>
+            <p className="mb-2 text-body text-neutral-500">
               A hard guardrail: matching accounts are excluded from motion drafting and candidate surfaces entirely —
               competitors, existing customers, do-not-pursue.
             </p>
             <form action={addSuppressionAction} className="mb-3 flex flex-wrap items-end gap-2">
-              <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Match by</span>
+              <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Match by</span>
                 <select name="kind" className={input}>
                   <option value="name">Company name</option>
                   <option value="domain">Domain</option>
                 </select>
               </label>
-              <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Value</span>
+              <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Value</span>
                 <input name="value" required placeholder="Acme Corp or acme.com" className={`${input} w-44`} />
               </label>
-              <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Reason</span>
+              <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Reason</span>
                 <input name="reason" placeholder="competitor" className={`${input} w-36`} />
               </label>
-              <button className="rounded-md bg-red-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-800">Suppress</button>
+              <button className={buttonClass("destructive", "md")}>Suppress</button>
             </form>
             {suppressions.length === 0 ? (
-              <p className="text-sm text-neutral-500">Nothing suppressed yet.</p>
+              <p className="text-copy text-neutral-500">Nothing suppressed yet.</p>
             ) : (
               <ul className="space-y-1">
                 {suppressions.map((s) => (
-                  <li key={s.id} className="flex items-center gap-2 text-sm">
+                  <li key={s.id} className="flex items-center gap-2 text-copy">
                     <span className="rounded-full bg-red-600/10 px-2 py-0.5 text-micro font-bold uppercase tracking-wide text-red-700 dark:text-red-400">{s.kind}</span>
                     <span className="min-w-0 flex-1 truncate font-medium">{s.label}</span>
-                    {s.reason && <span className="text-xs text-neutral-400">{s.reason}</span>}
+                    {s.reason && <span className="text-body text-neutral-400">{s.reason}</span>}
                     <form action={removeSuppressionAction.bind(null, s.id)}>
-                      <button className="text-label font-medium text-neutral-500 hover:underline">remove</button>
+                      <button className={buttonClass("subtle", "md")}>remove</button>
                     </form>
                   </li>
                 ))}
@@ -406,9 +408,9 @@ export default async function AdminPage({
       </Card>
 
       {/* ── Partnerships ── */}
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Partnerships</h2>
+      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Partnerships</h2>
       <Card className="mb-4">
-        <p className="mb-4 text-xs text-neutral-500">
+        <p className="mb-4 text-body text-neutral-500">
           A partnership connects two tenants. You invite with a code bound to one of your partners; their owner
           redeems it on their own Admin page. Nothing crosses the boundary except lists you explicitly share —
           and those only appear after <em>their</em> owner accepts. Either side can revoke at any time.
@@ -439,13 +441,13 @@ export default async function AdminPage({
                         : "text-neutral-400"
                       }>{p.status}</span>
                     </td>
-                    <td className="text-xs text-neutral-500">{p.role}</td>
-                    <td className="tnum text-xs text-neutral-500">{p.grantsOut} / {p.grantsIn}</td>
-                    <td className="text-xs text-neutral-500">{p.activatedAt ?? p.createdAt}</td>
+                    <td className="text-body text-neutral-500">{p.role}</td>
+                    <td className="tnum text-body text-neutral-500">{p.grantsOut} / {p.grantsIn}</td>
+                    <td className="text-body text-neutral-500">{p.activatedAt ?? p.createdAt}</td>
                     <td className="text-right">
                       {p.status !== "revoked" && (
                         <form action={revokePartnershipAction.bind(null, p.id)}>
-                          <button className="text-label font-medium text-red-700 hover:underline dark:text-red-400">revoke</button>
+                          <button className={buttonClass("subtle", "md")}>revoke</button>
                         </form>
                       )}
                     </td>
@@ -458,37 +460,37 @@ export default async function AdminPage({
 
         <div className="grid gap-6 lg:grid-cols-2">
           <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Invite a partner org</h3>
-            <p className="mb-2 text-xs text-neutral-500">
+            <h3 className="mb-1 text-body font-semibold uppercase tracking-wide text-neutral-500">Invite a partner org</h3>
+            <p className="mb-2 text-body text-neutral-500">
               Bound to one of your partners. The code works two ways: their owner redeems it on their Admin page, or
               — if they aren&apos;t on PursuitOS yet — the join link claims them a free guest workspace.
             </p>
             {isGuest ? (
-              <p className="text-sm text-neutral-500">
+              <p className="text-copy text-neutral-500">
                 Guest workspaces can&apos;t invite partners — upgrading to a full workspace unlocks building your own
                 network here.
               </p>
             ) : myPartners.length === 0 ? (
-              <p className="text-sm text-neutral-500">No partners yet — add one first.</p>
+              <p className="text-copy text-neutral-500">No partners yet — add one first.</p>
             ) : (
               <form action={createInviteAction} className="flex flex-wrap items-end gap-2">
-                <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Partner</span>
+                <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Partner</span>
                   <select name="partnerId" className={input}>
                     {myPartners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </label>
-                <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">Create invite</button>
+                <button className={buttonClass("primary", "md")}>Create invite</button>
               </form>
             )}
           </div>
           <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Redeem an invite</h3>
-            <p className="mb-2 text-xs text-neutral-500">Paste the code another org&apos;s owner gave you.</p>
+            <h3 className="mb-1 text-body font-semibold uppercase tracking-wide text-neutral-500">Redeem an invite</h3>
+            <p className="mb-2 text-body text-neutral-500">Paste the code another org&apos;s owner gave you.</p>
             <form action={redeemInviteAction} className="flex flex-wrap items-end gap-2">
-              <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Invite code</span>
+              <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Invite code</span>
                 <input name="code" required placeholder="XXXXX-XXXXX-XXXXX-XXXXX" className={`${input} w-64 font-mono`} />
               </label>
-              <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">Redeem</button>
+              <button className={buttonClass("primary", "md")}>Redeem</button>
             </form>
           </div>
         </div>
@@ -497,14 +499,14 @@ export default async function AdminPage({
       {/* ── Blind overlap (task #72) ── */}
       {ladders.length > 0 && (
         <>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Blind overlap</h2>
+          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Blind overlap</h2>
           {ladders.map((ladder) => (
             <Card key={ladder.partnershipId} className="mb-4">
               <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-sm font-semibold">{ladder.otherOrgName ?? "Partner org"}</span>
+                <span className="text-copy font-semibold">{ladder.otherOrgName ?? "Partner org"}</span>
                 <span className="text-label text-neutral-400">every step needs both owners · on the ledger</span>
               </div>
-              <p className="mb-4 text-xs text-neutral-500">
+              <p className="mb-4 text-body text-neutral-500">
                 Learn how much your books overlap <em>before</em> either side reveals an account. The
                 overlap can only contain accounts already in your own book — a probe never shows you an
                 account you don&apos;t know; it discloses which of yours the partner also has.
@@ -515,15 +517,15 @@ export default async function AdminPage({
                   return (
                     <div
                       key={level}
-                      className={`rounded-lg border p-3 ${
+                      className={`rounded-inner border p-3 ${
                         rung.state === "awaiting_you"
                           ? "border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/30"
                           : "border-neutral-200 dark:border-neutral-800"
                       } ${rung.state === "locked" ? "opacity-50" : ""}`}
                     >
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="tnum w-4 text-right text-xs font-bold text-neutral-400">{li + 1}</span>
-                        <span className="text-sm font-medium">{LEVEL_LABEL[level]}</span>
+                        <span className="tnum w-4 text-right text-body font-bold text-neutral-400">{li + 1}</span>
+                        <span className="text-copy font-medium">{LEVEL_LABEL[level]}</span>
                         {rung.state === "approved" && (
                           <span className="rounded-full bg-green-100 px-2 py-0.5 text-micro font-semibold text-green-800 dark:bg-green-950 dark:text-green-300">
                             approved {rung.decidedAt}
@@ -547,7 +549,7 @@ export default async function AdminPage({
                         <span className="ml-auto flex items-center gap-2">
                           {(rung.state === "available" || rung.state === "declined") && (
                             <form action={requestOverlapAction.bind(null, ladder.partnershipId, level)}>
-                              <button className="rounded-md px-3 py-1 text-xs font-medium text-accent ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
+                              <button className={buttonClass("primary", "sm")}>
                                 {rung.state === "declined" ? "Request again" : "Request"}
                               </button>
                             </form>
@@ -555,12 +557,12 @@ export default async function AdminPage({
                           {rung.state === "awaiting_you" && (
                             <>
                               <form action={decideOverlapAction.bind(null, rung.probeId, true)}>
-                                <button className="rounded-md bg-blue-700 px-3 py-1 text-xs font-medium text-white hover:bg-blue-800">
+                                <button className={buttonClass("primary", "sm")}>
                                   Approve
                                 </button>
                               </form>
                               <form action={decideOverlapAction.bind(null, rung.probeId, false)}>
-                                <button className="rounded-md px-3 py-1 text-xs font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900">
+                                <button className={buttonClass("primary", "sm")}>
                                   Decline
                                 </button>
                               </form>
@@ -580,7 +582,7 @@ export default async function AdminPage({
                         return (
                           <div className="mt-2 flex items-baseline gap-3 pl-6">
                             <span className="pos-metric-fig">{r.overlap}</span>
-                            <span className="text-xs text-neutral-500">
+                            <span className="text-body text-neutral-500">
                               overlapping accounts{myBookSize > 0 ? ` · ${Math.round((r.overlap / myBookSize) * 100)}% of your book` : ""}
                             </span>
                           </div>
@@ -594,7 +596,7 @@ export default async function AdminPage({
                         const fmt = (m: Record<string, number>) =>
                           Object.entries(m).sort((x, y) => y[1] - x[1]).map(([c, n]) => `${n} ${c.replace(/_/g, " ")}`).join(" · ") || "—";
                         return (
-                          <div className="mt-2 space-y-1 pl-6 text-xs">
+                          <div className="mt-2 space-y-1 pl-6 text-body">
                             <p><span className="font-medium text-neutral-700 dark:text-neutral-300">In your book:</span> <span className="text-neutral-500">{fmt(mine)}</span></p>
                             <p><span className="font-medium text-neutral-700 dark:text-neutral-300">In theirs:</span> <span className="text-neutral-500">{fmt(theirs)}</span></p>
                             <p className="flex flex-wrap gap-1.5 pt-1">
@@ -622,7 +624,7 @@ export default async function AdminPage({
                                   return (
                                     <tr key={a.company_id}>
                                       <td className="font-medium">{a.name}</td>
-                                      <td className="text-xs text-neutral-500">{a.industry ?? "—"}</td>
+                                      <td className="text-body text-neutral-500">{a.industry ?? "—"}</td>
                                       {icp && (
                                         <td>
                                           {fit === "fit" ? (
@@ -630,12 +632,12 @@ export default async function AdminPage({
                                           ) : fit === "off_profile" ? (
                                             <span className="rounded-full bg-neutral-500/10 px-2 py-0.5 text-micro font-semibold text-neutral-500">off-profile</span>
                                           ) : (
-                                            <span className="text-xs text-neutral-400">—</span>
+                                            <span className="text-body text-neutral-400">—</span>
                                           )}
                                         </td>
                                       )}
-                                      <td className="text-xs text-neutral-500">{mine.map((c) => c.replace(/_/g, " ")).join(", ") || "—"}</td>
-                                      <td className="text-xs text-neutral-500">{theirs.map((c) => c.replace(/_/g, " ")).join(", ") || "—"}</td>
+                                      <td className="text-body text-neutral-500">{mine.map((c) => c.replace(/_/g, " ")).join(", ") || "—"}</td>
+                                      <td className="text-body text-neutral-500">{theirs.map((c) => c.replace(/_/g, " ")).join(", ") || "—"}</td>
                                     </tr>
                                   );
                                 })}
@@ -655,30 +657,30 @@ export default async function AdminPage({
       )}
 
       {/* ── Agent access (task #76) ── */}
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Agent access</h2>
+      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Agent access</h2>
       <Card className="mb-4">
         <AgentKeys keys={keyRows} endpoint={mcpEndpoint} mint={mintApiKeyAction} revoke={revokeApiKeyAction} />
       </Card>
 
       {/* ── Bring your own model (slice C): their data, their AI contract ── */}
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Bring your own model</h2>
+      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Bring your own model</h2>
       <Card className="mb-4">
         {!byoAvailable ? (
-          <p className="text-sm text-neutral-500">
-            Not available in this environment — the server needs <code className="font-mono text-xs">APP_ENCRYPTION_KEY</code> configured before tenant keys can be stored.
+          <p className="text-copy text-neutral-500">
+            Not available in this environment — the server needs <code className="font-mono text-body">APP_ENCRYPTION_KEY</code> configured before tenant keys can be stored.
           </p>
         ) : (
           <>
-            <p className="mb-3 text-sm text-neutral-600 dark:text-neutral-300">
+            <p className="mb-3 text-copy text-neutral-600 dark:text-neutral-300">
               Supply your own Anthropic API key and every drafting agent (motions, campaigns, Ask) runs on <b>your</b> AI contract —
               your tenancy, your retention terms, your bill. The key is encrypted before storage, never shown again, and clearing it
               reverts to the platform key instantly.
             </p>
             {hasOwnKey ? (
               <div className="flex items-center gap-3">
-                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">own key active</span>
+                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-body font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">own key active</span>
                 <form action={clearOrgAiKeyAction}>
-                  <button className="text-sm text-neutral-400 underline-offset-2 hover:underline">clear — revert to platform key</button>
+                  <button className={buttonClass("subtle", "md")}>clear — revert to platform key</button>
                 </form>
               </div>
             ) : (
@@ -689,9 +691,9 @@ export default async function AdminPage({
                   required
                   placeholder="sk-ant-…"
                   autoComplete="off"
-                  className="w-[340px] rounded-lg border border-neutral-200 bg-transparent px-3 py-1.5 font-mono text-sm dark:border-neutral-800"
+                  className="w-[340px] rounded-inner border border-neutral-200 bg-transparent px-3 py-1.5 font-mono text-copy dark:border-neutral-800"
                 />
-                <button className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white">Save key</button>
+                <button className={buttonClass("primary", "md")}>Save key</button>
               </form>
             )}
           </>
@@ -699,10 +701,10 @@ export default async function AdminPage({
       </Card>
 
       {/* ── Shared lists ── */}
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Shared lists</h2>
+      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Shared lists</h2>
       <Card className="mb-4">
         {grants.length === 0 ? (
-          <p className="mb-4 text-sm text-neutral-500">Nothing shared in either direction yet.</p>
+          <p className="mb-4 text-copy text-neutral-500">Nothing shared in either direction yet.</p>
         ) : (
           <div className="mb-4 overflow-x-auto scroll-thin">
             <table className="data-table">
@@ -711,9 +713,9 @@ export default async function AdminPage({
                 {grants.map((g) => (
                   <tr key={g.id}>
                     <td className="font-medium">{g.listName}</td>
-                    <td className="text-xs text-neutral-500">{g.direction === "outgoing" ? "→ out" : "← in"}</td>
-                    <td className="text-xs">{g.otherOrgName ?? "—"}</td>
-                    <td className="text-xs text-neutral-500">{g.fields ? g.fields.join(", ") : "all"}</td>
+                    <td className="text-body text-neutral-500">{g.direction === "outgoing" ? "→ out" : "← in"}</td>
+                    <td className="text-body">{g.otherOrgName ?? "—"}</td>
+                    <td className="text-body text-neutral-500">{g.fields ? g.fields.join(", ") : "all"}</td>
                     <td>
                       <span className={
                         g.status === "accepted" ? "text-positive dark:text-green-400"
@@ -721,31 +723,31 @@ export default async function AdminPage({
                         : "text-neutral-400"
                       }>{g.status}</span>
                       {g.stale && (
-                        <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-micro font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300" title="The source list changed since the copy last synced">
+                        <span className="ml-1.5 rounded-inner bg-amber-100 px-1 py-0.5 text-micro font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300" title="The source list changed since the copy last synced">
                           source changed
                         </span>
                       )}
                     </td>
-                    <td className="text-xs text-neutral-500">{g.createdAt}</td>
+                    <td className="text-body text-neutral-500">{g.createdAt}</td>
                     <td className="text-right">
                       {g.status === "accepted" && (
                         <form action={syncGrantAction.bind(null, g.id)} className="inline-block">
-                          <button className="mr-2 text-label font-medium text-accent hover:underline dark:text-blue-400" title="Re-copy the source list into the shared copy (adds, removals, attribute changes — still field-scoped)">sync</button>
+                          <button className={buttonClass("subtle", "md")} title="Re-copy the source list into the shared copy (adds, removals, attribute changes — still field-scoped)">sync</button>
                         </form>
                       )}
                       {g.direction === "incoming" && g.status === "offered" && (
                         <div className="flex justify-end gap-2">
                           <form action={acceptGrantAction.bind(null, g.id)}>
-                            <button className="text-label font-medium text-positive hover:underline dark:text-green-400">accept</button>
+                            <button className={buttonClass("subtle", "md")}>accept</button>
                           </form>
                           <form action={declineGrantAction.bind(null, g.id)}>
-                            <button className="text-label font-medium text-neutral-500 hover:underline">decline</button>
+                            <button className={buttonClass("subtle", "md")}>decline</button>
                           </form>
                         </div>
                       )}
                       {g.direction === "outgoing" && (g.status === "offered" || g.status === "accepted") && (
                         <form action={revokeGrantAction.bind(null, g.id)}>
-                          <button className="text-label font-medium text-red-700 hover:underline dark:text-red-400">revoke</button>
+                          <button className={buttonClass("subtle", "md")}>revoke</button>
                         </form>
                       )}
                     </td>
@@ -756,27 +758,27 @@ export default async function AdminPage({
           </div>
         )}
 
-        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Share a list</h3>
+        <h3 className="mb-1 text-body font-semibold uppercase tracking-wide text-neutral-500">Share a list</h3>
         {activePartnerships.length === 0 ? (
-          <p className="text-sm text-neutral-500">Sharing needs an active partnership first.</p>
+          <p className="text-copy text-neutral-500">Sharing needs an active partnership first.</p>
         ) : myLists.length === 0 ? (
-          <p className="text-sm text-neutral-500">No approved lists of your own to share yet.</p>
+          <p className="text-copy text-neutral-500">No approved lists of your own to share yet.</p>
         ) : (
           <form action={offerGrantAction} className="flex flex-wrap items-end gap-3">
-            <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Partnership</span>
+            <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Partnership</span>
               <select name="partnershipId" className={input}>
                 {activePartnerships.map((p) => <option key={p.id} value={p.id}>{p.otherOrgName ?? p.myLensName ?? p.id.slice(0, 8)}</option>)}
               </select>
             </label>
-            <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">List</span>
+            <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">List</span>
               <select name="populationId" className={input}>
                 {myLists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </label>
-            <label className="text-sm"><span className="mb-1 block text-xs text-neutral-500">Fields (comma-separated; blank = all)</span>
+            <label className="text-copy"><span className="mb-1 block text-body text-neutral-500">Fields (comma-separated; blank = all)</span>
               <input name="fields" placeholder="territory, vertical" className={`${input} w-56`} />
             </label>
-            <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700">Offer</button>
+            <button className={buttonClass("primary", "md")}>Offer</button>
           </form>
         )}
         <p className="mt-3 border-t border-neutral-100 pt-2 text-label text-neutral-400 dark:border-neutral-800">
@@ -787,9 +789,9 @@ export default async function AdminPage({
       </Card>
 
       {/* ── Privacy: GDPR data-subject rights (RISK-2) ── */}
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Privacy &amp; data-subject rights</h2>
+      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Privacy &amp; data-subject rights</h2>
       <Card className="mb-4">
-        <p className="mb-4 max-w-[92ch] text-sm text-neutral-600 dark:text-neutral-300">
+        <p className="mb-4 max-w-[92ch] text-copy text-neutral-600 dark:text-neutral-300">
           Serve a person&apos;s GDPR request against the personal data this workspace holds about them — CRM
           contacts, partner/vendor sellers, email correspondence, and meeting notes. Scoped to your organization;
           you can only reach subjects in your own tenant. Platform-account requests (a member&apos;s own login) are
@@ -798,13 +800,13 @@ export default async function AdminPage({
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Access & portability (Art. 15/20) */}
           <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Export a copy · Art. 15/20</h3>
-            <p className="mb-2 text-xs text-neutral-500">
+            <h3 className="mb-1 text-body font-semibold uppercase tracking-wide text-neutral-500">Export a copy · Art. 15/20</h3>
+            <p className="mb-2 text-body text-neutral-500">
               Download everything held about the subject as portable JSON. Read-only — nothing changes.
             </p>
             <form method="get" action="/api/privacy/export" className="flex flex-wrap items-end gap-2">
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Subject email</span>
+              <label className="text-copy">
+                <span className="mb-1 block text-body text-neutral-500">Subject email</span>
                 <input name="email" type="email" required placeholder="person@company.com" className={`${input} w-64`} />
               </label>
               <Button type="submit">Export JSON</Button>
@@ -813,18 +815,18 @@ export default async function AdminPage({
 
           {/* Erasure (Art. 17) */}
           <div>
-            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Erase · Art. 17</h3>
-            <p className="mb-2 text-xs text-neutral-500">
+            <h3 className="mb-1 text-body font-semibold uppercase tracking-wide text-neutral-500">Erase · Art. 17</h3>
+            <p className="mb-2 text-body text-neutral-500">
               Preview first to see the count. Erasure anonymizes in place (contacts and sellers keep their business
               record; identifiers are removed) and is <b>irreversible</b>. Type <code className="font-mono">ERASE</code> to confirm.
             </p>
             <form className="flex flex-wrap items-end gap-2">
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Subject email</span>
+              <label className="text-copy">
+                <span className="mb-1 block text-body text-neutral-500">Subject email</span>
                 <input name="email" type="email" required placeholder="person@company.com" className={`${input} w-64`} />
               </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Confirm</span>
+              <label className="text-copy">
+                <span className="mb-1 block text-body text-neutral-500">Confirm</span>
                 <input name="confirm" placeholder="ERASE" autoComplete="off" className={`${input} w-28`} />
               </label>
               <Button variant="ghost" formAction={previewDataSubjectAction}>Preview</Button>
@@ -839,10 +841,10 @@ export default async function AdminPage({
       </Card>
 
       {/* ── Audit log ── */}
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Audit log</h2>
+      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Audit log</h2>
       <Card className="mb-6">
         {ledger.length === 0 ? (
-          <p className="text-sm text-neutral-500">No entries yet — membership and cross-tenant events land here.</p>
+          <p className="text-copy text-neutral-500">No entries yet — membership and cross-tenant events land here.</p>
         ) : (
           <div className="overflow-x-auto scroll-thin">
             <table className="data-table">
@@ -850,9 +852,9 @@ export default async function AdminPage({
               <tbody>
                 {ledger.map((e, i) => (
                   <tr key={i}>
-                    <td className="whitespace-nowrap text-xs text-neutral-500">{e.createdAt}</td>
-                    <td className="text-xs">{e.actor}</td>
-                    <td className="text-xs font-medium">{e.event}</td>
+                    <td className="whitespace-nowrap text-body text-neutral-500">{e.createdAt}</td>
+                    <td className="text-body">{e.actor}</td>
+                    <td className="text-body font-medium">{e.event}</td>
                     <td className="max-w-md truncate font-mono text-label text-neutral-500" title={JSON.stringify(e.detail)}>
                       {JSON.stringify(e.detail)}
                     </td>
@@ -869,10 +871,10 @@ export default async function AdminPage({
       </Card>
 
       {/* ── AI operations ── */}
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">AI operations</h2>
+      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">AI operations</h2>
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Bento label="agent runs" value={totalRuns} />
-        <Bento label="AI spend" value={`$${totalCost.toFixed(2)}`} />
+        <Bento label="AI spend" value={formatCost(totalCost)} />
         <Bento label="research queue" value={Number(qd.research_pending)} subs={[`${qd.research_running} running`]} />
         <Bento label="evidence to review" value={Number(qd.review_pending)} href="/review" />
         <Bento label="touches scheduled" value={Number(qd.touches_scheduled)} href="/upcoming" />
@@ -881,18 +883,18 @@ export default async function AdminPage({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">Agent workflows · spend, latency, human overrides</h3>
+          <h3 className="mb-3 text-body font-semibold uppercase tracking-wide text-neutral-500">Agent workflows · spend, latency, human overrides</h3>
           {agents.length === 0 ? (
-            <p className="text-sm text-neutral-500">No agent runs recorded yet.</p>
+            <p className="text-copy text-neutral-500">No agent runs recorded yet.</p>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full text-copy">
               <thead><tr className="text-left text-micro uppercase tracking-wide text-neutral-400"><th className="pb-1 font-medium">Workflow</th><th className="pb-1 text-right font-medium">Runs</th><th className="pb-1 text-right font-medium">Cost</th><th className="pb-1 text-right font-medium">Avg ms</th><th className="pb-1 text-right font-medium">Overridden</th></tr></thead>
               <tbody>
                 {agents.map((a) => (
                   <tr key={a.workflow}>
                     <td className="py-0.5">{a.workflow.replace(/_/g, " ")}</td>
                     <td className="tnum py-0.5 text-right">{a.n}</td>
-                    <td className="tnum py-0.5 text-right">{a.cost == null ? "—" : `$${a.cost}`}</td>
+                    <td className="tnum py-0.5 text-right">{formatCost(a.cost == null ? null : Number(a.cost))}</td>
                     <td className="tnum py-0.5 text-right">{a.ms ?? "—"}</td>
                     <td className="tnum py-0.5 text-right text-neutral-500">{a.overridden}</td>
                   </tr>
@@ -906,13 +908,13 @@ export default async function AdminPage({
         </Card>
 
         <Card>
-          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">Provider failures · latest</h3>
+          <h3 className="mb-3 text-body font-semibold uppercase tracking-wide text-neutral-500">Provider failures · latest</h3>
           {providerErrors.length === 0 ? (
-            <p className="text-sm text-neutral-500">No provider failures recorded. Full registry on <Link href="/provider-health" className="text-accent hover:underline dark:text-blue-400">Provider health</Link>.</p>
+            <p className="text-copy text-neutral-500">No provider failures recorded. Full registry on <Link href="/provider-health" className="text-accent hover:underline dark:text-blue-400">Provider health</Link>.</p>
           ) : (
             <ul className="space-y-1.5">
               {providerErrors.map((e, i) => (
-                <li key={i} className="text-xs">
+                <li key={i} className="text-body">
                   <span className="font-medium">{e.provider_id}</span>
                   <span className="text-neutral-400"> · {e.status}{e.finished_at ? ` · ${new Date(e.finished_at).toISOString().slice(0, 10)}` : ""}</span>
                   {e.error && <div className="truncate text-neutral-500" title={e.error}>{e.error.slice(0, 120)}</div>}
@@ -927,9 +929,9 @@ export default async function AdminPage({
       </div>
 
       <Card className="mt-4">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">Recent agent runs</h3>
+        <h3 className="mb-3 text-body font-semibold uppercase tracking-wide text-neutral-500">Recent agent runs</h3>
         {recentRuns.length === 0 ? (
-          <p className="text-sm text-neutral-500">Nothing yet.</p>
+          <p className="text-copy text-neutral-500">Nothing yet.</p>
         ) : (
           <div className="overflow-x-auto scroll-thin">
             <table className="data-table">
@@ -937,12 +939,12 @@ export default async function AdminPage({
               <tbody>
                 {recentRuns.map((r, i) => (
                   <tr key={i}>
-                    <td className="text-xs text-neutral-500">{new Date(r.created_at).toISOString().slice(0, 16).replace("T", " ")}</td>
+                    <td className="text-body text-neutral-500">{new Date(r.created_at).toISOString().slice(0, 16).replace("T", " ")}</td>
                     <td>{r.workflow.replace(/_/g, " ")}</td>
-                    <td className="text-xs text-neutral-500">{r.model}</td>
-                    <td className="tnum text-right">{r.cost_usd == null ? "—" : `$${Number(r.cost_usd).toFixed(3)}`}</td>
+                    <td className="text-body text-neutral-500">{r.model}</td>
+                    <td className="tnum text-right">{formatCost(r.cost_usd == null ? null : Number(r.cost_usd))}</td>
                     <td className="tnum text-right">{r.latency_ms == null ? "—" : `${r.latency_ms}ms`}</td>
-                    <td className="text-xs">{r.human_decision ?? <span className="text-neutral-400">pending</span>}</td>
+                    <td className="text-body">{r.human_decision ?? <span className="text-neutral-400">pending</span>}</td>
                   </tr>
                 ))}
               </tbody>

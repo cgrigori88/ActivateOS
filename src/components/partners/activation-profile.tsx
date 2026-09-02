@@ -68,7 +68,7 @@ export function ActivationProfile({ p, pattern }: { p: PartnerActivationProfile;
 
   return (
     <div className="pos-card mb-6 rounded-card p-4">
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Activation profile</h2>
+      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Activation profile</h2>
 
       {/* The wow headline — only when the denominator is real (≥5 overlap accounts). */}
       {activationGap != null && activationGap < 50 && (

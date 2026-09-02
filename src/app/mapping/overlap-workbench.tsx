@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { BandBadge } from "@/components/ui";
+import { BandBadge, buttonClass } from "@/components/ui";
 
 /**
  * Overlap workbench — the consolidated overlap / coverage / targets surface.
@@ -54,7 +54,7 @@ function claimantSummary(
 }
 
 const BANDS = ["all", "very_high", "high", "medium", "low"];
-const input = "rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
+const input = "rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900";
 
 export function OverlapWorkbench({
   rows,
@@ -122,7 +122,7 @@ export function OverlapWorkbench({
         <button
           type="button"
           onClick={() => setConflictOnly((v) => !v)}
-          className={`rounded-md px-2.5 py-1.5 text-xs font-medium ring-1 ring-inset ${conflictOnly ? "bg-amber-600 text-white ring-amber-600" : "text-amber-700 ring-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:ring-amber-800 dark:hover:bg-amber-950"}`}
+          className={`rounded-control px-2.5 py-1.5 text-body font-medium ring-1 ring-inset ${conflictOnly ? "bg-amber-600 text-white ring-amber-600" : "text-amber-700 ring-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:ring-amber-800 dark:hover:bg-amber-950"}`}
         >
           ⚠ conflicts {conflicts}
         </button>
@@ -131,29 +131,29 @@ export function OverlapWorkbench({
           <option value="partners">Sort: partner count</option>
           <option value="name">Sort: name</option>
         </select>
-        <span className="text-xs text-neutral-500">{filtered.length} shown · {sel.size} selected</span>
+        <span className="text-body text-neutral-500">{filtered.length} shown · {sel.size} selected</span>
       </div>
 
       {/* Action bar — name the list, then act on it */}
       {sel.size > 0 && (
-        <div className="mb-3 flex flex-wrap items-end gap-3 rounded-lg border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-900 dark:bg-blue-950/30">
-          <span className="text-sm font-medium">{sel.size} account{sel.size === 1 ? "" : "s"} selected</span>
+        <div className="mb-3 flex flex-wrap items-end gap-3 rounded-inner border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-900 dark:bg-blue-950/30">
+          <span className="text-copy font-medium">{sel.size} account{sel.size === 1 ? "" : "s"} selected</span>
           <form action={createTarget} className="flex items-end gap-2">
             <input type="hidden" name="companyIds" value={ids} />
             <input type="hidden" name="source" value="web" />
-            <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">List name (feeds motions &amp; campaigns)</span>
+            <label className="text-copy">
+              <span className="mb-1 block text-body text-neutral-500">List name (feeds motions &amp; campaigns)</span>
               <input name="name" placeholder="e.g. East co-sell wave 1" className={`${input} w-56`} />
             </label>
-            <button className="rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800">Create named list</button>
+            <button className={buttonClass("primary", "sm")}>Create named list</button>
           </form>
           <form action={generateMotions}>
             <input type="hidden" name="companyIds" value={ids} />
-            <button className="rounded-md border border-blue-300 px-3 py-1.5 text-sm font-medium text-accent hover:bg-blue-100 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-900">
+            <button className={buttonClass("primary", "sm")}>
               Draft motions (AI)
             </button>
           </form>
-          <button type="button" onClick={() => setSel(new Set())} className="text-xs text-neutral-500 hover:underline">clear</button>
+          <button type="button" onClick={() => setSel(new Set())} className="text-body text-neutral-500 hover:underline">clear</button>
         </div>
       )}
 
@@ -226,7 +226,7 @@ function FragmentRow({
             <Link href={`/accounts/${r.companyId}`} className="font-medium hover:underline">{r.name}</Link>
             {r.conflict && (
               <span
-                className="rounded bg-amber-100 px-1.5 py-0.5 text-micro font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300"
+                className="rounded-inner bg-amber-100 px-1.5 py-0.5 text-micro font-bold text-amber-700 dark:bg-amber-900 dark:text-amber-300"
                 title={`Channel conflict — both actively claim this account: ${claimantSummary(r, partners).full}`}
               >
                 ⚠ {claimantSummary(r, partners).short}
@@ -253,13 +253,13 @@ function FragmentRow({
           );
         })}
         <td>
-          <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${r.motion === "net-new" ? "bg-green-50 text-green-800 ring-green-600/20 dark:bg-green-950 dark:text-green-300" : "bg-sky-50 text-sky-800 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300"}`}>
+          <span className={`inline-flex rounded-control px-2 py-0.5 text-body font-medium ring-1 ring-inset ${r.motion === "net-new" ? "bg-green-50 text-green-800 ring-green-600/20 dark:bg-green-950 dark:text-green-300" : "bg-sky-50 text-sky-800 ring-sky-600/20 dark:bg-sky-950 dark:text-sky-300"}`}>
             {r.motion}
           </span>
         </td>
-        <td className="text-xs">
+        <td className="text-body">
           {r.play ? (
-            <button type="button" onClick={onExpand} className="text-left font-medium text-accent hover:underline dark:text-blue-400">
+            <button type="button" onClick={onExpand} className={buttonClass("subtle", "md")}>
               {r.play.name}
             </button>
           ) : (
@@ -290,7 +290,7 @@ function FragmentRow({
                 {r.why.drivers.length > 0 ? (
                   <ul className="space-y-1">
                     {r.why.drivers.map((d) => (
-                      <li key={d.dim} className="flex items-center gap-2 text-xs">
+                      <li key={d.dim} className="flex items-center gap-2 text-body">
                         <span className="w-36 shrink-0 text-neutral-500">{d.dim.replace(/_/g, " ")}</span>
                         <span className="h-1.5 w-24 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
                           <span className="block h-full rounded-full bg-blue-600" style={{ width: `${Math.min(100, d.value)}%` }} />
@@ -300,7 +300,7 @@ function FragmentRow({
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-xs text-neutral-400">No score yet — run scoring to see drivers.</p>
+                  <p className="text-body text-neutral-400">No score yet — run scoring to see drivers.</p>
                 )}
                 {r.why.delta != null && r.why.delta !== 0 && (
                   <p className={`mt-1 text-label font-medium ${r.why.delta > 0 ? "text-positive dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>
@@ -308,7 +308,7 @@ function FragmentRow({
                   </p>
                 )}
                 {r.why.signal && (
-                  <p className="mt-2 text-xs text-neutral-600 dark:text-neutral-300">
+                  <p className="mt-2 text-body text-neutral-600 dark:text-neutral-300">
                     <span className="font-medium">Latest verified signal:</span> {r.why.signal}
                   </p>
                 )}
@@ -319,13 +319,13 @@ function FragmentRow({
                 <p className="mb-1 text-micro font-semibold uppercase tracking-wide text-neutral-400">Suggested play</p>
                 {r.play ? (
                   <>
-                    <p className="text-sm font-medium">{r.play.name}</p>
+                    <p className="text-copy font-medium">{r.play.name}</p>
                     <p className="text-label text-neutral-400">solution: {r.play.solution}</p>
-                    {r.play.objective && <p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-300">{r.play.objective}</p>}
-                    {r.play.offer && <p className="mt-1 text-xs text-neutral-500"><span className="font-medium">CTA:</span> {r.play.offer}</p>}
+                    {r.play.objective && <p className="mt-1 text-body leading-relaxed text-neutral-600 dark:text-neutral-300">{r.play.objective}</p>}
+                    {r.play.offer && <p className="mt-1 text-body text-neutral-500"><span className="font-medium">CTA:</span> {r.play.offer}</p>}
                   </>
                 ) : (
-                  <p className="text-xs text-neutral-400">Score the account to map it to an active play.</p>
+                  <p className="text-body text-neutral-400">Score the account to map it to an active play.</p>
                 )}
               </div>
 
@@ -336,7 +336,7 @@ function FragmentRow({
                   {partners.filter((p) => r.marks[p.id]?.onList).map((p) => {
                     const m = r.marks[p.id];
                     return (
-                      <li key={p.id} className="text-xs text-neutral-600 dark:text-neutral-300">
+                      <li key={p.id} className="text-body text-neutral-600 dark:text-neutral-300">
                         <span className="font-medium">{p.name}</span>
                         <span className="text-neutral-400"> {p.type ? `(${p.type})` : ""} — {m.categories.join(", ") || "on list"}{m.claims ? " · claims the account" : ""}</span>
                       </li>
@@ -344,7 +344,7 @@ function FragmentRow({
                   })}
                 </ul>
                 {r.conflict && (
-                  <p className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-label text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                  <p className="mt-2 rounded-control bg-amber-50 px-2 py-1.5 text-label text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                     ⚠ <span className="font-semibold">Channel conflict:</span> {claimantSummary(r, partners).full} both
                     claim this account — the same deal could be worked twice, or partners could undercut each other in
                     front of the customer. Decide who leads and lock it with a deal registration on the opportunity.

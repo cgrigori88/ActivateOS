@@ -74,8 +74,8 @@ export default async function LoginPage({
             <>
               <h1 className="text-hero font-extrabold leading-[1.1] tracking-[-0.03em]">Identity isn&apos;t configured</h1>
               <p className="mt-3 text-title leading-relaxed text-neutral-500 dark:text-neutral-400">
-                Set <code className="rounded bg-neutral-900/[0.06] px-1.5 py-0.5 font-mono text-body dark:bg-white/10">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-                <code className="rounded bg-neutral-900/[0.06] px-1.5 py-0.5 font-mono text-body dark:bg-white/10">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> on this
+                Set <code className="rounded-inner bg-neutral-900/[0.06] px-1.5 py-0.5 font-mono text-body dark:bg-white/10">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+                <code className="rounded-inner bg-neutral-900/[0.06] px-1.5 py-0.5 font-mono text-body dark:bg-white/10">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> on this
                 deployment. Basic Auth continues to gate the app where enabled.
               </p>
             </>
@@ -161,7 +161,12 @@ export default async function LoginPage({
                       <input id="owner-password" name="password" type="password" required minLength={12} autoComplete="new-password" placeholder="At least 12 characters" className={field} />
                       <p className="mt-1.5 text-body text-neutral-500 dark:text-neutral-400">12 characters minimum.</p>
                     </div>
-                    <button className="inline-flex min-h-[44px] w-full items-center justify-center rounded-full bg-emerald px-5 text-copy font-bold text-white transition-colors duration-[140ms] hover:brightness-95">
+                    {/* Wave 1 §5: this was filled emerald, sitting a divider away from
+                        the blue Sign in — two filled CTAs in two colours on one screen,
+                        which reads as two kinds of action rather than the same kind in
+                        two forms. Both are the primary action of their own form, so both
+                        take the primary treatment. */}
+                    <button className={primary}>
                       Create owner &amp; sign in
                     </button>
                   </form>

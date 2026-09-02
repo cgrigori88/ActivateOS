@@ -152,21 +152,21 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             className="w-full bg-transparent py-3.5 pl-11 pr-14 text-copy outline-none placeholder:text-neutral-400"
             aria-label="Search"
           />
-          <kbd className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md border border-neutral-300/70 px-1.5 py-0.5 font-mono text-micro text-neutral-400 dark:border-white/15">
+          <kbd className="absolute right-4 top-1/2 -translate-y-1/2 rounded-control border border-neutral-300/70 px-1.5 py-0.5 font-mono text-micro text-neutral-400 dark:border-white/15">
             esc
           </kbd>
         </div>
         {q.trim().length >= 2 && (meta.interpreted || meta.explanation || meta.note || meta.intent !== "goto") && (
           <div className="border-b border-neutral-950/[0.06] px-3 py-2 dark:border-white/10">
             <div className="mb-1 flex items-center gap-1.5">
-              <span className="rounded px-1.5 py-0.5 text-micro font-bold uppercase tracking-[0.08em]"
+              <span className="rounded-inner px-1.5 py-0.5 text-micro font-bold uppercase tracking-[0.08em]"
                 style={{ background: "color-mix(in srgb, var(--color-accent) 12%, transparent)", color: "var(--color-accent)" }}>
                 {meta.intent === "explain" ? "Explain" : meta.intent === "showme" ? "Show me" : "Go to"}
               </span>
               {meta.interpreted && <span className="text-label text-neutral-500">{meta.interpreted}</span>}
             </div>
             {meta.explanation && (
-              <div className="rounded-lg p-2.5" style={{ background: "var(--surface-inset)" }}>
+              <div className="rounded-inner p-2.5" style={{ background: "var(--surface-inset)" }}>
                 <div className="text-copy font-bold">{meta.explanation.title}</div>
                 <div className="mb-1.5 text-label text-neutral-500">{meta.explanation.subtitle}</div>
                 <dl className="space-y-0.5">

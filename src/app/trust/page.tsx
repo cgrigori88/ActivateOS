@@ -49,8 +49,8 @@ export default async function TrustPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">How data flows</h2>
-          <ol className="list-decimal space-y-1.5 pl-5 text-sm text-neutral-600 dark:text-neutral-300">
+          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">How data flows</h2>
+          <ol className="list-decimal space-y-1.5 pl-5 text-copy text-neutral-600 dark:text-neutral-300">
             <li><b>In:</b> research providers, CSV lanes (profiled in-tenant — no third party sees your files), meeting notes, email engagement.</li>
             <li><b>Gate:</b> every claim gets source trust × extraction confidence; below threshold it quarantines for human review. Contradictions surface, never average away.</li>
             <li><b>Record:</b> the verified, provenance-tracked account record — the only thing agents are allowed to read.</li>
@@ -59,20 +59,20 @@ export default async function TrustPage() {
         </Card>
 
         <Card>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">AI &amp; models</h2>
+          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">AI &amp; models</h2>
           {models.length === 0 ? (
-            <p className="text-sm text-neutral-500">No AI runs recorded yet.</p>
+            <p className="text-copy text-neutral-500">No AI runs recorded yet.</p>
           ) : (
-            <ul className="mb-2 space-y-1 text-sm">
+            <ul className="mb-2 space-y-1 text-copy">
               {models.map((m) => (
                 <li key={m.model} className="flex justify-between">
-                  <span className="font-mono text-xs text-neutral-500">{m.model}</span>
+                  <span className="font-mono text-body text-neutral-500">{m.model}</span>
                   <span className="tnum text-neutral-600 dark:text-neutral-300">{m.n} runs</span>
                 </li>
               ))}
             </ul>
           )}
-          <p className="text-sm text-neutral-600 dark:text-neutral-300">
+          <p className="text-copy text-neutral-600 dark:text-neutral-300">
             Agents draft only from the verified record and must cite it. Two-tier routing keeps frontier models off routine volume.{" "}
             {ownKey ? (
               <b className="text-emerald-700 dark:text-emerald-400">This tenant runs on its own AI key — its data rides its own contract.</b>
@@ -85,8 +85,8 @@ export default async function TrustPage() {
         </Card>
 
         <Card>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Isolation &amp; controls</h2>
-          <ul className="list-disc space-y-1.5 pl-5 text-sm text-neutral-600 dark:text-neutral-300">
+          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Isolation &amp; controls</h2>
+          <ul className="list-disc space-y-1.5 pl-5 text-copy text-neutral-600 dark:text-neutral-300">
             <li>Multi-tenant with Postgres row-level security; partner visibility is governed by a consent ladder both owners approve, rung by rung.</li>
             <li>Strict Content-Security-Policy with per-request nonces; rate limiting on the edge; independent nightly database backups.</li>
             <li>Agent access (MCP) uses per-org bearer keys — reads mirror your screens, the only write creates drafts behind your gates, revocation is instant.</li>
@@ -96,18 +96,18 @@ export default async function TrustPage() {
         </Card>
 
         <Card>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Residency, retention &amp; subprocessors</h2>
-          <p className="mb-2 text-sm text-neutral-600 dark:text-neutral-300">
+          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Residency, retention &amp; subprocessors</h2>
+          <p className="mb-2 text-copy text-neutral-600 dark:text-neutral-300">
             Your record is yours: evidence, decisions, and ledgers persist until you delete them; deleting an organization cascades its data. Revoked shares stop being readable immediately — recipients hold live reads, never copies.
           </p>
-          <p className="mb-2 text-sm text-neutral-600 dark:text-neutral-300">
+          <p className="mb-2 text-copy text-neutral-600 dark:text-neutral-300">
             <span className="font-semibold text-neutral-700 dark:text-neutral-200">Data residency.</span> Your primary
             data — CRM records, evidence, decisions, ledgers — is stored in <span className="font-semibold">Canada (AWS ca-central-1)</span> on
             Supabase Postgres, and the independent nightly backups stay in that region. Sub-processors that perform
             <em> transient</em> processing (never the system of record) operate in their own regions, primarily the US.
             EU / in-region data pinning is available to enterprise customers under a DPA — ask us.
           </p>
-          <p className="text-sm text-neutral-600 dark:text-neutral-300">
+          <p className="text-copy text-neutral-600 dark:text-neutral-300">
             Subprocessors and their processing regions: Anthropic (AI inference, US), Supabase (Postgres — system of record, Canada / ca-central-1),
             Vercel (app hosting, global edge / US primary), Railway (research worker, US), Resend (email delivery, US, when enabled),
             Tavily &amp; People Data Labs (research providers, US, when enabled). {Number(s.providers)} intelligence providers are registered; each can be disabled per tenant.

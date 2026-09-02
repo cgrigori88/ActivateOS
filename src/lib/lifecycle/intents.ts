@@ -2,6 +2,7 @@ import type { ResolveContext, IntentResult, Slots } from "@/lib/search/registry"
 import { money } from "@/lib/search/significance";
 import { getLifecycleHorizon } from "./horizon";
 import { loadLifecycleFacts, eventsForAccount, primaryLifecycleEvent, STATE_LABEL } from "./state";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * Lifecycle ⌘K intents (P2A), registered through the P2C-0 registry — there is no bespoke parser
@@ -44,7 +45,7 @@ export async function resolveLifecycleShowMe(
       group: `Entering a window · next ${view.days} days`,
       label: i.accountLabel,
       sub: `${i.event.label} · ${STATE_LABEL[i.event.state]}${i.event.daysUntil != null ? ` · ${i.event.daysUntil}d` : ""}` +
-           `${i.expectedValue != null ? ` · $${Math.round(i.expectedValue / 1000)}k` : ""}`,
+           `${i.expectedValue != null ? ` · ${formatMoney(i.expectedValue)}` : ""}`,
       href: i.pursuitId ? `/pursuits/${i.pursuitId}#whynow` : `/accounts/${i.companyId}`,
     }));
     return {
@@ -90,7 +91,7 @@ export async function resolveLifecycleShowMe(
       hits.push({
         group: "Conflicting lifecycle dates",
         label: a.legal_name,
-        sub: `${primary.label} · ${primary.competing.length} competing dates${ev != null ? ` · $${Math.round(ev / 1000)}k` : ""}`,
+        sub: `${primary.label} · ${primary.competing.length} competing dates${ev != null ? ` · ${formatMoney(ev)}` : ""}`,
         href: a.pursuit_id ? `/pursuits/${a.pursuit_id}#whynow` : `/accounts/${a.company_id}`,
       });
     } else {
@@ -99,7 +100,7 @@ export async function resolveLifecycleShowMe(
       hits.push({
         group: "No lifecycle evidence (UNKNOWN)",
         label: a.legal_name,
-        sub: `${ev != null ? `$${Math.round(ev / 1000)}k · ` : ""}no renewal, contract or support-lifecycle fact on record`,
+        sub: `${ev != null ? `${formatMoney(ev)} · ` : ""}no renewal, contract or support-lifecycle fact on record`,
         href: a.pursuit_id ? `/pursuits/${a.pursuit_id}#whynow` : `/accounts/${a.company_id}`,
       });
     }

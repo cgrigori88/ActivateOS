@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { PursuitTeamView, TeamMemberView } from "@/lib/pursuits/read-models/types";
 import { decideTeamAction } from "@/app/pursuits/[id]/actions";
 import { TeamStatusBadge, BandPill } from "./parts";
+import { buttonClass } from "@/components/ui";
 
 /**
  * Multi-Party Execution Plan (Phase C2/C3). The pursuit team as a governed worklist, folded into
@@ -69,26 +70,31 @@ export function ExecutionPlan({ team, pursuitId, canDecide }: { team: PursuitTea
 
 function MemberRow({ m, canDecide, busy, onAct }: { m: TeamMemberView; canDecide: boolean; busy: boolean; onAct: (id: string, a: "confirm" | "accept" | "decline") => void }) {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-card px-3.5 py-2.5" style={{ background: "var(--surface-inset)" }}>
+    /* STACKED, not side-by-side. These cards sit two-up inside a side panel, so
+       each is about 150px wide — and the status badge and governed action are
+       both shrink-0, which left the name roughly forty pixels. Laid out in a
+       row, "distributor bdm" either truncated to "dist…" or hard-broke into
+       "distri / butor / bdm"; the role IS the row, so both outcomes lose the
+       only thing it says. Stacking gives the name the full card width and the
+       controls their own line, and it holds at any panel width. */
+    <div className="flex flex-col gap-2 rounded-card px-3.5 py-2.5" style={{ background: "var(--surface-inset)" }}>
       <div className="min-w-0">
-        <div className="flex items-center gap-1.5 text-body font-semibold">
-          <span className="truncate">{m.personLabel ?? m.partnerLabel ?? ROLE(m.role)}</span>
-          {m.required && <span className="rounded px-1 py-px text-micro font-bold uppercase tracking-[0.04em] text-neutral-400" style={{ boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}>req</span>}
+        <div className="flex flex-wrap items-center gap-1.5 text-body font-semibold">
+          <span>{m.personLabel ?? m.partnerLabel ?? ROLE(m.role)}</span>
+          {m.required && <span className="rounded-inner px-1 py-px text-micro font-bold uppercase tracking-[0.04em] text-neutral-400" style={{ boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}>req</span>}
         </div>
         <div className="text-label text-neutral-400">{m.personLabel || m.partnerLabel ? ROLE(m.role) : `${m.side.toLowerCase()} side`}</div>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {m.fit && <BandPill band={m.fit.band} />}
         <TeamStatusBadge status={m.status} />
         {canDecide && m.nextGovernedAction === "confirm" && (
           <button type="button" disabled={busy} onClick={() => onAct(m.id, "confirm")}
-            className="rounded-control px-2.5 py-1 text-label font-semibold text-white disabled:opacity-50"
-            style={{ background: "var(--color-readiness)" }}>{busy ? "…" : "Confirm"}</button>
+            className={buttonClass("primary", "sm")}>{busy ? "…" : "Confirm"}</button>
         )}
         {canDecide && m.nextGovernedAction === "accept" && (
           <button type="button" disabled={busy} onClick={() => onAct(m.id, "accept")}
-            className="rounded-control px-2.5 py-1 text-label font-semibold text-white disabled:opacity-50"
-            style={{ background: "var(--color-accent-verified)" }}>{busy ? "…" : "Mark accepted"}</button>
+            className={buttonClass("primary", "sm")}>{busy ? "…" : "Mark accepted"}</button>
         )}
       </div>
     </div>

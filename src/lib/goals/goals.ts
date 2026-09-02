@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { formatMoney } from "@/lib/format/money";
 
 type Db = Pool | PoolClient;
 
@@ -50,7 +51,7 @@ export interface Goal {
 }
 
 export function formatMetric(kind: "usd" | "count", v: number, unit?: string | null): string {
-  if (kind === "usd") return `$${Math.round(v / 1000)}k`;
+  if (kind === "usd") return `${formatMoney(v)}`;
   return `${Math.round(v)}${unit ? ` ${unit}` : ""}`;
 }
 

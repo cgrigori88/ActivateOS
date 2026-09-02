@@ -4,6 +4,7 @@ import { RoomTabs } from "@/components/room-tabs";
 import { listPartnerRooms } from "@/lib/partners/hub";
 import { partnerActivationHeadlines } from "@/lib/partners/intelligence";
 import { withTenant } from "@/lib/db/tenant";
+import { formatMoney } from "@/lib/format/money";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +14,7 @@ export const dynamic = "force-dynamic";
  * to know whether the relationship is working — the room has the rest.
  */
 
-const money = (n: number) =>
-  n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : n > 0 ? `$${Math.round(n / 1000)}k` : "$0";
+const money = (n: number) => formatMoney(n);
 
 export default async function PartnersPage({
   searchParams,
@@ -66,7 +66,7 @@ export default async function PartnersPage({
 
       {partners.length === 0 && (
         <Card muted>
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             No partners yet. Partners are created on Intake when a book arrives, or inline wherever a partner is
             chosen — each one gets a room here.
           </p>
@@ -89,20 +89,20 @@ export default async function PartnersPage({
                   </span>
                 )}
               </div>
-              <p className="mb-3 truncate text-xs text-neutral-500">
+              <p className="mb-3 truncate text-body text-neutral-500">
                 {[p.partnerType, p.otherOrgName ? `tenant: ${p.otherOrgName}` : null].filter(Boolean).join(" · ") || "—"}
               </p>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div>
-                  <div className="tnum text-lg font-extrabold leading-none">{p.bookAccounts}</div>
+                  <div className="tnum text-section font-extrabold leading-none">{p.bookAccounts}</div>
                   <div className="mt-1 text-micro font-semibold text-neutral-500">book accounts</div>
                 </div>
                 <div>
-                  <div className="tnum text-lg font-extrabold leading-none">{p.openPursuits}</div>
+                  <div className="tnum text-section font-extrabold leading-none">{p.openPursuits}</div>
                   <div className="mt-1 text-micro font-semibold text-neutral-500">joint rooms</div>
                 </div>
                 <div>
-                  <div className="tnum text-lg font-extrabold leading-none">{money(p.settledUsd)}</div>
+                  <div className="tnum text-section font-extrabold leading-none">{money(p.settledUsd)}</div>
                   <div className="mt-1 text-micro font-semibold text-neutral-500">settled</div>
                 </div>
               </div>

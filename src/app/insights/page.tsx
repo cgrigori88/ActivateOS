@@ -10,6 +10,7 @@ import { sourceOutcomeAttribution } from "@/lib/opportunities/autopsy";
 import { QuerySelect } from "@/components/query-select";
 import { saveStageWeightsAction, setTriggerEnabledAction } from "./actions";
 import { TRIGGER_CATALOG, enabledTriggers } from "@/lib/triggers/catalog";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -120,14 +121,14 @@ export default async function InsightsPage({
       {canonicalTotal > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Canonical outcomes · attribution</h2>
-            <span className="text-xs text-neutral-400">{canonicalTotal} terminal outcome{canonicalTotal === 1 ? "" : "s"} — small sample; honest by design</span>
+            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Canonical outcomes · attribution</h2>
+            <span className="text-body text-neutral-400">{canonicalTotal} terminal outcome{canonicalTotal === 1 ? "" : "s"} — small sample; honest by design</span>
           </div>
-          <div className="flex flex-wrap gap-2 text-sm">
+          <div className="flex flex-wrap gap-2 text-copy">
             {byClass.length === 0 ? (
               <span className="text-neutral-500">No wins recorded yet.</span>
             ) : byClass.map(([cls, n]) => (
-              <span key={cls} className="inline-flex items-center gap-1.5 rounded-md bg-neutral-100 px-2.5 py-1 dark:bg-neutral-800">
+              <span key={cls} className="inline-flex items-center gap-1.5 rounded-control bg-neutral-100 px-2.5 py-1 dark:bg-neutral-800">
                 <b>{n}</b> won <span className="text-neutral-500">·</span>
                 <span className={cls === "UNKNOWN" ? "font-semibold text-amber-700 dark:text-amber-400" : "font-medium text-neutral-700 dark:text-neutral-300"}>{cls}</span>
               </span>
@@ -145,8 +146,8 @@ export default async function InsightsPage({
       {partnerHeadlines.length > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Partner activation vs presence</h2>
-            <span className="text-xs text-neutral-400">separate truths — presence, activation, acceptance, canonical outcomes</span>
+            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Partner activation vs presence</h2>
+            <span className="text-body text-neutral-400">separate truths — presence, activation, acceptance, canonical outcomes</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse text-body">
@@ -175,23 +176,23 @@ export default async function InsightsPage({
       )}
 
       <Card className="mb-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+        <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
           Commercial funnel
         </h2>
         <div className="space-y-2">
           {funnel.map((s) => (
-            <div key={s.key} className="flex items-center gap-3 text-sm">
+            <div key={s.key} className="flex items-center gap-3 text-copy">
               <span className="w-36 shrink-0 text-neutral-600 dark:text-neutral-400">
                 {s.label}
               </span>
-              <div className="h-4 flex-1 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
+              <div className="h-4 flex-1 overflow-hidden rounded-inner bg-neutral-100 dark:bg-neutral-800">
                 <div
                   className="h-full bg-blue-600"
                   style={{ width: `${(s.count / maxCount) * 100}%` }}
                 />
               </div>
               <span className="tnum w-8 text-right font-semibold">{s.count}</span>
-              <span className="tnum w-14 text-right text-xs text-neutral-400">
+              <span className="tnum w-14 text-right text-body text-neutral-400">
                 {s.conversion != null ? `${Math.round(s.conversion * 100)}%` : ""}
               </span>
             </div>
@@ -201,7 +202,7 @@ export default async function InsightsPage({
 
       <Card className="mb-6">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
             Stage probability calibration
           </h2>
           <QuerySelect
@@ -223,9 +224,9 @@ export default async function InsightsPage({
           differently. Observed shows only the past 10 closed deals per stage; divergence beyond ±15
           points flags a human review — never a silent weight update.
         </Disclosure>
-        <table className="w-full text-sm">
+        <table className="w-full text-copy">
           <thead>
-            <tr className="text-left text-xs uppercase tracking-wide text-neutral-400">
+            <tr className="text-left text-body uppercase tracking-wide text-neutral-400">
               <th className="pb-1 font-medium">Stage</th>
               <th className="pb-1 font-medium">Declared</th>
               <th className="pb-1 font-medium">Observed</th>
@@ -243,9 +244,9 @@ export default async function InsightsPage({
                 <td className="tnum py-0.5">
                   {c.sample}
                   {c.observed == null && c.sample > 0 && (
-                    <span className="text-xs text-neutral-400"> (need 10)</span>
+                    <span className="text-body text-neutral-400"> (need 10)</span>
                   )}
-                  {c.divergent && <span className="ml-1 text-xs font-semibold">review</span>}
+                  {c.divergent && <span className="ml-1 text-body font-semibold">review</span>}
                 </td>
               </tr>
             ))}
@@ -254,15 +255,15 @@ export default async function InsightsPage({
 
         {/* The editor — same card, so declared numbers and their controls live together. */}
         <details className="mt-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-          <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
+          <summary className="cursor-pointer text-body font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
             Edit weights — {wscope ? partnerRows.find((p) => p.id === wscope)?.name : "default (all partners)"}
           </summary>
           <form action={saveStageWeightsAction} className="mt-3">
             <input type="hidden" name="scope" value={wscope} />
             <div className="flex flex-wrap items-end gap-3">
               {STAGES.map((s) => (
-                <label key={s} className="text-sm">
-                  <span className="mb-1 block text-xs text-neutral-500">{s.replace(/_/g, " ")} %</span>
+                <label key={s} className="text-copy">
+                  <span className="mb-1 block text-body text-neutral-500">{s.replace(/_/g, " ")} %</span>
                   <input
                     name={`w_${s}`}
                     type="number"
@@ -270,18 +271,18 @@ export default async function InsightsPage({
                     max={100}
                     step={1}
                     defaultValue={Math.round(scopeCurve[s] * 100)}
-                    className="w-20 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm tnum dark:border-neutral-700 dark:bg-neutral-900"
+                    className="w-20 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy tnum dark:border-neutral-700 dark:bg-neutral-900"
                   />
                 </label>
               ))}
-              <button className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+              <button className={buttonClass("primary", "sm")}>
                 Save weights
               </button>
               <button
                 name="reset"
                 value="1"
                 formNoValidate
-                className="text-sm font-medium text-neutral-500 hover:underline"
+                className={buttonClass("subtle", "md")}
               >
                 Reset to {wscope ? "org default" : "declared v1"}
               </button>
@@ -297,13 +298,13 @@ export default async function InsightsPage({
       </Card>
 
       <Card>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+        <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
           Conversation outcomes
         </h2>
         {replies.length === 0 ? (
-          <p className="text-sm text-neutral-500">No customer replies analyzed yet.</p>
+          <p className="text-copy text-neutral-500">No customer replies analyzed yet.</p>
         ) : (
-          <ul className="space-y-1 text-sm">
+          <ul className="space-y-1 text-copy">
             {replies.map((r) => (
               <li key={r.response_type} className="flex justify-between">
                 <span>{(r.response_type ?? "unknown").toLowerCase().replace(/_/g, " ")}</span>
@@ -312,12 +313,12 @@ export default async function InsightsPage({
             ))}
           </ul>
         )}
-        <p className="mt-3 border-t border-neutral-100 pt-2 text-sm text-neutral-500 dark:border-neutral-800">
+        <p className="mt-3 border-t border-neutral-100 pt-2 text-copy text-neutral-500 dark:border-neutral-800">
           Seller edit intensity:{" "}
           <span className="font-semibold text-neutral-800 dark:text-neutral-200">
             {intensity != null ? intensity : "no edited drafts yet"}
           </span>
-          {intensity != null && <span className="text-xs"> (0 = sent as drafted, 1 = rewritten)</span>}
+          {intensity != null && <span className="text-body"> (0 = sent as drafted, 1 = rewritten)</span>}
         </p>
       </Card>
 
@@ -325,13 +326,13 @@ export default async function InsightsPage({
       {attribution.length > 0 && (
         <Card className="mb-6">
           <div className="mb-1 flex items-baseline justify-between gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">What sat behind the outcomes</h2>
-            <span className="text-xs text-neutral-400">early sample — {attributionDeals} closed deal{attributionDeals === 1 ? "" : "s"}; patterns firm up with volume</span>
+            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">What sat behind the outcomes</h2>
+            <span className="text-body text-neutral-400">early sample — {attributionDeals} closed deal{attributionDeals === 1 ? "" : "s"}; patterns firm up with volume</span>
           </div>
-          <ul className="space-y-1 text-sm">
+          <ul className="space-y-1 text-copy">
             {attribution.map((a) => (
               <li key={a.sourceType} className="flex items-center justify-between gap-3">
-                <span className="font-mono text-xs text-neutral-500">{a.sourceType}</span>
+                <span className="font-mono text-body text-neutral-500">{a.sourceType}</span>
                 <span className="tnum text-neutral-600 dark:text-neutral-300">
                   behind <b className="text-positive dark:text-green-400">{a.wonDeals} won</b> · <b className="text-red-700 dark:text-red-400">{a.lostDeals} lost</b>
                 </span>
@@ -362,7 +363,7 @@ export default async function InsightsPage({
               <li key={t.key} className="flex items-start justify-between gap-4 py-2.5">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{t.label}</span>
+                    <span className="text-copy font-medium">{t.label}</span>
                     <span
                       className={
                         isOn
@@ -373,13 +374,13 @@ export default async function InsightsPage({
                       {isOn ? "on" : "off"}
                     </span>
                   </div>
-                  <p className="mt-0.5 text-sm text-neutral-500">{t.description}</p>
+                  <p className="mt-0.5 text-copy text-neutral-500">{t.description}</p>
                   <p className="mt-0.5 text-label text-neutral-400">Shows up in: {t.surfaces.join(" · ")}</p>
                 </div>
                 <form action={setTriggerEnabledAction} className="shrink-0 pt-0.5">
                   <input type="hidden" name="trigger" value={t.key} />
                   <input type="hidden" name="enabled" value={isOn ? "0" : "1"} />
-                  <button className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
+                  <button className={buttonClass("primary", "sm")}>
                     {isOn ? "Turn off" : "Turn on"}
                   </button>
                 </form>

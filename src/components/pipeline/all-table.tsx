@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { CONDITION_LABEL, type ConditionState } from "@/lib/opportunities/condition";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * Pipeline All (scale-disclosure §3.3 / R5). The exhaustive open+closed book as ONE dense,
@@ -27,7 +28,7 @@ export interface AllRow {
 
 type SortKey = "account" | "stage" | "amountUsd" | "weightedUsd" | "meddpicc" | "closeDate";
 const PAGE = 100;
-const k = (n: number | null) => (n == null ? "—" : n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${n}`);
+const k = (n: number | null) => formatMoney(n);
 const condTone: Record<ConditionState, string> = {
   at_risk: "var(--color-accent-risk)", stalling: "var(--color-accent-attention)", healthy: "var(--color-route)", closed: "var(--color-neutral-400)",
 };
@@ -82,7 +83,7 @@ export function PipelineAllTable({ rows, drawerBase }: { rows: AllRow[]; drawerB
     <div>
       <div className="mb-2 flex items-center gap-2">
         <input value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }} placeholder="Filter by account, opportunity, or partner…"
-          className="w-full max-w-sm rounded-lg border bg-transparent px-3 py-1.5 text-copy outline-none placeholder:text-neutral-400" style={{ borderColor: "var(--border-subtle)" }} />
+          className="w-full max-w-sm rounded-inner border bg-transparent px-3 py-1.5 text-copy outline-none placeholder:text-neutral-400" style={{ borderColor: "var(--border-subtle)" }} />
         <span className="text-label text-neutral-400">{filtered.length} row{filtered.length === 1 ? "" : "s"}</span>
       </div>
       <div className="overflow-x-auto rounded-xl border scroll-thin" style={{ borderColor: "var(--border-subtle)" }}>
@@ -108,7 +109,7 @@ export function PipelineAllTable({ rows, drawerBase }: { rows: AllRow[]; drawerB
                     <Link href={drawerHref(r.companyId)} scroll={false} className="font-medium hover:underline" title="Open account intelligence">{r.account}</Link>
                     <span className="ml-1.5 text-label text-neutral-400">{r.name}</span>
                   </td>
-                  <td className="px-3 py-1.5 text-xs uppercase tracking-wide text-neutral-500">{r.stage.replace(/_/g, " ")}</td>
+                  <td className="px-3 py-1.5 text-body uppercase tracking-wide text-neutral-500">{r.stage.replace(/_/g, " ")}</td>
                   <td className="px-3 py-1.5">
                     {closed ? <span className="text-label text-neutral-400">—</span> : (
                       <span className="inline-flex items-center gap-1 text-label font-medium" style={{ color: condTone[r.condition] }}>
@@ -121,8 +122,8 @@ export function PipelineAllTable({ rows, drawerBase }: { rows: AllRow[]; drawerB
                   <td className="px-3 py-1.5 text-right tnum">
                     <span style={{ color: r.meddpicc >= 70 ? "var(--color-accent-verified)" : r.meddpicc >= 40 ? "var(--color-accent-attention)" : "var(--color-accent-risk)" }}>{r.meddpicc}</span>
                   </td>
-                  <td className="px-3 py-1.5 text-xs text-neutral-500">{r.partner ?? "—"}</td>
-                  <td className="px-3 py-1.5 text-xs text-neutral-500">{r.closeDate ?? "—"}</td>
+                  <td className="px-3 py-1.5 text-body text-neutral-500">{r.partner ?? "—"}</td>
+                  <td className="px-3 py-1.5 text-body text-neutral-500">{r.closeDate ?? "—"}</td>
                 </tr>
               );
             })}
@@ -131,7 +132,7 @@ export function PipelineAllTable({ rows, drawerBase }: { rows: AllRow[]; drawerB
       </div>
       {filtered.length > shown.length && (
         <div className="mt-2 text-center">
-          <button type="button" onClick={() => setLimit((l) => l + PAGE)} className="rounded-lg px-4 py-1.5 text-body font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900">
+          <button type="button" onClick={() => setLimit((l) => l + PAGE)} className="rounded-inner px-4 py-1.5 text-body font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900">
             Show {Math.min(PAGE, filtered.length - shown.length)} more · {filtered.length - shown.length} remaining
           </button>
         </div>

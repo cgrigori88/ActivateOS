@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 
 import { enabledTriggers } from "@/lib/triggers/catalog";
+import { formatMoney } from "@/lib/format/money";
 
 type Db = Pool | PoolClient;
 
@@ -181,8 +182,8 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
     const stageDiffers = s.live_stage !== s.crm_stage;
     const amountDiffers = a != null && b != null && b > 0 && Math.abs(a - b) / b > 0.2;
     if (!stageDiffers && !amountDiffers) continue;
-    const crmSaid = `${s.stage_raw ?? s.crm_stage.replace(/_/g, " ")}${a != null ? ` ($${Math.round(a / 1000)}k)` : ""}`;
-    const weHold = `${s.live_stage.replace(/_/g, " ")}${b != null ? ` ($${Math.round(b / 1000)}k)` : ""}`;
+    const crmSaid = `${s.stage_raw ?? s.crm_stage.replace(/_/g, " ")}${a != null ? ` (${formatMoney(a)})` : ""}`;
+    const weHold = `${s.live_stage.replace(/_/g, " ")}${b != null ? ` (${formatMoney(b)})` : ""}`;
     out.push({
       kind: "crm_vs_platform",
       companyId: s.company_id,

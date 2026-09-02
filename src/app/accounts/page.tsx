@@ -15,6 +15,7 @@ import { QuerySelect } from "@/components/query-select";
 import { getAccountIntel, type AccountIntel } from "@/lib/accounts/intel";
 import { AccountIntelPane } from "@/components/accounts/intel-pane";
 import { getScopeContext } from "@/lib/scope/server";
+import { formatMoney } from "@/lib/format/money";
 
 export const dynamic = "force-dynamic";
 
@@ -251,10 +252,10 @@ export default async function AccountsPage({
           <div className="flex items-center gap-2">
             {/* Configure columns — same popover methodology as the mapping matrix */}
             <details className="relative">
-              <summary className="cursor-pointer rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800">
+              <summary className="cursor-pointer rounded-control border border-neutral-200 bg-white px-3 py-1.5 text-copy font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800">
                 ☰ Columns
               </summary>
-              <div className="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+              <div className="absolute right-0 z-20 mt-1 w-56 rounded-inner border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
                 <p className="px-1.5 pb-1 text-micro uppercase tracking-wide text-neutral-400">Show columns</p>
                 {COLUMNS.map((c) => {
                   const on = show(c.key);
@@ -262,19 +263,19 @@ export default async function AccountsPage({
                     <Link
                       key={c.key}
                       href={`/accounts${buildQS(params, { cols: toggleCols(c.key) })}`}
-                      className={`flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 ${on ? "" : "text-neutral-400"}`}
+                      className={`flex items-center gap-2 rounded-inner px-1.5 py-1 text-copy hover:bg-neutral-50 dark:hover:bg-neutral-800 ${on ? "" : "text-neutral-400"}`}
                     >
-                      <span className={`inline-block h-3 w-3 rounded-sm border ${on ? "border-blue-600 bg-blue-600" : "border-neutral-300 dark:border-neutral-600"}`} />
+                      <span className={`inline-block h-3 w-3 rounded-inner border ${on ? "border-blue-600 bg-blue-600" : "border-neutral-300 dark:border-neutral-600"}`} />
                       {c.label}
                     </Link>
                   );
                 })}
-                <Link href={`/accounts${buildQS(params, { cols: undefined })}`} className="mt-1 block px-1.5 py-1 text-xs text-neutral-500 hover:underline">Reset to default</Link>
+                <Link href={`/accounts${buildQS(params, { cols: undefined })}`} className="mt-1 block px-1.5 py-1 text-body text-neutral-500 hover:underline">Reset to default</Link>
               </div>
             </details>
             <a
               href={`/accounts/export${buildQS(params, {})}`}
-              className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              className="rounded-control border border-neutral-200 bg-white px-3 py-1.5 text-copy font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
             >
               ↓ CSV
             </a>
@@ -302,7 +303,7 @@ export default async function AccountsPage({
             {industry && <FilterPill label={industry} clearHref={`/accounts${buildQS(params, { industry: undefined })}`} />}
             {partner && <FilterPill label={`Partner: ${partner === "__multi" ? "multi" : partner === "__none" ? "unmapped" : partner}`} clearHref={`/accounts${buildQS(params, { partner: undefined })}`} />}
             {q && <FilterPill label={`“${q}”`} clearHref={`/accounts${buildQS(params, { q: undefined })}`} />}
-            <Link href="/accounts" className="text-xs text-neutral-500 hover:underline">Clear all</Link>
+            <Link href="/accounts" className="text-body text-neutral-500 hover:underline">Clear all</Link>
           </>
         )}
       </Toolbar>
@@ -351,7 +352,7 @@ export default async function AccountsPage({
                     </span>
                   </td>
                   {show("industry") && <td className="text-neutral-500">{r.industry ?? "—"}</td>}
-                  {show("score") && <td className="tnum text-base font-semibold">{Number(r.score).toFixed(0)}</td>}
+                  {show("score") && <td className="tnum text-title font-semibold">{Number(r.score).toFixed(0)}</td>}
                   {show("band") && <td><BandBadge band={r.band} /></td>}
                   {show("partners") && (
                     <td>
@@ -360,17 +361,17 @@ export default async function AccountsPage({
                       ) : (
                         <span className="flex flex-wrap gap-1">
                           {ps.map((p) => (
-                            <Link key={p} href={`/accounts${buildQS(params, { partner: p })}`} className="rounded bg-neutral-100 px-1.5 py-0.5 text-micro font-medium text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300">{p}</Link>
+                            <Link key={p} href={`/accounts${buildQS(params, { partner: p })}`} className="rounded-inner bg-neutral-100 px-1.5 py-0.5 text-micro font-medium text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300">{p}</Link>
                           ))}
                         </span>
                       )}
                     </td>
                   )}
                   {show("opps") && <td className="tnum text-right text-neutral-600 dark:text-neutral-300">{o.open || <span className="text-neutral-300 dark:text-neutral-600">—</span>}</td>}
-                  {show("pipeline") && <td className="tnum text-right text-neutral-600 dark:text-neutral-300">{o.pipeline ? `$${Math.round(o.pipeline / 1000)}k` : <span className="text-neutral-300 dark:text-neutral-600">—</span>}</td>}
+                  {show("pipeline") && <td className="tnum text-right text-neutral-600 dark:text-neutral-300">{o.pipeline ? `${formatMoney(o.pipeline)}` : <span className="text-neutral-300 dark:text-neutral-600">—</span>}</td>}
                   {show("dims") && <td>{dims ? <DimensionBars values={DIM_ORDER.map((d) => dims.get(d) ?? 0)} /> : <span className="text-neutral-300">—</span>}</td>}
                   {show("delta") && (
-                    <td className={`tnum text-xs font-medium ${delta > 0 ? "text-positive dark:text-green-400" : delta < 0 ? "text-red-700 dark:text-red-400" : "text-neutral-400"}`}>
+                    <td className={`tnum text-body font-medium ${delta > 0 ? "text-positive dark:text-green-400" : delta < 0 ? "text-red-700 dark:text-red-400" : "text-neutral-400"}`}>
                       {delta == null ? "—" : delta > 0 ? `+${delta}` : `${delta}`}
                     </td>
                   )}
@@ -381,9 +382,9 @@ export default async function AccountsPage({
                     </td>
                   )}
                   {show("evidence") && <td className="tnum text-right text-neutral-500">{r.evidence_count}</td>}
-                  {show("location") && <td className="text-xs text-neutral-500">{[r.state, r.country].filter(Boolean).join(", ") || "—"}</td>}
+                  {show("location") && <td className="text-body text-neutral-500">{[r.state, r.country].filter(Boolean).join(", ") || "—"}</td>}
                   {show("refresh") && (
-                    <td className={`text-xs ${refreshDue ? "font-semibold text-amber-700 dark:text-amber-400" : "text-neutral-400"}`}>
+                    <td className={`text-body ${refreshDue ? "font-semibold text-amber-700 dark:text-amber-400" : "text-neutral-400"}`}>
                       {r.next_refresh_at ? new Date(r.next_refresh_at).toISOString().slice(0, 10) : "—"}
                     </td>
                   )}

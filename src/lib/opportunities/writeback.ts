@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * CRM writeback (slice A): the tie-out card detects drift; this repairs it —
@@ -71,7 +72,7 @@ export async function draftWritebacks(db: Db, orgId: string): Promise<number> {
          on conflict (org_id, lower(opportunity_name), field) where status in ('proposed','approved') do nothing`,
         [
           orgId, r.company_id, r.opportunity_name, `$${crmAmt}`, `$${liveTotal}`,
-          `CRM says $${Math.round(crmAmt / 1000)}k; the live record holds $${Math.round(liveTotal / 1000)}k open at ${r.legal_name} (evidence-backed, ${liveN} open opportunit${liveN === 1 ? "y" : "ies"}). Correct the CRM amount to the live figure.`,
+          `CRM says ${formatMoney(crmAmt)}; the live record holds ${formatMoney(liveTotal)} open at ${r.legal_name} (evidence-backed, ${liveN} open opportunit${liveN === 1 ? "y" : "ies"}). Correct the CRM amount to the live figure.`,
         ],
       );
       created += res.rowCount ?? 0;

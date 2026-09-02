@@ -16,37 +16,94 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
  *  - ghost    outlined/secondary (Decline, Cancel)
  *  - subtle   text-only inline action (remove / revoke / edit links)
  *
- * Sizes: md (default, matches the px-4 py-1.5 text-sm CTA) and sm (px-3 py-1
- * text-xs, for table-row and toolbar actions). `subtle` ignores size padding.
+ * Sizes: md (default, matches the px-4 py-1.5 text-copy CTA) and sm (px-3 py-1
+ * text-body, for table-row and toolbar actions). `subtle` ignores size padding.
  */
-export type ButtonVariant = "primary" | "accent" | "danger" | "ghost" | "subtle";
-export type ButtonSize = "sm" | "md";
+/**
+ * The button contract (Wave 1 §5).
+ *
+ * The variants are named for the ROLE an action plays on its surface, not for
+ * the colour it happens to wear, because naming by colour is how a codebase
+ * ends up with green "Approve", black "Save" and blue "Ask" all claiming to be
+ * the dominant action on the same screen. That is what the audit found: 161
+ * page-authored buttons, eleven of them green because their verb sounded
+ * positive.
+ *
+ *   primary      the ONE dominant action here — brand accent
+ *   secondary    a real alternative — neutral, bordered
+ *   ghost        low emphasis, no chrome until hovered
+ *   destructive  deletes, revokes, rejects, erases
+ *   subtle       a link wearing a button's affordance; ignores size padding
+ *
+ * Green is a RESULT (a won deal, a verified fact), never a call to action.
+ * `accent` and `danger` remain as aliases so existing call sites keep working.
+ */
+export type ButtonVariant =
+  | "primary" | "secondary" | "ghost" | "destructive" | "subtle"
+  | "accent"   // deprecated alias for primary
+  | "danger";  // deprecated alias for destructive
+export type ButtonSize = "sm" | "md" | "lg";
 
 const BTN_BASE =
-  "inline-flex items-center justify-center gap-1.5 font-medium transition-colors duration-[var(--dur-react)] " +
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium " +
+  "rounded-control transition-colors duration-[var(--dur-react)] " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-1 " +
   "focus-visible:ring-offset-transparent disabled:pointer-events-none disabled:opacity-50";
 
-const BTN_VARIANT: Record<ButtonVariant, string> = {
-  primary:
-    "rounded-md bg-neutral-900 text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200",
-  accent: "rounded-md bg-accent text-white hover:bg-accent-strong",
-  danger: "rounded-md bg-rose text-white hover:brightness-110",
-  ghost:
-    "rounded-md text-neutral-700 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 " +
-    "dark:text-neutral-200 dark:ring-neutral-700 dark:hover:bg-neutral-900",
-  subtle: "font-medium text-accent hover:underline dark:text-blue-300",
-};
-
+/* Fixed heights, so a row of buttons is a row of equal rectangles regardless of
+   which variants or labels it contains. Padding alone never guaranteed that. */
 const BTN_SIZE: Record<ButtonSize, string> = {
-  sm: "px-3 py-1 text-xs",
-  md: "px-4 py-1.5 text-sm",
+  sm: "h-7 px-2.5 text-label",
+  md: "h-9 px-3.5 text-body",
+  lg: "h-10 px-4 text-copy",
 };
 
-/** The class string for a button/CTA, so `<Link>` CTAs can match `<button>`. */
+const BTN_VARIANT: Record<ButtonVariant, string> = {
+  primary: "bg-accent text-white hover:bg-accent-strong active:bg-accent-strong",
+  secondary:
+    "bg-[var(--surface-primary)] text-[var(--ink)] ring-1 ring-inset ring-[var(--border-subtle)] " +
+    "hover:bg-[var(--surface-inset)]",
+  ghost: "text-[var(--ink-soft)] hover:bg-[var(--surface-inset)] hover:text-[var(--ink)]",
+  destructive: "bg-rose text-white hover:brightness-110 active:brightness-95",
+  subtle: "font-medium text-accent hover:underline dark:text-blue-300",
+  accent: "bg-accent text-white hover:bg-accent-strong active:bg-accent-strong",
+  danger: "bg-rose text-white hover:brightness-110 active:brightness-95",
+};
+
 export function buttonClass(variant: ButtonVariant = "primary", size: ButtonSize = "md"): string {
   if (variant === "subtle") return `${BTN_BASE} ${BTN_VARIANT.subtle}`;
   return `${BTN_BASE} ${BTN_SIZE[size]} ${BTN_VARIANT[variant]}`;
+}
+
+/**
+ * The form-control contract (Wave 1 §9).
+ *
+ * The audit found 48 inputs across 26 recipes, 27 selects across 12 and 9
+ * textareas across 3 — all variations on one idea, differing by a border shade
+ * here and a padding step there. They now share a height, a radius, a border, a
+ * focus ring and a placeholder colour, so a form reads as a form rather than as
+ * a collection of separately-styled boxes.
+ *
+ * Heights match the button scale exactly: a search field beside a button must
+ * not sit two pixels proud of it.
+ */
+const FIELD_BASE =
+  "rounded-control border bg-[var(--surface-primary)] text-[var(--ink)] " +
+  "border-[var(--border-subtle)] placeholder:text-[var(--ink-faint)] " +
+  "transition-colors duration-[var(--dur-react)] " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:border-accent " +
+  "disabled:cursor-not-allowed disabled:opacity-60 disabled:bg-[var(--surface-inset)]";
+
+export type FieldSize = "sm" | "md";
+
+/** `multiline` drops the fixed height — a textarea sizes to its rows — while every other part of the contract holds. */
+export function fieldClass(size: FieldSize = "md", opts: { multiline?: boolean; invalid?: boolean } = {}): string {
+  const height = opts.multiline ? "py-2 leading-relaxed" : size === "sm" ? "h-7" : "h-9";
+  const pad = size === "sm" ? "px-2 text-label" : "px-2.5 text-body";
+  // An invalid field says so in its border AND keeps its error text — colour
+  // alone is not an accessible way to say "this is wrong".
+  const invalid = opts.invalid ? " border-rose focus-visible:ring-rose/50 focus-visible:border-rose" : "";
+  return `${FIELD_BASE} ${height} ${pad}${invalid}`;
 }
 
 export function Button({
@@ -151,7 +208,7 @@ export type Intent = "positive" | "risk" | "warning" | "info" | "neutral";
  * and Motions cannot drift into four KPI styles again. Nine call sites had
  * copy-pasted this component's internals verbatim (`pos-bento-fig tnum
  * text-display font-extrabold leading-none tracking-[-0.03em]`) and one had
- * invented its own `text-2xl font-semibold`; both are now this.
+ * invented its own `text-display font-semibold`; both are now this.
  *
  * `Bento` remains exported as the historical name so sixteen pages keep working.
  */
@@ -225,7 +282,7 @@ export function SummaryBand({ children, className = "" }: { children: ReactNode;
  * SectionHeading — one treatment for the heading inside a page (§1, §3).
  *
  * The app wrote this inline as `text-micro font-bold uppercase tracking-[0.08em]`,
- * `text-micro ... tracking-[0.06em]`, `text-sm font-semibold uppercase` and
+ * `text-micro ... tracking-[0.06em]`, `text-copy font-semibold uppercase` and
  * several more. Uppercase micro-type reads as chrome, so a page built entirely
  * from it has no hierarchy — everything is a label and nothing is a title.
  */
@@ -334,7 +391,7 @@ export function MiniBar({
 export function NextStep({ message, href, cta }: { message: string; href: string; cta: string }) {
   return (
     <div className="mb-5 flex flex-wrap items-center gap-3 rounded-card border border-green-300 bg-green-50 px-4 py-3 dark:border-green-800 dark:bg-green-950">
-      <span className="text-sm text-green-800 dark:text-green-300">{message}</span>
+      <span className="text-copy text-green-800 dark:text-green-300">{message}</span>
       <Link
         href={href}
         className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-body font-bold text-white shadow-[var(--shadow-float)] transition-colors duration-[140ms] hover:bg-blue-800"
@@ -436,7 +493,7 @@ export function StatusBadge({ status }: { status: string }) {
 }
 
 export function Score({ value }: { value: number }) {
-  return <span className="tnum text-lg font-semibold">{value.toFixed(0)}</span>;
+  return <span className="tnum text-section font-semibold">{value.toFixed(0)}</span>;
 }
 
 export function StatChip({
@@ -599,7 +656,7 @@ export function SearchBox({
         name={name}
         defaultValue={defaultValue}
         placeholder={placeholder}
-        className="w-60 rounded-full border border-neutral-300/70 bg-white/70 py-2 pl-9 pr-4 text-sm backdrop-blur transition-colors duration-[140ms] placeholder:text-neutral-400 hover:border-neutral-400 focus:border-accent focus:outline-none dark:border-white/15 dark:bg-white/[0.06]"
+        className="w-60 rounded-full border border-neutral-300/70 bg-white/70 py-2 pl-9 pr-4 text-copy backdrop-blur transition-colors duration-[140ms] placeholder:text-neutral-400 hover:border-neutral-400 focus:border-accent focus:outline-none dark:border-white/15 dark:bg-white/[0.06]"
       />
     </form>
   );
@@ -608,7 +665,7 @@ export function SearchBox({
 /** Active-filter pill with an ✕ that removes just this filter. */
 export function FilterPill({ label, clearHref }: { label: string; clearHref: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/12 py-1 pl-3 pr-1.5 text-xs font-semibold text-accent dark:text-blue-300">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/12 py-1 pl-3 pr-1.5 text-body font-semibold text-accent dark:text-blue-300">
       {label}
       <Link
         href={clearHref}
@@ -670,7 +727,7 @@ export function EvidenceLine({
 }) {
   return (
     <li className="border-l-2 border-neutral-200 py-1 pl-3 dark:border-neutral-700">
-      <span className="block text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{claim}</span>
+      <span className="block text-copy leading-relaxed text-neutral-700 dark:text-neutral-300">{claim}</span>
       <span className="mt-0.5 block font-mono text-label text-neutral-400 dark:text-neutral-500">{meta}</span>
     </li>
   );
@@ -692,13 +749,13 @@ export function CompletenessGrid({
     <div>
       <div className="mb-2 flex items-baseline gap-2">
         <span className="tnum text-section font-semibold ink">{overall}%</span>
-        <span className="text-xs text-neutral-500">categories with coverage</span>
+        <span className="text-body text-neutral-500">categories with coverage</span>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {Object.entries(byCategory).map(([cat, covered]) => (
           <span
             key={cat}
-            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+            className={`inline-flex items-center gap-1 rounded-control px-2 py-1 text-body font-medium ring-1 ring-inset ${
               covered
                 ? "bg-green-50 text-green-800 ring-green-600/20 dark:bg-green-950 dark:text-green-300"
                 : "bg-neutral-50 text-neutral-400 ring-neutral-300/40 dark:bg-neutral-900 dark:text-neutral-600"
@@ -722,3 +779,82 @@ export const FEATURE_LABELS: Record<string, string> = {
   negative_signals: "Negative signals",
   already_installed: "Target already installed",
 };
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Badge (§10) and the state vocabulary (§12).
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * One badge geometry, six semantic tones. The audit found equivalent states
+ * wearing full-colour fills, hairline borders, bare dots and plain coloured
+ * text depending on which page rendered them — so "verified" looked like a
+ * different KIND of thing on two screens that both meant verified.
+ *
+ * Geometry never varies. Only the tone does, and tone is chosen by meaning.
+ */
+export type BadgeTone = "neutral" | "positive" | "warning" | "risk" | "info" | "provenance";
+
+const BADGE_BASE =
+  "inline-flex items-center gap-1 rounded-full px-2 py-0.5 " +
+  "text-label font-semibold uppercase tracking-[0.04em] whitespace-nowrap";
+
+const BADGE_TONE: Record<BadgeTone, string> = {
+  neutral: "bg-[var(--surface-inset)] text-[var(--ink-muted)]",
+  positive: "bg-[color-mix(in_srgb,var(--intent-positive)_14%,transparent)] text-[var(--intent-positive)]",
+  warning: "bg-[color-mix(in_srgb,var(--intent-warning)_14%,transparent)] text-[var(--intent-warning)]",
+  risk: "bg-[color-mix(in_srgb,var(--intent-risk)_14%,transparent)] text-[var(--intent-risk)]",
+  info: "bg-[color-mix(in_srgb,var(--intent-info)_14%,transparent)] text-[var(--intent-info)]",
+  // Provenance is deliberately its own tone: "inferred" is not a warning and
+  // not a success, it is a statement about where a fact came from.
+  provenance: "bg-[color-mix(in_srgb,var(--color-accent-intelligence)_12%,transparent)] text-[var(--color-accent-intelligence)]",
+};
+
+export function badgeClass(tone: BadgeTone = "neutral"): string {
+  return `${BADGE_BASE} ${BADGE_TONE[tone]}`;
+}
+
+export function Badge({ tone = "neutral", children }: { tone?: BadgeTone; children: ReactNode }) {
+  return <span className={badgeClass(tone)}>{children}</span>;
+}
+
+/**
+ * The five absences (§12), which the product must never collapse into one grey
+ * dash. PursuitOS's central invariant is that
+ *
+ *     UNKNOWN ≠ zero ≠ false ≠ unavailable
+ *
+ * and a UI that renders all of them as "—" destroys exactly the distinction the
+ * fact graph exists to preserve. Each has its own word and its own weight:
+ *
+ *   zero         a known measurement that happens to be 0 — rendered as a NUMBER
+ *   unknown      nobody has established this yet — the honest gap
+ *   unavailable  the capability cannot answer right now
+ *   disabled     the capability exists and is switched off
+ *   empty        a collection with no members
+ *
+ * `zero` is not in this component on purpose: a known zero is a value, so it is
+ * rendered by the normal value path (formatMoney gives "$0"), never here.
+ */
+export type AbsenceKind = "unknown" | "unavailable" | "disabled" | "empty";
+
+const ABSENCE_LABEL: Record<AbsenceKind, string> = {
+  unknown: "Not established",
+  unavailable: "Unavailable",
+  disabled: "Off",
+  empty: "None yet",
+};
+
+export function Absence({ kind, detail, className = "" }: { kind: AbsenceKind; detail?: string; className?: string }) {
+  // Unknown carries a dotted underline: it is a gap someone could close, and it
+  // should not read like a system limitation. The other three are plain, quiet
+  // statements of fact.
+  const emphasis =
+    kind === "unknown"
+      ? "underline decoration-dotted decoration-[var(--ink-faint)] underline-offset-2"
+      : "";
+  return (
+    <span className={`text-body text-[var(--ink-muted)] ${emphasis} ${className}`} title={detail}>
+      {ABSENCE_LABEL[kind]}
+    </span>
+  );
+}

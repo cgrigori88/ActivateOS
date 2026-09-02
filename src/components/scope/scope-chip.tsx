@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { SCOPE_COOKIE, SCOPE_PARAM, type ScopeContext } from "@/lib/scope/scope";
+import { buttonClass } from "@/components/ui";
 
 /**
  * Persistent scope awareness (scale-disclosure §1.2 / R2). A quiet contextual chip shown beside
@@ -41,7 +42,7 @@ export function ScopeChip({ active }: { active: ScopeContext }) {
           onClick={clear}
           aria-label="Clear scope"
           title="Clear scope — back to all ecosystems"
-          className="ml-0.5 grid h-4 w-4 place-items-center rounded-full text-neutral-400 hover:bg-neutral-900/[0.06] hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-200"
+          className={buttonClass("primary", "md")}
         >
           <svg viewBox="0 0 16 16" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M4 4l8 8M12 4l-8 8" />

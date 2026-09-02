@@ -5,6 +5,7 @@ import { classifyChange, isMaterial, todaySort, type OperationalUrgency } from "
 import { motionAcceptanceBlockage } from "@/lib/motions/funnel";
 import { getLifecycleHorizon } from "@/lib/lifecycle/horizon";
 import { STAGE_PROBABILITY, type Stage } from "@/lib/opportunities/lifecycle";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * Today decision-queue read model (Workstream D, §2/§3/§4/§54). Builds typed DecisionItems from
@@ -107,7 +108,7 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
     const blockage = await motionAcceptanceBlockage(db, caller.orgId);
     for (const b of blockage) {
       items.push(mk("MOTION_ACCEPTANCE_BLOCKED", "ACTION_REQUIRED", "high", "high", null, null, b.name,
-        `$${(b.blockedUsd / 1_000_000).toFixed(1)}M of ${b.name} is blocked by participant acceptance`,
+        `${formatMoney(b.blockedUsd)} of ${b.name} is blocked by participant acceptance`,
         `${b.pursuits} pursuit${b.pursuits === 1 ? "" : "s"} on this hypothesis are waiting on a confirmed participant (partner or vendor side) to accept.`,
         false, new Date(), now,
         [{ label: "Mark accepted", skill: "accept_team_member", sideEffect: "INTERNAL_WRITE" }],
@@ -141,7 +142,7 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
   for (const g of ebGaps.rows) {
     const evUsd = g.ev == null ? null : Number(g.ev);
     items.push(mk("STAKEHOLDER_GAP", "ACTION_REQUIRED", "high", bandOf(n(g.priority)), g.pursuit_id, g.company_id, g.account_label,
-      `${evUsd != null ? `$${(evUsd / 1_000_000).toFixed(1)}M pursuit` : "Pursuit"} lacks a verified economic buyer`,
+      `${evUsd != null ? `${formatMoney(evUsd)} pursuit` : "Pursuit"} lacks a verified economic buyer`,
       g.path_seller
         ? `No verified buying authority. Strongest known path: ${g.path_partner ? `${g.path_partner} seller ` : ""}${g.path_seller} (account-level relationship).`
         : "No verified buying authority, and no warm path is known — UNKNOWN, not zero.",
@@ -159,7 +160,7 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
       const conflicting = it.event.state === "CONFLICTING_DATE";
       if (!conflicting && ev < LIFECYCLE_FLOOR_USD) continue;   // approaching dates need materiality
       if (conflicting && ev < LIFECYCLE_CONFLICT_FLOOR_USD) continue;
-      const money = ev >= 1_000_000 ? `$${(ev / 1_000_000).toFixed(1)}M` : `$${Math.round(ev / 1000)}k`;
+      const money = formatMoney(ev);
       items.push(mk(
         conflicting ? "LIFECYCLE_CONFLICT" : "LIFECYCLE_WINDOW",
         conflicting ? "RISK" : "OPPORTUNITY",

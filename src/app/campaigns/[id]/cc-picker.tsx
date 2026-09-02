@@ -46,7 +46,7 @@ export function CcPicker({ contacts, defaultCc }: { contacts: CcContact[]; defau
 
   return (
     <div>
-      <span className="mb-1 block text-xs text-neutral-500">
+      <span className="mb-1 block text-body text-neutral-500">
         CC — additional contacts copied on this touch{count > 0 ? ` (${count})` : ""}; the primary recipient stays the sequence target
       </span>
       <input type="hidden" name="cc" value={value} />
@@ -57,12 +57,12 @@ export function CcPicker({ contacts, defaultCc }: { contacts: CcContact[]; defau
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search contacts"
-              className="mb-1.5 w-56 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+              className="mb-1.5 w-56 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900"
             />
           )}
-          <div className="mb-1.5 max-h-36 overflow-y-auto rounded-lg border border-neutral-200 scroll-thin dark:border-neutral-800">
+          <div className="mb-1.5 max-h-36 overflow-y-auto rounded-inner border border-neutral-200 scroll-thin dark:border-neutral-800">
             {filtered.length === 0 ? (
-              <p className="px-3 py-2 text-sm text-neutral-400">No contacts match.</p>
+              <p className="px-3 py-2 text-copy text-neutral-400">No contacts match.</p>
             ) : (
               filtered.map((c) => (
                 <label
@@ -71,7 +71,7 @@ export function CcPicker({ contacts, defaultCc }: { contacts: CcContact[]; defau
                 >
                   <input type="checkbox" checked={sel.has(c.email.toLowerCase())} onChange={() => toggle(c.email.toLowerCase())} className="h-4 w-4 shrink-0" />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm">{c.name ?? c.email}</span>
+                    <span className="block truncate text-copy">{c.name ?? c.email}</span>
                     <span className="block truncate text-label text-neutral-500">
                       {c.email}
                       {c.title ? ` · ${c.title}` : ""}
@@ -87,7 +87,7 @@ export function CcPicker({ contacts, defaultCc }: { contacts: CcContact[]; defau
         value={extra}
         onChange={(e) => setExtra(e.target.value)}
         placeholder={contacts.length > 0 ? "Other addresses (comma-separated)" : "champion@account.com, seller@partner.com"}
-        className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+        className="w-full rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900"
       />
     </div>
   );

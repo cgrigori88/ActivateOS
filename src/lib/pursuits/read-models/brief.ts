@@ -2,6 +2,7 @@ import type { PursuitDetailView, ScoreReason } from "./types";
 import type { PursuitOutcomeSummary } from "./outcome-summary";
 import { bounds as vBounds, qualityLine as vQuality, usd as vUsd } from "@/lib/value/case";
 import { toPartnerValueCase as partnerProjection, SPONSOR_CONFIDENTIAL_NOTE } from "@/lib/value/projection";
+import { formatMoney } from "@/lib/format/money";
 
 /** Value formatters, imported once so the Brief speaks the same economics language as every surface. */
 const valueFmt = { bounds: vBounds, qualityLine: vQuality, usd: vUsd };
@@ -34,7 +35,12 @@ function isConfidentialFigure(text: string): boolean {
   return /\$\s?\d|\b\d[\d,.]*\s?(?:M|K|bn|B)\b/.test(text);
 }
 const clean = (t: string) => t.replace(/_/g, " ").replace(/\s+/g, " ").trim();
-const money = (n: number | null, cur: string | null) => (n == null ? null : new Intl.NumberFormat("en-US", { style: "currency", currency: cur || "USD", notation: "compact", maximumFractionDigits: 1 }).format(n));
+// Wave 1 §2: was a second `Intl` compact formatter with its own rounding
+// policy. The brief quotes figures that also appear on the Pursuit room, so a
+// disagreement here reads as two systems reporting different numbers.
+// `null` (rather than an em dash) is preserved — callers omit the line entirely
+// when the amount is UNKNOWN, which is not the same as showing a placeholder.
+const money = (n: number | null, cur: string | null) => (n == null ? null : formatMoney(n, { currency: cur }));
 
 export function buildPursuitBrief(
   d: PursuitDetailView, outcome?: PursuitOutcomeSummary | null,

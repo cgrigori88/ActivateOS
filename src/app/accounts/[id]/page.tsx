@@ -8,6 +8,7 @@ import {
   FEATURE_LABELS,
   PageHeader,
   StatusBadge,
+  fieldClass,
 } from "@/components/ui";
 import { loadCompanyIntel } from "@/lib/intel/company-intel";
 import { CONFIDENCE_FORMULA, confidenceTone, contextConfidence } from "@/lib/context/confidence";
@@ -15,6 +16,7 @@ import { addMeetingNoteAction, setTeamStatusAction } from "./actions";
 import { draftAccountMotionAction } from "@/app/motions/actions";
 import { dealTimeline, type TimelineEvent } from "@/lib/context/timeline";
 import { listMeetingNotes } from "@/lib/context/meetings";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 // AI drafting actions invoked from this segment can run tens of seconds —
@@ -243,7 +245,7 @@ export default async function AccountPage({
 
   return (
     <main>
-      <p className="mb-4 text-sm">
+      <p className="mb-4 text-copy">
         <Link href="/accounts" className="pos-backlink">
           ← Accounts
         </Link>
@@ -261,7 +263,7 @@ export default async function AccountPage({
       />
 
       {confidence && (
-        <div className="-mt-3 mb-4 flex flex-wrap items-center gap-2 text-xs" title={CONFIDENCE_FORMULA}>
+        <div className="-mt-3 mb-4 flex flex-wrap items-center gap-2 text-body" title={CONFIDENCE_FORMULA}>
           <span
             className={`rounded-full px-2.5 py-1 font-bold ${
               confidenceTone(confidence.score) === "emerald"
@@ -282,7 +284,7 @@ export default async function AccountPage({
       )}
 
       {sp.notice && (
-        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <div className="mb-4 rounded-inner border border-amber-300 bg-amber-50 px-4 py-2.5 text-copy text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
           {sp.notice}
         </div>
       )}
@@ -299,7 +301,7 @@ export default async function AccountPage({
           </Link>
         ) : (
           <form action={draftAccountMotionAction.bind(null, id)}>
-            <button className="inline-flex items-center gap-1.5 rounded-full bg-blue-700 px-4 py-1.5 text-body font-bold text-white transition-colors duration-[140ms] hover:bg-blue-800">
+            <button className={buttonClass("primary", "md")}>
               Draft a motion (AI)
             </button>
             <span className="ml-2 text-label text-neutral-400">grounded in this account&apos;s evidence — lands as a draft for your approval</span>
@@ -312,7 +314,7 @@ export default async function AccountPage({
       {digest && (digest.items as { type: string; text: string; at: string }[]).length > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
               What&apos;s new on this account
             </h2>
             <span className="text-label text-neutral-400">
@@ -322,7 +324,7 @@ export default async function AccountPage({
           </div>
           <ul className="space-y-1.5">
             {(digest.items as { type: string; text: string; at: string }[]).map((it, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm">
+              <li key={i} className="flex items-start gap-2 text-copy">
                 <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold uppercase tracking-wide ${
                   it.type === "evidence" ? "bg-blue-50 text-accent dark:bg-blue-950/50 dark:text-blue-400"
                   : it.type === "renewal" ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
@@ -330,7 +332,7 @@ export default async function AccountPage({
                   : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"
                 }`}>{it.type}</span>
                 <span className="min-w-0 flex-1">{it.text}</span>
-                <span className="shrink-0 text-xs text-neutral-400">{it.at}</span>
+                <span className="shrink-0 text-body text-neutral-400">{it.at}</span>
               </li>
             ))}
           </ul>
@@ -342,14 +344,14 @@ export default async function AccountPage({
       {timeline.length > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Deal timeline</h2>
+            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Deal timeline</h2>
             <span className="text-label text-neutral-400">
               every system, one record — each event names its source
             </span>
           </div>
           <ul className="space-y-1.5">
             {timeline.map((ev, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm">
+              <li key={i} className="flex items-start gap-2 text-copy">
                 <span className="tnum mt-0.5 w-[76px] shrink-0 font-mono text-label text-neutral-400">
                   {ev.at.slice(0, 10)}
                 </span>
@@ -388,20 +390,20 @@ export default async function AccountPage({
       {/* ── Meetings (task #86): the engagement signal email can't see ── */}
       <Card className="mb-6">
         <div className="mb-2 flex items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Meetings</h2>
+          <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Meetings</h2>
           <span className="text-label text-neutral-400">
             each note lands as first-party evidence and counts as engagement
           </span>
         </div>
         {meetings.length === 0 ? (
-          <p className="mb-3 text-sm text-neutral-500">
+          <p className="mb-3 text-copy text-neutral-500">
             No meetings recorded yet. Paste the recap your meeting tool emails you (Teams and Meet both send one) —
             it grounds the AI, feeds this account&apos;s digest, and keeps the engagement triggers honest.
           </p>
         ) : (
           <ul className="mb-3 space-y-2">
             {meetings.map((m) => (
-              <li key={m.id} className="rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+              <li key={m.id} className="rounded-inner border border-neutral-200 p-3 text-copy dark:border-neutral-800">
                 <p className="mb-1 text-label text-neutral-400">
                   <span className="font-semibold text-neutral-600 dark:text-neutral-300">{m.metAt}</span>
                   {m.title && <> · {m.title}</>}
@@ -414,24 +416,24 @@ export default async function AccountPage({
         )}
         <form action={addMeetingNoteAction.bind(null, id)} className="space-y-2 border-t border-neutral-100 pt-3 dark:border-neutral-800">
           <div className="flex flex-wrap items-end gap-3">
-            <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">Meeting date</span>
-              <input type="date" name="metAt" required className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+            <label className="text-copy">
+              <span className="mb-1 block text-body text-neutral-500">Meeting date</span>
+              <input type="date" name="metAt" required className={fieldClass("md")} />
             </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">Title (optional)</span>
-              <input name="title" maxLength={200} placeholder="Technical deep-dive" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+            <label className="text-copy">
+              <span className="mb-1 block text-body text-neutral-500">Title (optional)</span>
+              <input name="title" maxLength={200} placeholder="Technical deep-dive" className={fieldClass("md")} />
             </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">Attendees (optional)</span>
-              <input name="attendees" maxLength={500} placeholder="J. Smith (CTO), our SE" className="w-64 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+            <label className="text-copy">
+              <span className="mb-1 block text-body text-neutral-500">Attendees (optional)</span>
+              <input name="attendees" maxLength={500} placeholder="J. Smith (CTO), our SE" className={`${fieldClass("md")} w-64`} />
             </label>
           </div>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs text-neutral-500">What happened — notes or a pasted recap</span>
-            <textarea name="body" rows={3} required maxLength={8000} placeholder="Decisions, next steps, objections, who said what…" className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+          <label className="block text-copy">
+            <span className="mb-1 block text-body text-neutral-500">What happened — notes or a pasted recap</span>
+            <textarea name="body" rows={3} required maxLength={8000} placeholder="Decisions, next steps, objections, who said what…" className={`${fieldClass("md", { multiline: true })} w-full`} />
           </label>
-          <button className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+          <button className={buttonClass("primary", "md")}>
             Record meeting
           </button>
         </form>
@@ -440,11 +442,11 @@ export default async function AccountPage({
       {scores.length > 0 && (
         <Card className="mb-6">
           <div className="mb-3 flex items-baseline gap-3">
-            <span className="tnum text-4xl font-semibold">{Number(scores[0].score).toFixed(0)}</span>
+            <span className="tnum text-hero font-semibold">{Number(scores[0].score).toFixed(0)}</span>
             <BandBadge band={scores[0].band} />
-            <span className="text-sm text-neutral-500">{scores[0].slug}</span>
+            <span className="text-copy text-neutral-500">{scores[0].slug}</span>
             {scores[0].positive_points != null && (
-              <span className="ml-auto text-sm text-neutral-500">
+              <span className="ml-auto text-copy text-neutral-500">
                 <span className="text-positive dark:text-green-400">
                   +{Number(scores[0].positive_points).toFixed(0)}
                 </span>{" "}
@@ -462,9 +464,9 @@ export default async function AccountPage({
               {dimensions.map((d) => (
                 <div
                   key={d.dimension}
-                  className="rounded-lg bg-neutral-50 px-2 py-1.5 text-center dark:bg-neutral-950"
+                  className="rounded-inner bg-neutral-50 px-2 py-1.5 text-center dark:bg-neutral-950"
                 >
-                  <div className="tnum text-base font-semibold">{Number(d.value).toFixed(0)}</div>
+                  <div className="tnum text-title font-semibold">{Number(d.value).toFixed(0)}</div>
                   <div className="text-micro leading-tight text-neutral-500">
                     {d.dimension.replace(/_/g, " ")}
                   </div>
@@ -474,7 +476,7 @@ export default async function AccountPage({
           )}
 
           {scores[0].changes?.delta != null && (
-            <p className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950 dark:text-sky-200">
+            <p className="mb-3 rounded-inner bg-sky-50 px-3 py-2 text-copy text-sky-900 dark:bg-sky-950 dark:text-sky-200">
               <strong>What changed:</strong>{" "}
               {Number(scores[0].changes.delta) >= 0 ? "+" : ""}
               {scores[0].changes.delta} since prior evaluation
@@ -483,12 +485,12 @@ export default async function AccountPage({
             </p>
           )}
 
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
             Why now
           </h2>
           {features.map((f) => (
             <div key={f.feature} className="mb-3 last:mb-0">
-              <p className="text-sm font-medium">
+              <p className="text-copy font-medium">
                 <span
                   className={
                     Number(f.contribution) >= 0
@@ -520,27 +522,27 @@ export default async function AccountPage({
 
       <Card className="mb-6">
         <div className="mb-3 flex items-center gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
             Data completeness
           </h2>
-          <span className="text-xs text-neutral-400">how thoroughly researched — not propensity</span>
+          <span className="text-body text-neutral-400">how thoroughly researched — not propensity</span>
         </div>
         <CompletenessGrid byCategory={intel.completeness.byCategory} overall={intel.completeness.overall} />
         {intel.completeness.gaps.length > 0 && (
-          <p className="mt-3 text-xs text-neutral-500">
+          <p className="mt-3 text-body text-neutral-500">
             Research gaps: {intel.completeness.gaps.join(", ")}. A gap is missing data, not low intent.
           </p>
         )}
         {intel.coverage.length > 0 && (
           <div className="mt-4 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            <h3 className="mb-2 text-body font-semibold uppercase tracking-wide text-neutral-500">
               Provider coverage
             </h3>
             <div className="flex flex-wrap gap-1.5">
               {intel.coverage.map((c) => (
                 <span
                   key={c.providerId}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 px-2 py-1 text-xs dark:border-neutral-800"
+                  className="inline-flex items-center gap-1.5 rounded-control border border-neutral-200 px-2 py-1 text-body dark:border-neutral-800"
                   title={`${c.runs} run(s), ${c.succeeded} succeeded, ${c.evidence} evidence${
                     c.lastRunAt ? ` · last ${new Date(c.lastRunAt).toISOString().slice(0, 10)}` : ""
                   }`}
@@ -558,26 +560,26 @@ export default async function AccountPage({
       {intel.evidence.length > 0 && (
         <Card className="mb-6">
           <div className="mb-3 flex items-center gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
               Evidence
             </h2>
-            <span className="text-xs text-neutral-400">
+            <span className="text-body text-neutral-400">
               {intel.counts.verified} verified · {intel.counts.quarantined} quarantined ·{" "}
               {intel.counts.rejected} rejected
             </span>
           </div>
           <div className="max-h-96 space-y-1.5 overflow-y-auto scroll-thin pr-1">
             {intel.evidence.map((e, i) => (
-              <div key={i} className="flex items-start gap-2 text-sm">
+              <div key={i} className="flex items-start gap-2 text-copy">
                 <StatusBadge status={e.status} />
                 <span className="flex-1 leading-relaxed text-neutral-700 dark:text-neutral-300">
                   {e.stance === "refutes" && (
-                    <span className="mr-1 rounded bg-red-50 px-1 text-micro font-semibold uppercase text-red-700 dark:bg-red-950 dark:text-red-300">
+                    <span className="mr-1 rounded-inner bg-red-50 px-1 text-micro font-semibold uppercase text-red-700 dark:bg-red-950 dark:text-red-300">
                       refutes
                     </span>
                   )}
                   {e.claim}
-                  <span className="ml-1 text-xs text-neutral-400">
+                  <span className="ml-1 text-body text-neutral-400">
                     ({e.providerId ?? e.sourceType ?? "n/a"}
                     {e.confidence != null && `, conf ${e.confidence.toFixed(2)}`}
                     {e.firstParty ? ", first-party" : ""})
@@ -591,7 +593,7 @@ export default async function AccountPage({
 
       {partnerFits.length > 0 && (
         <Card className="mb-6">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
             Pursuit team
           </h2>
           <div className="space-y-3">
@@ -602,37 +604,37 @@ export default async function AccountPage({
                   key={f.partner_id}
                   className={
                     isRouted
-                      ? "rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-950"
+                      ? "rounded-inner border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-950"
                       : "px-3"
                   }
                 >
                   <div className="flex items-baseline gap-2">
-                    <span className="tnum text-lg font-semibold">{Number(f.score).toFixed(0)}</span>
+                    <span className="tnum text-section font-semibold">{Number(f.score).toFixed(0)}</span>
                     <BandBadge band={f.band} />
                     <span className="font-medium">{f.partner}</span>
-                    <span className="text-xs uppercase tracking-wide text-neutral-400">
+                    <span className="text-body uppercase tracking-wide text-neutral-400">
                       {f.partner_type?.replace(/_/g, " ")}
                     </span>
                     {isRouted && (
-                      <span className="ml-auto text-xs font-semibold uppercase text-positive dark:text-green-400">
+                      <span className="ml-auto text-body font-semibold uppercase text-positive dark:text-green-400">
                         {team?.status === "accepted" ? "Accepted" : "Routed"}
                       </span>
                     )}
                   </div>
                   {f.seller && (
-                    <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+                    <p className="mt-1 text-copy text-neutral-600 dark:text-neutral-400">
                       Seller: <span className="font-medium">{f.seller}</span> (relationship{" "}
                       {Number(f.seller_strength).toFixed(0)}/100)
                     </p>
                   )}
-                  <p className="mt-1 text-xs text-neutral-500">
+                  <p className="mt-1 text-body text-neutral-500">
                     {(fitFeatures.get(f.fit_id) ?? [])
                       .map((ff) => ff.detail)
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
                   {isRouted && team?.reason && (
-                    <p className="mt-1 text-xs text-neutral-500">
+                    <p className="mt-1 text-body text-neutral-500">
                       <span className="font-medium">Routing:</span> {team.reason}
                     </p>
                   )}
@@ -641,7 +643,7 @@ export default async function AccountPage({
                       <form action={setTeamStatusAction.bind(null, team.id, "accepted")}>
                         <button
                           type="submit"
-                          className="rounded-md bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800"
+                          className={buttonClass("primary", "sm")}
                         >
                           Accept routing
                         </button>
@@ -649,7 +651,7 @@ export default async function AccountPage({
                       <form action={setTeamStatusAction.bind(null, team.id, "declined")}>
                         <button
                           type="submit"
-                          className="rounded-md px-3 py-1 text-xs font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900"
+                          className={buttonClass("primary", "sm")}
                         >
                           Decline
                         </button>
@@ -666,14 +668,14 @@ export default async function AccountPage({
       {motions.length > 0 && (
         <Card className="mb-6">
           <div className="mb-2 flex items-center gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
               Revenue motion
             </h2>
             <StatusBadge status={motions[0].status} />
-            <span className="text-xs text-neutral-400">confidence: {motions[0].confidence}</span>
+            <span className="text-body text-neutral-400">confidence: {motions[0].confidence}</span>
           </div>
           <p className="mb-3 leading-relaxed">{motions[0].thesis}</p>
-          <dl className="space-y-1 text-sm text-neutral-600 dark:text-neutral-400">
+          <dl className="space-y-1 text-copy text-neutral-600 dark:text-neutral-400">
             <div>
               <dt className="inline font-medium text-neutral-800 dark:text-neutral-200">Trigger: </dt>
               <dd className="inline">{motions[0].trigger_summary}</dd>
@@ -691,15 +693,15 @@ export default async function AccountPage({
           </dl>
           {assets.length > 0 && (
             <div className="mt-4 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              <h3 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
                 Campaign assets
               </h3>
               {assets.map((a) => (
                 <details key={a.asset_type} className="mb-2">
-                  <summary className="cursor-pointer text-sm font-medium hover:underline">
+                  <summary className="cursor-pointer text-copy font-medium hover:underline">
                     {a.title}
                   </summary>
-                  <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-neutral-50 p-3 font-sans text-sm leading-relaxed dark:bg-neutral-950">
+                  <pre className="mt-2 whitespace-pre-wrap rounded-inner bg-neutral-50 p-3 font-sans text-copy leading-relaxed dark:bg-neutral-950">
                     {a.content}
                   </pre>
                 </details>
@@ -711,14 +713,14 @@ export default async function AccountPage({
 
       {events.length > 0 && (
         <Card>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
             Timeline
           </h2>
           <ul className="space-y-1.5">
             {events.map((e, i) => (
-              <li key={i} className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+              <li key={i} className="flex items-center gap-2 text-copy text-neutral-600 dark:text-neutral-400">
                 <span className="font-medium">{e.event_type.replace(/_/g, " ").toLowerCase()}</span>
-                <span className="ml-auto text-xs text-neutral-400">
+                <span className="ml-auto text-body text-neutral-400">
                   {new Date(e.occurred_at).toISOString().slice(0, 10)}
                 </span>
               </li>

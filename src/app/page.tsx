@@ -15,13 +15,14 @@ import type { TodayQueueView } from "@/lib/pursuits/read-models/types";
 import { getScopeContext, scopeParamFrom } from "@/lib/scope/server";
 import { getAccountIntel } from "@/lib/accounts/intel";
 import { IntelDrawer } from "@/components/intel/intel-drawer";
+import { formatMoney } from "@/lib/format/money";
 
 export const dynamic = "force-dynamic";
 
 const TODAY_TOP_DECISIONS = 6;
 const TODAY_VIEWALL_CAP = 50;   // scale guard (R5): view-all never becomes an unbounded card stack
 const TODAY_TOP_CONDITIONS = 4;
-const usdShort = (n: number) => (n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${Math.round(n)}`);
+const usdShort = (n: number) => formatMoney(n);
 
 /** Preserve the query (scope etc.) while dropping the `today` view-all flag. */
 function cleanQuery(sp: Record<string, string | string[] | undefined>): Record<string, string> {
@@ -253,7 +254,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       {divergences.length > 0 && (
         <Card tone="amber" className="mb-6">
           <div className="mb-2.5 flex items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
               Where your systems disagree
             </h2>
             {!viewAll && allDivergences.length > divergences.length ? (
@@ -264,7 +265,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           </div>
           <ul className="space-y-px">
             {divergences.map((d, i) => (
-              <li key={i} className="flex items-start gap-2.5 rounded-control px-2 py-1.5 text-sm transition-colors hover:bg-[var(--surface-inset)]">
+              <li key={i} className="flex items-start gap-2.5 rounded-control px-2 py-1.5 text-copy transition-colors hover:bg-[var(--surface-inset)]">
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: d.kind === "joint_vs_pipeline" ? "var(--color-accent-violet)" : "var(--color-accent-attention)" }} aria-hidden />
                 <span className="min-w-0 flex-1">
                   <Link href={drawerHref(d.companyId)} scroll={false} className="font-semibold hover:underline" title="Open account intelligence">{d.account}</Link>
@@ -282,7 +283,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           is dominated by what needs acting on, not empty counters. */}
       <div className={pursuitQueue && pursuitQueue.items.length > 0 ? "mb-6" : "mb-6"}>
         {pursuitQueue && pursuitQueue.items.length > 0 && (
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">At a glance</h2>
+          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">At a glance</h2>
         )}
         <div className={`flex flex-wrap gap-2 ${pursuitQueue && pursuitQueue.items.length > 0 ? "scale-[0.92] origin-left opacity-75" : ""}`}>
           <CountChip label="Awaiting approval" value={c.draft_motions} href="/motions" tone={Number(c.draft_motions) > 0 ? "amber" : "neutral"} />
@@ -294,12 +295,12 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
       {nextActions.length > 0 && (
         <Card className="mb-6">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
             Next best actions
           </h2>
           <ol className="space-y-2">
             {nextActions.map((a, i) => (
-              <li key={i} className="flex items-baseline gap-3 text-sm">
+              <li key={i} className="flex items-baseline gap-3 text-copy">
                 <span className="tnum w-5 text-right font-semibold text-neutral-400">{i + 1}</span>
                 <span>
                   <Link href={a.href} className="font-medium hover:underline">
@@ -315,17 +316,17 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
             Pending approvals
           </h2>
           {drafts.length === 0 ? (
-            <p className="text-sm text-neutral-500">
+            <p className="text-copy text-neutral-500">
               All clear — new motions appear here when the designer drafts them.
             </p>
           ) : (
             <ul className="space-y-3">
               {drafts.map((m) => (
-                <li key={m.id} className="text-sm">
+                <li key={m.id} className="text-copy">
                   <Link href="/motions" className="font-medium hover:underline">
                     {m.legal_name}
                   </Link>{" "}
@@ -340,15 +341,15 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         </Card>
 
         <Card>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
             Top opportunities
           </h2>
           {topRanked.length === 0 ? (
-            <p className="text-sm text-neutral-500">Run the scoring pipeline to populate.</p>
+            <p className="text-copy text-neutral-500">Run the scoring pipeline to populate.</p>
           ) : (
             <ul className="space-y-2">
               {topRanked.map((r) => (
-                <li key={r.company_id} className="flex items-center justify-between text-sm">
+                <li key={r.company_id} className="flex items-center justify-between text-copy">
                   <Link href={drawerHref(r.company_id)} scroll={false} className="font-medium hover:underline" title="Open account intelligence">
                     {r.legal_name}
                   </Link>
@@ -364,18 +365,18 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       </div>
 
       <Card className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+        <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">
           Recent activity
         </h2>
         {activity.length === 0 ? (
-          <p className="text-sm text-neutral-500">Outcome events land here.</p>
+          <p className="text-copy text-neutral-500">Outcome events land here.</p>
         ) : (
           <ul className="space-y-1.5">
             {activity.map((a, i) => (
-              <li key={i} className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+              <li key={i} className="flex items-center gap-2 text-copy text-neutral-600 dark:text-neutral-400">
                 <StatusBadge status={a.event_type.toLowerCase().replace(/_/g, " ")} />
                 <span>{a.legal_name}</span>
-                <span className="ml-auto text-xs text-neutral-400">
+                <span className="ml-auto text-body text-neutral-400">
                   {new Date(a.occurred_at).toISOString().slice(0, 10)}
                 </span>
               </li>

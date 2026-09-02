@@ -33,7 +33,7 @@ export function MotionFunnelCommand({ funnels, qs }: { funnels: MotionFunnelView
           <div key={f.hypothesis.taxonomyNodeId} className="pos-card rounded-card p-4">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <h2 className="text-title font-extrabold tracking-[-0.01em]">{f.hypothesis.name}</h2>
-              <span className="text-xs text-neutral-400">{f.hypothesis.slug}</span>
+              <span className="text-body text-neutral-400">{f.hypothesis.slug}</span>
               {f.addressableUsd != null && (
                 <span className="ml-auto text-body tnum">
                   <b>{usd(f.addressableUsd)}</b> <span className="text-neutral-500">addressable</span>
@@ -248,7 +248,7 @@ export function MotionConstraintDrawer({ funnel, stage, closeHref }: { funnel: M
             <div className="text-micro font-bold uppercase tracking-[0.08em] text-neutral-400">{funnel.hypothesis.name} · constraint decomposition</div>
             <h2 className="mt-0.5 text-title font-extrabold leading-tight">{title}</h2>
           </div>
-          <Link href={closeHref} scroll={false} aria-label="Close" className="rounded-control px-2 py-0.5 text-sm text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200" style={{ boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}>✕</Link>
+          <Link href={closeHref} scroll={false} aria-label="Close" className="rounded-control px-2 py-0.5 text-copy text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200" style={{ boxShadow: "inset 0 0 0 1px var(--border-subtle)" }}>✕</Link>
         </div>
         <p className="mb-3 text-label text-neutral-400">Ranked by expected value. The primary blocker leads; expand for the full canonical decomposition. UNKNOWN stays unknown — nothing is inferred.</p>
 

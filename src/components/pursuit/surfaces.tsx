@@ -1,13 +1,20 @@
 import type { PursuitDetailView, WhyNowView, WhyNowComponent, FactItem, PursuitTeamView, PursuitTimelineView } from "@/lib/pursuits/read-models/types";
 import { MetricCell, BandPill, TrustTag, SyntheticBadge, TeamStatusBadge, UnknownState } from "./parts";
 import { humanizeText } from "./vocab";
+import { formatMoney } from "@/lib/format/money";
 
-/** Money in a compact, readable form; unknown stays unknown. */
+/**
+ * Money in a compact, readable form; unknown stays unknown.
+ *
+ * Wave 1 §2: this used `Intl` compact notation at one fraction digit, which is
+ * a SECOND rounding policy. The visible cost was on the Pursuit itself — the
+ * hero read "$1.3M" while the value case two panels down read "$1.25M" for the
+ * same stored amount, so the page appeared to disagree with itself about what
+ * the deal was worth. Now a call-shape adapter over the one formatter: this
+ * keeps the `(amount, currencyCode)` signature its call sites use.
+ */
 export function money(n: number | null, cur: string | null): string {
-  if (n == null) return "—";
-  const c = cur || "USD";
-  if (Math.abs(n) >= 1000) return new Intl.NumberFormat("en-US", { style: "currency", currency: c, notation: "compact", maximumFractionDigits: 1 }).format(n);
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: c, maximumFractionDigits: 0 }).format(n);
+  return formatMoney(n, { currency: cur });
 }
 
 /**
@@ -170,7 +177,7 @@ export function MaterialChangeTimeline({ timeline }: { timeline: PursuitTimeline
             <div>
               <div className="flex flex-wrap items-center gap-2 text-copy font-semibold">
                 {humanizeText(e.label)}
-                {high && <span className="rounded px-1.5 py-0.5 text-micro font-bold uppercase" style={{ color: "var(--color-accent-risk)", background: "color-mix(in srgb, var(--color-accent-risk) 12%, transparent)" }}>{e.materiality}</span>}
+                {high && <span className="rounded-inner px-1.5 py-0.5 text-micro font-bold uppercase" style={{ color: "var(--color-accent-risk)", background: "color-mix(in srgb, var(--color-accent-risk) 12%, transparent)" }}>{e.materiality}</span>}
                 {e.synthetic && <SyntheticBadge />}
               </div>
               <div className="tnum mt-0.5 text-label text-neutral-400">{new Date(e.at).toLocaleString()} · {e.changeType.replace(/_/g, " ").toLowerCase()}</div>

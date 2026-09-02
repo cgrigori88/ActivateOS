@@ -8,6 +8,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { ScopeSelector } from "@/components/scope/scope-selector";
 import { ScopeChip } from "@/components/scope/scope-chip";
 import type { ScopeContext, ScopeOption } from "@/lib/scope/scope";
+import { buttonClass } from "@/components/ui";
 
 /**
  * Application shell: grouped left sidebar on desktop, horizontal nav on
@@ -516,7 +517,7 @@ export function Shell({
           </svg>
           {!collapsed && <span className="truncate">Search</span>}
           {!collapsed && (
-            <kbd className="ml-auto rounded-md border border-white/15 px-1.5 py-0.5 font-mono text-micro leading-none text-rail-ink-soft/80">
+            <kbd className="ml-auto rounded-control border border-white/15 px-1.5 py-0.5 font-mono text-micro leading-none text-rail-ink-soft/80">
               ⌘K
             </kbd>
           )}
@@ -552,7 +553,7 @@ export function Shell({
               <span className="block truncate text-body font-semibold text-rail-ink">{user ?? "Operator"}</span>
               {user && signOut ? (
                 <form action={signOut}>
-                  <button className="block truncate text-label text-rail-ink-soft hover:text-rail-ink hover:underline">Sign out</button>
+                  <button className={buttonClass("subtle", "md")}>Sign out</button>
                 </form>
               ) : (
                 <span className="block truncate text-label text-rail-ink-soft">demo access</span>

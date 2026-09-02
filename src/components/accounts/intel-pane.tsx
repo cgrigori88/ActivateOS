@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { AccountIntel } from "@/lib/accounts/intel";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * Selected-account intelligence pane (Phase 3c-2). Answers where to hunt / why now /
@@ -25,8 +26,8 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
     </div>
   );
 }
-const money = (n: number | null) => (n == null ? "—" : n >= 1000 ? `$${(n / 1_000_000).toFixed(2)}M` : `$${n}`);
-const k = (n: number) => `$${Math.round(n / 1000)}k`;
+const money = (n: number | null) => formatMoney(n);
+const k = (n: number) => `${formatMoney(n)}`;
 
 export function AccountIntelPane({ intel, closeHref, flat }: { intel: AccountIntel; closeHref: string; flat?: boolean }) {
   const t = intel.throughWhom;

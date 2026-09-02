@@ -57,7 +57,7 @@ export function TodayDecisionCard({ item, drawerBase }: { item: DecisionItem; dr
     >
       <div className="flex flex-none items-center gap-2">
         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: hue }} aria-hidden />
-        <span className="inline-block rounded-md px-2 py-1 text-center text-micro font-bold uppercase leading-tight tracking-[0.03em]" style={{ color: hue, background: `color-mix(in srgb, ${hue} 12%, transparent)`, width: 92 }}>
+        <span className="inline-block rounded-control px-2 py-1 text-center text-micro font-bold uppercase leading-tight tracking-[0.03em]" style={{ color: hue, background: `color-mix(in srgb, ${hue} 12%, transparent)`, width: 92 }}>
           {CLASS_WORD[item.decisionClass]}
         </span>
       </div>

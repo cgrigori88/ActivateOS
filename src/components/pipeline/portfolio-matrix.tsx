@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CONDITION_LABEL } from "@/lib/opportunities/condition";
 import type { Portfolio, RowDim, ColDim } from "@/lib/opportunities/portfolio";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * Pipeline Portfolio matrix (scale-disclosure §3.2 / R4). An ecosystem-native pivot: weighted $ +
@@ -13,7 +14,7 @@ const ROW_LABEL: Record<RowDim, string> = { partner: "Partner", vendor: "Vendor"
 const COL_LABEL: Record<ColDim, string> = { condition: "Condition", stage: "Stage", partner: "Partner" };
 const colKeyLabel = (colDim: ColDim, key: string): string =>
   colDim === "condition" ? (CONDITION_LABEL[key as keyof typeof CONDITION_LABEL] ?? key) : key.replace(/_/g, " ");
-const k = (n: number) => (n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : n >= 1000 ? `$${Math.round(n / 1000)}k` : n ? `$${Math.round(n)}` : "—");
+const k = (n: number) => (n ? formatMoney(n) : "—");
 
 export function PortfolioMatrix({
   portfolio, rows, cols, basePath, scopeToken,
@@ -64,7 +65,7 @@ export function PortfolioMatrix({
       </div>
 
       {portfolio.rows.length === 0 ? (
-        <p className="rounded-card p-4 text-sm text-neutral-500" style={{ background: "var(--surface-inset)" }}>No open opportunities in this scope.</p>
+        <p className="rounded-card p-4 text-copy text-neutral-500" style={{ background: "var(--surface-inset)" }}>No open opportunities in this scope.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border scroll-thin" style={{ borderColor: "var(--border-subtle)" }}>
           <table className="w-full border-collapse text-copy">
@@ -92,7 +93,7 @@ export function PortfolioMatrix({
                     ) : <span className="text-neutral-300 dark:text-neutral-600">—</span>;
                     return (
                       <td key={c} className="px-3 py-1.5 text-right" style={cell && cell.weighted > 0 ? { background: cellBg(cell.weighted) } : undefined}>
-                        {href ? <Link href={href} className="inline-block rounded px-1 hover:underline">{inner}</Link> : inner}
+                        {href ? <Link href={href} className="inline-block rounded-inner px-1 hover:underline">{inner}</Link> : inner}
                       </td>
                     );
                   })}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * The shared constraint presentation language (UX normalization pass). ONE way to state a
@@ -27,7 +28,7 @@ export const severityHue = (s: ConstraintView["severity"]) =>
   s === "HARD" ? "var(--color-accent-risk)" : s === "UNKNOWN" ? "var(--color-neutral-500, #737373)" : "var(--color-accent-attention)";
 
 export const usd = (n: number | null | undefined) =>
-  n == null || n === 0 ? null : n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : `$${Math.round(n / 1000)}k`;
+  n == null || n === 0 ? null : formatMoney(n);
 
 /** One constraint as a single readable line: dot · blocked-by (· why) (· exposure) (· action). */
 export function ConstraintLine({ c, dense }: { c: ConstraintView; dense?: boolean }) {

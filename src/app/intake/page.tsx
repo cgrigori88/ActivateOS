@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
-import { Card, PageHeader, StatusBadge } from "@/components/ui";
+import { Card, PageHeader, StatusBadge, fieldClass } from "@/components/ui";
 import { analyzeUploadAction } from "./actions";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -76,41 +77,41 @@ export default async function IntakePage({
       />
 
       {sp.notice && (
-        <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+        <div className="mb-4 rounded-inner border border-green-300 bg-green-50 px-4 py-2.5 text-copy text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
           {sp.notice}
         </div>
       )}
 
       {/* Upload → analyze → mapping review */}
       <Card className="mb-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Upload a file</h2>
+        <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">Upload a file</h2>
         <form action={analyzeUploadAction} className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="mb-1 block text-xs text-neutral-500">CSV file — any columns, any naming</span>
-            <input type="file" name="file" accept=".csv,text/csv,text/plain" required className="text-sm" />
+          <label className="text-copy">
+            <span className="mb-1 block text-body text-neutral-500">CSV file — any columns, any naming</span>
+            <input type="file" name="file" accept=".csv,text/csv,text/plain" required className="text-copy" />
           </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-xs text-neutral-500">What is this file?</span>
-            <select name="kind" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+          <label className="text-copy">
+            <span className="mb-1 block text-body text-neutral-500">What is this file?</span>
+            <select name="kind" className={fieldClass("md")}>
               <option value="book">Partner book / account list</option>
               <option value="crm">CRM export (opportunities)</option>
               <option value="enrichment">Enrichment export (HG, D&amp;B, Gainsight…)</option>
             </select>
           </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-xs text-neutral-500">Source name (enrichment only)</span>
+          <label className="text-copy">
+            <span className="mb-1 block text-body text-neutral-500">Source name (enrichment only)</span>
             <input
               name="sourceLabel"
               maxLength={80}
               placeholder="HG Insights"
-              className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+              className={fieldClass("md")}
             />
           </label>
-          <button type="submit" className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">
+          <button type="submit" className={buttonClass("primary", "md")}>
             Analyze columns
           </button>
         </form>
-        <p className="mt-2 text-xs text-neutral-500">
+        <p className="mt-2 text-body text-neutral-500">
           No fixed template needed. The file is profiled inside your tenant (no third party sees it), the columns are
           auto-matched to platform fields, and you confirm the mapping before anything is imported. A partner book
           lands as a reviewable list; a CRM export lands as stage/amount snapshots compared against your live
@@ -120,9 +121,9 @@ export default async function IntakePage({
       </Card>
 
       {/* Per-partner cards */}
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Last ingested per partner</h2>
+      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Last ingested per partner</h2>
       {partners.length === 0 ? (
-        <p className="mb-6 text-sm text-neutral-500">No partner uploads yet — upload a CSV above to get started.</p>
+        <p className="mb-6 text-copy text-neutral-500">No partner uploads yet — upload a CSV above to get started.</p>
       ) : (
         <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {partners.map((p) => {
@@ -134,23 +135,23 @@ export default async function IntakePage({
               <Card key={p.id}>
                 <div className="mb-2 flex items-center gap-2">
                   <span className="font-semibold">{p.name}</span>
-                  <span className="rounded px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 ring-1 ring-inset ring-neutral-300/50 dark:ring-neutral-700">
+                  <span className="rounded-inner px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 ring-1 ring-inset ring-neutral-300/50 dark:ring-neutral-700">
                     {(p.partner_type ?? "partner").replace(/_/g, " ")}
                   </span>
-                  <span className={`rounded px-1.5 py-0.5 text-micro font-semibold ${f.tone}`}>{f.label}</span>
-                  <span className="ml-auto text-xs text-neutral-400">{p.batches} batch{Number(p.batches) === 1 ? "" : "es"}</span>
+                  <span className={`rounded-inner px-1.5 py-0.5 text-micro font-semibold ${f.tone}`}>{f.label}</span>
+                  <span className="ml-auto text-body text-neutral-400">{p.batches} batch{Number(p.batches) === 1 ? "" : "es"}</span>
                 </div>
                 <div className="flex items-baseline gap-6">
                   <div>
                     <div className="pos-metric-fig">{rowsTotal.toLocaleString()}</div>
-                    <div className="text-xs text-neutral-500">rows · {Number(p.accounts).toLocaleString()} accounts</div>
+                    <div className="text-body text-neutral-500">rows · {Number(p.accounts).toLocaleString()} accounts</div>
                   </div>
                   <div>
                     <div className="pos-metric-fig">{rate}%</div>
-                    <div className="text-xs text-neutral-500">match rate</div>
+                    <div className="text-body text-neutral-500">match rate</div>
                   </div>
                 </div>
-                <div className="mt-3 flex items-center justify-between text-xs text-neutral-500">
+                <div className="mt-3 flex items-center justify-between text-body text-neutral-500">
                   <span>{p.last_import ? `Imported ${new Date(p.last_import).toISOString().slice(0, 10)}` : "—"}</span>
                   <Link href={`/mapping?partner=${p.id}`} className="text-accent hover:underline dark:text-blue-400">
                     View mapping
@@ -163,9 +164,9 @@ export default async function IntakePage({
       )}
 
       {/* Runs log */}
-      <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Intake runs</h2>
+      <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Intake runs</h2>
       {runs.length === 0 ? (
-        <p className="text-sm text-neutral-500">No runs yet.</p>
+        <p className="text-copy text-neutral-500">No runs yet.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
           <table className="data-table">
@@ -210,7 +211,7 @@ export default async function IntakePage({
                   </td>
                   <td className="tnum text-right">{Number(r.row_count).toLocaleString()}</td>
                   <td className="tnum text-right text-neutral-500">{Number(r.matched_count).toLocaleString()}</td>
-                  <td className="text-xs text-neutral-400">{new Date(r.created_at).toISOString().slice(0, 10)}</td>
+                  <td className="text-body text-neutral-400">{new Date(r.created_at).toISOString().slice(0, 10)}</td>
                 </tr>
               ))}
             </tbody>

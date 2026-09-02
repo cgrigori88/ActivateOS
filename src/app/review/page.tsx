@@ -3,6 +3,7 @@ import { Bento, Card, PageHeader } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import { withTenant } from "@/lib/db/tenant";
 import { resolveReviewAction } from "./actions";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -142,8 +143,8 @@ export default async function ReviewPage({
         <QuerySelect param="source" value={sp.source ?? "all"} label="Source" options={[{ value: "all", label: "Any source" }, ...sourceOptions.map((s) => ({ value: s, label: s }))]} />
         {sources.length > 0 && (
           <details className="relative ml-auto">
-            <summary className="cursor-pointer text-xs text-neutral-500 hover:underline">Source trust</summary>
-            <div className="absolute right-0 z-10 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 text-xs shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+            <summary className="cursor-pointer text-body text-neutral-500 hover:underline">Source trust</summary>
+            <div className="absolute right-0 z-10 mt-1 w-72 rounded-inner border border-neutral-200 bg-white p-3 text-body shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
               {sources.map((s) => (
                 <div key={s.name} className="flex justify-between py-0.5">
                   <span className="text-neutral-600 dark:text-neutral-300">{s.name}</span>
@@ -157,7 +158,7 @@ export default async function ReviewPage({
 
       {items.length === 0 ? (
         <Card>
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             {all.length === 0
               ? "Review queue is empty. Items arrive as research runs — sampled by source trust, plus anything the cross-checker disputed."
               : "Nothing matches this filter."}
@@ -169,13 +170,13 @@ export default async function ReviewPage({
             <Card key={g.companyId ?? g.name} className="p-0">
               <details open={grouped.length <= 3}>
                 <summary className="flex cursor-pointer items-center gap-2 px-4 py-3">
-                  {byPartner && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">partner</span>}
+                  {byPartner && <span className="rounded-inner bg-neutral-100 px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">partner</span>}
                   <span className="font-semibold">{g.name}</span>
-                  {g.companyId && <Link href={`/accounts/${g.companyId}`} className="text-xs text-accent hover:underline dark:text-blue-400">account →</Link>}
-                  <span className="tnum text-xs text-neutral-400">{g.items.length} to review</span>
+                  {g.companyId && <Link href={`/accounts/${g.companyId}`} className="text-body text-accent hover:underline dark:text-blue-400">account →</Link>}
+                  <span className="tnum text-body text-neutral-400">{g.items.length} to review</span>
                   <span className="ml-auto flex gap-1">
                     {[...new Set(g.items.map((i) => i.reason))].map((r) => (
-                      <span key={r} className={`rounded px-1.5 py-0.5 text-micro font-medium ${REASON_TONE[r]}`}>{REASON_LABELS[r] ?? r}</span>
+                      <span key={r} className={`rounded-inner px-1.5 py-0.5 text-micro font-medium ${REASON_TONE[r]}`}>{REASON_LABELS[r] ?? r}</span>
                     ))}
                   </span>
                 </summary>
@@ -184,30 +185,30 @@ export default async function ReviewPage({
                     <div key={item.id} className="px-4 py-3">
                       <div className="mb-1 flex flex-wrap items-center gap-2 text-label text-neutral-400">
                         {byPartner && item.company_id && <Link href={`/accounts/${item.company_id}`} className="font-medium text-neutral-600 hover:underline dark:text-neutral-300">{item.legal_name}</Link>}
-                        <span className={`rounded px-1.5 py-0.5 font-medium ${REASON_TONE[item.reason]}`}>{REASON_LABELS[item.reason] ?? item.reason}</span>
+                        <span className={`rounded-inner px-1.5 py-0.5 font-medium ${REASON_TONE[item.reason]}`}>{REASON_LABELS[item.reason] ?? item.reason}</span>
                         <span>{item.source_type}</span>
                         {item.computed_confidence != null && <span>· conf {Math.round(Number(item.computed_confidence) * 100)}%</span>}
                         {item.observed_at && <span>· {new Date(item.observed_at).toISOString().slice(0, 10)}</span>}
                         <span>· now {item.status}</span>
                       </div>
-                      <p className="mb-1 text-sm font-medium leading-snug">{item.claim}</p>
+                      <p className="mb-1 text-copy font-medium leading-snug">{item.claim}</p>
                       {item.raw_excerpt && item.raw_excerpt !== item.claim && (
                         <details className="mb-2">
-                          <summary className="cursor-pointer text-xs text-accent hover:underline dark:text-blue-400">Show source excerpt</summary>
-                          <blockquote className="mt-1 border-l-2 border-neutral-300 pl-3 text-sm text-neutral-600 dark:border-neutral-700 dark:text-neutral-400">
+                          <summary className="cursor-pointer text-body text-accent hover:underline dark:text-blue-400">Show source excerpt</summary>
+                          <blockquote className="mt-1 border-l-2 border-neutral-300 pl-3 text-copy text-neutral-600 dark:border-neutral-700 dark:text-neutral-400">
                             {String(item.raw_excerpt).slice(0, 800)}
                           </blockquote>
                         </details>
                       )}
                       <div className="flex gap-2">
                         <form action={resolveReviewAction.bind(null, item.id, "accurate")}>
-                          <button className="rounded-md bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800">Accurate</button>
+                          <button className={buttonClass("primary", "sm")}>Accurate</button>
                         </form>
                         <form action={resolveReviewAction.bind(null, item.id, "inaccurate")}>
-                          <button className="rounded-md px-3 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-300 hover:bg-red-50 dark:text-red-400 dark:ring-red-800 dark:hover:bg-red-950">Inaccurate</button>
+                          <button className={buttonClass("destructive", "sm")}>Inaccurate</button>
                         </form>
                         <form action={resolveReviewAction.bind(null, item.id, "unsure")}>
-                          <button className="rounded-md bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700">Unsure</button>
+                          <button className={buttonClass("primary", "sm")}>Unsure</button>
                         </form>
                       </div>
                     </div>

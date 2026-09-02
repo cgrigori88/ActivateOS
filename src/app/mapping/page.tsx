@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BandBadge, Bento, Card, PageHeader } from "@/components/ui";
+import { BandBadge, Bento, Card, PageHeader, fieldClass } from "@/components/ui";
 import {
   CATEGORIES,
   CATEGORY_LABEL,
@@ -23,6 +23,8 @@ import { alignedFieldKeys, populationFields } from "@/lib/mapping/populations";
 import { createPopulationAction, setPopulationStatusAction, targetFromCellAction, acceptPopulationAction } from "./actions";
 import { ViewSelect, PartnerSelect } from "./view-select";
 import { withTenant } from "@/lib/db/tenant";
+import { formatMoney } from "@/lib/format/money";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 // AI drafting actions invoked from this segment can run tens of seconds —
@@ -59,7 +61,7 @@ function ViewTabs({ view, pendingCount = 0 }: { view: View; pendingCount?: numbe
       {pendingCount > 0 && view !== "review" && (
         <Link
           href="/mapping?view=review"
-          className="pos-lift mt-3 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200"
+          className="pos-lift mt-3 flex items-center gap-2 rounded-inner border border-blue-200 bg-blue-50/70 px-3 py-2 text-copy text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200"
         >
           <span className="rounded-full bg-accent px-1.5 py-0.5 text-micro font-bold leading-none text-white">{pendingCount}</span>
           <span>
@@ -96,7 +98,7 @@ export default async function MappingPage({
         />
         <ViewTabs view={view} pendingCount={pendingCount} />
         {sp.notice && (
-          <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+          <div className="mb-4 rounded-inner border border-green-300 bg-green-50 px-4 py-2.5 text-copy text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
             {sp.notice}
           </div>
         )}
@@ -115,7 +117,7 @@ export default async function MappingPage({
         />
         <ViewTabs view={view} pendingCount={pendingCount} />
         {sp.notice && (
-          <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+          <div className="mb-4 rounded-inner border border-green-300 bg-green-50 px-4 py-2.5 text-copy text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
             {sp.notice}
           </div>
         )}
@@ -134,7 +136,7 @@ export default async function MappingPage({
         />
         <ViewTabs view={view} pendingCount={pendingCount} />
         {sp.notice && (
-          <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+          <div className="mb-4 rounded-inner border border-green-300 bg-green-50 px-4 py-2.5 text-copy text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
             {sp.notice}
           </div>
         )}
@@ -275,17 +277,17 @@ export default async function MappingPage({
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <ViewTabs view={view} pendingCount={pendingCount} />
-        <span className="ml-auto text-xs text-neutral-500">{rows.length} co-sell overlap(s)</span>
+        <span className="ml-auto text-body text-neutral-500">{rows.length} co-sell overlap(s)</span>
       </div>
       {sp.notice && (
-        <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2.5 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+        <div className="mb-4 rounded-inner border border-green-300 bg-green-50 px-4 py-2.5 text-copy text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
           {sp.notice}
         </div>
       )}
 
       {rows.length === 0 ? (
         <Card>
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             No co-sell overlaps yet. An overlap is an account that sits in one of your lists AND a partner&apos;s —
             build lists on both sides in the <Link href="/mapping?view=matrix" className="text-accent hover:underline dark:text-blue-400">Account mapping</Link> view.
           </p>
@@ -329,7 +331,7 @@ async function ReviewSection({ openId }: { openId?: string }) {
     if (pending.length === 0) {
       return (
         <Card>
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             No lists awaiting review. When a partner pushes an account list, it lands here for you to inspect and accept
             before it maps. (Propose one yourself in the <Link href="/mapping?view=matrix" className="text-accent hover:underline dark:text-blue-400">Account mapping</Link> lists manager.)
           </p>
@@ -360,7 +362,7 @@ async function ReviewSection({ openId }: { openId?: string }) {
                   <td className="text-neutral-500">{CATEGORY_LABEL[p.category]}</td>
                   <td className="tnum text-right">{p.members}</td>
                   <td className="text-right">
-                    <Link href={`/mapping?view=review&pop=${p.id}`} className="rounded-md bg-blue-700 px-3 py-1 text-xs font-medium text-white hover:bg-blue-800">
+                    <Link href={`/mapping?view=review&pop=${p.id}`} className="rounded-control bg-blue-700 px-3 py-1 text-body font-medium text-white hover:bg-blue-800">
                       Review fields
                     </Link>
                   </td>
@@ -393,31 +395,31 @@ function ReviewDialog({
   return (
     <Card className="border-blue-200 dark:border-blue-900">
       <div className="mb-1 flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold">Review: {pop.name}</h2>
-        <span className="text-xs text-neutral-500">from {pop.partner_name ?? "your side"} · {CATEGORY_LABEL[pop.category]} · {total} accounts</span>
-        <Link href="/mapping?view=review" className="ml-auto text-xs text-neutral-500 hover:underline">close</Link>
+        <h2 className="text-copy font-semibold">Review: {pop.name}</h2>
+        <span className="text-body text-neutral-500">from {pop.partner_name ?? "your side"} · {CATEGORY_LABEL[pop.category]} · {total} accounts</span>
+        <Link href="/mapping?view=review" className="ml-auto text-body text-neutral-500 hover:underline">close</Link>
       </div>
-      <p className="mb-3 text-xs text-neutral-500">
+      <p className="mb-3 text-body text-neutral-500">
         {fields.length} field(s) detected · <span className="font-medium text-positive dark:text-green-400">{alignedCount} align to yours</span>. Choose which to carry into the mapped matrix, then accept.
       </p>
 
       <form action={acceptPopulationAction.bind(null, pop.id)}>
-        <div className="mb-3 overflow-x-auto rounded-lg border border-neutral-200 scroll-thin dark:border-neutral-800">
+        <div className="mb-3 overflow-x-auto rounded-inner border border-neutral-200 scroll-thin dark:border-neutral-800">
           <table className="data-table">
             <thead>
               <tr><th className="w-8"></th><th>Field</th><th>Aligns?</th><th className="text-right">Present</th><th>Sample</th></tr>
             </thead>
             <tbody>
               {fields.length === 0 ? (
-                <tr><td colSpan={5} className="text-sm text-neutral-400">No extra fields on this list — accounts will map on company identity alone.</td></tr>
+                <tr><td colSpan={5} className="text-copy text-neutral-400">No extra fields on this list — accounts will map on company identity alone.</td></tr>
               ) : fields.map((f) => (
                 <tr key={f.key}>
                   <td><input type="checkbox" name="fields" value={f.key} defaultChecked className="h-4 w-4" /></td>
                   <td className="font-medium capitalize">{f.key.replace(/_/g, " ")}</td>
                   <td>
                     {f.aligned
-                      ? <span className="rounded bg-green-100 px-1.5 py-0.5 text-micro font-medium text-positive dark:bg-green-950 dark:text-green-300">aligned</span>
-                      : <span className="rounded bg-amber-100 px-1.5 py-0.5 text-micro font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">new field</span>}
+                      ? <span className="rounded-inner bg-green-100 px-1.5 py-0.5 text-micro font-medium text-positive dark:bg-green-950 dark:text-green-300">aligned</span>
+                      : <span className="rounded-inner bg-amber-100 px-1.5 py-0.5 text-micro font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">new field</span>}
                   </td>
                   <td className="tnum text-right text-neutral-500">{Math.round((f.present / Math.max(total, 1)) * 100)}%</td>
                   <td className="text-neutral-500">{f.sample ?? "—"}</td>
@@ -429,13 +431,13 @@ function ReviewDialog({
 
         {sample.length > 0 && (
           <details className="mb-3">
-            <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
+            <summary className="cursor-pointer text-body font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
               Preview accounts — showing {sample.length} of {total.toLocaleString()}
             </summary>
             {/* A real table, not prose: fields become columns (first six; the field
                 list above is the full inventory), rows scroll. Built to be read
                 the same at 12 accounts or 12,000 — the page is the sample. */}
-            <div className="mt-2 max-h-80 overflow-auto rounded-lg border border-neutral-200 scroll-thin dark:border-neutral-800">
+            <div className="mt-2 max-h-80 overflow-auto rounded-inner border border-neutral-200 scroll-thin dark:border-neutral-800">
               <table className="data-table">
                 <thead>
                   <tr>
@@ -469,12 +471,12 @@ function ReviewDialog({
         )}
 
         <div className="flex items-center gap-3">
-          <button className="rounded-md bg-green-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-800">Accept &amp; map</button>
+          <button className={buttonClass("primary", "md")}>Accept &amp; map</button>
           <span className="text-label text-neutral-400">Reviewed in-app — nothing leaves the system.</span>
         </div>
       </form>
       <form action={setPopulationStatusAction.bind(null, pop.id, "rejected")} className="mt-2">
-        <button className="text-xs font-medium text-red-700 hover:underline dark:text-red-400">Reject list</button>
+        <button className={buttonClass("subtle", "md")}>Reject list</button>
       </form>
     </Card>
   );
@@ -486,7 +488,7 @@ async function RecommendSection() {
     if (accounts.length === 0) {
       return (
         <Card>
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             No cross-partner accounts to learn from yet — approve lists on your side and at least one partner in{" "}
             <Link href="/mapping?view=matrix" className="text-accent hover:underline dark:text-blue-400">Account mapping</Link>.
           </p>
@@ -514,16 +516,16 @@ async function RecommendSection() {
           {buckets.map((b) => (
             <Card key={b.key}>
               <div className="mb-1 flex items-baseline justify-between gap-2">
-                <h3 className="text-sm font-semibold">{b.name}</h3>
-                <span className="tnum whitespace-nowrap rounded bg-neutral-100 px-1.5 py-0.5 text-label font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                <h3 className="text-copy font-semibold">{b.name}</h3>
+                <span className="tnum whitespace-nowrap rounded-inner bg-neutral-100 px-1.5 py-0.5 text-label font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
                   {b.companyIds.length} account{b.companyIds.length === 1 ? "" : "s"}
                 </span>
               </div>
-              <p className="mb-3 text-xs text-neutral-500">{b.rationale}</p>
+              <p className="mb-3 text-body text-neutral-500">{b.rationale}</p>
               <form action={createTargetListAction}>
                 <input type="hidden" name="name" value={b.name} />
                 <input type="hidden" name="companyIds" value={b.companyIds.join(",")} />
-                <button className="rounded-md bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-800">
+                <button className={buttonClass("primary", "sm")}>
                   Create target list
                 </button>
               </form>
@@ -535,11 +537,11 @@ async function RecommendSection() {
         {plays.length > 0 && (
           <div className="mb-6">
             <div className="mb-2 flex items-baseline justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Multi-vendor plays · suggested</h2>
+              <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Multi-vendor plays · suggested</h2>
               <span className="text-label text-neutral-400">One click builds the package: named list → campaign → partners in roles. You still approve every touch.</span>
             </div>
             {(mp || spn) && mp && mp.closed > 0 && (
-              <p className="mb-3 rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2 text-xs text-violet-800 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
+              <p className="mb-3 rounded-inner border border-violet-200 bg-violet-50/60 px-3 py-2 text-body text-violet-800 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
                 Learned so far: multi-partner-covered accounts close-win at <span className="font-semibold">{mp.rate}%</span> ({mp.won}/{mp.closed})
                 {spn && spn.closed > 0 && <> vs <span className="font-semibold">{spn.rate}%</span> ({spn.won}/{spn.closed}) with a single partner</>}
                 . Every close sharpens this signal.
@@ -569,7 +571,7 @@ async function RecommendSection() {
 
         {/* Ranked opportunities — filter, select one or many, then act */}
         <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Ranked co-sell opportunities</h2>
+          <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Ranked co-sell opportunities</h2>
           <span className="text-label text-neutral-400">Filter, select accounts, then create a target list or draft motions.</span>
         </div>
         <SelectableAccounts
@@ -609,7 +611,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
     if (partners.length === 0) {
       return (
         <Card>
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             No partner lists yet. Create lists for your side and a partner below, then the overlap matrix
             appears here — like Crossbeam&apos;s account mapping, scored by propensity.
           </p>
@@ -659,14 +661,14 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
               {/* Organize matrix — choose which populations are rows / columns */}
               <details className="relative">
                 <summary className="cursor-pointer text-label font-medium text-accent hover:underline dark:text-blue-400">Organize matrix</summary>
-                <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+                <div className="absolute right-0 z-20 mt-1 w-72 rounded-inner border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
                   <p className="mb-1 text-micro uppercase tracking-wide text-neutral-400">Rows — your lists</p>
                   <div className="mb-3 space-y-0.5">
                     {allRows.map((r) => {
                       const on = mrSet ? mrSet.has(r.id) : true;
                       return (
-                        <Link key={r.id} href={q({ mr: toggleCsv(allRows, mrSet, r.id) })} className={`flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 ${on ? "" : "text-neutral-400"}`}>
-                          <span className={`inline-block h-3 w-3 rounded-sm border ${on ? "border-blue-600 bg-blue-600" : "border-neutral-300 dark:border-neutral-600"}`} />
+                        <Link key={r.id} href={q({ mr: toggleCsv(allRows, mrSet, r.id) })} className={`flex items-center gap-2 rounded-inner px-1.5 py-1 text-copy hover:bg-neutral-50 dark:hover:bg-neutral-800 ${on ? "" : "text-neutral-400"}`}>
+                          <span className={`inline-block h-3 w-3 rounded-inner border ${on ? "border-blue-600 bg-blue-600" : "border-neutral-300 dark:border-neutral-600"}`} />
                           {r.name}
                         </Link>
                       );
@@ -677,8 +679,8 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                     {allCols.map((c) => {
                       const on = mcSet ? mcSet.has(c.id) : true;
                       return (
-                        <Link key={c.id} href={q({ mc: toggleCsv(allCols, mcSet, c.id) })} className={`flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 ${on ? "" : "text-neutral-400"}`}>
-                          <span className={`inline-block h-3 w-3 rounded-sm border ${on ? "border-blue-600 bg-blue-600" : "border-neutral-300 dark:border-neutral-600"}`} />
+                        <Link key={c.id} href={q({ mc: toggleCsv(allCols, mcSet, c.id) })} className={`flex items-center gap-2 rounded-inner px-1.5 py-1 text-copy hover:bg-neutral-50 dark:hover:bg-neutral-800 ${on ? "" : "text-neutral-400"}`}>
+                          <span className={`inline-block h-3 w-3 rounded-inner border ${on ? "border-blue-600 bg-blue-600" : "border-neutral-300 dark:border-neutral-600"}`} />
                           {isAll && c.partner_name ? `${c.partner_name}: ${c.name}` : c.name}
                         </Link>
                       );
@@ -696,8 +698,8 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
         {/* Partner hub — aggregate rollups (one partner, or all rolled up) */}
         <Card className="mb-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold">{selectedName}</h2>
-            <span className="rounded px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 ring-1 ring-inset ring-neutral-300/50 dark:ring-neutral-700">
+            <h2 className="text-copy font-semibold">{selectedName}</h2>
+            <span className="rounded-inner px-1.5 py-0.5 text-micro font-medium uppercase tracking-wide text-neutral-500 ring-1 ring-inset ring-neutral-300/50 dark:ring-neutral-700">
               {isAll ? "all partners" : "connected partner"}
             </span>
           </div>
@@ -707,7 +709,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
             <Bento label="propensity (hot)" value={kpi.hot.toLocaleString()} subs={[kpi.avg != null ? `avg ${kpi.avg}` : "no scores"]} href="/mapping?view=overlap" />
             <Bento label="motions" value={hub.motionsTotal.toLocaleString()} subs={[`${hub.motionsActive} active`]} href="/motions" />
             <Bento label="campaigns" value={hub.campaignsTotal.toLocaleString()} subs={[`${hub.campaignsLive} live`, `${hub.touchesSent} sent`]} href="/campaigns" />
-            <Bento label="open pipeline" value={`$${Math.round(hub.pipelineUsd / 1000)}k`} subs={[`${hub.oppsOpen} open`, hub.oppsWon ? `${hub.oppsWon} won $${Math.round(hub.wonUsd / 1000)}k` : ""]} href="/pipeline" />
+            <Bento label="open pipeline" value={`${formatMoney(hub.pipelineUsd)}`} subs={[`${hub.oppsOpen} open`, hub.oppsWon ? `${hub.oppsWon} won ${formatMoney(hub.wonUsd)}` : ""]} href="/pipeline" />
           </div>
           <p className="mt-3 text-label text-neutral-400">
             {isAll
@@ -718,7 +720,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
 
         {rows.length === 0 || cols.length === 0 ? (
           <Card>
-            <p className="text-sm text-neutral-500">
+            <p className="text-copy text-neutral-500">
               {allRows.length === 0 || allCols.length === 0
                 ? "Approve at least one list on each side to populate the matrix. Manage lists below."
                 : "Nothing to show with the current organize / hide-empty settings."}
@@ -744,7 +746,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <td className="sticky left-0 z-10 bg-white dark:bg-neutral-900">
-                      <span className={`inline-flex rounded px-1.5 py-0.5 text-label font-medium ring-1 ring-inset ${catTone(r.category)}`}>
+                      <span className={`inline-flex rounded-inner px-1.5 py-0.5 text-label font-medium ring-1 ring-inset ${catTone(r.category)}`}>
                         {r.name}
                       </span>
                       <div className="text-micro text-neutral-400">{r.members} accounts</div>
@@ -758,7 +760,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                       return (
                         <td key={c.id} className="p-0 text-center" style={{ backgroundColor: cellShade(cell.avgScore) }}>
                           <Link href={q({ row: r.id, col: c.id })} className="flex flex-col items-center px-3 py-2.5 hover:ring-2 hover:ring-inset hover:ring-blue-500">
-                            <span className="tnum text-lg font-semibold text-blue-800 dark:text-blue-300">{cell.count.toLocaleString()}</span>
+                            <span className="tnum text-section font-semibold text-blue-800 dark:text-blue-300">{cell.count.toLocaleString()}</span>
                             <span className="text-micro text-neutral-600 dark:text-neutral-400">
                               {cell.avgScore != null ? `avg ${cell.avgScore.toFixed(0)}` : "—"}
                               {cell.highCount > 0 ? ` · ${cell.highCount} hot` : ""}
@@ -770,7 +772,7 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
                   </tr>
                 ))}
                 <tr className="border-t-2 border-neutral-200 dark:border-neutral-700">
-                  <td className="sticky left-0 z-10 bg-white text-xs font-semibold text-neutral-500 dark:bg-neutral-900">Total (distinct)</td>
+                  <td className="sticky left-0 z-10 bg-white text-body font-semibold text-neutral-500 dark:bg-neutral-900">Total (distinct)</td>
                   <td className="text-center tnum font-bold">{kpi.accounts.toLocaleString()}</td>
                   {cols.map((c) => (
                     <td key={c.id} className="text-center tnum font-semibold text-neutral-500">{(colTotals.get(c.id) ?? 0).toLocaleString()}</td>
@@ -818,39 +820,39 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
       <div>
         <div className="mb-3 flex flex-wrap items-center gap-3">
           <Link href={backHref} className="pos-backlink !mb-0">← Matrix</Link>
-          <h2 className="text-base font-semibold">
+          <h2 className="text-title font-semibold">
             {row?.name ?? "?"} <span className="text-neutral-400">vs</span> {col?.name ?? "?"}
           </h2>
-          <span className="text-xs text-neutral-500">{accounts.length} account(s)</span>
+          <span className="text-body text-neutral-500">{accounts.length} account(s)</span>
 
           {/* Mapping → targeting: turn this cell into a target list */}
           <details className="relative ml-auto">
-            <summary className="cursor-pointer rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800">
+            <summary className="cursor-pointer rounded-control bg-green-700 px-3 py-1.5 text-copy font-medium text-white hover:bg-green-800">
               Build target list
             </summary>
-            <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+            <div className="absolute right-0 z-20 mt-1 w-72 rounded-inner border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
               <p className="mb-2 text-label text-neutral-500">Creates an approved target list from these {accounts.length} accounts — ready to score, sequence, and campaign.</p>
               <form action={targetFromCellAction.bind(null, rowId, colId)} className="flex items-end gap-2">
                 <input type="hidden" name="partner" value={partnerId ?? ""} />
-                <input name="name" defaultValue={`${row?.name ?? ""} × ${col?.name ?? ""}`} className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
-                <button className="shrink-0 rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800">Create</button>
+                <input name="name" defaultValue={`${row?.name ?? ""} × ${col?.name ?? ""}`} className={`${fieldClass("md")} w-full`} />
+                <button className={buttonClass("primary", "sm")}>Create</button>
               </form>
             </div>
           </details>
 
           <details className="relative">
-            <summary className="cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900">
+            <summary className="cursor-pointer rounded-control px-3 py-1.5 text-copy font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900">
               Columns
             </summary>
-            <div className="absolute right-0 z-10 mt-1 w-56 rounded-lg border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+            <div className="absolute right-0 z-10 mt-1 w-56 rounded-inner border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
               <p className="mb-1 px-1 text-micro uppercase tracking-wide text-neutral-400">Toggle columns (from the data)</p>
               {allToggles.map((k) => (
                 <Link
                   key={k}
                   href={toggleHref(k)}
-                  className={`flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 ${active.includes(k) ? "font-medium text-neutral-900 dark:text-neutral-100" : "text-neutral-500"}`}
+                  className={`flex items-center gap-2 rounded-inner px-2 py-1 text-copy hover:bg-neutral-50 dark:hover:bg-neutral-800 ${active.includes(k) ? "font-medium text-neutral-900 dark:text-neutral-100" : "text-neutral-500"}`}
                 >
-                  <span className={`inline-block h-3 w-3 rounded-sm border ${active.includes(k) ? "border-blue-600 bg-blue-600" : "border-neutral-300 dark:border-neutral-600"}`} />
+                  <span className={`inline-block h-3 w-3 rounded-inner border ${active.includes(k) ? "border-blue-600 bg-blue-600" : "border-neutral-300 dark:border-neutral-600"}`} />
                   {k.replace(/_/g, " ")}
                 </Link>
               ))}
@@ -915,22 +917,22 @@ async function PopulationManager() {
 
     return (
       <Card className="mt-6">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Account lists</h2>
+        <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">Account lists</h2>
 
         {allPending.length > 0 && (
-          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
-            <p className="mb-2 text-xs font-medium text-amber-800 dark:text-amber-300">Pending approval — vet before they map</p>
+          <div className="mb-4 rounded-inner border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+            <p className="mb-2 text-body font-medium text-amber-800 dark:text-amber-300">Pending approval — vet before they map</p>
             <div className="space-y-1.5">
               {allPending.map((p) => (
-                <div key={p.id} className="flex flex-wrap items-center gap-2 text-sm">
+                <div key={p.id} className="flex flex-wrap items-center gap-2 text-copy">
                   <span className="font-medium">{p.name}</span>
-                  <span className="text-xs text-neutral-500">{nameFor(p.partner_id)} · {CATEGORY_LABEL[p.category]} · {p.members} accounts</span>
+                  <span className="text-body text-neutral-500">{nameFor(p.partner_id)} · {CATEGORY_LABEL[p.category]} · {p.members} accounts</span>
                   <span className="ml-auto flex gap-1">
                     <form action={setPopulationStatusAction.bind(null, p.id, "approved")}>
-                      <button className="text-xs font-medium text-positive hover:underline dark:text-green-400">approve</button>
+                      <button className={buttonClass("subtle", "md")}>approve</button>
                     </form>
                     <form action={setPopulationStatusAction.bind(null, p.id, "rejected")}>
-                      <button className="text-xs font-medium text-red-700 hover:underline dark:text-red-400">reject</button>
+                      <button className={buttonClass("subtle", "md")}>reject</button>
                     </form>
                   </span>
                 </div>
@@ -940,24 +942,24 @@ async function PopulationManager() {
         )}
 
         <form action={createPopulationAction} className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="mb-1 block text-xs text-neutral-500">Name</span>
-            <input name="name" placeholder="e.g. Corporate Territory East" className="w-52 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+          <label className="text-copy">
+            <span className="mb-1 block text-body text-neutral-500">Name</span>
+            <input name="name" placeholder="e.g. Corporate Territory East" className="w-52 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900" />
           </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-xs text-neutral-500">Category</span>
-            <select name="category" defaultValue="customer" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+          <label className="text-copy">
+            <span className="mb-1 block text-body text-neutral-500">Category</span>
+            <select name="category" defaultValue="customer" className={fieldClass("md")}>
               {(CATEGORIES as readonly Category[]).map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
             </select>
           </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-xs text-neutral-500">Side</span>
-            <select name="side" defaultValue="org" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+          <label className="text-copy">
+            <span className="mb-1 block text-body text-neutral-500">Side</span>
+            <select name="side" defaultValue="org" className={fieldClass("md")}>
               <option value="org">Your side</option>
               {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </label>
-          <button className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">
+          <button className={buttonClass("primary", "md")}>
             Propose list
           </button>
         </form>

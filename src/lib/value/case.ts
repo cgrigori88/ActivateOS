@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { formatMoney } from "@/lib/format/money";
 import {
   loadDrivers, driverBounds, LADDER_LABEL, LADDER_RANK,
   type Driver, type Ladder, type DriverRole,
@@ -292,12 +293,7 @@ export function rankSensitivity(drivers: Driver[], missing: string[]): Sensitivi
 
 // ── Formatting helpers shared by every surface, so no surface invents its own wording ──────────
 
-export const usd = (n: number): string => {
-  const a = Math.abs(n);
-  if (a >= 1_000_000) return `${n < 0 ? "-" : ""}$${(a / 1_000_000).toFixed(a >= 10_000_000 ? 0 : 1)}M`;
-  if (a >= 1_000) return `${n < 0 ? "-" : ""}$${Math.round(a / 1000)}k`;
-  return `${n < 0 ? "-" : ""}$${Math.round(a)}`;
-};
+export const usd = (n: number): string => formatMoney(n);
 
 /** A bounded value as text. A point renders as a point; a range never collapses to a day-like point. */
 export const bounds = (b: Bounds | null): string =>

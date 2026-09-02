@@ -3,6 +3,7 @@ import { ResendProvider, resendConfigured } from "../comms/resend";
 import { commsConfig } from "../comms/provider";
 import { enabledTriggers } from "../triggers/catalog";
 import { renewalProjection } from "../lifecycle/projection";
+import { formatMoney } from "@/lib/format/money";
 
 type Db = Pool | PoolClient;
 
@@ -165,7 +166,7 @@ function renderBrief(data: BriefData, appUrl: string): { text: string; subject: 
   if (data.topOpps.length > 0) {
     lines.push("TOP OPEN OPPORTUNITIES");
     for (const o of data.topOpps) {
-      lines.push(`  • ${o.name} — ${o.stage.replace(/_/g, " ")}${o.amount ? ` · $${Math.round(o.amount / 1000)}k` : ""}`);
+      lines.push(`  • ${o.name} — ${o.stage.replace(/_/g, " ")}${o.amount ? ` · ${formatMoney(o.amount)}` : ""}`);
     }
     lines.push("");
   }

@@ -18,7 +18,7 @@ export default async function OpsPage() {
     return (
       <main>
         <PageHeader title="Governance ops" subtitle="Operational view of the governed loop." />
-        <Card><p className="text-sm text-neutral-500">Owner access required.</p></Card>
+        <Card><p className="text-copy text-neutral-500">Owner access required.</p></Card>
       </main>
     );
   }
@@ -39,7 +39,7 @@ export default async function OpsPage() {
       <div className="mt-6">
         <h2 className="mb-2 text-body font-semibold uppercase tracking-[0.04em] text-neutral-400">Needs attention ({dead.length})</h2>
         {dead.length === 0 ? (
-          <Card><p className="text-sm text-neutral-500">No failed, compensated, or dead-lettered work. The loop is clean.</p></Card>
+          <Card><p className="text-copy text-neutral-500">No failed, compensated, or dead-lettered work. The loop is clean.</p></Card>
         ) : (
           <Card>
             <div className="overflow-x-auto">
@@ -90,5 +90,5 @@ function HealthCard({ title, counts }: { title: string; counts: GovernanceHealth
 const BAD = /FAIL|REJECT|COMPENSAT|SUPPRESS/;
 function StatusPill({ status }: { status: string }) {
   const bad = BAD.test(status);
-  return <span className="inline-block rounded px-1.5 py-0.5 text-label font-medium" style={{ background: bad ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)", color: bad ? "#ef4444" : "#059669" }}>{status.toLowerCase()}</span>;
+  return <span className="inline-block rounded-inner px-1.5 py-0.5 text-label font-medium" style={{ background: bad ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)", color: bad ? "#ef4444" : "#059669" }}>{status.toLowerCase()}</span>;
 }

@@ -45,7 +45,7 @@ export default async function ProviderHealthPage() {
 
       {groups.map((g) => (
         <div key={g.tier} className="mb-6">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
             {TIER_LABELS[g.tier] ?? g.tier}
           </h2>
           <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
@@ -83,7 +83,7 @@ export default async function ProviderHealthPage() {
                       ) : r.lastStatus ? (
                         <StatusBadge status={r.lastStatus} />
                       ) : (
-                        <span className="text-xs text-neutral-400">never run</span>
+                        <span className="text-body text-neutral-400">never run</span>
                       )}
                     </td>
                     <td>
@@ -97,7 +97,7 @@ export default async function ProviderHealthPage() {
                     <td className="tnum text-right text-neutral-500">
                       {r.costUsd > 0 ? r.costUsd.toFixed(2) : "—"}
                     </td>
-                    <td className="text-xs text-neutral-400">
+                    <td className="text-body text-neutral-400">
                       {r.lastRunAt ? new Date(r.lastRunAt).toISOString().slice(0, 10) : "—"}
                     </td>
                   </tr>
@@ -106,7 +106,7 @@ export default async function ProviderHealthPage() {
             </table>
           </div>
           {g.rows.some((r) => r.disabledReason) && (
-            <p className="mt-1.5 text-xs text-neutral-500">
+            <p className="mt-1.5 text-body text-neutral-500">
               {g.rows
                 .filter((r) => r.disabledReason)
                 .map((r) => `${r.providerId}: ${r.disabledReason}`)
@@ -118,7 +118,7 @@ export default async function ProviderHealthPage() {
               {g.rows
                 .filter((r) => r.lastError)
                 .map((r) => (
-                  <p key={r.providerId} className="text-xs text-red-600 dark:text-red-400">
+                  <p key={r.providerId} className="text-body text-red-600 dark:text-red-400">
                     <span className="font-medium">{r.providerId}</span> last error:{" "}
                     <span className="text-neutral-500">{r.lastError!.slice(0, 160)}</span>
                   </p>
@@ -140,14 +140,14 @@ const RUN_COLORS: Record<string, string> = {
 
 /** Recent-run sparkline: oldest → newest (left → right), one bar per run. */
 function RunSparkline({ runs }: { runs: string[] }) {
-  if (runs.length === 0) return <span className="text-xs text-neutral-400">—</span>;
+  if (runs.length === 0) return <span className="text-body text-neutral-400">—</span>;
   const ordered = [...runs].reverse(); // query gives newest-first; show newest at right
   return (
     <span className="inline-flex items-end gap-[2px]" title={`last ${ordered.length} runs`}>
       {ordered.map((s, i) => (
         <span
           key={i}
-          className={`h-3.5 w-1 rounded-sm ${RUN_COLORS[s] ?? "bg-neutral-300 dark:bg-neutral-600"}`}
+          className={`h-3.5 w-1 rounded-inner ${RUN_COLORS[s] ?? "bg-neutral-300 dark:bg-neutral-600"}`}
           title={s}
         />
       ))}

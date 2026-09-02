@@ -5,6 +5,7 @@ import { QuerySelect } from "@/components/query-select";
 import { withTenant } from "@/lib/db/tenant";
 import { getScopeContext } from "@/lib/scope/server";
 import { resolveActionAction, resolveCommActionAction } from "./actions";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -205,14 +206,14 @@ export default async function QueuePage({
         <QuerySelect param="group" value={groupKey} label="Group by" options={[{ value: "due", label: "Due bucket" }, { value: "account", label: "Account" }, { value: "partner", label: "Partner" }]} />
         <form className="ml-auto flex items-center gap-2">
           {Object.entries({ window: sp.window, source: sp.source, partner: sp.partner, group: sp.group, scope: sp.scope }).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
-          <input name="q" defaultValue={sp.q ?? ""} placeholder="Search account, task…" className="w-52 rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
-          <span className="text-xs text-neutral-500">{filtered.length}</span>
+          <input name="q" defaultValue={sp.q ?? ""} placeholder="Search account, task…" className="w-52 rounded-control border border-neutral-300 bg-white px-2.5 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900" />
+          <span className="text-body text-neutral-500">{filtered.length}</span>
         </form>
       </div>
 
       {filtered.length === 0 ? (
         <Card>
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             {items.length === 0
               ? "Nothing pending. Actions appear when a motion goes active — its play cadence becomes dated steps — or when a conversation surfaces a follow-up."
               : "Nothing matches this filter."}
@@ -222,7 +223,7 @@ export default async function QueuePage({
         <div className="space-y-6">
           {orderedKeys.map((k) => (
             <section key={k}>
-              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              <h2 className="mb-2 flex items-center gap-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">
                 <span className={k === "Overdue" ? "text-red-700 dark:text-red-400" : ""}>{k}</span>
                 <span className="tnum text-neutral-400">{groups.get(k)!.length}</span>
               </h2>
@@ -233,15 +234,15 @@ export default async function QueuePage({
                     <Card key={`${i.kind}:${i.id}`}>
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
-                          <p className="text-sm">
+                          <p className="text-copy">
                             <span className={overdue ? "font-semibold text-red-700 dark:text-red-400" : "font-medium text-neutral-500"}>
                               {i.dueAt ? `${overdue ? "overdue · " : ""}${i.dueAt.toISOString().slice(0, 10)}` : "no date"}
                             </span>
                             <span className="text-neutral-400"> · </span>
-                            <span className={`rounded px-1.5 py-0.5 text-micro font-medium ${i.kind === "conversation" ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
+                            <span className={`rounded-inner px-1.5 py-0.5 text-micro font-medium ${i.kind === "conversation" ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
                               {i.kind === "conversation" ? "conversation" : "cadence"}
                             </span>
-                            {i.meta && <span className="ml-1 text-xs text-neutral-400">{i.meta}</span>}
+                            {i.meta && <span className="ml-1 text-body text-neutral-400">{i.meta}</span>}
                             {groupKey !== "account" && (
                               <>
                                 {" · "}
@@ -257,26 +258,26 @@ export default async function QueuePage({
                             {i.partnerName && <span className="text-neutral-500"> via {i.partnerName}</span>}
                             {i.owner && <span className="text-neutral-400"> → {i.owner}</span>}
                           </p>
-                          <p className="mt-1 text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">{i.title}</p>
-                          {i.detail && <p className="mt-0.5 text-sm text-neutral-600 dark:text-neutral-400">{i.detail}</p>}
+                          <p className="mt-1 text-copy leading-relaxed text-neutral-700 dark:text-neutral-300">{i.title}</p>
+                          {i.detail && <p className="mt-0.5 text-copy text-neutral-600 dark:text-neutral-400">{i.detail}</p>}
                         </div>
                         <div className="flex shrink-0 gap-2">
                           {i.kind === "cadence" ? (
                             <>
                               <form action={resolveActionAction.bind(null, i.id, "done")}>
-                                <button className="rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800">Done</button>
+                                <button className={buttonClass("primary", "sm")}>Done</button>
                               </form>
                               <form action={resolveActionAction.bind(null, i.id, "skipped")}>
-                                <button className="rounded-md px-3 py-1.5 text-sm font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900">Skip</button>
+                                <button className={buttonClass("primary", "sm")}>Skip</button>
                               </form>
                             </>
                           ) : (
                             <>
                               <form action={resolveCommActionAction.bind(null, i.id, "done")}>
-                                <button className="rounded-md bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-800">Done</button>
+                                <button className={buttonClass("primary", "sm")}>Done</button>
                               </form>
                               <form action={resolveCommActionAction.bind(null, i.id, "dismissed")}>
-                                <button className="rounded-md px-3 py-1.5 text-sm font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-400 dark:ring-neutral-700 dark:hover:bg-neutral-900">Dismiss</button>
+                                <button className={buttonClass("primary", "sm")}>Dismiss</button>
                               </form>
                             </>
                           )}
@@ -293,13 +294,13 @@ export default async function QueuePage({
 
       {recent.length > 0 && (
         <Card className="mt-8">
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">Recently resolved</h2>
+          <h2 className="mb-2 text-copy font-semibold uppercase tracking-wide text-neutral-500">Recently resolved</h2>
           <ul className="space-y-1.5">
             {recent.map((r, i) => (
-              <li key={i} className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+              <li key={i} className="flex items-center gap-2 text-copy text-neutral-600 dark:text-neutral-400">
                 <span className={r.status === "done" ? "text-positive dark:text-green-400" : "text-neutral-400"}>{r.status}</span>
                 <span>{r.legal_name} — {r.action}</span>
-                <span className="ml-auto shrink-0 text-xs text-neutral-400">{new Date(r.completed_at).toISOString().slice(0, 10)}</span>
+                <span className="ml-auto shrink-0 text-body text-neutral-400">{new Date(r.completed_at).toISOString().slice(0, 10)}</span>
               </li>
             ))}
           </ul>

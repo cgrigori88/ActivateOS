@@ -77,7 +77,7 @@ async function main() {
     await assembleTeam(db, hero, "DEMO");
     // Seed a RESTRICTED reason on the recommended candidate to test payload-absence.
     const rc = await db.query<{ id: string }>(`select rc.id from route_candidates rc join pursuit_route_snapshots sn on sn.id=rc.route_snapshot_id where sn.pursuit_id=$1 and sn.is_current and rc.is_recommended`, [hero]);
-    if (rc.rows[0]) await db.query(`insert into route_candidate_reasons (candidate_id, org_id, reason_code, polarity, detail, disclosure_class) values ($1,$2,'RAW_SPEND',1,'TD spend $1840000 in category',$3)`, [rc.rows[0].id, s.orgA, "RESTRICTED"]);
+    if (rc.rows[0]) await db.query(`insert into route_candidate_reasons (candidate_id, org_id, reason_code, polarity, detail, disclosure_class) values ($1,$2,'RAW_SPEND',1,'TD spend $1,840,000 in category',$3)`, [rc.rows[0].id, s.orgA, "RESTRICTED"]);
   });
   console.log(`[experience-verify] seeded hero=${hero.slice(0, 8)}\n`);
 

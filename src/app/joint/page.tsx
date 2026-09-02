@@ -6,6 +6,8 @@ import { listPartnerships } from "@/lib/partnerships/partnerships";
 import { listJointPursuits, namedOverlapAccounts } from "@/lib/partnerships/joint";
 import { settlementStatement, type SettlementStatement } from "@/lib/partnerships/settlement";
 import { decidePursuitAction, proposePursuitAction } from "./actions";
+import { formatMoney } from "@/lib/format/money";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +75,7 @@ export default async function JointPage({
 
       {pursuits.length === 0 && proposable.length === 0 && (
         <Card muted>
-          <p className="text-sm text-neutral-500">
+          <p className="text-copy text-neutral-500">
             No joint pursuits yet — and nothing is proposable until a partnership&apos;s blind-overlap
             ladder reaches the <em>named accounts</em> rung. Run the ladder on the{" "}
             <Link href="/admin" className="text-accent hover:underline dark:text-blue-400">Admin</Link> page;
@@ -95,17 +97,17 @@ export default async function JointPage({
                     <span className="rounded-full bg-accent px-2 py-0.5 text-micro font-bold text-white">awaiting your decision</span>
                   )}
                 </div>
-                <p className="text-xs text-neutral-500">
+                <p className="text-body text-neutral-500">
                   with {p.otherOrgName ?? "partner org"}
                   {p.industry ? ` · ${p.industry}` : ""} · proposed {p.createdAt}
                 </p>
                 {p.awaitingYou && (
                   <div className="mt-2 flex gap-2">
                     <form action={decidePursuitAction.bind(null, p.id, true)}>
-                      <button className="rounded-md bg-violet-700 px-3 py-1 text-xs font-medium text-white hover:bg-violet-800">Accept & open the room</button>
+                      <button className={buttonClass("primary", "sm")}>Accept & open the room</button>
                     </form>
                     <form action={decidePursuitAction.bind(null, p.id, false)}>
-                      <button className="rounded-md px-3 py-1 text-xs font-medium text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900">Decline</button>
+                      <button className={buttonClass("primary", "sm")}>Decline</button>
                     </form>
                   </div>
                 )}
@@ -116,16 +118,16 @@ export default async function JointPage({
 
       {/* Settlement — the statement both sides read identically (task #75) */}
       {statements.map((s) => {
-        const fmt = (n: number | null) => (n == null ? "—" : `$${Math.round(n / 1000)}k`);
+        const fmt = (n: number | null) => formatMoney(n);
         return (
           <Card key={s.partnershipId} className="mb-6">
             <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">
                 Settlement — with {s.otherOrgName}
               </h2>
               <span className="text-label text-neutral-400">identical on both sides · only jointly pursued accounts settle jointly</span>
             </div>
-            <p className="mb-3 text-xs text-neutral-500">
+            <p className="mb-3 text-body text-neutral-500">
               An opportunity appears here only if its account has an opened joint room in this
               partnership — opening the room together is the agreement to settle its outcome together.
               <span className="font-medium"> Sourced</span> = deal-registered through the partner;
@@ -152,7 +154,7 @@ export default async function JointPage({
                     {[...s.settled, ...s.inFlight].map((e, i) => (
                       <tr key={i}>
                         <td className="font-medium">{e.account}</td>
-                        <td className="text-xs text-neutral-500">{s.orgNames[e.closerOrgId] ?? "—"}</td>
+                        <td className="text-body text-neutral-500">{s.orgNames[e.closerOrgId] ?? "—"}</td>
                         <td>
                           <span className={`rounded-full px-2 py-0.5 text-micro font-semibold uppercase tracking-wide ring-1 ring-inset ${
                             e.attribution === "sourced"
@@ -160,9 +162,9 @@ export default async function JointPage({
                               : "bg-neutral-100 text-neutral-600 ring-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:ring-neutral-700"
                           }`}>{e.attribution}</span>
                         </td>
-                        <td className="text-xs text-neutral-500">{e.stage.replace(/_/g, " ")}{e.closedAt ? ` · ${e.closedAt}` : ""}</td>
+                        <td className="text-body text-neutral-500">{e.stage.replace(/_/g, " ")}{e.closedAt ? ` · ${e.closedAt}` : ""}</td>
                         <td className="tnum text-right">{fmt(e.amountUsd)}</td>
-                        <td className="text-xs text-neutral-400">{e.quarter ?? "in flight"}</td>
+                        <td className="text-body text-neutral-400">{e.quarter ?? "in flight"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -175,21 +177,21 @@ export default async function JointPage({
 
       {proposable.length > 0 && (
         <Card>
-          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Open a new room</h2>
-          <p className="mb-3 text-xs text-neutral-500">
+          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Open a new room</h2>
+          <p className="mb-3 text-body text-neutral-500">
             Only accounts from an approved named overlap are eligible — both sides already know they share them.
             The partner&apos;s owner accepts before the room opens.
           </p>
           {proposable.map((g) => (
             <form key={g.partnershipId} action={proposePursuitAction} className="mb-2 flex flex-wrap items-end gap-2">
               <input type="hidden" name="partnershipId" value={g.partnershipId} />
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Shared account · with {g.otherOrgName}</span>
-                <select name="companyId" className="w-72 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+              <label className="text-copy">
+                <span className="mb-1 block text-body text-neutral-500">Shared account · with {g.otherOrgName}</span>
+                <select name="companyId" className="w-72 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900">
                   {g.accounts.map((a) => <option key={a.company_id} value={a.company_id}>{a.name}</option>)}
                 </select>
               </label>
-              <button className="rounded-md bg-violet-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-800">
+              <button className={buttonClass("primary", "sm")}>
                 Propose joint pursuit
               </button>
             </form>

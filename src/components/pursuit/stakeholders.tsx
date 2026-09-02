@@ -3,6 +3,7 @@ import type { StakeholderCoverage, RoleCoverage, WarmPathStatement } from "@/lib
 import { bestWarmPath, ROLE_WORD } from "@/lib/stakeholders/coverage";
 import { assertStakeholderAction } from "@/app/pursuits/[id]/actions";
 import { usd } from "@/components/intel/constraint-language";
+import { buttonClass } from "@/components/ui";
 
 /**
  * Stakeholder Intelligence panel (P1C §5/§16/§17). The hero is COVERAGE — roles and their
@@ -53,13 +54,13 @@ function AssertForm({ pursuitId, opportunityId, role, contacts, canDecide }: {
       <input type="hidden" name="role" value={role} />
       <label className="text-label text-neutral-500">
         <span className="mb-0.5 block">Person</span>
-        <select name="contactId" className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-body dark:border-neutral-700 dark:bg-neutral-900">
+        <select name="contactId" className="rounded-control border border-neutral-300 bg-white px-2 py-1 text-body dark:border-neutral-700 dark:bg-neutral-900">
           {contacts.map((c) => <option key={c.id} value={c.id}>{c.name ?? "—"}{c.title ? ` · ${c.title}` : ""}</option>)}
         </select>
       </label>
       <label className="text-label text-neutral-500">
         <span className="mb-0.5 block">Assertion</span>
-        <select name="assertionState" defaultValue="unverified" className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-body dark:border-neutral-700 dark:bg-neutral-900">
+        <select name="assertionState" defaultValue="unverified" className="rounded-control border border-neutral-300 bg-white px-2 py-1 text-body dark:border-neutral-700 dark:bg-neutral-900">
           <option value="verified">verified — evidence confirms it</option>
           <option value="inferred">inferred — signals suggest it</option>
           <option value="unverified">unverified — a proposal</option>
@@ -67,9 +68,9 @@ function AssertForm({ pursuitId, opportunityId, role, contacts, canDecide }: {
       </label>
       <label className="min-w-52 flex-1 text-label text-neutral-500">
         <span className="mb-0.5 block">Evidence (required to verify — a title alone is never enough)</span>
-        <input name="evidence" placeholder="e.g. confirmed budget ownership on the 14 Mar call" className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1 text-body dark:border-neutral-700 dark:bg-neutral-900" />
+        <input name="evidence" placeholder="e.g. confirmed budget ownership on the 14 Mar call" className="w-full rounded-control border border-neutral-300 bg-white px-2 py-1 text-body dark:border-neutral-700 dark:bg-neutral-900" />
       </label>
-      <button className="rounded-md bg-neutral-900 px-3 py-1 text-body font-medium text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900">
+      <button className={buttonClass("primary", "sm")}>
         Assert role
       </button>
     </form>

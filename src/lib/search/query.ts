@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { opportunityCondition, CONDITION_LABEL, type ConditionState } from "@/lib/opportunities/condition";
 import { getMotionFunnels, getMotionConstraints, accountsAtStage } from "@/lib/motions/funnel";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * Unified ⌘K retrieval (scale-disclosure §5 / R6). THREE explicit intent classes, all deterministic
@@ -84,8 +85,8 @@ export function parseShowMe(q: string): { query: ParsedQuery; interpreted: strin
   if (conditions.length) parts.push(conditions.map((c) => CONDITION_LABEL[c]).join("/"));
   if (stages.length) parts.push(`stage∈{${[...new Set(stages)].map((s) => s.replace(/_/g, " ")).join(",")}}`);
   if (partner) parts.push(`through ${partner}`);
-  if (amountGt != null && Number.isFinite(amountGt)) parts.push(`amount>$${Math.round(amountGt / 1000)}k`);
-  if (amountLt != null && Number.isFinite(amountLt)) parts.push(`amount<$${Math.round(amountLt / 1000)}k`);
+  if (amountGt != null && Number.isFinite(amountGt)) parts.push(`amount>${formatMoney(amountGt)}`);
+  if (amountLt != null && Number.isFinite(amountLt)) parts.push(`amount<${formatMoney(amountLt)}`);
   return {
     query: { entity: "opportunity", conditions, stages: [...new Set(stages)], partner, amountGt: Number.isFinite(amountGt as number) ? amountGt : null, amountLt: Number.isFinite(amountLt as number) ? amountLt : null },
     interpreted: parts.join(" · "),
@@ -127,7 +128,7 @@ export async function resolveShowMeWithTotals(
       if (!q.conditions.includes(cond.state)) continue;
     }
     const amt = r.amount_usd != null ? Number(r.amount_usd) : null;
-    const sub = [r.stage.replace(/_/g, " "), amt != null ? `$${Math.round(amt / 1000)}k` : null, r.partner ? `via ${r.partner}` : null].filter(Boolean).join(" · ");
+    const sub = [r.stage.replace(/_/g, " "), amt != null ? `${formatMoney(amt)}` : null, r.partner ? `via ${r.partner}` : null].filter(Boolean).join(" · ");
     hits.push({ group: "Matches", label: `${r.legal_name} — ${r.name}`, sub, href: `/accounts/${r.company_id}` });
     amountUsd += amt ?? 0;
   }
@@ -159,7 +160,7 @@ export async function resolveMotionShowMe(
       hits.push({
         group: `Execution-ready · ${f.hypothesis.name}`,
         label: a.name,
-        sub: a.expectedValue != null ? `$${Math.round(a.expectedValue / 1000)}k expected · ${a.band.replace(/_/g, " ")}` : a.band.replace(/_/g, " "),
+        sub: a.expectedValue != null ? `${formatMoney(a.expectedValue)} expected · ${a.band.replace(/_/g, " ")}` : a.band.replace(/_/g, " "),
         href: a.pursuitId ? `/pursuits/${a.pursuitId}` : `/accounts/${a.companyId}`,
       });
     }
@@ -213,7 +214,7 @@ export async function resolveStakeholderShowMe(
     hits: rows.map((r) => ({
       group: `No verified ${roleWord}${parsed.partner ? ` · via ${parsed.partner}` : ""}`,
       label: r.legal_name,
-      sub: `${r.ev != null ? `$${Math.round(Number(r.ev) / 1000)}k expected · ` : ""}${r.partner ? `via ${r.partner} · ` : ""}coverage gap`,
+      sub: `${r.ev != null ? `${formatMoney(Number(r.ev))} expected · ` : ""}${r.partner ? `via ${r.partner} · ` : ""}coverage gap`,
       href: `/pursuits/${r.id}#stakeholders`,
     })),
     interpreted: `Pursuits with a linked opportunity but no VERIFIED ${roleWord}${parsed.partner ? `, routed via ${parsed.partner}` : ""} (assertion-state truth — inferred/unverified do not count)`,

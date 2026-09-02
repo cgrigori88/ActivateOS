@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
-import { Bento, Card, PageHeader, StatusBadge } from "@/components/ui";
+import { Bento, Card, PageHeader, StatusBadge, fieldClass } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { QuerySelect } from "@/components/query-select";
 import { goalOptions } from "@/lib/goals/goals";
@@ -12,6 +12,7 @@ import {
   setCampaignGoalAction,
 } from "./actions";
 import { deleteCampaignAction } from "./[id]/actions";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 // AI drafting actions invoked from this segment can run tens of seconds —
@@ -133,7 +134,7 @@ export default async function CampaignsPage({
       <RoomTabs tabs={[{ href: "/campaigns", label: "Campaigns" }, { href: "/upcoming", label: "Scheduled sends" }]} />
 
       {notice && (
-        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <div className="mb-4 rounded-inner border border-amber-300 bg-amber-50 px-4 py-2.5 text-copy text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
           {notice}
         </div>
       )}
@@ -153,24 +154,24 @@ export default async function CampaignsPage({
           (#79), which arrives with ?motion= preselecting the play. */}
       <div id="composer" className="mb-6 grid gap-4 lg:grid-cols-2">
         <Card>
-          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Generate from a motion</h2>
-          <p className="mb-3 text-xs text-neutral-500">AI drafts a grounded sequence from an approved/active motion. Each touch is a draft until you approve it.</p>
+          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Generate from a motion</h2>
+          <p className="mb-3 text-body text-neutral-500">AI drafts a grounded sequence from an approved/active motion. Each touch is a draft until you approve it.</p>
           <form action={suggestCampaignsAction} className="mb-3">
-            <button className="rounded-md px-3 py-1.5 text-xs font-medium text-accent ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
+            <button className={buttonClass("primary", "sm")}>
               Ask AI to suggest campaigns →
             </button>
             <span className="ml-2 text-label text-neutral-400">drafts suggestions for motions without a campaign</span>
           </form>
           {motions.length === 0 ? (
-            <p className="text-sm text-neutral-500">
+            <p className="text-copy text-neutral-500">
               No active or approved motions yet — the pipeline creates these from account intelligence. You can still
               build a campaign by hand on the right.
             </p>
           ) : (
             <form action={generateSequenceAction} className="flex flex-wrap items-end gap-3">
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Motion</span>
-                <select name="motionId" defaultValue={sp.motion} className="w-56 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+              <label className="text-copy">
+                <span className="mb-1 block text-body text-neutral-500">Motion</span>
+                <select name="motionId" defaultValue={sp.motion} className="w-56 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900">
                   {motions.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.legal_name}{m.primary_persona ? ` — ${m.primary_persona}` : ""}
@@ -178,40 +179,40 @@ export default async function CampaignsPage({
                   ))}
                 </select>
               </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Touches</span>
-                <select name="touchCount" defaultValue="3" className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+              <label className="text-copy">
+                <span className="mb-1 block text-body text-neutral-500">Touches</span>
+                <select name="touchCount" defaultValue="3" className={fieldClass("md")}>
                   {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
                 </select>
               </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-neutral-500">Sender</span>
-                <input name="senderName" placeholder="Dana Whitfield" className="w-36 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+              <label className="text-copy">
+                <span className="mb-1 block text-body text-neutral-500">Sender</span>
+                <input name="senderName" placeholder="Dana Whitfield" className="w-36 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900" />
               </label>
-              <button type="submit" className="rounded-md bg-blue-700 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-800">Compose</button>
+              <button type="submit" className={buttonClass("primary", "md")}>Compose</button>
             </form>
           )}
         </Card>
 
         <Card>
-          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">Build by hand</h2>
-          <p className="mb-3 text-xs text-neutral-500">Start an empty campaign on any account, then add and schedule your own touches — no motion needed.</p>
+          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">Build by hand</h2>
+          <p className="mb-3 text-body text-neutral-500">Start an empty campaign on any account, then add and schedule your own touches — no motion needed.</p>
           <form action={createBlankCampaignAction} className="flex flex-wrap items-end gap-3">
-            <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">Account</span>
-              <select name="companyId" required className="w-56 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+            <label className="text-copy">
+              <span className="mb-1 block text-body text-neutral-500">Account</span>
+              <select name="companyId" required className="w-56 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900">
                 {accounts.map((a) => <option key={a.id} value={a.id}>{a.legal_name}</option>)}
               </select>
             </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">Name</span>
-              <input name="name" placeholder="Q3 expansion play" className="w-40 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+            <label className="text-copy">
+              <span className="mb-1 block text-body text-neutral-500">Name</span>
+              <input name="name" placeholder="Q3 expansion play" className="w-40 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900" />
             </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-xs text-neutral-500">Sender</span>
-              <input name="senderName" placeholder="Dana Whitfield" className="w-36 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900" />
+            <label className="text-copy">
+              <span className="mb-1 block text-body text-neutral-500">Sender</span>
+              <input name="senderName" placeholder="Dana Whitfield" className="w-36 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900" />
             </label>
-            <button type="submit" className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200">Create</button>
+            <button type="submit" className={buttonClass("primary", "md")}>Create</button>
           </form>
         </Card>
       </div>
@@ -219,24 +220,24 @@ export default async function CampaignsPage({
       {/* AI suggestions awaiting the human's decision */}
       {suggestions.length > 0 && (
         <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50/50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
-          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-blue-800 dark:text-blue-300">
+          <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-blue-800 dark:text-blue-300">
             Suggested by the pipeline · your call
           </h2>
-          <p className="mb-3 text-xs text-neutral-500">
+          <p className="mb-3 text-body text-neutral-500">
             The AI drafted these from account intelligence. Preview and edit, then <strong>you</strong> decide whether to
             approve touches and launch — or dismiss.
           </p>
           <div className="space-y-2">
             {suggestions.map((ca) => (
-              <div key={ca.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-200 bg-white px-3 py-2 dark:border-blue-900 dark:bg-neutral-900">
-                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-micro font-bold uppercase tracking-wide text-accent dark:bg-blue-900 dark:text-blue-300">AI</span>
+              <div key={ca.id} className="flex flex-wrap items-center gap-3 rounded-inner border border-blue-200 bg-white px-3 py-2 dark:border-blue-900 dark:bg-neutral-900">
+                <span className="rounded-inner bg-blue-100 px-1.5 py-0.5 text-micro font-bold uppercase tracking-wide text-accent dark:bg-blue-900 dark:text-blue-300">AI</span>
                 <Link href={`/campaigns/${ca.id}`} className="font-medium hover:underline">{ca.name}</Link>
-                <Link href={`/accounts/${ca.company_id}`} className="text-xs text-neutral-500 hover:underline">{ca.legal_name}</Link>
-                <span className="text-xs text-neutral-400">{ca.touches} touch{Number(ca.touches) === 1 ? "" : "es"}</span>
+                <Link href={`/accounts/${ca.company_id}`} className="text-body text-neutral-500 hover:underline">{ca.legal_name}</Link>
+                <span className="text-body text-neutral-400">{ca.touches} touch{Number(ca.touches) === 1 ? "" : "es"}</span>
                 <span className="ml-auto flex items-center gap-2">
-                  <Link href={`/campaigns/${ca.id}`} className="rounded-md bg-blue-700 px-3 py-1 text-xs font-medium text-white hover:bg-blue-800">Review</Link>
+                  <Link href={`/campaigns/${ca.id}`} className="rounded-control bg-blue-700 px-3 py-1 text-body font-medium text-white hover:bg-blue-800">Review</Link>
                   <form action={dismissCampaignAction.bind(null, ca.id)}>
-                    <button className="rounded-md px-2 py-1 text-xs font-medium text-neutral-500 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:ring-neutral-700 dark:hover:bg-neutral-800">Dismiss</button>
+                    <button className={buttonClass("primary", "sm")}>Dismiss</button>
                   </form>
                 </span>
               </div>
@@ -247,7 +248,7 @@ export default async function CampaignsPage({
 
       {/* Sequences */}
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Campaigns</h2>
+        <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Campaigns</h2>
         <QuerySelect param="status" value={sp.status ?? "all"} label="Status" options={[{ value: "all", label: "Any status" }, ...statusOptions.map((s) => ({ value: s, label: s }))]} />
         <QuerySelect param="partner" value={sp.partner ?? "all"} label="Partner" options={[{ value: "all", label: "Any partner" }, { value: "Direct", label: "Direct" }, ...partnerOptions.map((p) => ({ value: p, label: p }))]} />
         {solutionOptions.length > 0 && (
@@ -257,10 +258,10 @@ export default async function CampaignsPage({
           <QuerySelect param="goal" value={sp.goal ?? "all"} label="Goal" options={[{ value: "all", label: "Any goal" }, { value: "__none", label: "No goal" }, ...goals.map((g) => ({ value: g.id, label: g.name }))]} />
         )}
         <QuerySelect param="source" value={sp.source ?? "all"} label="Source" options={[{ value: "all", label: "Any source" }, { value: "user", label: "Human-made" }, { value: "ai_suggested", label: "AI-suggested" }]} />
-        <span className="ml-auto text-xs text-neutral-500">{rest.length} campaign(s)</span>
+        <span className="ml-auto text-body text-neutral-500">{rest.length} campaign(s)</span>
       </div>
       {rest.length === 0 ? (
-        <p className="text-sm text-neutral-500">No launched or hand-built campaigns yet — compose one above{suggestions.length > 0 ? " or review a suggestion" : ""}.</p>
+        <p className="text-copy text-neutral-500">No launched or hand-built campaigns yet — compose one above{suggestions.length > 0 ? " or review a suggestion" : ""}.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-neutral-200 scroll-thin dark:border-neutral-800">
           <table className="data-table">
@@ -285,7 +286,7 @@ export default async function CampaignsPage({
                     <span className="flex items-center gap-1.5">
                       <Link href={`/campaigns/${ca.id}`} className="font-medium hover:underline">{ca.name}</Link>
                       {ca.source === "ai_suggested" && (
-                        <span className="rounded bg-blue-100 px-1 py-0.5 text-micro font-bold uppercase text-accent dark:bg-blue-900 dark:text-blue-300" title="AI-suggested, accepted by a human">AI</span>
+                        <span className="rounded-inner bg-blue-100 px-1 py-0.5 text-micro font-bold uppercase text-accent dark:bg-blue-900 dark:text-blue-300" title="AI-suggested, accepted by a human">AI</span>
                       )}
                     </span>
                     {ca.objective && <div className="text-label text-neutral-400">{ca.objective}</div>}
@@ -295,21 +296,21 @@ export default async function CampaignsPage({
                   </td>
                   <td>
                     {Number(ca.lists) > 0 ? (
-                      <Link href={`/campaigns/${ca.id}`} className="text-xs text-accent hover:underline dark:text-blue-400">
+                      <Link href={`/campaigns/${ca.id}`} className="text-body text-accent hover:underline dark:text-blue-400">
                         {ca.reach} account{Number(ca.reach) === 1 ? "" : "s"} · {ca.lists} list{Number(ca.lists) === 1 ? "" : "s"}
                       </Link>
                     ) : (
-                      <Link href={`/campaigns/${ca.id}`} className="text-xs text-neutral-400 hover:underline">seed only · + list</Link>
+                      <Link href={`/campaigns/${ca.id}`} className="text-body text-neutral-400 hover:underline">seed only · + list</Link>
                     )}
                   </td>
                   {goals.length > 0 && (
                     <td>
                       <form action={setCampaignGoalAction.bind(null, ca.id)} className="flex items-center gap-1">
-                        <select name="goalId" defaultValue={ca.goal_id ?? ""} className="max-w-[9rem] rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-label dark:border-neutral-700">
+                        <select name="goalId" defaultValue={ca.goal_id ?? ""} className="max-w-[9rem] rounded-inner border border-neutral-300 bg-transparent px-1 py-0.5 text-label dark:border-neutral-700">
                           <option value="">—</option>
                           {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
-                        <button className="text-label font-medium text-accent hover:underline dark:text-blue-400">set</button>
+                        <button className={buttonClass("subtle", "md")}>set</button>
                       </form>
                     </td>
                   )}
@@ -322,7 +323,7 @@ export default async function CampaignsPage({
                   </td>
                   <td className="text-right">
                     <form action={deleteCampaignAction.bind(null, ca.id)}>
-                      <button className="text-label font-medium text-red-700 hover:underline dark:text-red-400" title="Delete the campaign; sent emails stay in their threads">delete</button>
+                      <button className={buttonClass("subtle", "md")} title="Delete the campaign; sent emails stay in their threads">delete</button>
                     </form>
                   </td>
                 </tr>

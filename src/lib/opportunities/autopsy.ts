@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * Win/loss autopsy (slice E): a deterministic post-mortem assembled from the
@@ -39,7 +40,7 @@ export async function opportunityAutopsy(db: Db, orgId: string, opportunityId: s
     ? Math.max(1, Math.round((o.closed_at.getTime() - o.created_at.getTime()) / 86_400_000))
     : null;
   lines.push(
-    `${won ? "Won" : "Lost"}${o.amount_usd ? ` $${Math.round(Number(o.amount_usd) / 1000)}k` : ""}${days ? ` after ${days} day${days === 1 ? "" : "s"}` : ""}${o.partner_name ? ` — via ${o.partner_name}` : " — direct"}.`,
+    `${won ? "Won" : "Lost"}${o.amount_usd ? ` ${formatMoney(Number(o.amount_usd))}` : ""}${days ? ` after ${days} day${days === 1 ? "" : "s"}` : ""}${o.partner_name ? ` — via ${o.partner_name}` : " — direct"}.`,
   );
 
   const { rows: hops } = await db.query<{ from_stage: string | null; to_stage: string }>(

@@ -3,6 +3,7 @@ import { ROUTINE_CATALOG, listRoutines } from "@/lib/routines/routines";
 import { resendConfigured } from "@/lib/comms/resend";
 import { withTenant } from "@/lib/db/tenant";
 import { runRoutineNowAction, saveRoutineConfigAction, toggleRoutineAction } from "./actions";
+import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
  */
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const input = "rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
+const input = "rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900";
 
 export default async function RoutinesPage() {
   const { routines, runs } = await withTenant(async (db, orgId) => ({
@@ -50,7 +51,7 @@ export default async function RoutinesPage() {
           return (
             <Card key={cat.kind}>
               <div className="mb-1 flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold">{cat.label}</span>
+                <span className="text-copy font-semibold">{cat.label}</span>
                 <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-micro font-semibold uppercase tracking-wide text-neutral-500 dark:bg-neutral-800">
                   {cat.cadence}
                 </span>
@@ -60,7 +61,7 @@ export default async function RoutinesPage() {
                 <form action={toggleRoutineAction.bind(null, r.id)} className="ml-auto">
                   <input type="hidden" name="enable" value={r.enabled ? "0" : "1"} />
                   <button
-                    className={`rounded-md px-3 py-1 text-xs font-medium ${
+                    className={`rounded-control px-3 py-1 text-body font-medium ${
                       r.enabled
                         ? "bg-green-700 text-white hover:bg-green-800"
                         : "text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50 dark:text-neutral-300 dark:ring-neutral-700 dark:hover:bg-neutral-900"
@@ -70,36 +71,36 @@ export default async function RoutinesPage() {
                   </button>
                 </form>
               </div>
-              <p className="mb-3 max-w-2xl text-xs text-neutral-500">{cat.description}</p>
+              <p className="mb-3 max-w-2xl text-body text-neutral-500">{cat.description}</p>
 
               <form action={saveRoutineConfigAction.bind(null, r.id)} className="mb-3 flex flex-wrap items-end gap-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-                <label className="text-sm">
-                  <span className="mb-1 block text-xs text-neutral-500">Run at (UTC hour)</span>
+                <label className="text-copy">
+                  <span className="mb-1 block text-body text-neutral-500">Run at (UTC hour)</span>
                   <input name="hourUtc" type="number" min={0} max={23} defaultValue={r.config.hourUtc ?? 7} className={`${input} w-20 tnum`} />
                 </label>
                 {cat.kind === "account_digest" && (
-                  <label className="text-sm">
-                    <span className="mb-1 block text-xs text-neutral-500">Day</span>
+                  <label className="text-copy">
+                    <span className="mb-1 block text-body text-neutral-500">Day</span>
                     <select name="weekday" defaultValue={String(r.config.weekday ?? 1)} className={input}>
                       {WEEKDAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
                     </select>
                   </label>
                 )}
                 {cat.kind === "morning_brief" && (
-                  <label className="text-sm">
-                    <span className="mb-1 block text-xs text-neutral-500">
+                  <label className="text-copy">
+                    <span className="mb-1 block text-body text-neutral-500">
                       Email to{!canEmail ? " (email delivery needs Resend configured — the brief still runs and shows here)" : ""}
                     </span>
                     <input name="recipient" type="email" defaultValue={r.config.recipient ?? ""} placeholder="you@company.com" className={`${input} w-64`} />
                   </label>
                 )}
-                <button className="rounded-md px-3 py-1.5 text-xs font-medium text-accent ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">
+                <button className={buttonClass("primary", "sm")}>
                   Save
                 </button>
               </form>
               <div className="mb-3 flex flex-wrap items-center gap-3">
                 <form action={runRoutineNowAction.bind(null, r.id)}>
-                  <button className="rounded-md bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800">Run now</button>
+                  <button className={buttonClass("primary", "sm")}>Run now</button>
                 </form>
                 <span className="text-label text-neutral-400">
                   {r.last_run_at ? `last ran ${new Date(r.last_run_at).toISOString().slice(0, 16).replace("T", " ")} UTC` : "never ran"}
@@ -109,8 +110,8 @@ export default async function RoutinesPage() {
               {myRuns.length > 0 && (
                 <div className="space-y-2">
                   {myRuns.map((run, i) => (
-                    <details key={i} className="rounded-lg border border-neutral-200 px-3 py-2 dark:border-neutral-800" open={i === 0 && cat.kind === "morning_brief"}>
-                      <summary className="cursor-pointer text-xs text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
+                    <details key={i} className="rounded-inner border border-neutral-200 px-3 py-2 dark:border-neutral-800" open={i === 0 && cat.kind === "morning_brief"}>
+                      <summary className="cursor-pointer text-body text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">
                         <span className={run.status === "ok" ? "font-medium text-positive dark:text-green-400" : "font-medium text-red-700 dark:text-red-400"}>
                           {run.status}
                         </span>{" "}
@@ -119,7 +120,7 @@ export default async function RoutinesPage() {
                         {Object.entries(run.summary).map(([k, v]) => `${k}: ${String(v)}`).join(" · ")}
                       </summary>
                       {run.output && (
-                        <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-neutral-50 p-3 font-sans text-xs leading-relaxed dark:bg-neutral-950">
+                        <pre className="mt-2 whitespace-pre-wrap rounded-inner bg-neutral-50 p-3 font-sans text-body leading-relaxed dark:bg-neutral-950">
                           {run.output}
                         </pre>
                       )}

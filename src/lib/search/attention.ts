@@ -2,6 +2,7 @@ import type { ResolveContext, IntentResult } from "./registry";
 import { getTodayQueue } from "@/lib/pursuits/read-models/today";
 import { getMotionFunnels, aggregateConstraints } from "@/lib/motions/funnel";
 import { money } from "./significance";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * Attention intents (P2C-1 §6, first query class): "What should I focus on today?", "Where is
@@ -27,7 +28,7 @@ export function parseAttention(q: string): { mode: AttentionMode } | null {
   return null;
 }
 
-const usd = (n: number) => (n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M` : `$${Math.round(n / 1000)}k`);
+const usd = (n: number) => formatMoney(n);
 
 /**
  * "Which Motion has the most constrained revenue?" (P2C-1 §6, Motion class). Same aggregate as the

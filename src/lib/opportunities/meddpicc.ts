@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { formatMoney } from "@/lib/format/money";
 
 type Db = Pool | PoolClient;
 
@@ -163,7 +164,7 @@ export async function assessMeddpicc(db: Db, opportunityId: string): Promise<{ u
         ? { status: vc.state === "STRONG" ? "strong" : "weak",
             notes: `Modeled customer impact ${fmtBounds(vc.modeledImpact)} — ${vc.because}` }
         : opp.amount_usd
-          ? { status: "weak", notes: `Deal sized at ~$${Math.round(Number(opp.amount_usd) / 1000)}k, but that is OUR revenue, not the buyer's metric. No defensible customer impact established yet.` }
+          ? { status: "weak", notes: `Deal sized at ~${formatMoney(Number(opp.amount_usd))}, but that is OUR revenue, not the buyer's metric. No defensible customer impact established yet.` }
           : { status: "gap", notes: "No economic metric captured yet — tie the pain to a number the buyer tracks." },
     economic_buyer: eb
       ? { status: roleStatus(eb), notes: `Economic buyer: ${eb.name ?? "identified"} — ${roleNote(eb)} (${eb.sentiment}).` }

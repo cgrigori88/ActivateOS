@@ -1,5 +1,6 @@
 import type { PursuitOutcomeSummary } from "@/lib/pursuits/read-models/outcome-summary";
 import { titleEnum } from "./vocab";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * Outcome & attribution surface (Phase B3). States the latest commercial outcome, the attribution
@@ -10,7 +11,7 @@ const CLASS_HUE: Record<string, string> = {
   SOURCE: "var(--color-accent-verified)", INFLUENCED: "var(--color-route)", ASSISTED: "var(--color-accent-intelligence)",
   OBSERVED: "var(--color-neutral-500)", UNKNOWN: "var(--color-accent-attention)",
 };
-const money = (n: number | null) => (n == null ? null : n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : `$${Math.round(n / 1000)}k`);
+const money = (n: number | null) => (n == null ? null : formatMoney(n));
 
 export function OutcomePanel({ summary }: { summary: PursuitOutcomeSummary }) {
   const { latest, attribution: a } = summary;

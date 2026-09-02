@@ -3,6 +3,7 @@ import { renewalProjection } from "@/lib/lifecycle/projection";
 import { getValueCase } from "@/lib/value/case";
 import { opportunityCondition, CONDITION_LABEL, type ConditionState } from "@/lib/opportunities/condition";
 import { money as significanceOf } from "./significance";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * Compound pursuit filter (P2C-1 §7). ONE intent that can express a request spanning several
@@ -170,8 +171,8 @@ interface Row {
 export function readBack(f: CompoundFilters): string {
   const parts: string[] = [];
   if (f.partner) parts.push(`routed via ${f.partner}`);
-  if (f.amountGt != null) parts.push(`amount > $${Math.round(f.amountGt / 1000)}k`);
-  if (f.amountLt != null) parts.push(`amount < $${Math.round(f.amountLt / 1000)}k`);
+  if (f.amountGt != null) parts.push(`amount > ${formatMoney(f.amountGt)}`);
+  if (f.amountLt != null) parts.push(`amount < ${formatMoney(f.amountLt)}`);
   if (f.renewalWithinDays != null) parts.push(`lifecycle event within ${f.renewalWithinDays} days`);
   if (f.missingRole) parts.push(`no VERIFIED ${f.missingRole.replace(/_/g, " ")}`);
   if (f.valueState) parts.push(f.valueState === "none" ? "no defensible Value Case"
@@ -257,7 +258,7 @@ export async function resolveCompound(ctx: ResolveContext, f: CompoundFilters): 
 
   kept.sort((a, b) => Number(b.ev ?? 0) - Number(a.ev ?? 0));
 
-  const usd = (v: string | null) => (v == null ? null : `$${Math.round(Number(v) / 1000)}k`);
+  const usd = (v: string | null) => (v == null ? null : `${formatMoney(Number(v))}`);
   return {
     hits: kept.slice(0, 20).map((r) => ({
       group: `Matches all ${fams.length} constraints`,

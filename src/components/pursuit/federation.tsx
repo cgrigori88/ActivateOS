@@ -1,5 +1,6 @@
 import { TrustTag } from "./parts";
 import type { FederationView, GovernedActionView, OutcomeTrailView } from "@/lib/pursuits/federation/read-models";
+import { formatMoney } from "@/lib/format/money";
 
 /**
  * Federation surface (Workstream E3-H) — native to the D.5 material system. Renders
@@ -27,7 +28,7 @@ export function FederationBento({ fed, actions, outcomes }: {
         <div className="mb-2 text-label font-semibold uppercase tracking-[0.04em] text-neutral-400">Participants on this pursuit</div>
         <ul className="flex flex-col gap-1.5">
           {fed.participants.map((p) => (
-            <li key={p.orgId} className="flex items-center justify-between gap-3 rounded-md border border-neutral-200/70 bg-white/40 px-3 py-2 dark:border-neutral-700/60 dark:bg-white/5">
+            <li key={p.orgId} className="flex items-center justify-between gap-3 rounded-control border border-neutral-200/70 bg-white/40 px-3 py-2 dark:border-neutral-700/60 dark:bg-white/5">
               <span className="flex items-center gap-2 text-copy">
                 <span className="font-semibold">{p.orgName ?? "Participant org"}</span>
                 {p.isSponsor && <TrustTag label="Sponsor" />}
@@ -66,9 +67,9 @@ export function FederationBento({ fed, actions, outcomes }: {
           {actions.eligible.length === 0
             ? <span className="text-body text-neutral-500">No governed actions are available to you here.</span>
             : actions.eligible.map((a) => (
-              <span key={a.skillId} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200/70 bg-white/40 px-2 py-1 text-body dark:border-neutral-700/60 dark:bg-white/5" title={a.description}>
+              <span key={a.skillId} className="inline-flex items-center gap-1.5 rounded-control border border-neutral-200/70 bg-white/40 px-2 py-1 text-body dark:border-neutral-700/60 dark:bg-white/5" title={a.description}>
                 {a.description}
-                <span className="rounded-sm bg-neutral-100 px-1 text-micro uppercase tracking-[0.02em] text-neutral-500 dark:bg-white/10">{EFFECT_WORD[a.effectClass] ?? a.effectClass}</span>
+                <span className="rounded-inner bg-neutral-100 px-1 text-micro uppercase tracking-[0.02em] text-neutral-500 dark:bg-white/10">{EFFECT_WORD[a.effectClass] ?? a.effectClass}</span>
               </span>
             ))}
         </div>
@@ -86,9 +87,9 @@ export function FederationBento({ fed, actions, outcomes }: {
           <ol className="flex flex-wrap items-center gap-1.5 text-body">
             {outcomes.outcomes.map((o, i) => (
               <li key={i} className="inline-flex items-center gap-1.5">
-                <span className={`rounded-md px-2 py-0.5 ${o.isTerminal ? "font-semibold" : ""}`} style={{ background: o.isTerminal ? "var(--color-band-high)" : "var(--color-surface-muted, #f3f4f6)", color: o.isTerminal ? "white" : "inherit" }}>
+                <span className={`rounded-control px-2 py-0.5 ${o.isTerminal ? "font-semibold" : ""}`} style={{ background: o.isTerminal ? "var(--color-band-high)" : "var(--color-surface-muted, #f3f4f6)", color: o.isTerminal ? "white" : "inherit" }}>
                   {o.label.replace(/_/g, " ").toLowerCase()}
-                  {o.valueAmount !== null && <span className="ml-1 tabular-nums opacity-80">${(o.valueAmount / 1000).toFixed(0)}k</span>}
+                  {o.valueAmount !== null && <span className="ml-1 tabular-nums opacity-80">{formatMoney(o.valueAmount)}</span>}
                 </span>
                 {i < outcomes.outcomes.length - 1 && <span className="text-neutral-300">→</span>}
               </li>

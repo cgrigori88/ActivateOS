@@ -11,7 +11,7 @@ import {
   weightedPipelineValue,
   type Stage,
 } from "@/lib/opportunities/lifecycle";
-import { Bento, Card, MiniBar, PageHeader, StatusBadge, SectionHeading, Disclosure, SummaryBand, buttonClass } from "@/components/ui";
+import { Bento, Card, MiniBar, PageHeader, StatusBadge, SectionHeading, Disclosure, SummaryBand, buttonClass, fieldClass } from "@/components/ui";
 import { QuerySelect } from "@/components/query-select";
 import {
   ELEMENTS,
@@ -45,6 +45,7 @@ import { PortfolioMatrix } from "@/components/pipeline/portfolio-matrix";
 import { PipelineAllTable } from "@/components/pipeline/all-table";
 import { getAccountIntel } from "@/lib/accounts/intel";
 import { IntelDrawer } from "@/components/intel/intel-drawer";
+import { formatMoney } from "@/lib/format/money";
 
 const MEDDPICC_STATUSES: Status[] = ["unknown", "gap", "weak", "strong"];
 
@@ -476,10 +477,10 @@ export default async function PipelinePage({
           <>
             <SummaryBand className="mb-3">
               <Bento label="open opportunities" value={open.length} href="/pipeline" />
-              <Bento label="total pipeline" value={`$${Math.round(total / 1000)}k`} />
-              <Bento label="weighted" value={`$${Math.round(weighted / 1000)}k`} subs={["by stage probability"]} />
+              <Bento label="total pipeline" value={`${formatMoney(total)}`} />
+              <Bento label="weighted" value={`${formatMoney(weighted)}`} subs={["by stage probability"]} />
               <Bento label="avg qualification" value={avgQual == null ? "—" : `${avgQual}`} subs={["MEDDPICC health"]} />
-              <Bento label="won" value={wonCount} intent="positive" subs={[`$${Math.round(wonUsd / 1000)}k`]} href="/pipeline?stage=closed_won" />
+              <Bento label="won" value={wonCount} intent="positive" subs={[`${formatMoney(wonUsd)}`]} href="/pipeline?stage=closed_won" />
               <Bento label="reg'd deals" value={regRows.length} href="/pipeline?view=review" />
             </SummaryBand>
 
@@ -487,41 +488,41 @@ export default async function PipelinePage({
             {tieOut && (
               <Card className="mb-3">
                 <div className="mb-1 flex items-baseline justify-between gap-2">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Does it tie out?</h2>
+                  <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Does it tie out?</h2>
                   <span className="text-label text-neutral-400">CRM export vs live record, account by account</span>
                 </div>
-                <div className="mb-2 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-                  <span>Your CRM export says <span className="tnum font-semibold">${Math.round(tieOut.crmUsd / 1000)}k</span></span>
-                  <span>PursuitOS holds <span className="tnum font-semibold">${Math.round(tieOut.liveUsd / 1000)}k</span> on those accounts</span>
+                <div className="mb-2 flex flex-wrap gap-x-6 gap-y-1 text-copy">
+                  <span>Your CRM export says <span className="tnum font-semibold">{formatMoney(tieOut.crmUsd)}</span></span>
+                  <span>PursuitOS holds <span className="tnum font-semibold">{formatMoney(tieOut.liveUsd)}</span> on those accounts</span>
                   <span className={Math.abs(tieOut.crmUsd - tieOut.liveUsd) < 1 ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}>
                     {Math.abs(tieOut.crmUsd - tieOut.liveUsd) < 1
                       ? "Ties out."
-                      : `${tieOut.crmUsd > tieOut.liveUsd ? "+" : "−"}$${Math.round(Math.abs(tieOut.crmUsd - tieOut.liveUsd) / 1000)}k apart`}
+                      : `${tieOut.crmUsd > tieOut.liveUsd ? "+" : "−"}${formatMoney(Math.abs(tieOut.crmUsd - tieOut.liveUsd))} apart`}
                   </span>
                   {tieOut.weekAgo && (
                     <span className="text-neutral-500">
-                      Open pipeline {tieOut.weekAgo.takenOn}: <span className="tnum">${Math.round(tieOut.weekAgo.openUsd / 1000)}k</span>
-                      {" → "}today: <span className="tnum">${Math.round(total / 1000)}k</span>
+                      Open pipeline {tieOut.weekAgo.takenOn}: <span className="tnum">{formatMoney(tieOut.weekAgo.openUsd)}</span>
+                      {" → "}today: <span className="tnum">{formatMoney(total)}</span>
                     </span>
                   )}
                 </div>
                 {tieOut.deltas.length > 0 ? (
                   <ul className="space-y-1">
                     {tieOut.deltas.map((d) => (
-                      <li key={d.companyId} className="flex items-center gap-2 text-sm">
+                      <li key={d.companyId} className="flex items-center gap-2 text-copy">
                         <Link href={`/accounts/${d.companyId}`} className="min-w-0 flex-1 truncate font-medium hover:underline">
                           {d.account}
                         </Link>
-                        <span className="tnum text-xs text-neutral-500">CRM ${Math.round(d.crm / 1000)}k</span>
-                        <span className="tnum text-xs text-neutral-500">live ${Math.round(d.live / 1000)}k</span>
-                        <span className="tnum w-16 text-right text-xs font-semibold text-amber-700 dark:text-amber-400">
-                          {d.crm > d.live ? "+" : "−"}${Math.round(Math.abs(d.crm - d.live) / 1000)}k
+                        <span className="tnum text-body text-neutral-500">CRM {formatMoney(d.crm)}</span>
+                        <span className="tnum text-body text-neutral-500">live {formatMoney(d.live)}</span>
+                        <span className="tnum w-16 text-right text-body font-semibold text-amber-700 dark:text-amber-400">
+                          {d.crm > d.live ? "+" : "−"}{formatMoney(Math.abs(d.crm - d.live))}
                         </span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-sm text-emerald-700 dark:text-emerald-400">
+                  <p className="text-copy text-emerald-700 dark:text-emerald-400">
                     Every account with a CRM snapshot matches the live record.
                   </p>
                 )}
@@ -537,12 +538,12 @@ export default async function PipelinePage({
             {tieOut && (tieOut.deltas.length > 0 || writebacks.length > 0) && (
               <Card className="mb-3">
                 <div className="mb-1 flex items-baseline justify-between gap-3">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Fix the CRM</h2>
-                  <span className="text-xs text-neutral-400">corrections proposed from the tie-out — nothing touches the CRM without approval</span>
+                  <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Fix the CRM</h2>
+                  <span className="text-body text-neutral-400">corrections proposed from the tie-out — nothing touches the CRM without approval</span>
                 </div>
                 {writebacks.length === 0 ? (
                   <form action={draftWritebacksAction}>
-                    <button className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white">
+                    <button className={buttonClass("primary", "md")}>
                       Draft corrections from the tie-out
                     </button>
                   </form>
@@ -550,7 +551,7 @@ export default async function PipelinePage({
                   <>
                     <ul className="space-y-2">
                       {writebacks.map((w) => (
-                        <li key={w.id} className="flex items-start gap-2 text-sm">
+                        <li key={w.id} className="flex items-start gap-2 text-copy">
                           <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-micro font-bold uppercase ${w.field === "presence" ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "bg-blue-100 text-accent dark:bg-blue-950 dark:text-blue-300"}`}>
                             {w.field}
                           </span>
@@ -562,10 +563,10 @@ export default async function PipelinePage({
                             {w.status === "proposed" ? (
                               <>
                                 <form action={decideWritebackAction.bind(null, w.id, "approved")}>
-                                  <button className="rounded bg-accent px-2 py-0.5 text-xs font-medium text-white">Approve</button>
+                                  <button className={buttonClass("primary", "sm")}>Approve</button>
                                 </form>
                                 <form action={decideWritebackAction.bind(null, w.id, "dismissed")}>
-                                  <button className="text-xs text-neutral-400 underline-offset-2 hover:underline">dismiss</button>
+                                  <button className={buttonClass("subtle", "md")}>dismiss</button>
                                 </form>
                               </>
                             ) : (
@@ -577,10 +578,10 @@ export default async function PipelinePage({
                     </ul>
                     <div className="mt-3 flex items-center gap-3">
                       <form action={draftWritebacksAction}>
-                        <button className="text-xs font-medium text-accent hover:underline dark:text-blue-400">re-draft from current tie-out</button>
+                        <button className={buttonClass("subtle", "md")}>re-draft from current tie-out</button>
                       </form>
                       {approvedWb > 0 && (
-                        <a href="/api/writebacks" className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-white">
+                        <a href="/api/writebacks" className="rounded-inner bg-accent px-3 py-1 text-body font-medium text-white">
                           Export {approvedWb} approved correction{approvedWb === 1 ? "" : "s"} (CSV)
                         </a>
                       )}
@@ -595,20 +596,20 @@ export default async function PipelinePage({
             {calibration.length > 0 && (
               <Card className="mb-3">
                 <div className="mb-1 flex items-baseline justify-between gap-3">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Was the forecast right?</h2>
-                  <span className="text-xs text-neutral-400">what the weighted pipeline said, vs what closed since</span>
+                  <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Was the forecast right?</h2>
+                  <span className="text-body text-neutral-400">what the weighted pipeline said, vs what closed since</span>
                 </div>
                 <div className="space-y-1">
                   {calibration.map((c) => {
                     const daysAgo = Math.round((Date.now() - new Date(c.takenOn).getTime()) / 86_400_000);
                     const hitRate = c.weightedUsd > 0 ? Math.round((c.wonUsd / c.weightedUsd) * 100) : null;
                     return (
-                      <p key={c.takenOn} className="text-sm text-neutral-600 dark:text-neutral-300">
+                      <p key={c.takenOn} className="text-copy text-neutral-600 dark:text-neutral-300">
                         <span className="font-medium">{daysAgo}d ago</span> ({c.takenOn}) the book held{" "}
-                        <span className="tnum">${Math.round(c.openUsd / 1000)}k</span> open,{" "}
-                        <span className="tnum">${Math.round(c.weightedUsd / 1000)}k</span> weighted. Since then:{" "}
-                        <span className="tnum font-semibold text-positive dark:text-green-400">${Math.round(c.wonUsd / 1000)}k won</span> ({c.wonN}),{" "}
-                        <span className="tnum font-semibold text-red-700 dark:text-red-400">${Math.round(c.lostUsd / 1000)}k lost</span> ({c.lostN})
+                        <span className="tnum">{formatMoney(c.openUsd)}</span> open,{" "}
+                        <span className="tnum">{formatMoney(c.weightedUsd)}</span> weighted. Since then:{" "}
+                        <span className="tnum font-semibold text-positive dark:text-green-400">{formatMoney(c.wonUsd)} won</span> ({c.wonN}),{" "}
+                        <span className="tnum font-semibold text-red-700 dark:text-red-400">{formatMoney(c.lostUsd)} lost</span> ({c.lostN})
                         {hitRate != null && <> — <span className="tnum font-medium">{hitRate}%</span> of the weighted number has realized so far</>}.
                       </p>
                     );
@@ -633,7 +634,7 @@ export default async function PipelinePage({
                 </Disclosure>
                 <ul className="space-y-1.5">
                   {renewals.map((r) => (
-                    <li key={r.companyId} className="flex flex-wrap items-center gap-2 text-sm">
+                    <li key={r.companyId} className="flex flex-wrap items-center gap-2 text-copy">
                       <Link href={`/accounts/${r.companyId}`} className="min-w-0 font-medium hover:underline">
                         {r.legalName}
                       </Link>
@@ -663,7 +664,7 @@ export default async function PipelinePage({
                           {r.engagement == null ? "engagement quiet" : `engagement ${Math.round(r.engagement)}`}
                         </span>
                         <span className={r.openUsd > 0 ? "tnum font-semibold" : "text-neutral-400"}>
-                          {r.openUsd > 0 ? `$${Math.round(r.openUsd / 1000)}k open` : "no open opp"}
+                          {r.openUsd > 0 ? `${formatMoney(r.openUsd)} open` : "no open opp"}
                         </span>
                       </span>
                     </li>
@@ -689,7 +690,7 @@ export default async function PipelinePage({
                   blue: "text-accent dark:text-blue-400",
                 };
                 return (
-                  <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs transition-colors ${active ? "border-accent bg-accent text-white" : "border-neutral-200 hover:border-neutral-400 dark:border-neutral-800 dark:hover:border-neutral-600"}`}>
+                  <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-inner border px-2.5 py-1 text-body transition-colors ${active ? "border-accent bg-accent text-white" : "border-neutral-200 hover:border-neutral-400 dark:border-neutral-800 dark:hover:border-neutral-600"}`}>
                     <span className={`tnum font-semibold ${active ? "" : tones[tone]}`}>{count}</span>
                     <span className={active ? "" : "text-neutral-500"}>{label}</span>
                   </Link>
@@ -714,8 +715,8 @@ export default async function PipelinePage({
             })()}
             {(wonQual != null || lostQual != null) && (
               <Card className="mb-3">
-                <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-neutral-500">AI learned signal · qualification vs outcome</h2>
-                <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                <h2 className="mb-1 text-copy font-semibold uppercase tracking-wide text-neutral-500">AI learned signal · qualification vs outcome</h2>
+                <p className="text-copy text-neutral-600 dark:text-neutral-300">
                   Closed-won deals qualified at <span className="font-semibold text-positive dark:text-green-400">{wonQual ?? "—"}</span> MEDDPICC health on average;
                   closed-lost at <span className="font-semibold text-red-700 dark:text-red-400">{lostQual ?? "—"}</span>.
                   {wonQual != null && lostQual != null && wonQual > lostQual && (
@@ -726,7 +727,7 @@ export default async function PipelinePage({
             )}
             {stageRows.length > 0 && (
               <Card className="mb-3">
-                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">Open opportunities by stage</h2>
+                <h2 className="mb-3 text-copy font-semibold uppercase tracking-wide text-neutral-500">Open opportunities by stage</h2>
                 <MiniBar rows={stageRows} series="ordered" />
               </Card>
             )}
@@ -752,17 +753,17 @@ export default async function PipelinePage({
               return (
                 <Card className="mb-3">
                   <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Pipeline &amp; revenue roll-up</h2>
+                    <h2 className="text-copy font-semibold uppercase tracking-wide text-neutral-500">Pipeline &amp; revenue roll-up</h2>
                     <span className="text-label text-neutral-400">open pipeline · base (direct) vs joint (co-sell)</span>
                   </div>
                   {/* Base vs joint split bar */}
-                  <div className="mb-1 flex h-5 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
-                    <div className="flex items-center justify-center bg-neutral-400 text-micro font-medium text-white dark:bg-neutral-600" style={{ width: `${totalOpen ? (baseOpen / totalOpen) * 100 : 0}%` }} title={`Base $${Math.round(baseOpen / 1000)}k`} />
-                    <div className="flex items-center justify-center bg-teal-500 text-micro font-medium text-white" style={{ width: `${totalOpen ? (jointOpen / totalOpen) * 100 : 0}%` }} title={`Joint $${Math.round(jointOpen / 1000)}k`} />
+                  <div className="mb-1 flex h-5 overflow-hidden rounded-inner bg-neutral-100 dark:bg-neutral-800">
+                    <div className="flex items-center justify-center bg-neutral-400 text-micro font-medium text-white dark:bg-neutral-600" style={{ width: `${totalOpen ? (baseOpen / totalOpen) * 100 : 0}%` }} title={`Base ${formatMoney(baseOpen)}`} />
+                    <div className="flex items-center justify-center bg-teal-500 text-micro font-medium text-white" style={{ width: `${totalOpen ? (jointOpen / totalOpen) * 100 : 0}%` }} title={`Joint ${formatMoney(jointOpen)}`} />
                   </div>
                   <div className="mb-4 flex gap-4 text-label text-neutral-500">
-                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-neutral-400 dark:bg-neutral-600" /> base ${Math.round(baseOpen / 1000)}k</span>
-                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-teal-500" /> joint / co-sell ${Math.round(jointOpen / 1000)}k</span>
+                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-inner bg-neutral-400 dark:bg-neutral-600" /> base {formatMoney(baseOpen)}</span>
+                    <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-inner bg-teal-500" /> joint / co-sell {formatMoney(jointOpen)}</span>
                     <span className="ml-auto">co-sell lift {totalOpen ? Math.round((jointOpen / totalOpen) * 100) : 0}%</span>
                   </div>
                   {/* Per-partner: open (teal) + won (green) */}
@@ -770,17 +771,17 @@ export default async function PipelinePage({
                     <div className="space-y-2">
                       {partners.map(([name, v]) => (
                         <div key={name} className="flex items-center gap-3">
-                          <span className="w-40 shrink-0 truncate text-xs text-neutral-600 dark:text-neutral-300" title={name}>{name}</span>
-                          <div className="flex h-4 flex-1 overflow-hidden rounded bg-neutral-100 dark:bg-neutral-800">
-                            <div className="bg-teal-500" style={{ width: `${((v.open) / maxP) * 100}%` }} title={`open $${Math.round(v.open / 1000)}k`} />
-                            <div className="bg-green-600" style={{ width: `${((v.won) / maxP) * 100}%` }} title={`won $${Math.round(v.won / 1000)}k`} />
+                          <span className="w-40 shrink-0 truncate text-body text-neutral-600 dark:text-neutral-300" title={name}>{name}</span>
+                          <div className="flex h-4 flex-1 overflow-hidden rounded-inner bg-neutral-100 dark:bg-neutral-800">
+                            <div className="bg-teal-500" style={{ width: `${((v.open) / maxP) * 100}%` }} title={`open ${formatMoney(v.open)}`} />
+                            <div className="bg-green-600" style={{ width: `${((v.won) / maxP) * 100}%` }} title={`won ${formatMoney(v.won)}`} />
                           </div>
-                          <span className="tnum w-24 shrink-0 text-right text-xs text-neutral-500">${Math.round(v.open / 1000)}k{v.won ? ` · ${Math.round(v.won / 1000)}k won` : ""}</span>
+                          <span className="tnum w-24 shrink-0 text-right text-body text-neutral-500">{formatMoney(v.open)}{v.won ? ` · ${formatMoney(v.won)} won` : ""}</span>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-neutral-400">No partner-attributed pipeline yet — opportunities inherit their partner from the motion.</p>
+                    <p className="text-body text-neutral-400">No partner-attributed pipeline yet — opportunities inherit their partner from the motion.</p>
                   )}
                 </Card>
               );
@@ -805,10 +806,10 @@ export default async function PipelinePage({
         ];
         return (
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-lg p-0.5" style={{ background: "var(--surface-inset)" }}>
+            <div className="inline-flex rounded-inner p-0.5" style={{ background: "var(--surface-inset)" }}>
               {seg.map((v) => (
                 <Link key={v.key} href={viewHref(v.key)} title={v.hint}
-                  className={`rounded-md px-3 py-1.5 text-copy font-semibold transition-colors ${view === v.key ? "bg-white text-neutral-900 shadow-[var(--shadow-low)] dark:bg-neutral-700 dark:text-white" : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"}`}>
+                  className={`rounded-control px-3 py-1.5 text-copy font-semibold transition-colors ${view === v.key ? "bg-white text-neutral-900 shadow-[var(--shadow-low)] dark:bg-neutral-700 dark:text-white" : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"}`}>
                   {v.label}
                 </Link>
               ))}
@@ -827,7 +828,7 @@ export default async function PipelinePage({
                 <QuerySelect param="value" value={qp("value") ?? "all"} label="Value case" options={[{ value: "all", label: "Any value case" }, { value: "strong", label: "Strong" }, { value: "incomplete", label: "Incomplete" }, { value: "conflicting", label: "Conflicting economics" }, { value: "none", label: "Not established" }]} />
               </>
             )}
-            <span className="ml-auto text-xs text-neutral-500">{visible.length} of {opps.length}</span>
+            <span className="ml-auto text-body text-neutral-500">{visible.length} of {opps.length}</span>
           </div>
         );
       })()}
@@ -836,7 +837,7 @@ export default async function PipelinePage({
           lifecycle state is a claim about evidence — how certain that selection is. Progressive
           disclosure: the first line is the state, the detail sits one click away on the account. */}
       {qp("life") && qp("life") !== "all" && (view === "all" || view === "review") && (
-        <p className="mb-3 text-xs text-neutral-500">
+        <p className="mb-3 text-body text-neutral-500">
           {visible.length === 0
             ? "No open deal sits on an account in this lifecycle state."
             : <>
@@ -855,13 +856,13 @@ export default async function PipelinePage({
       )}
 
       {opps.length === 0 && (
-        <p className="text-sm text-neutral-500">
+        <p className="text-copy text-neutral-500">
           No opportunities yet — promote an active motion from its brief when a conversation
           earns a meeting.
         </p>
       )}
       {opps.length > 0 && visible.length === 0 && view !== "portfolio" && (
-        <p className="text-sm text-neutral-500">No opportunities match these filters — clear one above.</p>
+        <p className="text-copy text-neutral-500">No opportunities match these filters — clear one above.</p>
       )}
 
       {/* PORTFOLIO (§3.2 / R4): ecosystem-native pivot matrix over the canonical open book. */}
@@ -915,11 +916,11 @@ export default async function PipelinePage({
                       <Link href={`/accounts/${o.company_id}`} className="font-medium hover:underline">{o.name}</Link>
                       <div className="text-label text-neutral-400">{o.legal_name}</div>
                     </td>
-                    <td className="text-xs text-neutral-500">{o.partner_name ?? "—"}</td>
-                    <td className="text-xs uppercase tracking-wide text-neutral-500">{o.stage.replace(/_/g, " ")}</td>
-                    <td className="tnum text-right">{amt != null ? `$${Math.round(amt / 1000)}k` : "—"}</td>
+                    <td className="text-body text-neutral-500">{o.partner_name ?? "—"}</td>
+                    <td className="text-body uppercase tracking-wide text-neutral-500">{o.stage.replace(/_/g, " ")}</td>
+                    <td className="tnum text-right">{amt != null ? `${formatMoney(amt)}` : "—"}</td>
                     <td className="tnum text-right text-neutral-500">
-                      {amt != null && !closed ? `$${Math.round((amt * probOf(o)) / 1000)}k` : "—"}
+                      {amt != null && !closed ? `${formatMoney((amt * probOf(o)))}` : "—"}
                     </td>
                     <td className="tnum text-right">
                       {(() => {
@@ -928,14 +929,14 @@ export default async function PipelinePage({
                         return <span className={tone}>{s}</span>;
                       })()}
                     </td>
-                    <td className="text-xs">
+                    <td className="text-body">
                       {quote.delivered ? (
                         <span className="text-positive dark:text-green-400" title={quote.note ?? undefined}>✓ sent{quote.at ? ` ${quote.at}` : ""}</span>
                       ) : (
                         <span className="text-neutral-400">—</span>
                       )}
                     </td>
-                    <td className="text-xs text-neutral-500">{o.expected_close_date ? new Date(o.expected_close_date).toISOString().slice(0, 10) : "—"}</td>
+                    <td className="text-body text-neutral-500">{o.expected_close_date ? new Date(o.expected_close_date).toISOString().slice(0, 10) : "—"}</td>
                     <td>
                       {reg ? (
                         <div className="flex items-center gap-2">
@@ -946,21 +947,21 @@ export default async function PipelinePage({
                           {reg.status === "submitted" && (
                             <span className="flex gap-1">
                               <form action={setRegistrationStatusAction.bind(null, reg.id, "approved")}>
-                                <button className="text-label font-medium text-positive hover:underline dark:text-green-400">approve</button>
+                                <button className={buttonClass("subtle", "md")}>approve</button>
                               </form>
                               <form action={setRegistrationStatusAction.bind(null, reg.id, "rejected")}>
-                                <button className="text-label font-medium text-red-700 hover:underline dark:text-red-400">reject</button>
+                                <button className={buttonClass("subtle", "md")}>reject</button>
                               </form>
                             </span>
                           )}
                         </div>
                       ) : closed ? (
-                        <span className="text-xs text-neutral-400">—</span>
+                        <span className="text-body text-neutral-400">—</span>
                       ) : (
                         <form action={registerDealAction.bind(null, o.id)} className="flex items-center gap-1">
-                          <input name="vendor" placeholder="vendor" className="w-20 rounded border border-neutral-300 bg-transparent px-1.5 py-0.5 text-label dark:border-neutral-700" />
-                          <input name="product" placeholder="product" className="w-24 rounded border border-neutral-300 bg-transparent px-1.5 py-0.5 text-label dark:border-neutral-700" />
-                          <button className="rounded bg-blue-700 px-2 py-0.5 text-label font-medium text-white hover:bg-blue-800">Register</button>
+                          <input name="vendor" placeholder="vendor" className="w-20 rounded-inner border border-neutral-300 bg-transparent px-1.5 py-0.5 text-label dark:border-neutral-700" />
+                          <input name="product" placeholder="product" className="w-24 rounded-inner border border-neutral-300 bg-transparent px-1.5 py-0.5 text-label dark:border-neutral-700" />
+                          <button className={buttonClass("primary", "sm")}>Register</button>
                         </form>
                       )}
                     </td>
@@ -973,7 +974,7 @@ export default async function PipelinePage({
       )}
 
       {view === "attention" && attentionVisible.length === 0 && (
-        <p className="rounded-card p-4 text-sm text-neutral-500" style={{ background: "var(--surface-inset)" }}>
+        <p className="rounded-card p-4 text-copy text-neutral-500" style={{ background: "var(--surface-inset)" }}>
           Nothing needs intervention right now{condFilter ? " in this slice" : ""}. The open book is in{" "}
           <Link href="/pipeline?view=all" className="font-medium text-accent hover:underline dark:text-blue-400">All</Link>, concentrated in{" "}
           <Link href="/pipeline?view=portfolio" className="font-medium text-accent hover:underline dark:text-blue-400">Portfolio</Link>.
@@ -998,7 +999,9 @@ export default async function PipelinePage({
           const quote = quoteOf(o.id);
           const mo = momentum.get(o.id);
           const amt = o.amount_usd != null ? Number(o.amount_usd) : null;
-          const weighted = amt != null && !closed ? Math.round((amt * probOf(o)) / 1000) : null;
+          // Raw dollars, not thousands: formatMoney owns the scale decision, and a
+          // pre-divided value would render $1.5K for one and a half million.
+          const weighted = amt != null && !closed ? Math.round(amt * probOf(o)) : null;
           // Canonical "what is actually happening" — same conditions/language as Where-Your-Systems-Disagree.
           const silentDays = o.updated_at ? Math.floor((Date.now() - new Date(o.updated_at).getTime()) / 86_400_000) : null;
           const lateStage = o.stage === "proposal" || o.stage === "negotiation";
@@ -1032,10 +1035,14 @@ export default async function PipelinePage({
                 {closed
                   ? <span className="rounded-full px-2 py-0.5 text-micro font-bold uppercase tracking-[0.04em]" style={won ? { background: "color-mix(in srgb, var(--color-accent-verified) 14%, transparent)", color: "var(--color-accent-verified)" } : { background: "var(--surface-inset)", color: "var(--color-neutral-500)" }}>{won ? "Closed won" : "Closed lost — no decision"}</span>
                   : <span className="text-label font-semibold uppercase tracking-[0.04em] text-neutral-500">{o.stage.replace(/_/g, " ")}</span>}
+                {/* Materiality sizes the amount — a bigger deal reads bigger. The
+                    three steps were 17 / 15 / 13.5px inline, which is off the named
+                    scale in both directions (and nobody designs on a half-pixel
+                    grid). Same three-step ramp, now section / title / copy. */}
                 {amt != null && (
-                  <span className="tnum" style={{ fontSize: material === "high" ? 17 : material === "mid" ? 15 : 13.5, fontWeight: 800 }}>
-                    ${Math.round(amt / 1000)}k
-                    {weighted != null && <span className="ml-1 text-label font-medium text-neutral-400">· ${weighted}k weighted</span>}
+                  <span className={`tnum font-extrabold ${material === "high" ? "text-section" : material === "mid" ? "text-title" : "text-copy"}`}>
+                    {formatMoney(amt)}
+                    {weighted != null && <span className="ml-1 text-label font-medium text-neutral-400">· {formatMoney(weighted)} weighted</span>}
                   </span>
                 )}
                 {o.partner_name && <span className="text-label text-neutral-500">route <b className="text-neutral-600 dark:text-neutral-300">{o.partner_name}</b></span>}
@@ -1082,7 +1089,7 @@ export default async function PipelinePage({
                     <span className="uppercase tracking-[0.04em]">Manage</span>
                     {(() => { const m = meddpicc.get(o.id)!; const sc = meddpiccScore(m); const mg = meddpiccGaps(m);
                       const t = sc >= 70 ? "var(--color-accent-verified)" : sc >= 40 ? "var(--color-accent-attention)" : "var(--color-accent-risk)";
-                      return <span className="tnum rounded px-1.5 py-0.5 text-micro font-semibold" style={{ background: `color-mix(in srgb, ${t} 12%, transparent)`, color: t }}>MEDDPICC {sc}{mg.length ? ` · ${mg.length} to firm up` : ""}</span>; })()}
+                      return <span className="tnum rounded-inner px-1.5 py-0.5 text-micro font-semibold" style={{ background: `color-mix(in srgb, ${t} 12%, transparent)`, color: t }}>MEDDPICC {sc}{mg.length ? ` · ${mg.length} to firm up` : ""}</span>; })()}
                     {gaps.length > 0 && <span className="text-micro text-neutral-400">buyer roles: {gaps.length} gap{gaps.length === 1 ? "" : "s"}</span>}
                     {!quote.delivered && <span className="text-micro text-neutral-400">no quote</span>}
                   </summary>
@@ -1094,7 +1101,7 @@ export default async function PipelinePage({
                     {stakeholders.length > 0 && (
                       <div className="space-y-1">
                         {stakeholders.map((s) => (
-                          <form key={s.contact_id} action={setStakeholderAction.bind(null, o.id, s.contact_id)} className="flex items-center gap-2 text-sm">
+                          <form key={s.contact_id} action={setStakeholderAction.bind(null, o.id, s.contact_id)} className="flex items-center gap-2 text-copy">
                             <span className="font-medium">{s.name ?? s.email}</span>
                             {/* Assertion state (P1C): verified/inferred/unverified stay distinct. A role
                                 change here lands as an unverified proposal — verification happens on the
@@ -1102,13 +1109,13 @@ export default async function PipelinePage({
                             <span className={`rounded-full px-1.5 py-px text-micro font-semibold ${s.assertion_state === "verified" ? "bg-emerald/12 text-emerald-700 dark:text-emerald-300" : s.assertion_state === "inferred" ? "bg-violet/12 text-violet-700 dark:text-violet-300" : "bg-neutral-500/10 text-neutral-500"}`}>
                               {s.assertion_state}
                             </span>
-                            <select name="role" defaultValue={s.role} className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-xs dark:border-neutral-700">
+                            <select name="role" defaultValue={s.role} className={fieldClass("sm")}>
                               {ROLES.map((r) => <option key={r} value={r}>{r.replace(/_/g, " ")}</option>)}
                             </select>
-                            <select name="sentiment" defaultValue={s.sentiment} className="rounded border border-neutral-300 bg-transparent px-1 py-0.5 text-xs dark:border-neutral-700">
+                            <select name="sentiment" defaultValue={s.sentiment} className={fieldClass("sm")}>
                               {SENTIMENTS.map((r) => <option key={r} value={r}>{r}</option>)}
                             </select>
-                            <button type="submit" className="text-xs font-medium text-accent hover:underline dark:text-blue-400">Save</button>
+                            <button type="submit" className={buttonClass("subtle", "md")}>Save</button>
                           </form>
                         ))}
                       </div>
@@ -1119,26 +1126,26 @@ export default async function PipelinePage({
                       return (
                         <div>
                           <form action={assessMeddpiccAction.bind(null, o.id)} className="mb-2 flex items-center gap-2">
-                            <button className="rounded-md px-2.5 py-1 text-label font-medium text-accent ring-1 ring-inset ring-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:ring-blue-800 dark:hover:bg-blue-950">AI assess from evidence</button>
+                            <button className={buttonClass("primary", "sm")}>AI assess from evidence</button>
                             <span className="text-micro text-neutral-400">drafts every element you haven&rsquo;t set from stakeholders &amp; verified signals — your call to keep</span>
                           </form>
                           <div className="grid gap-1.5 sm:grid-cols-2">
                             {ELEMENTS.map((e) => {
                               const st = m[e.key];
                               return (
-                                <form key={e.key} action={setMeddpiccAction.bind(null, o.id, e.key)} className="flex items-center gap-1.5 rounded-md border border-neutral-200 px-2 py-1.5 dark:border-neutral-800" title={e.hint}>
-                                  <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-neutral-100 text-micro font-bold text-neutral-500 dark:bg-neutral-800">{e.letter}</span>
+                                <form key={e.key} action={setMeddpiccAction.bind(null, o.id, e.key)} className="flex items-center gap-1.5 rounded-control border border-neutral-200 px-2 py-1.5 dark:border-neutral-800" title={e.hint}>
+                                  <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-inner bg-neutral-100 text-micro font-bold text-neutral-500 dark:bg-neutral-800">{e.letter}</span>
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-1">
                                       <span className="truncate text-label font-medium">{e.label}</span>
-                                      {st.source === "ai_assist" && <span className="rounded bg-blue-100 px-1 text-micro font-bold uppercase text-accent dark:bg-blue-900 dark:text-blue-300" title="AI-drafted, unconfirmed">AI</span>}
+                                      {st.source === "ai_assist" && <span className="rounded-inner bg-blue-100 px-1 text-micro font-bold uppercase text-accent dark:bg-blue-900 dark:text-blue-300" title="AI-drafted, unconfirmed">AI</span>}
                                     </div>
-                                    <input name="notes" defaultValue={st.notes ?? ""} placeholder="notes" className="mt-0.5 w-full rounded border border-transparent bg-transparent text-label text-neutral-500 hover:border-neutral-200 focus:border-neutral-300 focus:outline-none dark:hover:border-neutral-700" />
+                                    <input name="notes" defaultValue={st.notes ?? ""} placeholder="notes" className="mt-0.5 w-full rounded-inner border border-transparent bg-transparent text-label text-neutral-500 hover:border-neutral-200 focus:border-neutral-300 focus:outline-none dark:hover:border-neutral-700" />
                                   </div>
-                                  <select name="status" defaultValue={st.status} className={`rounded px-1 py-0.5 text-micro font-medium ${STATUS_TONE[st.status]}`}>
+                                  <select name="status" defaultValue={st.status} className={`rounded-inner px-1 py-0.5 text-micro font-medium ${STATUS_TONE[st.status]}`}>
                                     {MEDDPICC_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
                                   </select>
-                                  <button className="text-micro font-medium text-accent hover:underline dark:text-blue-400">save</button>
+                                  <button className={buttonClass("subtle", "md")}>save</button>
                                 </form>
                               );
                             })}
@@ -1170,11 +1177,11 @@ export default async function PipelinePage({
                         ))}
                       {initiativeOpts.length > 0 && (
                         <form action={assignInitiativeAction.bind(null, o.id)} className="ml-auto flex items-center gap-1" title="initiative this deal rolls up into">
-                          <select name="initiativeId" defaultValue={o.initiative_id ?? ""} className={`max-w-[180px] rounded border bg-transparent px-1 py-0.5 text-xs ${o.initiative_id ? "border-violet-300 text-violet-700 dark:border-violet-800 dark:text-violet-300" : "border-neutral-300 text-neutral-500 dark:border-neutral-700"}`}>
+                          <select name="initiativeId" defaultValue={o.initiative_id ?? ""} className={`max-w-[180px] rounded-inner border bg-transparent px-1 py-0.5 text-body ${o.initiative_id ? "border-violet-300 text-violet-700 dark:border-violet-800 dark:text-violet-300" : "border-neutral-300 text-neutral-500 dark:border-neutral-700"}`}>
                             <option value="">no initiative</option>
                             {initiativeOpts.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                           </select>
-                          <button className="text-micro font-medium text-neutral-400 underline-offset-2 hover:underline">set</button>
+                          <button className={buttonClass("subtle", "md")}>set</button>
                         </form>
                       )}
                     </div>
@@ -1186,7 +1193,7 @@ export default async function PipelinePage({
               {closed && autopsies.has(o.id) && (
                 <details className="mt-2 pl-1.5">
                   <summary className="cursor-pointer text-label font-medium text-accent hover:underline dark:text-blue-400">Autopsy — what the record says happened</summary>
-                  <ul className="mt-1.5 space-y-0.5 text-sm text-neutral-600 dark:text-neutral-300">
+                  <ul className="mt-1.5 space-y-0.5 text-copy text-neutral-600 dark:text-neutral-300">
                     {autopsies.get(o.id)!.lines.map((l, i) => <li key={i}>{l}</li>)}
                   </ul>
                   <p className="mt-1 text-label text-neutral-400">Assembled from the record at read time — duration, path, contact, and grounding sources. No opinions, no AI.</p>

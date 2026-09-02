@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { buttonClass } from "@/components/ui";
 
 /**
  * Attach target lists to a campaign — a real picker, not a Ctrl/Cmd select.
@@ -20,7 +21,7 @@ export interface PickableList {
   reason: string;
 }
 
-const input = "rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900";
+const input = "rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900";
 
 export function ListPicker({
   lists,
@@ -64,7 +65,7 @@ export function ListPicker({
   return (
     <div className="w-full max-w-xl">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Add lists</span>
+        <span className="text-body font-semibold uppercase tracking-wide text-neutral-500">Add lists</span>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search list / partner" className={`${input} w-44`} />
         {categories.length > 1 && (
           <select value={category} onChange={(e) => setCategory(e.target.value)} className={input}>
@@ -81,9 +82,9 @@ export function ListPicker({
         </select>
       </div>
 
-      <div className="max-h-56 overflow-y-auto rounded-lg border border-neutral-200 scroll-thin dark:border-neutral-800">
+      <div className="max-h-56 overflow-y-auto rounded-inner border border-neutral-200 scroll-thin dark:border-neutral-800">
         {filtered.length === 0 ? (
-          <p className="px-3 py-2.5 text-sm text-neutral-400">No lists match.</p>
+          <p className="px-3 py-2.5 text-copy text-neutral-400">No lists match.</p>
         ) : (
           filtered.map((l) => (
             <label
@@ -97,7 +98,7 @@ export function ListPicker({
                 className="h-4 w-4 shrink-0"
               />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{l.name}</span>
+                <span className="block truncate text-copy font-medium">{l.name}</span>
                 <span className="block truncate text-label text-neutral-500">{l.reason}</span>
               </span>
               <span className="tnum shrink-0 text-label text-neutral-400">
@@ -115,7 +116,7 @@ export function ListPicker({
         ))}
         <button
           disabled={sel.size === 0}
-          className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-40 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
+          className={buttonClass("primary", "sm")}
         >
           Attach {sel.size > 0 ? `${sel.size} list${sel.size === 1 ? "" : "s"}` : "lists"}
         </button>
