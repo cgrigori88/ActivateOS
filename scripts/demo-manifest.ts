@@ -73,7 +73,27 @@ async function build() {
        left join pursuits p      on p.account_id = c.id
        left join opportunities o on o.company_id = c.id
       where c.legal_name = any($1)
-      order by c.legal_name, o.amount_usd desc nulls last, p.use_case`,
+      -- The trailing o.name is what makes this manifest a usable gate (Wave 6D).
+      --
+      -- Without it the sort key is (account, amount, use_case), and Acme Robotics
+      -- has TWO rows that tie on all three: "Incumbent displacement" ($540K,
+      -- qualification) and "Hist · Platform standardization" ($540K, closed_won),
+      -- both hanging off the same pursuit. Postgres is free to return tied rows in
+      -- either order, and the digest below hashes the array IN ORDER — so the same
+      -- canonical world hashed to be0da833990ce436 locally and c2dc24b781993ea8 on
+      -- the hosted demo, with every tenant, figure, count and hero row byte-identical.
+      -- Proven by reproducing the second digest from the first by swapping exactly
+      -- those two rows.
+      --
+      -- A gate that returns a coin-flip between two values for identical data is
+      -- worse than no gate: it trains its reader to dismiss a real mismatch. The fix
+      -- belongs here rather than in the expectation — neither observed digest was
+      -- "right", and adopting either would have hidden the defect.
+      --
+      -- o.name is chosen because it is stable, semantic, and authored by the seed.
+      -- Ordering on an id would also be deterministic within one database and
+      -- meaningless across rebuilds, which is the property that matters here.
+      order by c.legal_name, o.amount_usd desc nulls last, p.use_case, o.name`,
     [[
       "Umbrella Health Systems", "Globex Manufacturing Inc.", "Stark Industries LLC",
       "Cyberdyne Systems", "Hooli Cloud", "Acme Robotics", "Initech Financial",
