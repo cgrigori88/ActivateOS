@@ -213,7 +213,25 @@ async function main() {
 
   // ---- 8. Shared context is M:N --------------------------------------------
   console.log("§43.9  Shared context objects are many-to-many");
-  const evidenceRef = crypto.randomUUID();
+  /*
+   * Wave 6B §4 — the causal write sequence, and why this used to fail.
+   *
+   * This block used to invent `crypto.randomUUID()` and link it. That worked
+   * when `pursuit_evidence.ref_id` was a free-floating uuid; migration 0072
+   * then added `pursuit_evidence_ref_fk → evidence(id)` ("tables are empty →
+   * free to enforce") and the fixture was never updated. So the failure is a
+   * MISSING PREREQUISITE in the fixture, not application write ordering: the
+   * evidence must exist before anything can reference it, which is precisely
+   * what the constraint exists to guarantee.
+   *
+   * Fixed at the fixture layer — the FK stays, and the sequence is now the
+   * real one: create the evidence, then link it.
+   */
+  const evidenceRef = (await asOrg(s.orgA, (db) => db.query<{ id: string }>(
+    `insert into evidence (org_id, company_id, source_type, claim, confidence, observed_at, status)
+     values ($1,$2,'verifier','shared context object',0.9, now(), 'verified') returning id`,
+    [s.orgA, s.companyA],
+  ))).rows[0].id;
   await asOrg(s.orgA, async (db) => {
     await linkContext(db, "evidence", p1.id, evidenceRef, { relevanceType: "PRIMARY_TRIGGER", relevanceScore: 0.9, reason: "trigger" });
     await linkContext(db, "evidence", p2.id, evidenceRef, { relevanceType: "SUPPORTING_CONTEXT", relevanceScore: 0.4, reason: "context" });
@@ -225,6 +243,24 @@ async function main() {
     const meta = await db.query<{ relevance_score: string }>(`select relevance_score from pursuit_evidence where pursuit_id=$1 and ref_id=$2`, [p1.id, evidenceRef]);
     check("relevance metadata updated on re-link", Number(meta.rows[0].relevance_score) === 0.95);
   });
+
+  /* Wave 6B §4 regression — the ordering is ENFORCED, not merely observed.
+     Linking context to an evidence id that does not exist must be refused by
+     `pursuit_evidence_ref_fk`. Without this, a future fixture could go back to
+     inventing uuids and the suite would pass again for the wrong reason. The
+     probe runs in its own transaction so the expected rejection cannot poison
+     the assertions that follow it. */
+  const orphan = crypto.randomUUID();
+  let refused = false;
+  try {
+    await asOrg(s.orgA, (db) => linkContext(db, "evidence", p1.id, orphan, { relevanceType: "BACKGROUND" }));
+  } catch (e) {
+    refused = /pursuit_evidence_ref_fk|foreign key/i.test((e as Error).message);
+  }
+  check("linking evidence that does not exist is refused by the FK", refused);
+  const orphanRows = await asOrg(s.orgA, (db) =>
+    db.query<{ n: string }>(`select count(*)::text n from pursuit_evidence where ref_id=$1`, [orphan]));
+  check("refused link persisted nothing", orphanRows.rows[0].n === "0", `n=${orphanRows.rows[0].n}`);
 
   // ---- 9. Change ledger (actor ≠ trigger) ----------------------------------
   console.log("§43.11  Change ledger records with actor distinct from trigger");

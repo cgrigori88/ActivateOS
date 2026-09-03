@@ -171,8 +171,23 @@ async function main() {
   // ---- §61.23-27 team assembly, lifecycle, decline reroute ----
   console.log("§61.23  Team assembly + acceptance lifecycle; decline reroutes without forking");
   await asOrg(s.orgA, async (db) => {
+    /* Wave 6B §7 — this asserted non-idempotency by accident.
+       `selectPartnerRoute` already calls `assembleTeam` (override.ts:90, and its
+       comment says so), and the suite selects a route twice before reaching
+       here. So by this point the team IS assembled and a further call correctly
+       creates nothing. Asserting `created >= 1` on a redundant second call was
+       asserting that assembly repeats itself, which is the opposite of the
+       documented contract. The state is what matters, so the state is what is
+       checked — and the idempotency that was silently relied upon is now
+       asserted rather than assumed. */
     const t = await assembleTeam(db, s.pursuitA);
-    check("team assembled from required roles", t.created >= 1, `created=${t.created}`);
+    check("re-assembling an assembled team creates nothing (idempotent)", t.created === 0, `created=${t.created}`);
+    const roles = (await db.query<{ role: string }>(
+      `select role from pursuit_team_members where pursuit_id=$1 and status <> 'SUPERSEDED'`, [s.pursuitA])).rows.map((r) => r.role);
+    const required = (await db.query<{ role: string }>(
+      `select role from pursuit_team_requirements where (org_id is null or org_id=$1) and required`, [s.orgA])).rows.map((r) => r.role);
+    check("team assembled from required roles", required.length > 0 && required.every((r) => roles.includes(r)),
+      `required=${required.join(",")} present=${roles.join(",")}`);
     const members = await db.query<{ id: string; role: string; status: string }>(`select id, role, status from pursuit_team_members where pursuit_id=$1`, [s.pursuitA]);
     check("team members start RECOMMENDED", members.rows.every((m) => m.status === "RECOMMENDED"));
     const m0 = members.rows[0];

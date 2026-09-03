@@ -62,17 +62,43 @@ async function main() {
 
   // ---- CROSS_TENANT_ACTION authority (R24) ----
   console.log("E3-D.4  Cross-tenant action authority");
+  /*
+   * Wave 6B §6. `request_team_acceptance` requires a confirmed (INVITED) team
+   * member — that is its documented precondition, and the fixture never created
+   * one or passed `memberId`. The first two assertions below never noticed,
+   * because authority is checked BEFORE the handler runs, so only the
+   * authorized path ever reached it. When it did, the handler threw, the throw
+   * aborted the transaction, and the suite died with "current transaction is
+   * aborted" — which is why this was reported as a SAVEPOINT problem. The
+   * savepoint was one real defect (fixed in skills.ts); this missing
+   * prerequisite is the other, and it was hiding behind it.
+   */
+  const memberId = (await asOwner((db) => db.query<{ id: string }>(
+    `insert into pursuit_team_members (org_id, pursuit_id, side, role, status, is_recommended, is_accepted)
+     values ($1,$2,'PARTNER','PARTNER_ACCOUNT_MANAGER','INVITED', true, false) returning id`,
+    [s.vendor, s.hero],
+  ))).rows[0].id;
   check("CROSS_TENANT_ACTION rejected without an ACTION grant",
-    (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero }))).status === "REJECTED");
+    (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero, args: { memberId } }))).status === "REJECTED");
   // distributor grants vendor DATA (must NOT authorize) then ACTION (authorizes)
   const dataG = await asOrg(s.dist, (db) => proposeGrant(db, { pursuitId: s.hero, fromOrgId: s.dist, toOrgId: s.vendor, grantKind: "DATA", purpose: "share" }));
   await asOrg(s.vendor, (db) => acceptGrant(db, dataG));
   check("a DATA grant does NOT authorize a CROSS_TENANT_ACTION (R24)",
-    (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero }))).status === "REJECTED");
+    (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero, args: { memberId } }))).status === "REJECTED");
   const actG = await asOrg(s.dist, (db) => proposeGrant(db, { pursuitId: s.hero, fromOrgId: s.dist, toOrgId: s.vendor, grantKind: "ACTION", actionFamily: "team.request_acceptance", purpose: "authorize team ask" }));
   await asOrg(s.vendor, (db) => acceptGrant(db, actG));
+  /* §6 proof: the two rejections above changed nothing. The skill's only
+     material effect is a TEAM_CHANGED change-ledger entry, so its absence is
+     the evidence that a refused cross-tenant action persists no mutation —
+     while the REJECTED invocation rows above prove the refusals were audited. */
+  check("a rejected cross-tenant action persisted no mutation",
+    (await asOrg(s.vendor, async (db) => (await db.query<{ n: string }>(
+      `select count(*)::text n from change_ledger where pursuit_id=$1 and change_type='TEAM_CHANGED'`, [s.hero])).rows[0].n)) === "0");
+  check("both refusals were recorded as REJECTED invocations",
+    (await asOrg(s.vendor, async (db) => (await db.query<{ n: string }>(
+      `select count(*)::text n from governed_action_invocations where pursuit_id=$1 and skill_id='request_team_acceptance' and status='REJECTED'`, [s.hero])).rows[0].n)) === "2");
   check("an ACTION grant authorizes the CROSS_TENANT_ACTION",
-    (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero }))).status === "EXECUTED");
+    (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero, args: { memberId } }))).status === "EXECUTED");
 
   // ---- EXTERNAL_ACTION outbox + receipt (R25/R26) ----
   console.log("E3-D.5  External-action outbox + receipt");

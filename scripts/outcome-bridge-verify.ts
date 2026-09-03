@@ -29,7 +29,17 @@ async function main() {
   const pool = new Pool({ connectionString: URL });
   try {
     const org = (await pool.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`)).rows[0].id;
-    await pool.query(`update org_features set outcome_learning=true where org_id=$1`, [org]); // canonical demo enables the learning loop
+    /* Wave 6B §7 — UPSERT, not UPDATE.
+       This was an UPDATE, which affects zero rows when the chosen org has no
+       org_features row at all — and `orgRow()` is deliberately fail-closed, so
+       "no row" means every flag false. The bridge then correctly skipped and
+       every positive assertion below failed, while the suite's own
+       disabled-gate assertion passed, which is what made it look like the
+       bridge was broken rather than never enabled. A verifier must establish
+       the precondition it depends on. */
+    await pool.query(
+      `insert into org_features (org_id, outcome_learning) values ($1, true)
+       on conflict (org_id) do update set outcome_learning = true`, [org]);
     const node = (await pool.query<{ id: string }>(`select id from taxonomy_nodes limit 1`)).rows[0].id;
 
     // Fixture A — a pursuit whose current route has a SELECTED partner (decide one if needed).
@@ -58,16 +68,22 @@ async function main() {
       `select id, outcome_label, is_terminal, value_amount, data_environment, is_simulated from pursuit_outcomes where source_ref=$1`, [`opp:${wonOpp.id}:CLOSED_WON`])).rows[0];
     ok("WON: canonical pursuit_outcome recorded (CLOSED_WON, terminal)", !!oc && oc.outcome_label === "CLOSED_WON" && oc.is_terminal);
     ok("WON: value captured, DEMO stays DEMO/simulated", !!oc && oc.value_amount === "250000" && oc.data_environment === "DEMO" && oc.is_simulated === true);
-    const at = (await pool.query<{ attribution_class: string; subject_kind: string; model_version: string; reason: string | null; evidence: unknown }>(
-      `select attribution_class, subject_kind, model_version, reason, evidence from attribution where outcome_id=$1`, [oc.id])).rows[0];
+    /* Wave 6B §7 — a missing row must FAIL, not CRASH.
+       `oc` is already null-guarded by the assertion above; the next line then
+       dereferenced `oc.id` unguarded, so an absent outcome turned one failed
+       assertion into a fatal that hid every assertion after it. Same family as
+       the dispatch savepoint: a failure mode that destroys the ability to see
+       the other failures. The suite now reports the gap and keeps going. */
+    const at = oc ? (await pool.query<{ attribution_class: string; subject_kind: string; model_version: string; reason: string | null; evidence: unknown }>(
+      `select attribution_class, subject_kind, model_version, reason, evidence from attribution where outcome_id=$1`, [oc?.id ?? null])).rows[0] : undefined;
     ok("WON: attribution INFLUENCED on the selected partner (never SOURCE without origination)", !!at && at.attribution_class === "INFLUENCED" && at.subject_kind === "PARTNER");
     ok("WON: attribution carries model_version + evidence + reason (a claim with a basis)", !!at && !!at.model_version && !!at.reason && !!at.evidence);
-    ok("WON: the outcome back-links its attribution", await num(pool, `select count(*)::text n from pursuit_outcomes where id=$1 and attribution_id is not null`, [oc.id]) === 1);
+    ok("WON: the outcome back-links its attribution", await num(pool, `select count(*)::text n from pursuit_outcomes where id=$1 and attribution_id is not null`, [oc?.id ?? null]) === 1);
 
     // Idempotency (B5): a duplicate source event does not create a second outcome/attribution.
     await tx(pool, org, (db) => bridgePursuitOutcome(db, { orgId: org, pursuitId: P, companyId: null, label: "CLOSED_WON", sourceRef: `opp:${wonOpp.id}:CLOSED_WON` }));
     ok("WON idempotency: duplicate source event → still ONE outcome", await num(pool, `select count(*)::text n from pursuit_outcomes where source_ref=$1`, [`opp:${wonOpp.id}:CLOSED_WON`]) === 1);
-    ok("WON idempotency: still ONE attribution", await num(pool, `select count(*)::text n from attribution where outcome_id=$1`, [oc.id]) === 1);
+    ok("WON idempotency: still ONE attribution", await num(pool, `select count(*)::text n from attribution where outcome_id=$1`, [oc?.id ?? null]) === 1);
 
     // ---- LOST. ----
     const lostOpp = (await tx(pool, org, (db) => db.query<{ id: string }>(

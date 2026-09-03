@@ -107,11 +107,47 @@ async function main() {
 
   // ---- §48.4 Evidence gate --------------------------------------------------
   console.log("§48.4  Unverified evidence cannot auto-promote");
+  /*
+   * Wave 6B §5 — the gate is one layer earlier than this test assumed.
+   *
+   * This block used to seed `pending` evidence, build a signal on it, and ask
+   * `promoteFromSignal` to reject it. It never got that far: migration 0002
+   * installs `signals_require_verified_evidence`, a BEFORE INSERT trigger that
+   * makes a signal over unverified evidence impossible to create at all. The
+   * seed itself was refused, so the suite died before its first assertion.
+   *
+   * The application is STRICTER than the test modelled, and correctly so —
+   * `observed ≠ verified ≠ inferred` is enforced by construction: an
+   * unverified observation cannot become a signal, so it cannot become a Fact.
+   * Nothing was upgraded to `verified` to make this pass.
+   *
+   * Both layers are now asserted:
+   *   1. the hard invariant itself — the signal cannot be created;
+   *   2. the defence in depth the original test was reaching for — promotion
+   *      RE-READS evidence status, so a signal whose evidence was verified at
+   *      creation and later demoted (retraction, failed audit) still cannot
+   *      promote. That is the only way the `unverified_source` branch is
+   *      legitimately reachable, and it is worth proving it works.
+   */
+  let signalRefused = false;
+  try {
+    await asOrg(s.orgA, async (db) => {
+      const ev = await seedEvidence(db, s.orgA, s.companyA, "blog", "Rumor: Globex uses Kubernetes.", { verified: false });
+      await seedSignal(db, s.orgA, s.companyA, "TECH_INSTALLED", ev, { ref: s.techNode }, s.techNode);
+    });
+  } catch (e) {
+    signalRefused = /not verified/i.test((e as Error).message);
+  }
+  check("a signal cannot be created over unverified evidence (hard invariant)", signalRefused);
+
   await asOrg(s.orgA, async (db) => {
-    const ev = await seedEvidence(db, s.orgA, s.companyA, "blog", "Rumor: Globex uses Kubernetes.", { verified: false });
+    // Verified at signal time — legal. Then demoted, as a retraction would do.
+    const ev = await seedEvidence(db, s.orgA, s.companyA, "blog", "Later-retracted: Globex uses Kubernetes.");
     const sig = await seedSignal(db, s.orgA, s.companyA, "TECH_INSTALLED", ev, { ref: s.techNode }, s.techNode);
+    await db.query(`update evidence set status = 'pending' where id = $1`, [ev]);
     const res = await promoteFromSignal(db, s.orgA, sig);
-    check("unverified source → REJECTED (unverified_source)", res?.outcome === "REJECTED" && res.reason === "unverified_source", res?.reason);
+    check("evidence demoted after the signal → REJECTED (unverified_source)",
+      res?.outcome === "REJECTED" && res.reason === "unverified_source", res?.reason);
   });
 
   // ---- §48.7 Deterministic promotion + confidence + dedup -------------------

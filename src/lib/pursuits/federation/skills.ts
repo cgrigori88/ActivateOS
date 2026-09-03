@@ -255,10 +255,33 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
   }
 
   // READ / INTERNAL_WRITE / authorized CROSS_TENANT → run the bound handler.
+  //
+  // Wave 6B §6. The handler runs inside a SAVEPOINT, and this is not a detail.
+  //
+  // A handler that fails against the DATABASE — an RLS refusal on a cross-tenant
+  // write, a constraint violation, a check that fires — aborts the enclosing
+  // transaction. The `catch` below then tried to write the FAILED audit row on
+  // that same aborted transaction, so Postgres refused it with 25P02 and the
+  // exception that escaped was "current transaction is aborted" rather than the
+  // real cause. Two consequences, both bad on a product whose proposition is
+  // governed action: the audit row for the failure was silently LOST, and every
+  // later statement on that connection failed for an unrelated reason.
+  //
+  // The savepoint makes the guarantee hold: the prohibited or failing action is
+  // rolled back to a known point, nothing it attempted persists, the rejection
+  // IS recorded, and the caller's transaction remains usable afterwards. Tenant
+  // enforcement is untouched — the refusal still refuses; it is only the audit
+  // and the transaction state that are repaired.
+  const sp = `sp_dispatch_${Math.random().toString(36).slice(2, 10)}`;
+  await db.query(`savepoint ${sp}`);
   try {
     const result = def.handler ? await def.handler(db, actor, ctx) : { ok: true };
+    await db.query(`release savepoint ${sp}`);
     return record(db, def, actor, ctx, "EXECUTED", { result });
   } catch (e) {
+    // Back to the known point BEFORE anything else touches this connection.
+    await db.query(`rollback to savepoint ${sp}`);
+    await db.query(`release savepoint ${sp}`);
     return record(db, def, actor, ctx, "FAILED", { reason: (e as Error).message, error: (e as Error).message });
   }
 }

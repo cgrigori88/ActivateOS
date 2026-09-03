@@ -43,7 +43,17 @@ async function main() {
         order by p.created_at limit 1`, []);
     const org = G.org_id, P = G.id;
     const actor: Actor = { type: "USER", id: null, orgId: org, role: "operator" };
-    await pool.query(`update org_features set outcome_learning=true where org_id=$1`, [org]);
+    /* Wave 6B §7 — UPSERT, not UPDATE.
+       This was an UPDATE, which affects zero rows when the chosen org has no
+       org_features row at all — and `orgRow()` is deliberately fail-closed, so
+       "no row" means every flag false. The bridge then correctly skipped and
+       every positive assertion below failed, while the suite's own
+       disabled-gate assertion passed, which is what made it look like the
+       bridge was broken rather than never enabled. A verifier must establish
+       the precondition it depends on. */
+    await pool.query(
+      `insert into org_features (org_id, outcome_learning) values ($1, true)
+       on conflict (org_id) do update set outcome_learning = true`, [org]);
     const node = (await one<{ id: string }>(`select id from taxonomy_nodes limit 1`, [])).id;
 
     // Fresh start: system recommendation stands (CDW), no human decision, no team yet.
@@ -105,7 +115,13 @@ async function main() {
     await tx(pool, org, (db) => advanceOpportunity(db, oppId, "closed_won", "acceptance"));
     const oc = await one<{ id: string; outcome_label: string; is_terminal: boolean; attribution_id: string | null }>(`select id, outcome_label, is_terminal, attribution_id from pursuit_outcomes where source_ref=$1`, [`opp:${oppId}:CLOSED_WON`]);
     ok("commercial outcome recorded (CLOSED_WON, terminal)", !!oc && oc.outcome_label === "CLOSED_WON" && oc.is_terminal);
-    const at = await one<{ attribution_class: string; subject_kind: string; subject_id: string | null; model_version: string; reason: string | null }>(`select attribution_class, subject_kind, subject_id, model_version, reason from attribution where outcome_id=$1`, [oc.id]);
+    /* Wave 6B §7 — a missing row must FAIL, not CRASH.
+       `oc` is already null-guarded by the assertion above; the next line then
+       dereferenced `oc.id` unguarded, so an absent outcome turned one failed
+       assertion into a fatal that hid every assertion after it. Same family as
+       the dispatch savepoint: a failure mode that destroys the ability to see
+       the other failures. The suite now reports the gap and keeps going. */
+    const at = oc ? await one<{ attribution_class: string; subject_kind: string; subject_id: string | null; model_version: string; reason: string | null }>(`select attribution_class, subject_kind, subject_id, model_version, reason from attribution where outcome_id=$1`, [oc?.id ?? null]) : undefined;
     ok("attribution is INFLUENCED on the SELECTED partner (WWT) — never SOURCE without origination",
       !!at && at.attribution_class === "INFLUENCED" && at.subject_kind === "PARTNER" && at.subject_id === wwt.partner_id);
     ok("attribution is a claim WITH a basis (model version + reason, evidence bound to the decision)", !!at && !!at.model_version && !!at.reason);

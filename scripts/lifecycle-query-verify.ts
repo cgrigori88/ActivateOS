@@ -304,7 +304,12 @@ async function main() {
     const globexBefore = await one<{ d: Date }>(`select date_value d from facts where org_id=$1 and company_id=$2 and predicate_key='renewal_date' and status='CURRENT'`, [org, globexId]);
     await bridgeImportRenewals(db, org, { dataEnvironment: "DEMO" });
     const globexAfter = await one<{ d: Date }>(`select date_value d from facts where org_id=$1 and company_id=$2 and predicate_key='renewal_date' and status='CURRENT'`, [org, globexId]);
-    ok("an import never overwrites a trusted verified date", globexBefore.d.getTime() === globexAfter.d.getTime());
+    /* Wave 6B §7 — a missing precondition must FAIL, not CRASH. If the world
+       carries no CURRENT renewal_date fact for this account, `globexBefore` is
+       undefined and this line used to throw, taking every assertion after it
+       with it. The absence is now reported as the failure it is. */
+    ok("an import never overwrites a trusted verified date",
+      !!globexBefore && !!globexAfter && globexBefore.d.getTime() === globexAfter.d.getTime());
 
     // ═══ P2A · WHY NOW / Brief / Today ═════════════════════════════════════════════════════════
     const caller = { orgId: org, canSeeInternal: true, canSeeTransactionDetail: true };

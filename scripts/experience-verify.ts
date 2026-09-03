@@ -33,6 +33,28 @@ async function asOwner<T>(fn: (db: PoolClient) => Promise<T>): Promise<T> {
   const c = await pool.connect();
   try { await c.query("begin"); const r = await fn(c); await c.query("commit"); return r; } catch (e) { await c.query("rollback").catch(() => {}); throw e; } finally { c.release(); }
 }
+/**
+ * The canonical restricted raw value, and the exact text the fixture writes.
+ *
+ * Wave 6B §3. These used to be two independent string literals: the fixture
+ * wrote `TD spend $1,840,000 in category` and the assertions grepped for
+ * `1840000`. That mismatch is the whole of the "restricted raw value present
+ * for internal caller" failure — the internal caller DOES receive the reason,
+ * the assertion was simply looking for digits nobody had written.
+ *
+ * The dangerous half was the other assertion. `absent from limited payload`
+ * also grepped for `1840000`, so it passed against a payload that could have
+ * contained the restricted string in full and it would never have noticed. A
+ * disclosure test that cannot fail is worse than no disclosure test.
+ *
+ * One constant now feeds the fixture and both assertions, so they cannot drift
+ * apart again, and both forms are checked so a change of number formatting
+ * cannot silently re-vacuum the absence proof.
+ */
+const RESTRICTED_AMOUNT_FORMATTED = "1,840,000";
+const RESTRICTED_AMOUNT_RAW = "1840000";
+const RESTRICTED_DETAIL = `TD spend $${RESTRICTED_AMOUNT_FORMATTED} in category`;
+
 const internalCaller = (orgId: string): Caller => ({ orgId, canSeeInternal: true, canSeeTransactionDetail: true });
 const limitedCaller = (orgId: string): Caller => ({ orgId, canSeeInternal: false, canSeeTransactionDetail: false });
 
@@ -83,7 +105,7 @@ async function main() {
     await assembleTeam(db, hero, "DEMO");
     // Seed a RESTRICTED reason on the recommended candidate to test payload-absence.
     const rc = await db.query<{ id: string }>(`select rc.id from route_candidates rc join pursuit_route_snapshots sn on sn.id=rc.route_snapshot_id where sn.pursuit_id=$1 and sn.is_current and rc.is_recommended`, [hero]);
-    if (rc.rows[0]) await db.query(`insert into route_candidate_reasons (candidate_id, org_id, reason_code, polarity, detail, disclosure_class) values ($1,$2,'RAW_SPEND',1,'TD spend $1,840,000 in category',$3)`, [rc.rows[0].id, s.orgA, "RESTRICTED"]);
+    if (rc.rows[0]) await db.query(`insert into route_candidate_reasons (candidate_id, org_id, reason_code, polarity, detail, disclosure_class) values ($1,$2,'RAW_SPEND',1,$4,$3)`, [rc.rows[0].id, s.orgA, "RESTRICTED", RESTRICTED_DETAIL]);
   });
   console.log(`[experience-verify] seeded hero=${hero.slice(0, 8)}\n`);
 
@@ -156,9 +178,21 @@ async function main() {
     const limited = await getRouteComparison(db, limitedCaller(s.orgA), hero);
     check("internal caller receives internal reasons", Array.isArray(internal.recommended?.reasonsInternal));
     check("limited caller: internal reasons withheld (null)", limited.recommended?.reasonsInternal === null);
-    // Payload absence (§65): restricted raw value must not appear anywhere in the limited payload.
-    check("restricted raw value absent from limited payload", !JSON.stringify(limited).includes("1840000"));
-    check("restricted raw value present for internal caller", JSON.stringify(internal).includes("1840000"));
+    /* Payload absence (§65) and its counterpart. The authorization contract under
+       test, stated plainly:
+         · internal computation and the INTERNAL projection may carry the raw
+           restricted detail — that is what `canSeeInternal` authorizes;
+         · the participant-facing projection must not carry it in ANY form, and
+           a RESTRICTED reason is dropped whole rather than generalized.
+       Both are asserted against the same constant the fixture wrote, and the
+       absence side is checked in both the formatted and unformatted forms. */
+    const limitedJson = JSON.stringify(limited);
+    const internalJson = JSON.stringify(internal);
+    check("restricted raw value absent from limited payload (formatted)", !limitedJson.includes(RESTRICTED_AMOUNT_FORMATTED));
+    check("restricted raw value absent from limited payload (unformatted)", !limitedJson.includes(RESTRICTED_AMOUNT_RAW));
+    check("restricted reason dropped whole, not generalized, for limited caller", !limitedJson.includes("RAW_SPEND") && !limitedJson.includes("TD spend"));
+    check("restricted raw value present for internal caller", internalJson.includes(RESTRICTED_AMOUNT_FORMATTED),
+      `expected ${RESTRICTED_DETAIL} in the internal projection`);
     // unknown ≠ zero: WWT has no transaction feature → transaction_adjacency unknown, not 0.
     const wwtCand = internal.alternatives.find((a) => a.label === "WWT") ?? internal.recommended;
     const txCell = wwtCand?.dimensions["transaction_adjacency"];
