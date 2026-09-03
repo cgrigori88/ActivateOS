@@ -27,7 +27,31 @@ export interface SuiteSpec {
   cls: VerifyClass;
   /** Why it is in this class — read by the runner's `--explain`. */
   why: string;
+  /**
+   * Deployment master switches this suite requires (Wave 6C §3).
+   *
+   * Feature flags here are TWO-layer — an environment master switch AND a
+   * per-org `org_features` row — and they COMPOSE: `outcomeLearning` is
+   * `experience && outcome_learning`, and `experience` is
+   * `pursuits && facts && routing && pursuit_experience` (tenant-flags.ts:61-64).
+   * So a suite exercising the outcome bridge needs FIVE switches, not one.
+   *
+   * These are declared PER SUITE and never globally, because they are not
+   * interchangeable: `routes-verify` asserts that `routingEnabled()` is false
+   * by default, so setting ROUTING_ENABLED for everything would break it for
+   * a reason that has nothing to do with routing.
+   */
+  env?: Record<string, string>;
 }
+
+/** The full experience chain plus outcome learning — see SuiteSpec.env. */
+const OUTCOME_LEARNING_ENV: Record<string, string> = {
+  PURSUITS_ENABLED: "true",
+  FACTS_ENABLED: "true",
+  ROUTING_ENABLED: "true",
+  PURSUIT_EXPERIENCE_ENABLED: "true",
+  OUTCOME_LEARNING_ENABLED: "true",
+};
 
 export const SUITES: SuiteSpec[] = [
   // ── FRESH: seeds and COMMITS its own fixtures; not idempotent; destructive
@@ -42,17 +66,37 @@ export const SUITES: SuiteSpec[] = [
   //    bare migrated database.
   { name: "interpret", cls: "SEEDED", why: "resolves Ask intents against canonical demo accounts" },
   { name: "lifecycle-query", cls: "SEEDED", why: "queries the canonical lifecycle projections" },
-  { name: "lifecycle-acceptance", cls: "SEEDED", why: "walks the canonical lifecycle acceptance path" },
+  { name: "lifecycle-acceptance", cls: "SEEDED", why: "walks the canonical lifecycle acceptance path", env: OUTCOME_LEARNING_ENV },
   { name: "value-case", cls: "SEEDED", why: "reads canonical value cases and their bands" },
   { name: "stakeholder-intel", cls: "SEEDED", why: "reads canonical stakeholder assertions" },
   { name: "partner-intel", cls: "SEEDED", why: "reads canonical partner activation history" },
-  { name: "outcome-bridge", cls: "SEEDED", why: "bridges canonical opportunities to pursuit outcomes" },
+  { name: "outcome-bridge", cls: "SEEDED", why: "bridges canonical opportunities to pursuit outcomes", env: OUTCOME_LEARNING_ENV },
   { name: "motion-intel", cls: "SEEDED", why: "reads canonical motions and their briefs" },
-  { name: "closed-loop", cls: "SEEDED", why: "walks the canonical demo loop end to end" },
+
+  // These five were labelled EITHER and are not: each opens with an unqualified
+  // `select ... limit 1` over a table it never wrote — `organizations`,
+  // `change_ledger`, `pursuits`, `revenue_motions` — and then asserts against
+  // whatever came back. On a disposable database that row does not exist and the
+  // suite dies before its first assertion (Wave 6C §3). Two consequences worth
+  // naming rather than hiding: they belong to SEEDED, and their "whatever is
+  // first" reads are why accreted fixtures could change their verdicts without
+  // anyone touching them. Tightening those reads is real work and is NOT done
+  // here — Wave 6C classifies; it does not rewrite suites to be green.
+  { name: "append-only", cls: "SEEDED", why: "reads the first existing ledger/override/invocation row; nothing to read on a bare database" },
+  { name: "canonical-microloop", cls: "SEEDED", why: "reads a canonical pursuit with >=2 signals and a second existing org" },
+  { name: "route-persistence", cls: "SEEDED", why: "reads a canonical pursuit with >=2 signals and its recorded route history" },
+  { name: "scope", cls: "SEEDED", why: "reads the oldest existing organization; fails with 'no org' on a bare database" },
+  { name: "team-motion", cls: "SEEDED", why: "reads a canonical routed pursuit and an existing draft motion" },
 
   // ── EITHER: run-scoped fixtures (per-run ids), no reliance on demo content.
-  { name: "append-only", cls: "EITHER", why: "run-scoped fixtures; asserts ledger immutability" },
-  { name: "canonical-microloop", cls: "EITHER", why: "run-scoped fixtures" },
+  //    Because they need nothing from the demo world, they are given a disposable
+  //    database — see verify-run.ts. Writing them into the canonical world was
+  //    how it accreted state nobody had authored (Wave 6C §4).
+  {
+    name: "closed-loop",
+    cls: "EITHER",
+    why: "run-scoped fixtures; walks the whole loop over a world it builds itself",
+  },
   { name: "contributions", cls: "EITHER", why: "run-scoped fixtures" },
   { name: "disclosure", cls: "EITHER", why: "run-scoped fixtures; asserts the disclosure ladder" },
   { name: "entity-resolution", cls: "EITHER", why: "run-scoped fixtures" },
@@ -65,9 +109,6 @@ export const SUITES: SuiteSpec[] = [
   { name: "outcomes", cls: "EITHER", why: "run-scoped fixtures" },
   { name: "recompute", cls: "EITHER", why: "run-scoped fixtures" },
   { name: "recompute-recovery", cls: "EITHER", why: "run-scoped fixtures" },
-  { name: "route-persistence", cls: "EITHER", why: "run-scoped fixtures" },
-  { name: "scope", cls: "EITHER", why: "run-scoped fixtures; asserts scope predicates" },
-  { name: "team-motion", cls: "EITHER", why: "run-scoped fixtures" },
   { name: "tenant-flags", cls: "EITHER", why: "run-scoped fixtures" },
 
   // ── DEPLOYMENT_ONLY: needs an environment this container cannot provide.

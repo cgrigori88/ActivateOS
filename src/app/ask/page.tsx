@@ -1,6 +1,7 @@
 import { withTenant } from "@/lib/db/tenant";
 import { Card, PageHeader } from "@/components/ui";
 import { EvidenceModel } from "@/components/evidence-model";
+import { filterReadableRecordHrefs } from "@/lib/interpret/readable-records";
 import { askAction } from "./actions";
 import { buttonClass } from "@/components/ui";
 
@@ -248,6 +249,27 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
       [orgId],
     )).rows,
   }));
+
+  /*
+   * Wave 6C §8 — readability, applied before the link is emitted.
+   *
+   * `record_hrefs` are stored as raw deep links, on the reasoning that they
+   * "disclose nothing on their own and re-resolve under the reader's
+   * authorisation" (interpret/log.ts). Nothing is disclosed — but the room was
+   * still handing the operator a navigation target it knew they could not
+   * resolve, and leaving RLS and a 404 to be the explanation. A crawl found
+   * exactly that: an exchange linking a pursuit belonging to another tenant.
+   *
+   * The filter runs on the caller's OWN scoped connection, so it asks the same
+   * policy the resolve would. Unreadable entries are dropped silently — naming
+   * or counting them would disclose the existence of a record whose existence
+   * is itself outside this reader's authorized view.
+   */
+  await withTenant(async (db) => {
+    for (const ex of exchanges) {
+      if (ex.record_hrefs?.length) ex.record_hrefs = await filterReadableRecordHrefs(db, ex.record_hrefs);
+    }
+  });
 
   const [latest, ...history] = exchanges;
 

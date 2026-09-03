@@ -13,6 +13,7 @@ import { upsertPursuit } from "../src/lib/pursuits/model";
 import { addParticipant, acceptParticipation, revokeParticipation } from "../src/lib/pursuits/federation/participation";
 import { proposeGrant, acceptGrant, revokeGrant, buildFederationViewer, hasActionAuthority } from "../src/lib/pursuits/federation/grants";
 import { getPursuitFederation, getPursuitOutcomes } from "../src/lib/pursuits/federation/read-models";
+import { filterReadableRecordHrefs, parseRecordRef } from "../src/lib/interpret/readable-records";
 import { seedGovernedSkills, dispatchSkill, type Actor } from "../src/lib/pursuits/federation/skills";
 import { enqueueRecompute, drainRecomputeQueue } from "../src/lib/pursuits/federation/events";
 import { setOrgFeature } from "../src/lib/pursuits/tenant-flags";
@@ -81,6 +82,34 @@ async function main() {
   check("revoking the grant removes A's action authority (consent withdrawal)", !(await asOrg(s.a, (db) => hasActionAuthority(db, s.a, s.pB, "team.request_acceptance"))));
   await asOrg(s.b, (db) => revokeParticipation(db, aOnB));
   check("revoking participation removes A's visibility of B's pursuit", (await asOrg(s.a, (db) => getPursuitFederation(db, s.a, s.pB))) === null);
+
+  /* ── Ask readability integrity (Wave 6C §8) ────────────────────────────────
+     Ask stores the deep links an answer stood on, on the reasoning that they
+     "disclose nothing on their own and re-resolve under the reader's
+     authorisation". Nothing IS disclosed — but the room was handing the reader
+     a navigation target it knew they could not resolve and letting a 404 be the
+     explanation. The filter now asks the same policy the resolve would, on the
+     caller's own scoped connection. B's pursuit is the perfect subject here:
+     participation has just been revoked, so A demonstrably cannot read it. */
+  console.log("Ask readability integrity (§8)");
+  const readableHref = `/pursuits/${s.pA}#route`;      // A's own pursuit
+  const unreadableHref = `/pursuits/${s.pB}#route`;    // B's, after revocation
+  const roomHref = "/pipeline?stage=closed_won";       // a room, not a record
+
+  check("a room link is not a record reference", parseRecordRef(roomHref) === null);
+  check("a pursuit deep link parses as a record reference",
+    parseRecordRef(readableHref)?.table === "pursuits");
+
+  const asA = await asOrg(s.a, (db) => filterReadableRecordHrefs(db, [readableHref, unreadableHref, roomHref]));
+  check("readable same-tenant record → link emitted", asA.includes(readableHref));
+  check("unreadable cross-tenant record → link absent", !asA.includes(unreadableHref));
+  check("a non-record room link passes through untouched", asA.includes(roomHref));
+  check("nothing is emitted about the withheld record", asA.length === 2 && !asA.join(" ").includes(s.pB));
+
+  /* The owner's own context still resolves its own record — the filter withholds
+     what this reader cannot resolve, it does not withhold from everyone. */
+  const asB = await asOrg(s.b, (db) => filterReadableRecordHrefs(db, [unreadableHref]));
+  check("the owning tenant still receives its own record link", asB.includes(unreadableHref));
 
   console.log(`\n[isolation-verify] ${passed} passed, ${failed} failed`);
   if (failed) { console.log("[isolation-verify] FAILURES:"); for (const f of failures) console.log("  - " + f); }

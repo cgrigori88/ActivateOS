@@ -1,0 +1,306 @@
+{
+  "generator": "scripts/demo-manifest.ts",
+  "digest": "be0da833990ce436",
+  "tenants": [
+    {
+      "name": "Meridian Technology Partners",
+      "kind": "guest",
+      "pursuits": 1,
+      "opportunities": 0,
+      "motions": 0
+    },
+    {
+      "name": "TD SYNNEX (demo)",
+      "kind": "full",
+      "pursuits": 0,
+      "opportunities": 0,
+      "motions": 0
+    },
+    {
+      "name": "Vertex Systems",
+      "kind": "full",
+      "pursuits": 13,
+      "opportunities": 19,
+      "motions": 7
+    }
+  ],
+  "heroes": [
+    {
+      "account": "Acme Robotics",
+      "pursuit_use_case": "platform_modernization",
+      "timing": "52",
+      "priority": "66",
+      "expected_value": "540000",
+      "deal": "Hist · Platform standardization",
+      "stage": "closed_won",
+      "amount": "540000",
+      "days_since_activity": 40
+    },
+    {
+      "account": "Acme Robotics",
+      "pursuit_use_case": "platform_modernization",
+      "timing": "52",
+      "priority": "66",
+      "expected_value": "540000",
+      "deal": "Incumbent displacement",
+      "stage": "qualification",
+      "amount": "540000",
+      "days_since_activity": 3
+    },
+    {
+      "account": "Cyberdyne Systems",
+      "pursuit_use_case": "platform_modernization",
+      "timing": "62",
+      "priority": "76",
+      "expected_value": "1120000",
+      "deal": "Control-plane modernization",
+      "stage": "qualification",
+      "amount": "1120000",
+      "days_since_activity": 3
+    },
+    {
+      "account": "Cyberdyne Systems",
+      "pursuit_use_case": "platform_modernization",
+      "timing": "62",
+      "priority": "76",
+      "expected_value": "1120000",
+      "deal": "Hist · Renewal + expansion",
+      "stage": "closed_won",
+      "amount": "280000",
+      "days_since_activity": 62
+    },
+    {
+      "account": "Globex Manufacturing Inc.",
+      "pursuit_use_case": "ai_platform",
+      "timing": "48",
+      "priority": "64",
+      "expected_value": "560000",
+      "deal": "Legacy virtualization exit",
+      "stage": "proposal",
+      "amount": "920000",
+      "days_since_activity": 0
+    },
+    {
+      "account": "Globex Manufacturing Inc.",
+      "pursuit_use_case": "virtualization_exit",
+      "timing": "55",
+      "priority": "72",
+      "expected_value": "1250000",
+      "deal": "Legacy virtualization exit",
+      "stage": "proposal",
+      "amount": "920000",
+      "days_since_activity": 0
+    },
+    {
+      "account": "Globex Manufacturing Inc.",
+      "pursuit_use_case": "ai_platform",
+      "timing": "48",
+      "priority": "64",
+      "expected_value": "560000",
+      "deal": "Hist · DR modernization",
+      "stage": "closed_won",
+      "amount": "610000",
+      "days_since_activity": 88
+    },
+    {
+      "account": "Globex Manufacturing Inc.",
+      "pursuit_use_case": "virtualization_exit",
+      "timing": "55",
+      "priority": "72",
+      "expected_value": "1250000",
+      "deal": "Hist · DR modernization",
+      "stage": "closed_won",
+      "amount": "610000",
+      "days_since_activity": 88
+    },
+    {
+      "account": "Hooli Cloud",
+      "pursuit_use_case": "ai_platform",
+      "timing": "60",
+      "priority": "67",
+      "expected_value": "710000",
+      "deal": "Kubernetes managed services",
+      "stage": "negotiation",
+      "amount": "710000",
+      "days_since_activity": 26
+    },
+    {
+      "account": "Hooli Cloud",
+      "pursuit_use_case": "ai_platform",
+      "timing": "60",
+      "priority": "67",
+      "expected_value": "710000",
+      "deal": "Hist · Greenfield eval (2)",
+      "stage": "closed_lost",
+      "amount": "320000",
+      "days_since_activity": 34
+    },
+    {
+      "account": "Initech Financial",
+      "pursuit_use_case": "greenfield",
+      "timing": null,
+      "priority": null,
+      "expected_value": null,
+      "deal": null,
+      "stage": null,
+      "amount": null,
+      "days_since_activity": null
+    },
+    {
+      "account": "Initech Financial (expansion)",
+      "pursuit_use_case": "resilience_modernization",
+      "timing": "63",
+      "priority": "75",
+      "expected_value": "990000",
+      "deal": "Core banking resilience",
+      "stage": "proposal",
+      "amount": "990000",
+      "days_since_activity": 0
+    },
+    {
+      "account": "Initech Financial (expansion)",
+      "pursuit_use_case": "resilience_modernization",
+      "timing": "63",
+      "priority": "75",
+      "expected_value": "990000",
+      "deal": "DR site build-out",
+      "stage": "closed_won",
+      "amount": "350000",
+      "days_since_activity": 3
+    },
+    {
+      "account": "Initech Financial (expansion)",
+      "pursuit_use_case": "resilience_modernization",
+      "timing": "63",
+      "priority": "75",
+      "expected_value": "990000",
+      "deal": "Hist · Consolidation pilot",
+      "stage": "closed_lost",
+      "amount": "240000",
+      "days_since_activity": 71
+    },
+    {
+      "account": "Soylent Foods Co.",
+      "pursuit_use_case": "edge_modernization",
+      "timing": "41",
+      "priority": "55",
+      "expected_value": "210000",
+      "deal": "Edge compute refresh",
+      "stage": "discovery",
+      "amount": "210000",
+      "days_since_activity": 3
+    },
+    {
+      "account": "Soylent Foods Co.",
+      "pursuit_use_case": "edge_modernization",
+      "timing": "41",
+      "priority": "55",
+      "expected_value": "210000",
+      "deal": "Hist · Edge refresh eval",
+      "stage": "closed_lost",
+      "amount": "190000",
+      "days_since_activity": 95
+    },
+    {
+      "account": "Stark Industries LLC",
+      "pursuit_use_case": "platform_modernization",
+      "timing": null,
+      "priority": "78",
+      "expected_value": "1450000",
+      "deal": "Sovereign landing zone",
+      "stage": "business_validation",
+      "amount": "1450000",
+      "days_since_activity": 3
+    },
+    {
+      "account": "Tyrell Corp",
+      "pursuit_use_case": "greenfield_platform",
+      "timing": "38",
+      "priority": "47",
+      "expected_value": null,
+      "deal": "Greenfield platform eval",
+      "stage": "closed_lost",
+      "amount": "300000",
+      "days_since_activity": 3
+    },
+    {
+      "account": "Umbrella Health Systems",
+      "pursuit_use_case": "virtualization_exit",
+      "timing": "66",
+      "priority": "84",
+      "expected_value": "1180000",
+      "deal": "Datacenter exit — phase 1",
+      "stage": "proposal",
+      "amount": "920000",
+      "days_since_activity": 34
+    },
+    {
+      "account": "Umbrella Health Systems",
+      "pursuit_use_case": "virtualization_exit",
+      "timing": "66",
+      "priority": "84",
+      "expected_value": "1180000",
+      "deal": "Backup modernization",
+      "stage": "qualification",
+      "amount": "260000",
+      "days_since_activity": 0
+    },
+    {
+      "account": "Wayne Enterprises",
+      "pursuit_use_case": "virtualization_exit",
+      "timing": "55",
+      "priority": "71",
+      "expected_value": "620000",
+      "deal": "Container platform expansion",
+      "stage": "qualification",
+      "amount": "540000",
+      "days_since_activity": 0
+    },
+    {
+      "account": "Wayne Enterprises",
+      "pursuit_use_case": "virtualization_exit",
+      "timing": "55",
+      "priority": "71",
+      "expected_value": "620000",
+      "deal": "VMware alternative pilot",
+      "stage": "discovery",
+      "amount": "380000",
+      "days_since_activity": 3
+    }
+  ],
+  "figures": {
+    "goalTargetUsd": {
+      "value": 5000000,
+      "meaning": "the typed target on the active goal — an intention, not a measurement"
+    },
+    "motionLevelUsd": {
+      "value": 1250000,
+      "meaning": "estimated value of the motions linked to that goal — what goal progress is computed from"
+    },
+    "opportunityLevelUsd": {
+      "value": 4920000,
+      "meaning": "open opportunity amount beneath those motions — the deals the goal is actually carried by"
+    },
+    "wholeBookOpenUsd": {
+      "value": 8040000,
+      "meaning": "every open opportunity in the tenant, goal-linked or not — what Pipeline shows"
+    }
+  },
+  "counts": {
+    "organizations": 3,
+    "companies": 14,
+    "pursuits": 14,
+    "partners": 2,
+    "opportunities": 19,
+    "revenue_motions": 7,
+    "goals": 1,
+    "taxonomy_nodes": 1,
+    "evidence": 20,
+    "facts": 20,
+    "signals": 1,
+    "propensity_scores": 10,
+    "stakeholders": 4,
+    "opportunity_meddpicc": 152,
+    "ask_exchanges": 12
+  }
+}

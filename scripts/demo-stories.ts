@@ -147,10 +147,48 @@ async function main() {
     for (const a of ACCTS) {
       await tx(async (db) => {
         await db.query("select set_config('app.org_id',$1,true)", [base.vendor]);
-        const companyId = (await db.query<{ id: string }>(`insert into companies (legal_name, normalized_name, industry, country) values ($1,$1,$2,'US') returning id`, [a.name, a.industry])).rows[0].id;
-        for (const claim of [`${a.name} shows a modernization initiative in category.`, a.timing !== null ? `${a.name} renewal window opening within 2 quarters.` : `${a.name} timing unverified — no renewal/contract date on file.`])
-          await db.query(`insert into evidence (org_id, company_id, source_type, claim, confidence, observed_at, status, computed_confidence, first_party) values ($1,$2,'crm',$3,0.8,now(),'verified',0.8,true)`, [base.vendor, companyId, claim]);
-        const scoreId = (await db.query<{ id: string }>(`insert into propensity_scores (org_id, company_id, taxonomy_node_id, score, band, score_version_id, computed_at, positive_points, negative_points) values ($1,$2,$3,$4,$5,$6, now(), 3, 1) returning id`, [base.vendor, companyId, base.node, a.score, a.band, base.ver])).rows[0].id;
+        const companyId = (await (async () => {
+          /* Wave 6C §4 — reuse, do not fork. `companies.legal_name` carries no
+             unique constraint, and demo-db, demo-stories and demo-enrich all
+             create overlapping hero accounts. A bare insert therefore produced
+             a SECOND "Umbrella Health Systems" on every clean build, and the
+             lifecycle/value/stakeholder suites then read whichever row they
+             happened to match. The itinerary's reconciliation spine requires
+             one account per hero — "one pursuit, one route snapshot" — so the
+             layer takes the existing row when there is one. */
+          const found = await db.query<{ id: string }>(`select id from companies where legal_name = $1 limit 1`, [a.name]);
+          if (found.rows[0]) return found;
+          return db.query<{ id: string }>(`insert into companies (legal_name, normalized_name, industry, country) values ($1,$1,$2,'US') returning id`, [a.name, a.industry]);
+        })()).rows[0].id;
+        // Evidence and score are ADOPTED, not appended (Wave 6C §4).
+        //
+        // The breadth layer writes the same two CRM claims and a score for the
+        // accounts it shares with this one. Appending gave every shared hero two
+        // identical evidence rows and two identical scores — 13 and 7 of them
+        // respectively on a clean build. The scores were invisible (every reader
+        // takes `order by computed_at desc limit 1`) but the evidence was not:
+        // the Evidence and Trust rooms count rows, so the demo showed twice the
+        // corroboration it actually had.
+        for (const claim of [`${a.name} shows a modernization initiative in category.`, a.timing !== null ? `${a.name} renewal window opening within 2 quarters.` : `${a.name} timing unverified — no renewal/contract date on file.`]) {
+          const seen = await db.query(`select 1 from evidence where company_id = $1 and claim = $2`, [companyId, claim]);
+          if (!seen.rowCount)
+            await db.query(`insert into evidence (org_id, company_id, source_type, claim, confidence, observed_at, status, computed_confidence, first_party) values ($1,$2,'crm',$3,0.8,now(),'verified',0.8,true)`, [base.vendor, companyId, claim]);
+        }
+        // One score per (account, version). Where the breadth layer already
+        // wrote one, this layer's numbers win — it owns the hero narrative — so
+        // the row is updated in place and its dimensions rewritten rather than a
+        // second score being stacked behind it.
+        const priorScore = await db.query<{ id: string }>(
+          `select id from propensity_scores where company_id = $1 and score_version_id = $2 limit 1`, [companyId, base.ver]);
+        let scoreId: string;
+        if (priorScore.rows[0]) {
+          scoreId = priorScore.rows[0].id;
+          await db.query(`update propensity_scores set org_id=$2, taxonomy_node_id=$3, score=$4, band=$5, computed_at=now(), positive_points=3, negative_points=1 where id=$1`,
+            [scoreId, base.vendor, base.node, a.score, a.band]);
+          await db.query(`delete from propensity_dimensions where score_id = $1`, [scoreId]);
+        } else {
+          scoreId = (await db.query<{ id: string }>(`insert into propensity_scores (org_id, company_id, taxonomy_node_id, score, band, score_version_id, computed_at, positive_points, negative_points) values ($1,$2,$3,$4,$5,$6, now(), 3, 1) returning id`, [base.vendor, companyId, base.node, a.score, a.band, base.ver])).rows[0].id;
+        }
         for (const [d, v] of Object.entries(DIMS(a))) await db.query(`insert into propensity_dimensions (score_id, dimension, value) values ($1,$2,$3)`, [scoreId, d, v]);
         // partner links (route intelligence + through-whom)
         for (const r of (a.rels ?? [])) await db.query(`insert into partner_relationships (partner_id, company_id, strength, tenure_months) values ($1,$2,$3,$4)`, [pid(r.p), companyId, r.strength, r.tenure]);
@@ -160,7 +198,26 @@ async function main() {
            why_now=$7 where id=$1`, [p.id, a.prio, a.prop, a.ev, a.timing, a.evw || null,
           JSON.stringify({ version: 1, as_of: new Date().toISOString(), business_trigger: { predicate: "strategic_initiative", label: a.name }, timing_anchor: a.timing !== null ? { label: "renewal window", confidence: 0.7 } : null, signal_convergence: { independent_family_count: a.timing !== null ? 2 : 1 }, contradictory_evidence: [], evidence_gap: a.timing === null ? "A verified renewal or contract-end date would materially raise timing and priority." : null })]);
         // opportunity linked to the pursuit (Pipeline == Accounts == Today, one row)
-        const oppId = (await db.query<{ id: string }>(`insert into opportunities (org_id, company_id, taxonomy_node_id, name, stage, amount_usd, next_step, expected_close_date, pursuit_id, created_at, updated_at)
+        // This layer OWNS the hero deals, so it adopts rather than duplicates.
+        //
+        // The breadth layer may already have authored a deal with this name, and
+        // its version is missing everything the narrative depends on: no
+        // `pursuit_id` (so the deal is not attached to the pursuit at all) and no
+        // backdated `updated_at` (so Umbrella is not "silent 34 days", it is
+        // silent zero). Merely reusing that row was worse than duplicating it —
+        // it silently unlinked the flagship deals. Adopting it writes the
+        // narrative's authority onto whichever row exists (Wave 6C §4/§5).
+        const existingOpp = await db.query<{ id: string }>(
+          `select id from opportunities where company_id = $1 and name = $2 limit 1`, [companyId, a.opp.name]);
+        const oppId = existingOpp.rows[0]
+          ? (await db.query<{ id: string }>(
+              `update opportunities set org_id=$2, taxonomy_node_id=$3, stage=$4, amount_usd=$5, next_step=$6,
+                      expected_close_date = now() + interval '45 days', pursuit_id=$7,
+                      created_at = now() - ($8 * interval '1 day'), updated_at = now() - ($8 * interval '1 day')
+                 where id=$1 returning id`,
+              [existingOpp.rows[0].id, base.vendor, base.node, a.opp.stage, a.opp.amt,
+               a.opp.stage.startsWith("closed") ? "—" : "Advance to next stage", p.id, a.opp.silentDays ?? 3])).rows[0].id
+          : (await db.query<{ id: string }>(`insert into opportunities (org_id, company_id, taxonomy_node_id, name, stage, amount_usd, next_step, expected_close_date, pursuit_id, created_at, updated_at)
            values ($1,$2,$3,$4,$5,$6,$7, now() + interval '45 days', $8, now() - ($9 * interval '1 day'), now() - ($9 * interval '1 day')) returning id`,
           [base.vendor, companyId, base.node, a.opp.name, a.opp.stage, a.opp.amt, a.opp.stage.startsWith("closed") ? "—" : "Advance to next stage", p.id, a.opp.silentDays ?? 3])).rows[0].id;
         built[a.name] = { companyId, pursuitId: p.id, oppId };

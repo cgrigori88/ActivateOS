@@ -9,7 +9,9 @@ import { SUITES, suitesFor, specFor, type VerifyClass } from "./verify-classes";
  *
  *   npx tsx scripts/verify-run.ts --class FRESH     # disposable DB per suite
  *   npx tsx scripts/verify-run.ts --class SEEDED    # canonical demo world
- *   npx tsx scripts/verify-run.ts --class EITHER    # run-scoped; uses SEEDED target
+ *   npx tsx scripts/verify-run.ts --class EITHER    # run-scoped; disposable DB per suite
+ *   npx tsx scripts/verify-run.ts --class EITHER --either-on-seeded
+ *                                                  # ... against the demo world instead
  *   npx tsx scripts/verify-run.ts --class ALL       # everything runnable here
  *   npx tsx scripts/verify-run.ts --suite disclosure
  *   npx tsx scripts/verify-run.ts --explain         # print the contract, run nothing
@@ -28,6 +30,24 @@ import { SUITES, suitesFor, specFor, type VerifyClass } from "./verify-classes";
 const ADMIN_URL = process.env.ADMIN_URL ?? "postgres://postgres@127.0.0.1:5432/postgres";
 const SEEDED_URL = process.env.SEEDED_URL ?? "postgres://postgres@127.0.0.1:5432/pursuit_demo";
 const KEEP = process.argv.includes("--keep");
+
+/**
+ * Where EITHER suites run (Wave 6C §4).
+ *
+ * They were being run against the canonical demo world, and that is how it
+ * accreted state nobody authored: an EITHER suite needs nothing from the demo
+ * content, but it still COMMITS its run-scoped fixtures, so every battery run
+ * left another `Hero Vendor u6wvlx` org, another `Globex cgvous` company, and
+ * another taxonomy node behind. Nineteen suites doing that is why the world had
+ * to be rebuilt to be trusted, and why a rebuilt world stopped matching the
+ * assertions written against the accreted one.
+ *
+ * Default is therefore a disposable database, which the class contract already
+ * says these suites tolerate. `--either-on-seeded` runs them the old way — that
+ * is the other half of the "either" claim, and it is worth being able to prove
+ * on demand rather than assuming.
+ */
+const EITHER_ON_SEEDED = process.argv.includes("--either-on-seeded");
 
 /** Supabase-shaped preamble the migrations assume. Mirrors scripts/demo-db.ts. */
 const BOOTSTRAP = `
@@ -104,13 +124,14 @@ const VERIFY_ENV: Record<string, string> = {
 interface Result { name: string; cls: VerifyClass; passed: number; failed: number; fatal: string | null; failures: string[] }
 
 function runSuite(name: string, url: string): Result {
-  const cls = specFor(name)!.cls;
+  const spec = specFor(name)!;
+  const cls = spec.cls;
   let out = "";
   try {
     out = execFileSync("npx", ["tsx", `scripts/${name}-verify.ts`], {
       encoding: "utf8",
       timeout: 300_000,
-      env: { ...process.env, ...VERIFY_ENV, DATABASE_URL: url, DATABASE_URL_VERIFY: url, DEMO_URL: url },
+      env: { ...process.env, ...(spec.env ?? {}), DATABASE_URL: url, DATABASE_URL_VERIFY: url, DEMO_URL: url },
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (e) {
@@ -155,13 +176,13 @@ async function main() {
       console.log(`${s.name.padEnd(22)} DEPLOYMENT-ENVIRONMENT ONLY`);
       continue;
     }
-    if (s.cls === "FRESH") {
+    if (s.cls === "FRESH" || (s.cls === "EITHER" && !EITHER_ON_SEEDED)) {
       const db = `v_${s.name.replace(/-/g, "_")}_${Date.now().toString(36)}`;
       const url = await createFreshDatabase(db);
       try {
         const r = runSuite(s.name, url);
         results.push(r);
-        console.log(`${s.name.padEnd(22)} FRESH   ${r.fatal ? `FATAL ${r.fatal}` : `${r.passed} passed, ${r.failed} failed`}`);
+        console.log(`${s.name.padEnd(22)} ${s.cls.padEnd(7)} ${r.fatal ? `FATAL ${r.fatal}` : `${r.passed} passed, ${r.failed} failed`} (disposable db)`);
       } finally { if (!KEEP) await dropDatabase(db); }
     } else {
       const r = runSuite(s.name, SEEDED_URL);

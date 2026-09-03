@@ -36,10 +36,18 @@ async function main() {
        every positive assertion below failed, while the suite's own
        disabled-gate assertion passed, which is what made it look like the
        bridge was broken rather than never enabled. A verifier must establish
-       the precondition it depends on. */
+       the precondition it depends on.
+
+       Wave 6C: and it is not ONE flag. `outcomeLearning` = experience &&
+       outcome_learning, and experience = pursuits && facts && routing &&
+       pursuit_experience (tenant-flags.ts:61-64). Setting outcome_learning
+       alone left the gate shut and looked identical to a broken bridge. */
     await pool.query(
-      `insert into org_features (org_id, outcome_learning) values ($1, true)
-       on conflict (org_id) do update set outcome_learning = true`, [org]);
+      `insert into org_features (org_id, pursuits, facts, routing, pursuit_experience, outcome_learning)
+       values ($1, true, true, true, true, true)
+       on conflict (org_id) do update set
+         pursuits = true, facts = true, routing = true,
+         pursuit_experience = true, outcome_learning = true`, [org]);
     const node = (await pool.query<{ id: string }>(`select id from taxonomy_nodes limit 1`)).rows[0].id;
 
     // Fixture A — a pursuit whose current route has a SELECTED partner (decide one if needed).

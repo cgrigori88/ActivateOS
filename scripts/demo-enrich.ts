@@ -21,13 +21,22 @@ const pool = new Pool({ connectionString: URL, max: 1 });
 // Pipeline (opportunity), and Pursuits. Values are illustrative only.
 const ACCOUNTS: Array<{ name: string; industry: string; score: number; band: string; opps: Array<{ name: string; stage: string; amt: number }>; pursuit?: { use: string; problem: string; type: string; prio: number; prop: number; ev: number; tim: number; ev_w: number } }> = [
   { name: "Umbrella Health Systems", industry: "Healthcare", score: 88, band: "very_high",
-    opps: [{ name: "Datacenter exit — phase 1", stage: "proposal", amt: 920000 }, { name: "Backup modernization", stage: "qualification", amt: 260000 }],
+    opps: [{ name: "Backup modernization", stage: "qualification", amt: 260000 }],  // "Datacenter exit — phase 1" belongs to the narrative layer
     pursuit: { use: "virtualization exit", problem: "Renewal-driven hypervisor migration across 9 hospitals", type: "MODERNIZATION", prio: 84, prop: 79, ev: 72, tim: 68, ev_w: 1180000 } },
+  // Stark's deal is authored by the narrative layer as "Sovereign landing zone"
+  // ($1.45M, business_validation). This layer used to author the SAME deal under
+  // a second name, "Hybrid cloud landing zone", for the same account and the
+  // same $1.45M — so a clean build gave Stark two identical deals and $2.9M open
+  // where the itinerary says one deal at $1.45M. Deduplication by name cannot
+  // catch that; only ownership can. The narrative layer owns the hero deals
+  // (Wave 6C §4/§5). The pursuit here is harmless — `upsertPursuit` keys on
+  // (account, use_case) and demo-stories runs after this, so its timing=null
+  // ("UNKNOWN", the point of the Stark story) is what survives.
   { name: "Stark Industries LLC", industry: "Aerospace & Defense", score: 81, band: "very_high",
-    opps: [{ name: "Hybrid cloud landing zone", stage: "business_validation", amt: 1450000 }],
+    opps: [],
     pursuit: { use: "platform modernization", problem: "Sovereign workloads leaving legacy virtualization", type: "MODERNIZATION", prio: 80, prop: 74, ev: 70, tim: 61, ev_w: 1450000 } },
   { name: "Wayne Enterprises", industry: "Manufacturing", score: 74, band: "high",
-    opps: [{ name: "VMware alternative pilot", stage: "discovery", amt: 380000 }, { name: "Container platform expansion", stage: "qualification", amt: 540000 }],
+    opps: [{ name: "Container platform expansion", stage: "qualification", amt: 540000 }],  // "VMware alternative pilot" belongs to the narrative layer
     pursuit: { use: "virtualization exit", problem: "Cost pressure after licensing change", type: "MODERNIZATION", prio: 71, prop: 66, ev: 58, tim: 55, ev_w: 620000 } },
   { name: "Hooli Cloud", industry: "Technology", score: 69, band: "high",
     opps: [{ name: "Kubernetes managed services", stage: "negotiation", amt: 710000 }],
@@ -35,11 +44,14 @@ const ACCOUNTS: Array<{ name: string; industry: string; score: number; band: str
   { name: "Soylent Foods Co.", industry: "Consumer Goods", score: 58, band: "medium",
     opps: [{ name: "Edge compute refresh", stage: "discovery", amt: 210000 }],
     pursuit: { use: "edge modernization", problem: "Plant-floor compute refresh", type: "NET_NEW", prio: 55, prop: 52, ev: 44, tim: 40, ev_w: 210000 } },
+  // Same as Stark: the narrative layer authors Acme's deal as "Incumbent
+  // displacement" ($540K), and this layer authored the same deal as "Automation
+  // platform build" ($430K) on the same account.
   { name: "Acme Robotics", industry: "Industrial Automation", score: 63, band: "high",
-    opps: [{ name: "Automation platform build", stage: "qualification", amt: 430000 }],
+    opps: [],
     pursuit: { use: "platform modernization", problem: "Legacy control-plane replacement", type: "MODERNIZATION", prio: 61, prop: 57, ev: 49, tim: 47, ev_w: 430000 } },
   { name: "Initech Financial (expansion)", industry: "Financial Services", score: 77, band: "high",
-    opps: [{ name: "Core banking resilience", stage: "proposal", amt: 990000 }, { name: "DR site build-out", stage: "closed_won", amt: 350000 }],
+    opps: [{ name: "Core banking resilience", stage: "proposal", amt: 990000 }],  // "DR site build-out" belongs to the narrative layer
     pursuit: { use: "resilience modernization", problem: "Regulatory DR posture upgrade", type: "EXPANSION", prio: 75, prop: 72, ev: 66, tim: 63, ev_w: 990000 } },
 ];
 
@@ -73,8 +85,19 @@ async function main() {
   for (const a of ACCOUNTS) {
     await tx(async (db) => {
       await db.query("select set_config('app.org_id',$1,true)", [ctx.vendor]);
-      const companyId = (await db.query<{ id: string }>(
-        `insert into companies (legal_name, normalized_name, industry, country) values ($1,$1,$2,'US') returning id`, [a.name, a.industry])).rows[0].id;
+      const companyId = (await (async () => {
+          /* Wave 6C §4 — reuse, do not fork. `companies.legal_name` carries no
+             unique constraint, and demo-db, demo-stories and demo-enrich all
+             create overlapping hero accounts. A bare insert therefore produced
+             a SECOND "Umbrella Health Systems" on every clean build, and the
+             lifecycle/value/stakeholder suites then read whichever row they
+             happened to match. The itinerary's reconciliation spine requires
+             one account per hero — "one pursuit, one route snapshot" — so the
+             layer takes the existing row when there is one. */
+          const found = await db.query<{ id: string }>(`select id from companies where legal_name = $1 limit 1`, [a.name]);
+          if (found.rows[0]) return found;
+          return db.query<{ id: string }>(`insert into companies (legal_name, normalized_name, industry, country) values ($1,$1,$2,'US') returning id`, [a.name, a.industry]);
+        })()).rows[0].id;
       // verified evidence (drives the Accounts evidence count + Sources/Trust provenance)
       for (const claim of [`${a.name} shows a modernization initiative in category.`, `${a.name} renewal window opening within 2 quarters.`])
         await db.query(`insert into evidence (org_id, company_id, source_type, claim, confidence, observed_at, status, computed_confidence, first_party) values ($1,$2,'crm',$3,0.8,now(),'verified',0.8,true)`, [ctx.vendor, companyId, claim]);
@@ -85,8 +108,17 @@ async function main() {
       for (const [dim, f] of Object.entries(DIMS))
         await db.query(`insert into propensity_dimensions (score_id, dimension, value) values ($1,$2,$3)`, [scoreId, dim, f(a)]);
       accounts++;
-      // opportunities (Pipeline screen + Accounts open-opps rollup)
+      // Opportunities (Pipeline screen + Accounts open-opps rollup).
+      //
+      // Guarded on (account, name), the way the flagship reconciliation in
+      // demo-stories.ts already is. This layer is additive and re-runnable, and
+      // an account named here can also be named by demo-stories — unguarded,
+      // that produced a second "Datacenter exit — phase 1" on the same company
+      // and pushed the goal's opportunity roll-up from $3.67M to $6.55M without
+      // anyone authoring a deal (Wave 6C §4).
       for (const o of a.opps) {
+        const dup = await db.query(`select 1 from opportunities where company_id = $1 and name = $2`, [companyId, o.name]);
+        if (dup.rowCount) continue;
         await db.query(`insert into opportunities (org_id, company_id, taxonomy_node_id, name, stage, amount_usd, next_step, expected_close_date)
           values ($1,$2,$3,$4,$5,$6,$7, now() + (interval '1 day' * $8))`,
           [ctx.vendor, companyId, ctx.node, o.name, o.stage, o.amt, o.stage === "closed_won" ? "Won — expand" : "Advance to next stage", 20 + opps * 9]);
