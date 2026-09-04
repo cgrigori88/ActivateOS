@@ -29,17 +29,37 @@ connected to Vercel.
 
 Every SHA below was verified reachable from `origin` during this pass.
 
-| Milestone | Full SHA | Remote branch | Backup tag |
+| Milestone | Full SHA | Remote branch | Backup tag on origin |
 |---|---|---|---|
-| UI Wave 2 | `c34a16a93bfd0297ccc46a7843683bb5dced0e39` | `ui-wave-2` | `backup/2026-09-04/ui-wave-2` |
-| UI Wave 3 | `821da7949781bd7bb895db845977307f45169080` | `ui-wave-3` | `backup/2026-09-04/ui-wave-3` |
-| UI Wave 4 | `fcee418928a5d4e1e4b026836f967b4f4ed9e120` | `ui-wave-4` | `backup/2026-09-04/ui-wave-4` |
-| UI Wave 5 | `40b576510b60b5824b2861e5ecff2875b4cdb537` | `ui-wave-5` | `backup/2026-09-04/ui-wave-5` |
-| UI Wave 6 (NO-GO RC) | `c7580ff31a69f7ba57729b2d40a1c10e247e6f0f` | `ui-wave-6` | `backup/2026-09-04/ui-wave-6` |
-| Wave 6B — blocker remediation | `7f4347e96e5f94ade8f8ead2ec2fcc902273c92b` | `ui-wave-6b` | `backup/2026-09-04/ui-wave-6b` |
-| Wave 6C — canonical demo world | `5763af63fe10e9b166ad6b378acbf087931ddb76` | `ui-wave-6c` | `backup/2026-09-04/ui-wave-6c` |
-| Wave 6D — deterministic manifest (final RC) | `97e975f0d9895c54bfc49cdcc24924d6ac58e796` | `ui-wave-6d` | `backup/2026-09-04/ui-wave-6d` |
-| TD SYNNEX live demo (same commit) | `97e975f0d9895c54bfc49cdcc24924d6ac58e796` | `claude/activateos-platform-review-xzkgmd` | `backup/2026-09-04/tds-live-demo` |
+| UI Wave 2 | `c34a16a93bfd0297ccc46a7843683bb5dced0e39` | `ui-wave-2` | ✗ blocked (§2.1) |
+| UI Wave 3 | `821da7949781bd7bb895db845977307f45169080` | `ui-wave-3` | ✗ blocked |
+| UI Wave 4 | `fcee418928a5d4e1e4b026836f967b4f4ed9e120` | `ui-wave-4` | ✗ blocked |
+| UI Wave 5 | `40b576510b60b5824b2861e5ecff2875b4cdb537` | `ui-wave-5` | ✗ blocked |
+| UI Wave 6 (NO-GO RC) | `c7580ff31a69f7ba57729b2d40a1c10e247e6f0f` | `ui-wave-6` | ✗ blocked |
+| Wave 6B — blocker remediation | `7f4347e96e5f94ade8f8ead2ec2fcc902273c92b` | `ui-wave-6b` | ✗ blocked |
+| Wave 6C — canonical demo world | `5763af63fe10e9b166ad6b378acbf087931ddb76` | `ui-wave-6c` | ✗ blocked |
+| Wave 6D — deterministic manifest (final RC) | `97e975f0d9895c54bfc49cdcc24924d6ac58e796` | `ui-wave-6d` | ✗ blocked |
+| TD SYNNEX live demo (same commit) | `97e975f0d9895c54bfc49cdcc24924d6ac58e796` | `claude/activateos-platform-review-xzkgmd` | ✗ blocked |
+
+### 2.1 Backup tags could not be pushed — and why it does not cost recoverability
+
+Annotated tags under `backup/2026-09-04/` were created locally and **rejected by the
+network policy on push**: `RPC failed; HTTP 403` on `git push --tags`, on a single tag, and
+on protocol v1, while branch pushes to the same repository succeeded throughout. That is a
+denial scoped to tag refs, not a transient failure, and the agent-proxy guidance is to
+report a 403 rather than work around it. **Anyone with normal GitHub credentials can create
+these tags from a clone using the SHAs in this table** — that is the recommended follow-up.
+
+Recoverability is unaffected because every milestone SHA is reachable from **three
+independent remote branches**, verified during this pass:
+
+1. its own named branch (`ui-wave-2` … `ui-wave-6d`),
+2. `archive/tds-certification-2026-09-04` (this branch), and
+3. `claude/activateos-platform-review-xzkgmd` (production-designated).
+
+What is lost is *immutability*, not *durability*: a branch can be moved later, a tag is
+conventionally fixed. The mitigation is that every SHA is written down in this committed
+document, so the milestones remain identifiable even if a branch is repointed.
 
 **Earlier certified demo lineage** — Waves 1–3 of the original demo series are ancestors of
 the UI wave lineage, not separate branches:
@@ -139,9 +159,20 @@ On macOS the clone warns about a case collision between `audit/SECURITY-AUDIT-20
 and `audit/security-audit-2026-08-27.md`. It is cosmetic — neither file is referenced by
 code. Use `git checkout -f <sha>` if the warning blocks a checkout.
 
-**Any milestone**
+**Any milestone** — by SHA from the table in §2 (backup tags are not on origin; see §2.1)
 ```bash
-git checkout backup/2026-09-04/ui-wave-6c    # or any tag from §2
+git checkout 5763af63fe10e9b166ad6b378acbf087931ddb76   # Wave 6C, for example
+# or by branch:
+git checkout ui-wave-6c
+```
+
+**Recommended follow-up:** from a clone with normal GitHub credentials, create the
+immutable tags this session could not push:
+```bash
+git tag -a backup/2026-09-04/ui-wave-6d 97e975f0d9895c54bfc49cdcc24924d6ac58e796 -m "Wave 6D — final RC, deployed"
+git tag -a backup/2026-09-04/tds-live-demo 97e975f0d9895c54bfc49cdcc24924d6ac58e796 -m "TD SYNNEX live demo"
+# ... one per row of the §2 table ...
+git push origin --tags
 ```
 
 **Audit and certification records**
