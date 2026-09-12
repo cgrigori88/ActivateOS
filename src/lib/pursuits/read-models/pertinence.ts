@@ -3,7 +3,7 @@ import type { Caller } from "./helpers";
 import type { Band, DisclosureClass } from "./types";
 import type { FactRelevanceType } from "./context-health";
 import type { LedgerMateriality } from "./memory";
-import type { GapKind } from "./missing-context";
+import type { GapKind, GapSource } from "./missing-context";
 
 /**
  * Pursuit Pertinence (vNext Slice 1, chunk 4).
@@ -73,6 +73,16 @@ export interface PertinenceCandidate {
   materiality?: LedgerMateriality;
   /** GAP only: what kind of unresolved thing this is. */
   gapKind?: GapKind;
+  /**
+   * GAP only: the upstream rank `composeMissingContext` already assigned, 0..100.
+   * Carried rather than recomputed — the gap layer is authoritative for how much
+   * a gap matters, and discarding it here is the defect this field fixes.
+   */
+  gapRank?: number;
+  /** GAP only: which domain produced it. Lets a task match on source, not just kind. */
+  gapSource?: GapSource;
+  /** Upstream explanation, when the source domain supplied one. Never generated here. */
+  whyItMatters?: string | null;
   /** FACT only: 0..1 from `facts.confidence`. */
   confidence?: number;
   /** True when this item represents an open question rather than a settled one. */
@@ -131,7 +141,12 @@ const LINKAGE_BY_MATERIALITY: Record<LedgerMateriality, number> = {
   CRITICAL: 1.0, HIGH: 0.8, MEDIUM: 0.5, LOW: 0.25,
 };
 
-/** GAP linkage rides on kind — an unresolved disagreement is the tightest bind. */
+/**
+ * GAP linkage FALLBACK, used only when no upstream rank travelled with the
+ * candidate. `composeMissingContext` already computes a richer number —
+ * `KIND_WEIGHT[kind] + SOURCE_WEIGHT[source] + blocking bonus` — and when that
+ * is present it is used instead of this table. See `linkageOf`.
+ */
 const LINKAGE_BY_GAP: Record<GapKind, number> = {
   CONFLICTING: 1.0, MISSING: 0.8, STALE: 0.7, UNVERIFIED: 0.5, NOT_ESTABLISHED: 0.3,
 };
@@ -142,13 +157,21 @@ const LINKAGE_BY_GAP: Record<GapKind, number> = {
  * penalised to zero — it simply gets the neutral 0.5, because a pursuit's
  * primary trigger still matters whatever you happen to be doing.
  */
-const TASK_FIT: Record<DecisionContext, { relevance?: FactRelevanceType[]; gaps?: GapKind[]; refTypes?: string[] }> = {
+const TASK_FIT: Record<DecisionContext, { relevance?: FactRelevanceType[]; gaps?: GapKind[]; gapSources?: GapSource[]; refTypes?: string[] }> = {
   GENERAL: {},
-  VALIDATE_TIMING: { relevance: ["TIMING_ANCHOR", "PRIMARY_TRIGGER"], gaps: ["STALE", "CONFLICTING"] },
+  // WHY_NOW is the timing/urgency domain, so a gap from it is a timing gap —
+  // which is why "No verified timing anchor" was previously invisible here.
+  VALIDATE_TIMING: { relevance: ["TIMING_ANCHOR", "PRIMARY_TRIGGER"], gaps: ["STALE", "CONFLICTING"], gapSources: ["WHY_NOW"] },
   SELECT_ROUTE: { relevance: ["PARTNER_ROUTE", "SOLUTION_FIT"], refTypes: ["route", "partner"] },
-  QUALIFY: { relevance: ["PRIMARY_TRIGGER", "SUPPORTING_CONTEXT"], gaps: ["MISSING"], refTypes: ["meddpicc_element"] },
+  // MEDDPICC is the qualification domain. This previously matched gap KIND
+  // "MISSING" — the commonest kind — so QUALIFY treated a timing gap as a
+  // qualification gap. Source is the precise signal now that it travels.
+  QUALIFY: { relevance: ["PRIMARY_TRIGGER", "SUPPORTING_CONTEXT"], gapSources: ["MEDDPICC"], refTypes: ["meddpicc_element"] },
   ENGAGE_STAKEHOLDER: { refTypes: ["stakeholder_role", "contact"] },
-  ASSESS_RISK: { relevance: ["RISK", "CONTRADICTION", "CONTRADICTING"], gaps: ["CONFLICTING", "UNVERIFIED"] },
+  // CONTEXT_HEALTH is the domain that reports stale, superseded, disputed and
+  // weakly-evidenced context — risk to what we believe, as distinct from risk
+  // in the deal. Both belong to this task.
+  ASSESS_RISK: { relevance: ["RISK", "CONTRADICTION", "CONTRADICTING"], gaps: ["CONFLICTING", "UNVERIFIED"], gapSources: ["CONTEXT_HEALTH"] },
   BUILD_VALUE_CASE: { relevance: ["PRIMARY_TRIGGER", "SOLUTION_FIT"], refTypes: ["value_driver"] },
 };
 
@@ -232,8 +255,27 @@ function linkageOf(c: PertinenceCandidate): { value: number; reason: string } {
   if (c.kind === "EVENT" && c.materiality) {
     return { value: LINKAGE_BY_MATERIALITY[c.materiality], reason: `${c.materiality.toLowerCase()} materiality change on this pursuit` };
   }
-  if (c.kind === "GAP" && c.gapKind) {
-    return { value: LINKAGE_BY_GAP[c.gapKind], reason: `Unresolved ${c.gapKind.toLowerCase().replace(/_/g, " ")} on this pursuit` };
+  if (c.kind === "GAP") {
+    const state = c.gapKind ? c.gapKind.toLowerCase().replace(/_/g, " ") : "unresolved item";
+    // SUBSTITUTION, NOT ADDITION — the point of this whole branch.
+    //
+    // The upstream rank encodes gap KIND, gap SOURCE, and whether the gap blocks
+    // the decision. `LINKAGE_BY_GAP` encodes kind alone. They are two encodings
+    // of the same question ("how tightly does this bind to the decision?"), so
+    // the richer one REPLACES the coarser one. Adding them would count gap kind
+    // twice and make the arithmetic indefensible.
+    //
+    // Normalised against the fixed 0..100 scale rather than against the other
+    // candidates present: a candidate's score must never depend on its
+    // neighbours, or filtering a restricted item out could move a visible one.
+    if (typeof c.gapRank === "number" && Number.isFinite(c.gapRank)) {
+      const value = Math.max(0, Math.min(1, c.gapRank / 100));
+      const from = c.gapSource ? ` from ${c.gapSource.toLowerCase().replace(/_/g, " ")}` : "";
+      return { value, reason: `Unresolved ${state}${from} (upstream rank ${Math.round(c.gapRank)}/100)` };
+    }
+    if (c.gapKind) {
+      return { value: LINKAGE_BY_GAP[c.gapKind], reason: `Unresolved ${state} on this pursuit` };
+    }
   }
   return { value: 0.5, reason: "Associated with this pursuit" };
 }
@@ -244,6 +286,9 @@ function taskFitOf(c: PertinenceCandidate, ctx: DecisionContext): { value: numbe
   const task = ctx.toLowerCase().replace(/_/g, " ");
   if (c.relevance && fit.relevance?.includes(c.relevance)) return { value: 1, reason: `Bears directly on ${task}` };
   if (c.gapKind && fit.gaps?.includes(c.gapKind)) return { value: 1, reason: `Blocks ${task}` };
+  if (c.gapSource && fit.gapSources?.includes(c.gapSource)) {
+    return { value: 1, reason: `Unresolved ${c.gapSource.toLowerCase().replace(/_/g, " ")} context blocks ${task}` };
+  }
   if (fit.refTypes?.includes(c.refType)) return { value: 1, reason: `Bears directly on ${task}` };
   return { value: NEUTRAL_TASK_FIT, reason: `Not specific to ${task}` };
 }

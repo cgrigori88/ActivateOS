@@ -292,6 +292,23 @@ async function main(): Promise<void> {
 
     check("no candidate references another pursuit",
       candidates.every((c) => c.refId !== null || c.kind === "GAP"));
+
+    // 5B-1: the upstream gap semantics must survive the conversion.
+    const gapCandidates = candidates.filter((c) => c.kind === "GAP");
+    check("every gap candidate carries its upstream rank and source",
+      gapCandidates.length > 0 && gapCandidates.every((c) => typeof c.gapRank === "number" && !!c.gapSource),
+      `${gapCandidates.filter((c) => typeof c.gapRank === "number").length}/${gapCandidates.length} carry a rank`);
+
+    if (missing) {
+      const upstream = new Map(missing.gaps.map((g) => [`gap:${g.key}`, g]));
+      check("the carried rank equals the rank the gap layer assigned",
+        gapCandidates.every((c) => c.gapRank === upstream.get(c.id)?.rank));
+      check("the carried source equals the source the gap layer assigned",
+        gapCandidates.every((c) => c.gapSource === upstream.get(c.id)?.source));
+      check("gap candidates no longer tie on linkage when upstream ranks differ",
+        new Set(gapCandidates.map((c) => c.gapRank)).size > 1,
+        `${new Set(gapCandidates.map((c) => c.gapRank)).size} distinct rank(s)`);
+    }
   }
 
   // Task context changes the answer without the data changing.
@@ -353,9 +370,29 @@ async function main(): Promise<void> {
   if (general) {
     console.log(`\n  → GENERAL (top ${general.items.length} of ${general.considered})`);
     for (const i of general.items) console.log(`     ${String(i.score).padStart(3)} [${i.kind.padEnd(5)}] ${trunc(i.label, 44)}`);
-    if (timing) {
-      console.log(`  → VALIDATE_TIMING (top ${timing.items.length} of ${timing.considered})`);
-      for (const i of timing.items) console.log(`     ${String(i.score).padStart(3)} [${i.kind.padEnd(5)}] ${trunc(i.label, 44)}`);
+    for (const ctx of ["VALIDATE_TIMING", "SELECT_ROUTE", "QUALIFY", "ENGAGE_STAKEHOLDER", "ASSESS_RISK", "BUILD_VALUE_CASE"] as const) {
+      const r = await inOrg(target.org_id, (db) => loadPertinence(db, caller, target.id, { decisionContext: ctx, limit: 5 }));
+      if (!r) continue;
+      console.log(`  → ${ctx} (top ${r.items.length} of ${r.considered})`);
+      for (const i of r.items) console.log(`     ${String(i.score).padStart(3)} [${i.kind.padEnd(5)}] ${trunc(i.label, 44)}`);
+    }
+  }
+
+  // 5B-1: the headline behaviour — does a timing task now surface timing context?
+  if (general && timing) {
+    const timingLed = timing.items[0];
+    const wasLed = general.items[0];
+    const hasTimingGap = (await inOrg(target.org_id, (db) => loadMissingContext(db, caller, target.id)))
+      ?.gaps.some((g) => g.source === "WHY_NOW") ?? false;
+    if (hasTimingGap) {
+      check("VALIDATE_TIMING surfaces a WHY_NOW timing gap first",
+        timingLed?.id.startsWith("gap:whynow"),
+        `led with ${timingLed?.label}`);
+      console.log(`\n  → VALIDATE_TIMING reorder: "${trunc(wasLed.label, 40)}" (${wasLed.score})`);
+      console.log(`     becomes              "${trunc(timingLed.label, 40)}" (${timingLed.score})`);
+    } else {
+      console.log("\n  ⓘ this pursuit has no WHY_NOW gap, so VALIDATE_TIMING has nothing to lift.");
+      console.log("    The behaviour is covered by tests/vnext-gap-pertinence.test.ts instead.");
     }
   }
 

@@ -434,6 +434,10 @@ export async function loadPertinenceCandidates(
 
   // Gaps come from `composeMissingContext`, which has already excluded anything
   // the caller is not entitled to. Nothing withheld can reach this list.
+  //
+  // The upstream `rank` and `source` travel WITH the candidate. They are what the
+  // gap layer decided about importance and provenance, and pertinence must not
+  // silently re-derive a coarser version of either (D-019).
   for (const g of missing?.gaps ?? []) {
     candidates.push({
       id: `gap:${g.key}`,
@@ -442,6 +446,9 @@ export async function loadPertinenceCandidates(
       disclosure: "INTERNAL",
       at: null,
       gapKind: g.kind,
+      gapRank: g.rank,
+      gapSource: g.source,
+      whyItMatters: g.whyItMatters,
       unresolved: true,
       refType: g.refType,
       refId: g.refId,
