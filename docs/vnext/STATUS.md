@@ -1,7 +1,7 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-12T12:10Z
-**Lane:** `roadmap/pursuitos-vnext` @ `6c5b7a9` — Slice 1 chunks 1–6B **plus the GATE C refinement**. Direction approved; the blocker is fixed. Slice 1 is back at **PREVIEW READY**.
+**Last updated:** 2026-09-12T14:30Z
+**Lane:** `roadmap/pursuitos-vnext` @ `c4f4196` — Slice 1 **PRODUCT SIGNED OFF / PREVIEW READY**. The 2026-09-12 preview-isolation session **stopped by design**: no credential exists here to verify or establish safe isolation, so no preview was created. See `PREVIEW-ISOLATION-PLAN.md`.
 
 States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `BLOCKED`
 
@@ -15,8 +15,9 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | Known-good demo reference | **DEMO CERTIFIED** | `backup/2026-09-04/tds-live-demo` → `97e975f0` (on origin) | 2026-09-12 | — | Local tag `demo-safe-2026-09-12` was created at the same commit but its **push was refused (HTTP 403)** — this remote rejects tag pushes. The already-pushed `backup/…/tds-live-demo` tag plus the SHA recorded throughout these docs are the durable references. |
 | Durable agent memory | **DEMO CERTIFIED** | `docs/vnext/*` | 2026-09-12 | Keep `SESSION-HANDOFF.md` current every session | Goes stale silently if a session forgets to update it |
 | Feature-flag scaffolding | **PREVIEW READY** | `src/lib/env/vnext-flags.ts`, `tests/vnext-flags.test.ts` | 2026-09-12 | Nothing — no capability behind any flag yet | None. Default OFF, narrowing-only, 4/4 tests green |
-| Preview environment | **BLOCKED** | — | 2026-09-12 | Verify what `DATABASE_URL` the Preview scope carries | **Preview may share the hosted demo database.** Classified UNKNOWN. No preview writes until resolved. `ENVIRONMENT-MAP.md` §6 |
-| Live serving SHA | **BLOCKED** | — | 2026-09-12 | `/api/build` with `OPS_FINGERPRINT_TOKEN`, or Vercel API | Branch head is Wave 6D `97e975f0`; last observed serving SHA was Wave 3 `66f72f61`. Cannot certify a promotion against an unknown baseline |
+| Preview environment | **BLOCKED** — needs a credential, not a decision | — | 2026-09-12 | One read-only Vercel API call, or one signed-in visit to `/api/build`. Isolation design is **complete and waiting**: `PREVIEW-ISOLATION-PLAN.md` Option 2 | Classification still **UNKNOWN**. Newly proven: **no application-layer mitigation exists** if Preview does share the DB — `VERCEL_ENV` gates nothing, `assertSyntheticDatabase` passes for anything marked synthetic (the demo DB is), 22 files carry server actions. Bounded by: a build performs no DB access. `ENVIRONMENT-MAP.md` §6 B-a…B-e |
+| Live serving SHA | **BLOCKED** — every unauthenticated avenue exhausted | — | 2026-09-12 | `/api/build` with `OPS_FINGERPRINT_TOKEN`, **or** an owner signed in visiting `/api/build`, **or** the Vercel API | Branch head is Wave 6D `97e975f0`; last observed serving SHA was Wave 3 `66f72f61`. Seven avenues attempted and closed — recorded in `ENVIRONMENT-MAP.md` §9 so no session repeats the search. Cannot certify a promotion against an unknown baseline |
+| vNext isolated preview | **NOT STARTED** (blocked upstream) | — | 2026-09-12 | Owner resolves preview data safety, then `PREVIEW-ISOLATION-PLAN.md` Objective C Option 2 (5 steps, 4 of them existing tooling) | Nothing built. Objective F fired: do not create a preview against unknown/shared writable data |
 
 ---
 
@@ -25,16 +26,16 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | Capability | Phase | Status | Branch / commit | Updated | What remains | Known risks |
 |---|---|---|---|---|---|---|
 | Canonical commercial foundation | P0 | **DEMO CERTIFIED** (pre-existing) | `97e975f0` | 2026-09-03 | — | Substantially already built: orgs, companies, products, sellers, partners, opportunities, motions, campaigns, entity resolution, aliases, provenance |
-| Living Pursuit Context — **Vertical Slice 1** | P1 | **BUILDING** | `roadmap/pursuitos-vnext` @ `77f72ef` | 2026-09-12 | Chunks 1–6B complete. The composed narrative renders on Pursuit Detail behind `VNEXT_PURSUIT_INTELLIGENCE_ENABLED`; 11 panels → 9. Slice 1 is functionally complete behind the flag | Chunk 5 is the first change to what the demo shows — see `SLICE-1-LIVING-PURSUIT-CONTEXT.md` §regression risk |
+| Living Pursuit Context — **Vertical Slice 1** | P1 | **PREVIEW READY** — product signed off | `roadmap/pursuitos-vnext` @ `c4f4196` | 2026-09-12 | Nothing in the slice. Next state is DEMO CERTIFIED, which is a separate owner decision (`DEMO-PROMOTION-GATE.md`) | Read-only, flag-gated, flag OFF verified identical panel-for-panel. Cannot be reviewed on a hosted preview until preview isolation is resolved |
 | · pursuit context narrative (rendered) | P1 | **PREVIEW READY** | `6c5b7a9` `components/pursuit/context-narrative.tsx` | 2026-09-12 | Product sign-off on the refined surface, then GATE D/E | Titled **"What matters now"**, full-width on desktop. GATE C **N-1 fixed** (all 10 ledger rows reachable, override chronology included), **N-2/N-4/N-6 fixed**. Flag OFF verified identical panel-for-panel. Residual: R-1 "What changed" right half empty (cosmetic), R-2 283px void beside Value case. See `GATE-C-PRODUCT-REVIEW.md` § GATE C REFINEMENT |
-| · pursuit evidence (direct + supporting) | P1 | **BUILDING** | `620bc12` `read-models/pursuit-evidence.ts` | 2026-09-12 | Consumer (chunk 6) | 18 tests. **Supersedes the plan to swap `getFacts` to pursuit scope** — Globex has 1 linked fact, so the swap would have deleted the best evidence on the screen. See D-020 |
+| · pursuit evidence (direct + supporting) | P1 | **PREVIEW READY** | `620bc12` `read-models/pursuit-evidence.ts` | 2026-09-12 | Consumed by "What matters now" since `99bd5dd` | 18 tests. **Supersedes the plan to swap `getFacts` to pursuit scope** — Globex has 1 linked fact, so the swap would have deleted the best evidence on the screen. See D-020 |
 | · fact freshness | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/facts/freshness.ts` | — | Compose at pursuit level | Exists per-fact; nothing composes per-pursuit |
 | · research coverage | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/intel/completeness.ts` | — | Compose at pursuit level | Account-scoped today |
-| · context health (pursuit level) | P1 | **BUILDING** | `d1e5685` `read-models/context-health.ts` | 2026-09-12 | Consumer (chunk 5B) | Pure function, 13 tests. Composes `factFreshness` + `computeCompleteness`; re-implements neither |
+| · context health (pursuit level) | P1 | **PREVIEW READY** | `d1e5685` `read-models/context-health.ts` | 2026-09-12 | Consumed as the one confidence word since `99bd5dd` | Pure function, 13 tests. Composes `factFreshness` + `computeCompleteness`; re-implements neither |
 | · pursuit state | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/pursuits/lifecycle.ts`, `src/lib/lifecycle/state.ts` | — | Surface as "current state" narrative | — |
-| · pursuit memory | P1 | **BUILDING** | `b6b7b33` `read-models/memory.ts` | 2026-09-12 | Consumer (chunk 5B) | Pure function, 21 tests. Business-time ordering, no materiality filter, ledger never mutated |
-| · what's missing (ranked) | P1 | **BUILDING** | `ac572ba` `read-models/missing-context.ts` | 2026-09-12 | Consumer (chunk 5B) | Pure function, 15 tests. Composes the 4 existing gap computations; adds no fifth |
-| · pertinence (pursuit + decision scoped) | P2 | **BUILDING** | `1b05b8a` `read-models/pertinence.ts` | 2026-09-12 | Consumer (chunk 5B-2) | 18 + 13 tests. Pursuit-scoped, not portfolio-scoped (D-017). Consumes upstream gap rank/source (D-019) |
+| · pursuit memory | P1 | **PREVIEW READY** | `b6b7b33` `read-models/memory.ts` | 2026-09-12 | Consumed by "What changed"; all entries reachable since `1ed0105` | Pure function, 21 tests. Business-time ordering, no materiality filter, ledger never mutated |
+| · what's missing (ranked) | P1 | **PREVIEW READY** | `ac572ba` `read-models/missing-context.ts` | 2026-09-12 | Consumed by "Needs attention"; secondaries expandable since `6c5b7a9` | Pure function, 15 tests. Composes the 4 existing gap computations; adds no fifth |
+| · pertinence (pursuit + decision scoped) | P2 | **PREVIEW READY** | `1b05b8a` `read-models/pertinence.ts` | 2026-09-12 | Consumed via `pursuit-evidence` ranking since `620bc12` | 18 + 13 tests. Pursuit-scoped, not portfolio-scoped (D-017). Consumes upstream gap rank/source (D-019) |
 | · why this pursuit (portfolio-relative) | P2 | **NOT STARTED** | — | 2026-09-12 | Deferred to Slice 3 — needs cross-pursuit inputs | D-017: a different computation from pertinence |
 | Pursuit Intelligence | P2 | **NOT STARTED** | — | 2026-09-12 | Slice 3 | Depends on Slice 1 |
 | Next Move / coordination | P3 | **NOT STARTED** | — | 2026-09-12 | Slice 2 | Depends on Slice 1 |

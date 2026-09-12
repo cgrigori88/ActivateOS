@@ -10,14 +10,15 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-12T12:10Z (Saturday) |
+| **Date/time** | 2026-09-12T14:30Z (Saturday) |
 | **Repository** | `cgrigori88/ActivateOS` — working dir `/home/user/ActivateOS` |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `6c5b7a9` + the refinement docs commit on top |
+| **Current commit** | `c4f4196` + the preview-isolation docs commit on top |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | **GATE C REFINEMENT.** Product direction approved; the composed model was not reverted. The N-1 blocker is fixed, plus N-2/N-4/N-6. Slice 1 is back at **PREVIEW READY**. |
-| **Preview URL** | **UNVERIFIED** — unchanged from Session 0 |
-| **Preview data safety** | **UNKNOWN** — unchanged from Session 0 |
+| **Session completed** | **VNEXT PREVIEW ISOLATION — stopped by design.** Slice 1 is PRODUCT SIGNED OFF / PREVIEW READY and was not touched. No credential exists in this environment to verify or establish safe isolation, so **nothing was created and no hosted configuration was changed.** Design, flag plan and workflow are complete and waiting in `PREVIEW-ISOLATION-PLAN.md`. |
+| **Preview URL** | **UNVERIFIED** — unchanged |
+| **Preview data safety** | **UNKNOWN** — unchanged in classification, sharpened in detail (`ENVIRONMENT-MAP.md` §6 B-a…B-e) |
+| **Live serving SHA** | **UNRESOLVED** — all seven unauthenticated avenues now exhausted and recorded (`ENVIRONMENT-MAP.md` §9) |
 
 ### Demo baseline, unchanged and re-verified this session
 
@@ -48,8 +49,10 @@
 | — | `e0365d4` | docs(vnext): record the first rendered vNext surface |
 | GATE C | `a4a3314` | docs(vnext): GATE C product review package |
 | — | `284c4dc` | docs(vnext): always deliver review screenshots in-conversation |
-| **refine** | **`1ed0105`** | **fix(vnext): restore complete pursuit history access** |
-| **refine** | **`6c5b7a9`** | **refactor(vnext): refine pursuit context experience** |
+| refine | `1ed0105` | fix(vnext): restore complete pursuit history access |
+| refine | `6c5b7a9` | refactor(vnext): refine pursuit context experience |
+| — | `c4f4196` | docs(vnext): record the GATE C refinement |
+| **preview** | **(this session)** | **docs(vnext): plan isolated vNext preview** — documentation only |
 
 ## Chunks 6A + 6B files
 
@@ -404,9 +407,86 @@ working affordances. R-4 restates N-3: every evidence row on Globex is VERIFIED,
 so the five-state vocabulary is only observable in Needs attention — **review a
 thinner or staler pursuit to see it**.
 
+## Preview isolation session (2026-09-12T14:30Z) — what happened
+
+**No product code changed. No preview created. No hosted configuration touched.**
+Documentation only, plus one accuracy correction to `STATUS.md`.
+
+### Why it stopped
+
+Every credential the two blockers need is absent here. Checked by variable
+**name** only — no value was read, and none is recorded anywhere:
+
+`VERCEL_TOKEN` · `VERCEL_API_TOKEN` · `VERCEL_OIDC_TOKEN` · `VERCEL_TEAM_ID` ·
+`OPS_FINGERPRINT_TOKEN` · `SUPABASE_ACCESS_TOKEN` · `SUPABASE_SERVICE_ROLE_KEY` ·
+`DATABASE_URL` · `BASIC_AUTH_*` — **all unset.** No Vercel CLI, no Supabase CLI,
+no `~/.vercel` state. Only a GitHub token.
+
+So Objective F fired: *do not create a preview connected to unknown or shared
+writable data.* Nothing did.
+
+### What was nevertheless established (new, verified)
+
+| # | Finding | Why it matters |
+|---|---|---|
+| B-a | **`VERCEL_ENV` has no behavioural gate** — one hit in `src/`, in `buildInfo()`, reporting only | The app cannot tell Preview from Production at runtime |
+| B-b | **`assertSyntheticDatabase` does not protect the demo DB** — it refuses only `is_synthetic=false`, and the demo DB is marked `is_synthetic=true`, so it **passes** | Its threat model is "operator reseeds production", not "preview writes to demo" |
+| B-c | **22 files declare `"use server"`** | Real write paths; no read-only mode exists |
+| B-d | **A Vercel build performs no DB access** — 47 routes compile `ƒ` (dynamic); the only prerendered route is `/icon.svg` | **Bounds the risk.** A preview nobody opens has touched nothing |
+| B-e | **Zero deployment config in the repo** — no `vercel.json`, no `.vercelignore`, no `.github/` | Branch tracking and env scoping stay dashboard-only |
+
+Together: the classification stays **UNKNOWN**, but if it turns out Preview
+shares `DATABASE_URL`, **there is no application-layer mitigation.**
+
+Seven avenues to the live serving SHA were attempted and all are closed —
+`/api/build` 404 unauthenticated (3/3, verified), no deployment id in response
+headers, `builtAt` server-only, Next build IDs random per build, CSS
+fingerprinting already invalidated, GitHub MCP has no deployments endpoint, no
+Vercel credential. Recorded in `ENVIRONMENT-MAP.md` §9 **so no future session
+repeats the search.**
+
+### Deliverables
+
+- **`PREVIEW-ISOLATION-PLAN.md`** (new) — Objective C isolation design in the
+  stated preference order (Option 2 recommended: 5 steps, 4 of them existing
+  tooling, 1 additive Vercel env var), Objective D flag plan, Objective E
+  continuous workflow, a 10-point validation checklist to run when isolation
+  exists, and the one open question below.
+- `ENVIRONMENT-MAP.md` §6 sharpened, new §9.
+- `DEMO-PROMOTION-GATE.md` — GATE B and GATE C marked **PASSED**, with the
+  caveat that **P-2 is still open**: the review happened on local synthetic
+  renders, not on a hosted preview.
+
+### One open question worth a dashboard glance
+
+**Have Preview deployments already been built for `roadmap/pursuitos-vnext`?**
+The branch took ~18 pushes this weekend. If the Vercel GitHub integration runs
+with defaults, each produced a preview build against whatever `DATABASE_URL` the
+Preview scope carries. Unverifiable from here. Bounded by B-d (a build touches
+nothing), all `VNEXT_*` defaulting OFF, and Slice 1 being read-only — so the
+plausible worst case is *reads* from an opened preview URL. One glance answers
+it: **Vercel → `PursuitOS-demo` → Deployments, filter Preview.**
+
 ## Exact next action
 
-**A decision, not code: product sign-off on the refined surface.**
+**Two credentialed reads by the owner, then the isolation build.** Neither
+involves a deploy; both are in `ENVIRONMENT-MAP.md` §9 and
+`PREVIEW-ISOLATION-PLAN.md`.
+
+1. Resolve the serving SHA — cheapest path is to **sign in to
+   `demo.pursuitos.io` and open `/api/build`** (an authenticated session is
+   accepted; the response carries no secret).
+2. Resolve preview data safety — one read-only Vercel API call for
+   `DATABASE_URL`'s `target` / `gitBranch` metadata. **Do not decrypt the value.**
+3. Then `PREVIEW-ISOLATION-PLAN.md` Objective C Option 2.
+
+Until then the local synthetic render loop remains the review mechanism; it
+produced every GATE C measurement.
+
+## Superseded next action (kept for context)
+
+**A decision, not code: product sign-off on the refined surface.** — *Done.
+Slice 1 is signed off.*
 
 Slice 1 is functionally complete and at PREVIEW READY behind
 `VNEXT_PURSUIT_INTELLIGENCE_ENABLED`. Nothing is deployed and the demo is

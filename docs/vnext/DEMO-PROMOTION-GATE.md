@@ -1,6 +1,6 @@
 # PursuitOS vNext — Demo Promotion Gate
 
-**Last updated:** 2026-09-12T02:47Z
+**Last updated:** 2026-09-12T14:30Z
 **Demo date:** Monday 2026-09-14
 **Default promotion decision for this weekend: NO.**
 
@@ -54,9 +54,9 @@ Every line must **clearly** pass. Ambiguity is a fail. Unverified is a fail.
 
 | # | Criterion | Status |
 |---|---|---|
-| P-16 | **Live serving SHA established.** The 2026-09-12 reconciliation ended **UNRESOLVED**: the production branch head is `97e975f0` (Wave 6D) but the last observed serving SHA was `66f72f61` (Wave 3). **You cannot certify a promotion against an unknown baseline.** Resolve via `/api/build` with `OPS_FINGERPRINT_TOKEN`, or the Vercel API, before any promotion decision. | ☐ **BLOCKING** |
+| P-16 | **Live serving SHA established.** Still **UNRESOLVED** after a second attempt on 2026-09-12. Production branch head is `97e975f0` (Wave 6D); last observed serving SHA was `66f72f61` (Wave 3). **You cannot certify a promotion against an unknown baseline.** All seven unauthenticated avenues are now exhausted and recorded in `ENVIRONMENT-MAP.md` §9 — the endpoint is correctly gated, so this needs a credential, not more searching. Cheapest resolution: **sign in to `demo.pursuitos.io` and open `/api/build`.** | ☐ **BLOCKING** |
 | P-17 | **Flag state deliberate.** Every `VNEXT_*` variable's intended value on the production scope is explicitly stated and matches what is set. Remember: Vercel applies env changes only to new deployments. | ☐ |
-| P-18 | **Preview write-safety resolved**, if any promoted capability writes. Currently **UNKNOWN** — see `ENVIRONMENT-MAP.md` §6. Read-only capabilities may proceed without this. | ☐ |
+| P-18 | **Preview write-safety resolved**, if any promoted capability writes. Currently **UNKNOWN** — see `ENVIRONMENT-MAP.md` §6. Read-only capabilities may proceed without this, and **Slice 1 is read-only** (S1-6), so this does not block promoting Slice 1 on write grounds. It does block P-2, since there is no safe hosted preview on which the owner can review it. Isolation design ready: `PREVIEW-ISOLATION-PLAN.md`. | ☐ |
 
 ---
 
@@ -68,13 +68,20 @@ Promotion is GATE E. It cannot be reached without A–D.
 Safe vNext branch, preview path assessed, durable handoff documentation, flag
 scaffolding. **No roadmap feature implementation before this passes.**
 
-### GATE B — Vertical Slice ☐
-One existing synthetic pursuit works end to end through the first
-context/state/memory slice. Behind flags, visible in preview, demo untouched.
+### GATE B — Vertical Slice ✅ PASSED 2026-09-12
+Slice 1 works end to end on the seeded Globex pursuit, behind flags, demo
+untouched. Reviewed on local synthetic renders rather than a hosted preview,
+because preview isolation is unresolved.
 
-### GATE C — Product ☐
-Multiple pursuits work **and the UX is clearly better, not merely more
-feature-rich**. If the room got denser, this gate fails (`ACCEPTANCE.md` §density test).
+### GATE C — Product ✅ PASSED 2026-09-12 (product signed off)
+Panel count 11 → 9, the composed surface full-width at 1,092×792, the 593px
+desktop void eliminated, and the blocker found at review (the disclosure that
+revealed nothing) fixed. Record: `GATE-C-PRODUCT-REVIEW.md` and its GATE C
+REFINEMENT section.
+
+**Caveat carried forward:** P-2 ("preview reviewed by the owner, on the actual
+preview deployment") is **not** satisfied by this. The review happened on local
+synthetic renders. P-2 remains open until a safe hosted preview exists.
 
 ### GATE D — Architecture ☐
 Thin Control Plane / domain-action / evaluation foundations established **without

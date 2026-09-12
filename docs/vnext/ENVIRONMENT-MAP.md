@@ -1,6 +1,6 @@
 # PursuitOS vNext — Environment Map
 
-**Last updated:** 2026-09-12T02:47Z
+**Last updated:** 2026-09-12T14:30Z
 **Rule for this file: VERIFIED FACTS ONLY.** Anything unverified is marked
 `UNVERIFIED` or `UNKNOWN` with the reason. Never record an inference as a fact.
 
@@ -146,10 +146,36 @@ Session 0 to keep the diff reviewable.
 
 ## 6. Preview data-access classification
 
-### Classification: **UNKNOWN**
+### Classification: **UNKNOWN** — re-confirmed 2026-09-12, still not resolvable from here
 
 Per the Session 0 instruction not to infer environment mappings, this cannot be
-upgraded from the repository alone.
+upgraded from the repository alone. The 2026-09-12 preview-isolation session
+re-attempted it and **found no credential of any kind** in the execution
+environment (checked by variable *name* only; no value was read):
+`VERCEL_TOKEN`, `VERCEL_API_TOKEN`, `VERCEL_OIDC_TOKEN`, `VERCEL_TEAM_ID`,
+`OPS_FINGERPRINT_TOKEN`, `SUPABASE_ACCESS_TOKEN`, `SUPABASE_SERVICE_ROLE_KEY`,
+`DATABASE_URL`, `BASIC_AUTH_*` — **all unset.** No Vercel CLI, no Supabase CLI,
+no `~/.vercel` auth state. Only a GitHub token is present.
+
+### What the repository CAN prove — and it is not reassuring
+
+These are new findings from the 2026-09-12 session. They do not change the
+classification; they establish that **if** Preview turns out to share
+`DATABASE_URL`, there is no application-layer mitigation.
+
+| # | Verified fact | How |
+|---|---|---|
+| B-a | **`VERCEL_ENV` has no behavioural gate.** It is read in exactly one place in `src/` — `buildInfo()` in `src/lib/env/environment.ts:117` — and only for reporting. The application therefore **cannot distinguish a Preview deployment from Production at runtime.** | `grep -rn VERCEL_ENV src/` → one hit |
+| B-b | **`assertSyntheticDatabase` does not protect the demo database.** It refuses only when a database is *not* marked synthetic. The hosted demo DB is marked `environment='demo'`, `is_synthetic=true`, so the guard **passes** for it. Its threat model is "operator reseeds production by accident", not "preview writes to the demo". | `src/lib/env/db-identity.ts:110-151` |
+| B-c | **Real write paths exist.** 22 files declare `"use server"`. There is no read-only mode and no env switch that would impose one. | `grep -rln '"use server"' src/` |
+| B-d | **A Vercel build performs no database access.** Every application route compiles as `ƒ` (dynamic, server-rendered on demand); the only prerendered route is `/icon.svg`. Database access therefore requires a **served request**, not a build. | `npm run build` route table, 47 × `ƒ`, 1 × `○` |
+| B-e | **Zero deployment configuration in the repository.** No `vercel.json`, no `.vercelignore`, no `.github/` directory at all. Branch tracking, env scoping and domains remain dashboard-only. | `ls` / `find` |
+
+**Consequence.** `B-d` bounds the risk usefully: a preview that nobody opens has
+touched nothing. `B-a`–`B-c` mean that a preview somebody *does* open, if it
+shares `DATABASE_URL`, is an unrestricted second write-capable client of the
+database that serves Monday's demo. Hence the operating rule below is unchanged
+and the preference is still the local synthetic path.
 
 **What is known.** The 2026-09-07 read-only Vercel verification recorded
 `DATABASE_URL` as scoped to **both Production and Preview** on `PursuitOS-demo`.
@@ -225,13 +251,61 @@ fact task #67's cutover must prove. Adding `database.role` is part of that plan.
    Git. (§1)
 4. **Live serving SHA is not established.** The production branch head is `97e975f0`
    (Wave 6D); the last independently observed serving SHA was `66f72f61` (Wave 3).
-   The 2026-09-12 reconciliation ended **UNRESOLVED** — `/api/build` needs the ops
-   token and no Vercel credential was available, while the unauthenticated surface
-   is byte-identical across every candidate wave (`globals.css` and
-   `components/shell.tsx` are unchanged from Wave 1/2 onward), so it cannot
-   discriminate. **Re-establish this before certifying any promotion.**
+   Two reconciliation attempts have now ended **UNRESOLVED** (2026-09-12 morning,
+   and again in the afternoon preview-isolation session). **Re-establish this
+   before certifying any promotion.** §9 records why every available avenue is
+   exhausted without a credential.
 5. **No managed database backups** on this Supabase plan. Backup depends entirely on
    the application's own nightly job (task #70). Confirm it ran.
 6. **Env changes require a redeploy.** Vercel applies environment-variable changes
    only to new deployments. A flag flip on a hosted environment is not live until a
    build completes.
+
+---
+
+## 9. Live serving SHA — avenues attempted and exhausted (2026-09-12)
+
+Recorded so no future session repeats the search. **Every unauthenticated avenue
+is closed by design**, which is the fingerprint endpoint working correctly rather
+than a gap.
+
+| Avenue | Result | Evidence |
+|---|---|---|
+| `GET /api/build` unauthenticated | **404**, 3 of 3 attempts, 2026-09-12T14:06Z | Matches the deliberate "unauthorized sees 404, not 403" behaviour in `src/app/api/build/route.ts`, so the ops surface is not even disclosed. `/login` returned 200 on all three, so the site is up and the 404 is the route's own gated answer. |
+| Response headers | **No deployment identifier.** Only `x-vercel-id` (a request trace: region, instance, timestamp), `x-matched-path`, `x-vercel-cache`, `server: Vercel`. | `curl -D -` on `/login` |
+| Build timestamp via the public bundle | **Not exposed.** `PURSUITOS_BUILT_AT` is declared in `next.config.mjs` `env` but referenced only by `buildInfo()`, which only `/api/build` reads. It appears in no client asset. | `grep` of `.next/static`; `grep -rn builtAt src/` → 3 hits, all server-side |
+| Next.js build ID from the served HTML | **Useless as an identifier.** The `"b":"…"` field in the Flight payload is regenerated per build: two builds of *identical* source produced `wyCPcIZJxOVIwnltMzZ_F` and `2RyJvXvWhQyOe7oANYuPP`. It cannot be mapped to a commit. | Observed 2026-09-12 during the GATE C flag-OFF comparison |
+| CSS / asset fingerprinting | **Already invalidated.** The unauthenticated surface is byte-identical across every candidate wave; `globals.css` and `components/shell.tsx` are unchanged from Wave 1/2 onward. This is the method `/api/build` exists to retire. | 2026-09-12 morning reconciliation |
+| GitHub deployment records | **Unavailable.** The GitHub MCP server exposes no deployments or commit-statuses endpoint, and `get_commit` on `97e975f0` returns commit data only — no deployment metadata. `get_check_run` needs a numeric id that nothing here supplies. There is no `.github/` directory, so no Actions run records either. | `mcp__github__get_commit`, tool inventory |
+| Vercel REST API | **No credential.** See §6. | env presence check |
+
+### The only two paths that can resolve it
+
+Both require a credential this environment does not hold. Neither involves a
+deploy.
+
+```sh
+# A · fastest — one read-only request, needs OPS_FINGERPRINT_TOKEN
+curl -s -H "x-ops-token: $OPS_FINGERPRINT_TOKEN" \
+  https://demo.pursuitos.io/api/build \
+  | jq '{commit, commitShort, branch, builtAt, deploymentId, vercelEnv, db: .database}'
+```
+
+```sh
+# B · also answers the Preview question in the same pass, needs VERCEL_TOKEN
+curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+  "https://api.vercel.com/v6/deployments?projectId=prj_mMYSZIaIQPwkqRrhKPcV7HbhdpXc&target=production&limit=3&teamId=$TEAM" \
+  | jq '.deployments[] | {uid, url, state, target, sha: .meta.githubCommitSha, ref: .meta.githubCommitRef, created}'
+
+curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+  "https://api.vercel.com/v10/projects/prj_mMYSZIaIQPwkqRrhKPcV7HbhdpXc/env?teamId=$TEAM" \
+  | jq '.envs[] | select(.key|startswith("DATABASE_URL")) | {key, target, gitBranch, type}'
+```
+
+A third option, entirely in the owner's hands and needing no token: **open
+`demo.pursuitos.io`, sign in, and visit `/api/build`** — an authenticated session
+is accepted, and the response contains no secret.
+
+**Do not decrypt or print any environment-variable value.** The `target` and
+`gitBranch` metadata is what answers §6; the value is not needed and must not be
+read.
