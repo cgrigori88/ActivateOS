@@ -1,7 +1,7 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-12T07:55Z
-**Lane:** `roadmap/pursuitos-vnext` @ `620bc12` (Slice 1 chunks 1–5A, 5B-1, 5B-2 complete)
+**Last updated:** 2026-09-12T09:20Z
+**Lane:** `roadmap/pursuitos-vnext` @ `99bd5dd` (Slice 1 chunks 1–6B complete — **first rendered vNext change**)
 
 States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `BLOCKED`
 
@@ -25,7 +25,8 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | Capability | Phase | Status | Branch / commit | Updated | What remains | Known risks |
 |---|---|---|---|---|---|---|
 | Canonical commercial foundation | P0 | **DEMO CERTIFIED** (pre-existing) | `97e975f0` | 2026-09-03 | — | Substantially already built: orgs, companies, products, sellers, partners, opportunities, motions, campaigns, entity resolution, aliases, provenance |
-| Living Pursuit Context — **Vertical Slice 1** | P1 | **BUILDING** | `roadmap/pursuitos-vnext` @ `77f72ef` | 2026-09-12 | Chunks 1–4 (read-models), 5A (loaders + verifier), 5B-1 (gap semantics), 5B-2 (evidence composition) done. Chunk 6 remains: the narrative surface — the first rendered change | Chunk 5 is the first change to what the demo shows — see `SLICE-1-LIVING-PURSUIT-CONTEXT.md` §regression risk |
+| Living Pursuit Context — **Vertical Slice 1** | P1 | **BUILDING** | `roadmap/pursuitos-vnext` @ `77f72ef` | 2026-09-12 | Chunks 1–6B complete. The composed narrative renders on Pursuit Detail behind `VNEXT_PURSUIT_INTELLIGENCE_ENABLED`; 11 panels → 9. Slice 1 is functionally complete behind the flag | Chunk 5 is the first change to what the demo shows — see `SLICE-1-LIVING-PURSUIT-CONTEXT.md` §regression risk |
+| · pursuit context narrative (rendered) | P1 | **PREVIEW READY** | `99bd5dd` `components/pursuit/context-narrative.tsx` | 2026-09-12 | Review, then GATE C | First rendered vNext surface. Flag-gated; OFF is byte-identical to pre-6B |
 | · pursuit evidence (direct + supporting) | P1 | **BUILDING** | `620bc12` `read-models/pursuit-evidence.ts` | 2026-09-12 | Consumer (chunk 6) | 18 tests. **Supersedes the plan to swap `getFacts` to pursuit scope** — Globex has 1 linked fact, so the swap would have deleted the best evidence on the screen. See D-020 |
 | · fact freshness | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/facts/freshness.ts` | — | Compose at pursuit level | Exists per-fact; nothing composes per-pursuit |
 | · research coverage | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/intel/completeness.ts` | — | Compose at pursuit level | Account-scoped today |
@@ -49,13 +50,28 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 
 ## Validation
 
-| Check | Session 0 | 1–4 | 5A | 5B-1 | 5B-2 |
-|---|---|---|---|---|---|
-| `npx tsc --noEmit` | exit 0 | exit 0 | exit 0 | exit 0 | **exit 0** |
-| `npm test` | 149 / 0 | 220 / 0 | 220 / 0 | 233 / 0 | **251 pass / 0 fail** |
-| `npm run build` | exit 0 | exit 0 | exit 0 | exit 0 | **exit 0** |
-| `vnext-context` verifier | — | — | 42 / 0 | 47 / 0 | **55 passed / 0 failed** |
-| SEEDED spot-check | — | — | green | green | **interpret 255 · lifecycle-query 80 · value-case 126 · stakeholder-intel 43** |
+| Check | Session 0 | 1–4 | 5A | 5B-1 | 5B-2 | 6A+6B |
+|---|---|---|---|---|---|---|
+| `npx tsc --noEmit` | exit 0 | exit 0 | exit 0 | exit 0 | exit 0 | **exit 0** |
+| `npm test` | 149 / 0 | 220 / 0 | 220 / 0 | 233 / 0 | 251 / 0 | **271 pass / 0 fail** |
+| `npm run build` | exit 0 | exit 0 | exit 0 | exit 0 | exit 0 | **exit 0** |
+| `vnext-context` verifier | — | — | 42 / 0 | 47 / 0 | 55 / 0 | **55 passed / 0 failed** |
+| SEEDED spot-check | — | — | green | green | green | **interpret 255 · lifecycle-query 80 · value-case 126 · stakeholder-intel 43** |
+
+### Chunk 6B rendered evidence (local synthetic, Globex pursuit)
+
+| | flag OFF | flag ON |
+|---|---|---|
+| Rendered `Panel` surfaces | 11 | **9** |
+| "Why now" / "Facts behind this" / "What changed" panel titles | 1 / 1 / 1 | **0 / 0 / 0** |
+| "This pursuit" panel | 0 | **1** |
+| Anchors `#whynow` `#evidence` `#activity` | all present | **all present** |
+| Page bytes | 235,042 | 217,010 |
+| Horizontal overflow @1440 and @390 | none | **none** |
+
+**Flag-OFF regression proven by render**, not assumed: the pre-6B commit and the
+post-6B commit with the flag off produce byte-identical bodies (231,410 bytes);
+the only differences are per-build Turbopack chunk filenames in `<head>`.
 
 **Zero pre-existing failures at any point.** The 71 added tests are 4 flag tests
 (Session 0) plus 67 read-model tests (chunks 1–4: 13 + 21 + 15 + 18). Any future

@@ -398,3 +398,31 @@ Relevance for supporting context is derived with the same canonical
 Wording is part of this. A reason string that says "linked to this pursuit"
 about an unlinked fact asserts a linkage nobody made — caught by the verifier
 and corrected to "would bear on this pursuit … inferred, not linked".
+
+---
+
+## D-021 · One composed surface may replace several, but only where it reduces what the reader assembles
+
+**Decision.** Chunk 6B replaces the Why Now, Facts and What Changed panels with
+one "This pursuit" narrative when `VNEXT_PURSUIT_INTELLIGENCE_ENABLED` is armed.
+Rendered panels go from 11 to 9 on the canonical Globex pursuit.
+
+**Why those three and not others.** They were three fragments of a single story —
+why this is live, what supports it, what moved — and the reader had to assemble
+it. Panels that answer genuinely different questions (Route decision, Value case,
+Stakeholders, Federation) are untouched, because merging those would hide
+distinct decisions rather than unify one story.
+
+**The naming collision this exposed.** `read-models/brief.ts` already owns
+`PursuitBrief`, the exportable disclosure-aware document behind the Brief button
+on the same page. The new surface is therefore Pursuit **Context** in code, even
+though the product concept the user names is a brief. Two things with one name in
+one route is a trap that outlives whoever created it.
+
+**Anchors are part of the contract.** `#whynow`, `#evidence` and `#activity` are
+deep-linked from six call sites. The collapsed panel carries all three, so no
+existing navigation breaks. See `ACCEPTANCE.md` U-13.
+
+**Copy is chosen in the view-model, not the component.** The five state phrasings
+live in one declared table. Keeping the choosing out of the component is what
+stops the vocabulary collapsing in a later style pass. See U-14.

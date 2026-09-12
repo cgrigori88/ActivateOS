@@ -1,7 +1,8 @@
 # Vertical Slice 1 — Living Pursuit Context
 
-**Status:** `BUILDING` — chunks 1–4, 5A and 5B-1 complete (2026-09-12). Chunks 5B-2–8
-**NOT STARTED**; 5B-2 needs explicit approval — it is the first change to what the demo shows.
+**Status:** `BUILDING` — chunks 1–6B complete (2026-09-12). The narrative renders on
+Pursuit Detail behind `VNEXT_PURSUIT_INTELLIGENCE_ENABLED`. Flag OFF is byte-identical
+to the pre-slice page. Nothing is deployed; GATE C (product review) is next.
 **Phase:** P1 · **Flag family:** `VNEXT_CONTEXT_HEALTH/STATE/MEMORY/INTELLIGENCE`
 **Written:** 2026-09-12T02:47Z · **As-built section appended:** 2026-09-12T04:05Z
 
@@ -585,3 +586,101 @@ copy, not only into the type.
 `TASK_FIT` matches a fact's `relevance` and `refType` — and all five derive to
 `SUPPORTING_CONTEXT` with `refType` "fact". Matching on `family` (these carry
 `family = 'economic'`) would fix it. Out of scope here; not required for chunk 6.
+
+---
+
+# AS-BUILT — chunks 6A + 6B (2026-09-12) · FIRST RENDERED CHANGE
+
+Commits `ed3416c` (6A, unrendered) and `99bd5dd` (6B, the flag-gated swap).
+
+## Components replaced
+
+| Flag OFF | Flag ON |
+|---|---|
+| `Panel "Why now"` → `WhyNowBento` + `LifecycleBento` | **`Panel "This pursuit"` → `PursuitContextNarrative` + `LifecycleBento`** |
+| `Panel "Facts behind this"` → `FactsBento` | *(absorbed)* |
+| `Panel "What changed"` → `MaterialChangeTimeline` | *(absorbed)* |
+
+Rendered `Panel` count **11 → 9**. `LifecycleBento` is retained inside the new
+panel rather than dropped — it is timing information the narrative needs.
+
+## Renamed to avoid a collision
+
+`read-models/brief.ts` already owns `PursuitBrief`, the exportable
+disclosure-aware document behind the Brief button on the same page. 6A's module
+is therefore **Pursuit Context** in code: `composePursuitContext`,
+`PursuitContextView`, `PursuitContextNarrative`,
+`read-models/pursuit-context.ts`, `components/pursuit/context-narrative.tsx`.
+
+## Information hierarchy
+
+```
+This pursuit                                      [Partly evidenced]
+  Why this matters      canonical WhyNow clauses, or strongest evidence
+                        + one confidence word + its canonical reason
+  What we know          Confirmed for this pursuit   (direct)
+                        Relevant account context     (supporting)
+                        "N more items available"
+  What changed          3 newest by BUSINESS time · "Earlier history (N more)"
+  Needs attention       one primary gap + state chip + why + how to resolve
+                        + the timing note when it applies
+                        "N other unresolved items"
+  Lifecycle timing      (retained)
+```
+
+## Evidence copy
+
+| Group | Heading |
+|---|---|
+| `direct` | **Confirmed for this pursuit** |
+| `supporting` | **Relevant account context** |
+
+Neither `pursuit_facts`, `inferred`, nor `pertinence` reaches a user. Each line
+carries a provenance word — First-party, Customer-declared, Modelled, Verified
+source, Partner-provided, Asserted by a person, Unverified source.
+
+## Four-state language (five phrasings, none reused)
+
+| Canonical | Rendered |
+|---|---|
+| `MISSING` | Not identified yet |
+| `NOT_ESTABLISHED` | Not yet established |
+| `UNVERIFIED` | Needs validation |
+| `STALE` | Out of date |
+| `CONFLICTING` | Sources disagree |
+
+A test asserts all five labels are distinct and none begins with "Missing".
+
+## The Globex nuance — strengthened after seeing it render
+
+6A attached the timing caveat to the **top** gap. On real data the
+economic-buyer gap (80) outranks the timing gap (72), so the caveat stayed
+silent while the page showed a verified-looking renewal date lower down. It is
+now **section-level**: shown whenever an unresolved timing question coexists with
+account-held timing, regardless of rank. Renders as:
+
+> Customer-declared timing exists on the account — not yet confirmed for this pursuit
+
+This became `ACCEPTANCE.md` **U-15**: a caveat that only fires in the top slot is
+not a caveat.
+
+## Regression evidence
+
+Pre-6B commit and post-6B commit, same pursuit, flag off, both rendered locally:
+**bodies byte-identical, 231,410 bytes.** The only differences are per-build
+Turbopack chunk filenames. Flag-off also issues **no extra queries** — the
+context block is inside the `if (vnext.pursuitIntelligence)` branch.
+
+## Unresolved UX issues — for chunk 7, not fixed here
+
+1. **`LifecycleBento` reads "Renewal verified 2026-11-27 in 76d"** directly below
+   a narrative that says pursuit timing is unconfirmed. Both statements are true
+   — the lifecycle event is verified, the pursuit anchor is not — but the
+   proximity invites conflation. Pre-existing component, out of 6B scope.
+2. **"Why this matters" appears twice on the page** with the flag on: as the
+   narrative heading, and as an inline bold label inside `StakeholderPanel`
+   ("Why this matters: Owns final economic approval"). Different weight and
+   context, so not ambiguous in practice, but worth resolving.
+3. **Some upstream WhyNow clauses read tersely** (e.g. "1 independent fact").
+   That text is the domain's, carried verbatim by design (D-005, D-019).
+   Improving it belongs in the WhyNow domain, not in this layer.

@@ -110,3 +110,14 @@ A slice is not accepted on assertion. Each slice must record:
 - desktop and mobile screenshots of the changed surface, flag ON and flag OFF;
 - confirmation that flag OFF is byte-identical in behaviour to the pre-slice product;
 - the reconciled canonical demo numbers.
+
+---
+
+## Added after chunk 6B — UX rules learned from the first rendered slice
+
+| # | Criterion |
+|---|---|
+| U-13 | **Collapsing panels must preserve their anchors.** `#whynow`, `#evidence` and `#activity` are deep-link targets from Today, the lifecycle horizon, intents and the section rail. A three-for-one panel merge that drops an anchor silently breaks six navigation paths and no test would notice. Carry every collapsed anchor onto the replacement. |
+| U-14 | **State language is chosen in the view-model, never in the component.** All five state phrasings come from one declared table (`CONTEXT_STATE_LABEL`). A component that picks its own wording from a state is where the four-state vocabulary quietly collapses during a later style pass. |
+| U-15 | **A caveat that only fires in the top slot is not a caveat.** The Globex timing note was first attached to the top-ranked gap; on real data the economic-buyer gap outranked timing, so the note stayed silent while the page showed a verified-looking renewal date elsewhere. A correctness note must be driven by the condition it describes, not by ranking position. |
+| U-16 | **Verify a flag-off claim by rendering it.** "Unchanged because the flag defaults off" is not evidence. Render the pre-change commit and the post-change commit with the flag off and compare bodies; the only permitted differences are per-build asset filenames. |

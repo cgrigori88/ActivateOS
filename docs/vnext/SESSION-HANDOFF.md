@@ -10,12 +10,12 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-12T07:55Z (Saturday) |
+| **Date/time** | 2026-09-12T09:20Z (Saturday) |
 | **Repository** | `cgrigori88/ActivateOS` — working dir `/home/user/ActivateOS` |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `620bc12` — "feat(vnext): compose pursuit evidence context" (+ a docs commit on top) |
+| **Current commit** | `99bd5dd` — "feat(vnext): gate pursuit brief on pursuit detail" (+ a docs commit on top) |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | Vertical Slice 1, **chunk 5B-2** (evidence composition, revised scope). **All Slice 1 backend composition is done.** Chunk 6 — the first rendered change — NOT STARTED. |
+| **Session completed** | Vertical Slice 1, **chunks 6A + 6B — the FIRST RENDERED vNext change.** Slice 1 is functionally complete behind the flag. Next step is GATE C review, not code. |
 | **Preview URL** | **UNVERIFIED** — unchanged from Session 0 |
 | **Preview data safety** | **UNKNOWN** — unchanged from Session 0 |
 
@@ -41,7 +41,38 @@
 | — | `9744335`, `20ee049` | docs(vnext): chunk 5A record + handoff correction |
 | 5B-1 | `1b05b8a` | fix(vnext): preserve gap semantics in pursuit pertinence |
 | — | `494d166` | docs(vnext): chunk 5B-1 record + D-019 |
-| **5B-2** | **`620bc12`** | **feat(vnext): compose pursuit evidence context** |
+| 5B-2 | `620bc12` | feat(vnext): compose pursuit evidence context |
+| — | `b3abac9` | docs(vnext): chunk 5B-2 record + D-020 |
+| 6A | `ed3416c` | feat(vnext): add composed pursuit brief (unrendered) |
+| **6B** | **`99bd5dd`** | **feat(vnext): gate pursuit brief on pursuit detail** |
+
+## Chunks 6A + 6B files
+
+| File | Change |
+|---|---|
+| `src/lib/pursuits/read-models/pursuit-context.ts` | **new** — the composed narrative view-model |
+| `src/components/pursuit/context-narrative.tsx` | **new** — `PursuitContextNarrative` |
+| `src/app/pursuits/[id]/page.tsx` | flag-gated three-for-one swap; context loaded only when armed |
+| `tests/vnext-pursuit-context.test.ts` | **new** — 20 tests |
+
+**Renamed to avoid a collision:** `read-models/brief.ts` already owns
+`PursuitBrief` (the exportable document behind the Brief button on the same
+page). The new surface is Pursuit **Context** in code.
+
+**Visible surface count: 11 → 9.** "Why now", "Facts behind this" and "What
+changed" all disappear; one "This pursuit" panel replaces them. `#whynow`,
+`#evidence` and `#activity` all still resolve — they are deep-linked from six
+call sites.
+
+**Flag-OFF regression proven by render:** the pre-6B and post-6B commits produce
+**byte-identical bodies (231,410)** with the flag off. Only per-build Turbopack
+chunk filenames differ. Flag-off also issues no extra queries.
+
+**The Globex nuance was strengthened after seeing it render.** 6A attached the
+timing caveat to the top gap; on real data the economic-buyer gap outranks
+timing, so it stayed silent. It is now section-level and reads "Customer-declared
+timing exists on the account — not yet confirmed for this pursuit". This became
+`ACCEPTANCE.md` U-15.
 
 ## Chunk 5B-2 files
 
@@ -127,13 +158,13 @@ them. They are unreachable from any rendered path.
 
 ## Tests and build
 
-| Check | Session 0 | 1–4 | 5A | 5B-1 | 5B-2 |
-|---|---|---|---|---|---|
-| `npx tsc --noEmit` | exit 0 | exit 0 | exit 0 | exit 0 | **exit 0** |
-| `npm test` | 149 / 0 | 220 / 0 | 220 / 0 | 233 / 0 | **251 pass / 0 fail** |
-| `npm run build` | exit 0 | exit 0 | exit 0 | exit 0 | **exit 0** |
-| `vnext-context` verifier | — | — | 42 / 0 | 47 / 0 | **55 passed / 0 failed** |
-| SEEDED spot-check | — | — | green | green | **interpret 255 · lifecycle-query 80 · value-case 126 · stakeholder-intel 43** |
+| Check | Session 0 | 1–4 | 5A | 5B-1 | 5B-2 | 6A+6B |
+|---|---|---|---|---|---|---|
+| `npx tsc --noEmit` | exit 0 | exit 0 | exit 0 | exit 0 | exit 0 | **exit 0** |
+| `npm test` | 149 / 0 | 220 / 0 | 220 / 0 | 233 / 0 | 251 / 0 | **271 pass / 0 fail** |
+| `npm run build` | exit 0 | exit 0 | exit 0 | exit 0 | exit 0 | **exit 0** |
+| `vnext-context` verifier | — | — | 42 / 0 | 47 / 0 | 55 / 0 | **55 passed / 0 failed** |
+| SEEDED spot-check | — | — | green | green | green | **interpret 255 · lifecycle-query 80 · value-case 126 · stakeholder-intel 43** |
 
 ### Chunk 5B-1 measured effect (Globex pursuit, local synthetic world)
 
@@ -289,39 +320,50 @@ writes). B-2 must be resolved before GATE E.
 
 ## Exact next action
 
-**Nothing. Chunk 5B-2 is complete and this session STOPPED by instruction.**
+**Nothing. Chunks 6A and 6B are complete and this session STOPPED by instruction.**
 
-All backend composition for Slice 1 is now done. **Chunk 6 is the first rendered
-change** and must not begin without explicit approval.
+Slice 1 is functionally complete behind `VNEXT_PURSUIT_INTELLIGENCE_ENABLED`.
+Nothing is deployed and the demo is untouched.
 
-### Recommended chunk 6 scope — the narrative surface
+### The next step is a decision, not code
 
-Render `PursuitEvidenceView` on Pursuit Detail behind
-`VNEXT_PURSUIT_INTELLIGENCE_ENABLED`, absorbing `WhyNowBento`, `FactsBento` and
-`MaterialChangeTimeline` into one context narrative. Panel count 18 → 16, per
-`ACCEPTANCE.md`'s density test. **Ending at 19 fails GATE C.**
+**GATE C — product review.** Look at the rendered surface and answer one
+question: *is Pursuit Detail now simpler to read, or merely differently
+arranged?* If it is only differently arranged, the slice has not landed
+(`ACCEPTANCE.md` U-9, D-003).
 
-Recommendation from the seeded data: **DIRECT_PLUS_SUPPORTING.**
+Screenshots from this session (local synthetic, Globex pursuit, flag ON and OFF,
+1440×1000 and 390×844) are in the session scratchpad. Regenerate with:
 
-Default view — about **5 items**: 1 direct fact, the `renewal_date` supporting
-fact, and the top gap, with everything else behind progressive disclosure.
+```sh
+# seed + serve locally, then screenshot — see "Local synthetic database" above
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo \
+PURSUITS_ENABLED=1 FACTS_ENABLED=1 ROUTING_ENABLED=1 PURSUIT_EXPERIENCE_ENABLED=1 \
+FEDERATION_ENABLED=1 PURSUITOS_ENV=local VNEXT_PURSUIT_INTELLIGENCE_ENABLED=1 \
+VNEXT_CONTEXT_HEALTH_ENABLED=1 VNEXT_PURSUIT_STATE_ENABLED=1 VNEXT_PURSUIT_MEMORY_ENABLED=1 \
+npx next start -p 3106
+```
 
-Non-negotiable conditions:
+### If GATE C passes — recommended chunk 7 scope
 
-1. **Flag OFF must be byte-identical** to today's payload and render. Assert it.
-2. **The direct/supporting distinction must survive into the copy**, not only the
-   type. Chunk 5B-2 caught a reason string claiming "Linked to this pursuit" for
-   an unlinked fact; the same mistake in UI copy would be a false provenance
-   claim to a user. Supporting items need visibly different treatment — and
-   **not** the word "inferred", which is architecture vocabulary (D-012).
-3. **No architecture terminology on screen**: no "Context Health Engine",
-   "Pertinence", "Pursuit State Engine" (D-012).
-4. **Preserve the four-state vocabulary** in what the user sees — stale,
-   conflicting, unverified and not-established must not all render as "missing".
-5. Walk the itinerary's §2 beat with the flag both ways before anything else.
+Three small corrections the rendered surface exposed, none of them new capability:
 
-Suggested split: **6-1** the narrative component with the existing panels still
-in place behind the flag, then **6-2** the absorption that removes them.
+1. **The lifecycle/timing proximity.** `LifecycleBento` reads "Renewal verified
+   … in 76d" directly beneath a narrative saying pursuit timing is unconfirmed.
+   Both are true; the adjacency invites conflation. Smallest fix is a label
+   clarifying the renewal is the *account's* lifecycle event.
+2. **"Why this matters" appears twice** on the page with the flag on — as the
+   narrative heading and as an inline label in `StakeholderPanel`. Rename one.
+3. **`BUILD_VALUE_CASE` still does not lift economic facts** (they derive to
+   `SUPPORTING_CONTEXT` with `refType` "fact"; matching on `family = 'economic'`
+   would fix it). It did **not** harm the 6B experience — the economic facts
+   surface anyway under account context — so it stays deferred.
+
+### Do NOT do next
+
+Next-best action, cross-pursuit prioritisation, Today/Pipeline changes, dynamic
+surfaces, the synthetic PRODUCTION-lineage fix, or any deployment. Slice 2
+begins only after GATE C.
 
 ---
 
@@ -346,7 +388,7 @@ sed -n '/^# AS-BUILT/,$p' docs/vnext/SLICE-1-LIVING-PURSUIT-CONTEXT.md
 # 3. Re-establish the baseline before changing anything.
 npm install
 npx tsc --noEmit                          # expect exit 0
-npm test                                  # expect 251/251
+npm test                                  # expect 271/271
 
 # 4. Re-establish the local synthetic DB before touching the loaders
 #    (see "Local synthetic database" above — pgvector is required).
