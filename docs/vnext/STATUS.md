@@ -1,7 +1,7 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-12T02:47Z
-**Lane:** `roadmap/pursuitos-vnext` @ `4bc27a4` (pushed to origin)
+**Last updated:** 2026-09-12T04:05Z
+**Lane:** `roadmap/pursuitos-vnext` @ `77f72ef` (Slice 1 chunks 1–4 complete)
 
 States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `BLOCKED`
 
@@ -25,14 +25,16 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | Capability | Phase | Status | Branch / commit | Updated | What remains | Known risks |
 |---|---|---|---|---|---|---|
 | Canonical commercial foundation | P0 | **DEMO CERTIFIED** (pre-existing) | `97e975f0` | 2026-09-03 | — | Substantially already built: orgs, companies, products, sellers, partners, opportunities, motions, campaigns, entity resolution, aliases, provenance |
-| Living Pursuit Context — **Vertical Slice 1** | P1 | **NOT STARTED** | — | 2026-09-12 | Full plan written; awaiting explicit approval to build | See `SLICE-1-LIVING-PURSUIT-CONTEXT.md` §regression risk |
+| Living Pursuit Context — **Vertical Slice 1** | P1 | **BUILDING** | `roadmap/pursuitos-vnext` @ `77f72ef` | 2026-09-12 | Chunks 1–4 done (read-models). Chunks 5–8 remain: pursuit-scoped facts, narrative surface, integration verifier, regression evidence | Chunk 5 is the first change to what the demo shows — see `SLICE-1-LIVING-PURSUIT-CONTEXT.md` §regression risk |
 | · pursuit-scoped facts on detail | P1 | **NOT STARTED** | — | 2026-09-12 | Switch `getFacts` from account-scope to `facts/pursuit-link.ts` | Changes what the Facts panel shows in the demo — flag-gated |
 | · fact freshness | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/facts/freshness.ts` | — | Compose at pursuit level | Exists per-fact; nothing composes per-pursuit |
 | · research coverage | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/intel/completeness.ts` | — | Compose at pursuit level | Account-scoped today |
-| · context health (pursuit level) | P1 | **NOT STARTED** | — | 2026-09-12 | New composition over the two above | Must not re-implement either |
+| · context health (pursuit level) | P1 | **BUILDING** | `d1e5685` `read-models/context-health.ts` | 2026-09-12 | SQL loader (chunk 5) | Pure function, 13 tests. Composes `factFreshness` + `computeCompleteness`; re-implements neither |
 | · pursuit state | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/pursuits/lifecycle.ts`, `src/lib/lifecycle/state.ts` | — | Surface as "current state" narrative | — |
-| · pursuit memory | P1 | **NOT STARTED** | — | 2026-09-12 | New read-model: business time, unfiltered | `getPursuitTimeline` currently orders by `recorded_at` and filters by materiality — memory needs neither |
-| · why this / why now / what's missing | P1/P2 | **BUILDING** (partial, pre-existing) | `getPursuitWhyNow` | — | "Why this pursuit" absent; "what's missing" scattered across 4 computations | `WhyNowView.unknowns[]` already ships an embryonic version |
+| · pursuit memory | P1 | **BUILDING** | `b6b7b33` `read-models/memory.ts` | 2026-09-12 | SQL loader (chunk 5) | Pure function, 21 tests. Business-time ordering, no materiality filter, ledger never mutated |
+| · what's missing (ranked) | P1 | **BUILDING** | `ac572ba` `read-models/missing-context.ts` | 2026-09-12 | SQL loader (chunk 5) | Pure function, 15 tests. Composes the 4 existing gap computations; adds no fifth |
+| · pertinence (pursuit + decision scoped) | P2 | **BUILDING** | `77f72ef` `read-models/pertinence.ts` | 2026-09-12 | SQL loader (chunk 5) | Pure function, 18 tests. **Pursuit-scoped, not portfolio-scoped** — see D-017 |
+| · why this pursuit (portfolio-relative) | P2 | **NOT STARTED** | — | 2026-09-12 | Deferred to Slice 3 — needs cross-pursuit inputs | D-017: a different computation from pertinence |
 | Pursuit Intelligence | P2 | **NOT STARTED** | — | 2026-09-12 | Slice 3 | Depends on Slice 1 |
 | Next Move / coordination | P3 | **NOT STARTED** | — | 2026-09-12 | Slice 2 | Depends on Slice 1 |
 | AI Control Plane | P4 | **NOT STARTED** | — | 2026-09-12 | Slice 4, thin backend only | D-011: no new room |
@@ -45,17 +47,17 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 
 ---
 
-## Validation baseline (established Session 0, before any change)
+## Validation
 
-| Check | Result |
-|---|---|
-| `npx tsc --noEmit` | **exit 0** — clean |
-| `npm test` | **149/149 pass**, 0 fail |
-| `npm run build` | **exit 0** — succeeds |
-| `tests/vnext-flags.test.ts` (new) | **4/4 pass** |
+| Check | Session 0 baseline | After Slice 1 chunks 1–4 |
+|---|---|---|
+| `npx tsc --noEmit` | exit 0 | **exit 0** |
+| `npm test` | 149 pass / 0 fail | **220 pass / 0 fail** |
+| `npm run build` | exit 0 | **exit 0** |
 
-**Zero pre-existing failures.** Any future failure is therefore attributable and
-must not be dismissed as pre-existing.
+**Zero pre-existing failures at any point.** The 71 added tests are 4 flag tests
+(Session 0) plus 67 read-model tests (chunks 1–4: 13 + 21 + 15 + 18). Any future
+failure is attributable and must not be dismissed as pre-existing.
 
 Not run in Session 0 (require a database; no roadmap code was written that could
 affect them): the 33 verifier suites. Run them before GATE B.

@@ -10,90 +10,129 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-12T02:47Z (Saturday) |
+| **Date/time** | 2026-09-12T04:05Z (Saturday) |
 | **Repository** | `cgrigori88/ActivateOS` — working dir `/home/user/ActivateOS` |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `4bc27a467d4064f86a2999910e75b7a60f8169bd` — "vNext Session 0: safe, resumable development lane (GATE A)" |
+| **Current commit** | `77f72ef` — "feat(vnext): add pursuit pertinence read model" (+ a docs commit on top) |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Environment worked in** | Claude Code Web cloud container. Local build + local validation only. No hosted environment was contacted except two unauthenticated read-only HTTP probes of `demo.pursuitos.io` on 2026-09-07. |
-| **Preview URL** | **UNVERIFIED** — see "Preview" below |
-| **Preview data safety** | **UNKNOWN** — see "Preview" below |
-| **Session completed** | GATE A (Foundation). Session 0 only. |
+| **Session completed** | Vertical Slice 1, **chunks 1–4 only**. Chunks 5–8 NOT STARTED. |
+| **Preview URL** | **UNVERIFIED** — unchanged from Session 0 |
+| **Preview data safety** | **UNKNOWN** — unchanged from Session 0 |
 
-### The demo baseline, with evidence
+### Demo baseline, unchanged and re-verified this session
 
-- Branch `claude/activateos-platform-review-xzkgmd` → `97e975f0` (Vercel production
-  branch for `PursuitOS-demo`, via dashboard Branch Tracking).
-- Same commit is also the head of `ui-wave-6d` and is tagged
-  **`backup/2026-09-04/tds-live-demo`** — an annotated tag **already on origin**,
-  which is the durable immutable reference.
-- Local tag `demo-safe-2026-09-12` was created at the same commit. **Its push was
-  refused (HTTP 403)** — this remote rejects tag pushes, as it did on 2026-09-04.
-  It therefore exists locally only and will not survive container loss. No matter:
-  the pushed `backup/…/tds-live-demo` tag plus the SHA recorded throughout these
-  docs are the durable references.
-- Working tree was **clean** at session start and is clean now.
+- Production branch `claude/activateos-platform-review-xzkgmd` → `97e975f0`.
+- Also the head of `ui-wave-6d`, and tagged `backup/2026-09-04/tds-live-demo`
+  (annotated, already on origin — the durable immutable reference).
+- Working tree clean at session start and at session end.
 
 ---
 
-## Files changed this session
+## Commits produced
 
-| File | Change |
+| Chunk | SHA | Title |
+|---|---|---|
+| 1 | `d1e5685` | feat(vnext): add pursuit context health read model |
+| 2 | `b6b7b33` | feat(vnext): add chronological pursuit memory read model |
+| 3 | `ac572ba` | feat(vnext): compose ranked missing-context read model |
+| 4 | `77f72ef` | feat(vnext): add pursuit pertinence read model |
+| — | (docs) | docs(vnext): record chunks 1–4 as built |
+
+## Files added — and nothing else touched
+
+| File | Lines |
 |---|---|
-| `docs/vnext/ROADMAP.md` | new — canonical P0–P10, thesis, loop, additive-not-rebuild |
-| `docs/vnext/BUILD-PLAN.md` | new — what already exists, slice order, gates A–E, cutoff |
-| `docs/vnext/STATUS.md` | new — per-capability status board |
-| `docs/vnext/DECISIONS.md` | new — D-001 … D-015 |
-| `docs/vnext/SESSION-HANDOFF.md` | new — this file |
-| `docs/vnext/ACCEPTANCE.md` | new — functional + UX acceptance |
-| `docs/vnext/ENVIRONMENT-MAP.md` | new — verified facts only; no secrets |
-| `docs/vnext/DEMO-PROMOTION-GATE.md` | new — P-1…P-18, default NO |
-| `docs/vnext/SLICE-1-LIVING-PURSUIT-CONTEXT.md` | new — full Slice 1 plan |
-| `src/lib/env/vnext-flags.ts` | new — 7 staging flags, default OFF, narrowing-only |
-| `tests/vnext-flags.test.ts` | new — 4 tests pinning default-OFF and narrowing |
-| `.env.example` | modified — appended a commented vNext flag block (names only) |
+| `src/lib/pursuits/read-models/context-health.ts` | 427 |
+| `src/lib/pursuits/read-models/memory.ts` | 269 |
+| `src/lib/pursuits/read-models/missing-context.ts` | 378 |
+| `src/lib/pursuits/read-models/pertinence.ts` | 329 |
+| `tests/vnext-context-health.test.ts` | 193 |
+| `tests/vnext-pursuit-memory.test.ts` | 245 |
+| `tests/vnext-missing-context.test.ts` | 266 |
+| `tests/vnext-pertinence.test.ts` | 250 |
 
-**No application behaviour changed.** `vnext-flags.ts` is referenced by nothing but
-its own test.
+**8 files added. 0 pre-existing files modified.** Verified with
+`git diff --stat bfca1d7..HEAD` — every line is an insertion in a new file.
 
-## Tests run
+The four modules are **not** exported from `read-models/index.ts`, which is the
+boundary the UI consumes. Nothing outside `src/lib/pursuits/read-models/` imports
+them. They are unreachable from any rendered path.
 
-| Check | Baseline (before changes) | After |
+## Tests and build
+
+| Check | Session 0 baseline | Now |
 |---|---|---|
 | `npx tsc --noEmit` | exit 0 | **exit 0** |
-| `npm test` | 149/149 pass | **153/153 pass** |
+| `npm test` | 149 pass / 0 fail | **220 pass / 0 fail** |
 | `npm run build` | exit 0 | **exit 0** |
 
-**Zero pre-existing failures**, so any future failure is attributable.
+71 tests added in total: 4 flag tests (Session 0) + 67 read-model tests
+(13 + 21 + 15 + 18). **Zero pre-existing failures at any point**, so any future
+failure is attributable and must not be dismissed as pre-existing.
 
-**Not run:** the 33 verifier suites (need a database; no roadmap code was written
-that could affect them). Run before GATE B.
+No snapshot was updated and no test was weakened. One expectation of mine was
+wrong during chunk 4 — a settled primary trigger scores 78 (`high`), not
+`very_high`, because `unresolved` contributes nothing to it. The arithmetic was
+verified by hand and the *test* corrected, not the implementation.
 
 ---
 
-## Preview
+## Architectural discoveries
 
-**Status: UNVERIFIED. Data safety: UNKNOWN.**
+**1. The house four-state conclusion vocabulary.** Three domains already express
+a four-way judgement separating verified / inferred / degraded / absent:
+`ValueCaseState` (STRONG · INCOMPLETE · CONFLICTING · NOT_ESTABLISHED),
+`CoverageState` (VERIFIED · INFERRED · UNVERIFIED · MISSING), and lifecycle dates
+(VERIFIED_DATE · INFERRED_WINDOW · STALE_DATE · CONFLICTING_DATE). This is a
+deliberate pattern. Chunks 1 and 3 adopt the same shape instead of inventing a
+fourth and fifth. **Chunk 6 must preserve it in the UI** — rendering all four as
+"missing" discards a distinction the product has maintained in three places.
 
-The branch is pushed, so Vercel has most likely created a Preview deployment — but
-this container has no Vercel credential, there is no `vercel.json` in the repo, and
-the preview URL cannot be constructed reliably without the team scope slug. It was
-**not** guessed.
+**2. Pertinence and "why this pursuit" are different computations.** Ranking
+*within* a pursuit for the decision at hand needs only pursuit-scoped inputs.
+"Why this pursuit rather than another" needs cross-pursuit inputs that do not
+belong in a pursuit-scoped slice. The former shipped; the latter is deferred to
+Slice 3. See **D-017**. Chunk 6's "Why this matters" must not imply it answers
+the portfolio question.
 
-**The important part:** the 2026-09-07 read-only Vercel verification recorded
-`DATABASE_URL` scoped to **both Production and Preview** on `PursuitOS-demo`. If
-that is still true, **a preview deployment writes to the same Supabase database that
-serves Monday's demo.** That has not been re-verified, so it is recorded as UNKNOWN
-rather than as UNSAFE_SHARED_WRITE — but treat it as unsafe in practice.
+**3. Disclosure must filter before ranking, not penalise within it.** An
+un-entitled item that merely scores lower still shifts the positions of visible
+items around it, so its existence becomes inferable from the ordering — a leak by
+arithmetic that a "the secret string is absent" test would not catch. See
+**D-018**. Both ranking modules filter first and disclose only an aggregate count.
 
-**Operating rule until resolved:**
-- **No writes from preview.** Read-only viewing only.
-- Do not create a database, do not change a credential, do not change env scoping.
-- Develop against the **local synthetic path** (`scripts/seed-demo-world.ts` →
-  local Postgres `pursuit_demo`), which is already isolated and already guarded by
-  `assertSyntheticDatabase`.
+## Existing primitives reused — nothing re-implemented
 
-Resolution commands are in `ENVIRONMENT-MAP.md` §6.
+| Primitive | Where | Used by |
+|---|---|---|
+| `factFreshness()`, predicate-specific policy | `src/lib/facts/freshness.ts` | context-health |
+| `computeCompleteness()`, `COVERAGE_CATEGORIES` | `src/lib/intel/completeness.ts` | context-health |
+| `bandOf()`, `Caller` | `read-models/helpers.ts` | context-health, pertinence |
+| `Band`, `ScoreReason`, `TrustLabel`, `DisclosureClass` | `read-models/types.ts` | all four |
+| `ELEMENTS`, `Meddpicc` | `src/lib/opportunities/meddpicc.ts` | missing-context |
+| `StakeholderCoverage`, `CoverageState` | `src/lib/stakeholders/coverage.ts` | missing-context |
+| `ValueCaseState` | `src/lib/value/case.ts` | missing-context |
+| `WhyNowView` (`unknowns[]`, `contradictions[]`) | `read-models/types.ts` | missing-context |
+| `change_ledger` column semantics | migration `0065` | memory |
+| `pursuit_facts.relevance_type` | migrations `0066` + `0072` | context-health, pertinence |
+
+## Discrepancies between the prior audit and the implementation
+
+Two suspected schema/implementation disagreements were checked. **Neither is
+real** — both were resolved by later migrations, and I verified rather than
+reporting a false defect:
+
+- `pursuit_facts.relevance_type` — `0066` allows four values, `deriveRelevance()`
+  returns nine. **`0072` widens the constraint** to all nine.
+- `change_ledger.change_type` — `FACT_LINKED_TO_PURSUIT` is absent from `0065`'s
+  CHECK. **`0073`/`0079`/`0084` extend it.**
+
+Both confirm that LOW-materiality linkage events genuinely exist in the ledger,
+which is exactly the connective tissue `getPursuitTimeline` filters out and
+Pursuit Memory retains. The Session 0 audit finding stands.
+
+No other discrepancy was found. The Session 0 "what already exists" inventory was
+accurate.
 
 ---
 
@@ -101,12 +140,12 @@ Resolution commands are in `ENVIRONMENT-MAP.md` §6.
 
 | # | Blocker | Impact | Unblock |
 |---|---|---|---|
-| B-1 | **Preview data access UNKNOWN** | No preview writes; Slice 1 is read-only so it is unaffected, but Slice 2+ is blocked | `ENVIRONMENT-MAP.md` §6 — one Vercel API call, read-only |
-| B-2 | **Live serving SHA unresolved** | Cannot certify any promotion | `/api/build` with `OPS_FINGERPRINT_TOKEN`, or the Vercel API. Branch head is Wave 6D `97e975f0`; last observed serving SHA was Wave 3 `66f72f61` |
+| B-1 | **Preview data access UNKNOWN** | Slice 1 is read-only, so unaffected. Blocks Slice 2+. | `ENVIRONMENT-MAP.md` §6 — one read-only Vercel API call |
+| B-2 | **Live serving SHA unresolved** | Cannot certify any promotion | `/api/build` with `OPS_FINGERPRINT_TOKEN`, or the Vercel API |
 | B-3 | Tag pushes refused (403) | Cosmetic — durable references exist | None needed |
 
-Neither B-1 nor B-2 blocks starting Slice 1 chunks 1–4, which are pure functions
-referenced by nothing.
+Neither B-1 nor B-2 blocked chunks 1–4, and neither blocks chunk 5 (still no
+writes). B-2 must be resolved before GATE E.
 
 ---
 
@@ -115,8 +154,8 @@ referenced by nothing.
 - `app.pursuitos.io` — production. Out of scope entirely.
 - `demo.pursuitos.io` — Monday's demo.
 - Branch `claude/activateos-platform-review-xzkgmd` — **the Vercel production
-  branch.** Never push to it, never merge into it, without an explicit instruction
-  naming that action. Green tests are not approval.
+  branch.** Never push to it, never merge into it, without an explicit
+  instruction naming that action. Green tests are not approval.
 - Any Vercel environment variable, deployment, alias, domain, or build setting.
 - Any Supabase role, grant, RLS policy, schema object, migration, or credential.
 - The hosted demo database (`qifatlqxfuhwrwvpbwsc`). No writes, no reseed.
@@ -129,16 +168,24 @@ referenced by nothing.
 
 ## Exact next action
 
-**Nothing. Session 0 is complete and STOPPED by instruction.**
+**Nothing. Chunks 1–4 are complete and this session STOPPED by instruction.**
 
-Vertical Slice 1 must not begin until the repository owner explicitly approves it.
+Chunk 5 must not begin without explicit approval, because it is the first change
+to what the demo shows and it lands on the itinerary's §2 hero screen.
 
-When approved, the next action is **Slice 1 chunk 1**: create
-`src/lib/pursuits/read-models/context-health.ts` composing the existing
-`src/lib/facts/freshness.ts` with the existing `src/lib/intel/completeness.ts` at
-pursuit level, weighted by `pursuit_facts.relevance_type`, plus unit tests. It is
-referenced by nothing and changes no rendered output. Full plan:
-`docs/vnext/SLICE-1-LIVING-PURSUIT-CONTEXT.md`.
+When approved, chunk 5 is:
+
+1. Write the SQL loaders for the four read-models — mechanical projections of
+   `facts ⋈ pursuit_facts` and `change_ledger` onto the input types the modules
+   already declare (D-016: a loader merges only with an integration test).
+2. Switch `getFacts(db, r.account_id)` in `read-models/detail.ts` to pursuit-scope
+   via `pursuit_facts`, ordered by relevance then freshness — **behind
+   `VNEXT_CONTEXT_HEALTH_ENABLED`**, so flag OFF is byte-identical to today.
+3. Add `scripts/vnext-context-verify.ts` (EITHER class) and register it in
+   `scripts/verify-classes.ts`.
+
+Requires a local synthetic database (`scripts/seed-demo-world.ts` against local
+Postgres `pursuit_demo`). **Still no writes to any hosted database.**
 
 ---
 
@@ -147,22 +194,23 @@ referenced by nothing and changes no rendered output. Full plan:
 ```sh
 cd /home/user/ActivateOS
 
-# 1. Confirm you are in the right lane and nothing drifted.
+# 1. Confirm the lane and that nothing drifted.
 git fetch --all --tags
 git checkout roadmap/pursuitos-vnext
-git log --oneline -1                      # expect 4bc27a4 or later
+git log --oneline -6                      # expect the docs commit, then 77f72ef ac572ba b6b7b33 d1e5685
 git status --porcelain                    # expect clean
 git rev-parse origin/claude/activateos-platform-review-xzkgmd   # expect 97e975f0…  (unchanged)
 
 # 2. Read the durable memory. Start here, not with the code.
 cat docs/vnext/SESSION-HANDOFF.md
 cat docs/vnext/STATUS.md
-cat docs/vnext/BUILD-PLAN.md              # "What already exists" prevents rebuilding shipped code
+cat docs/vnext/DECISIONS.md               # D-016/017/018 explain the chunk 1–4 shape
+sed -n '/^# AS-BUILT/,$p' docs/vnext/SLICE-1-LIVING-PURSUIT-CONTEXT.md
 
-# 3. Re-establish the validation baseline before changing anything.
+# 3. Re-establish the baseline before changing anything.
 npm install
 npx tsc --noEmit                          # expect exit 0
-npm test                                  # expect 153/153
+npm test                                  # expect 220/220
 npm run build                             # expect exit 0
 ```
 
@@ -173,15 +221,17 @@ This is a cloud sandbox and may disappear at any time.
 - `node_modules` is **not** committed — `npm install` is always step one.
 - The container may be **re-cloned mid-session** onto a stale branch. Always
   `git fetch --all --tags` and verify SHAs against `git ls-remote` rather than
-  trusting the local checkout.
+  trusting the local checkout. This has already happened twice in this project.
 - A local-only tag (`demo-safe-2026-09-12`) will be gone. Use
   `backup/2026-09-04/tds-live-demo` or the SHA `97e975f0`.
 - Anything not pushed is lost. Commit and push early.
 
 ### Before you stop, next session
 
-1. Update **this file**: date, branch, commit, files changed, tests run, completed
-   work, in-progress work, exact next action, blockers.
+1. Update **this file**: date, branch, commit, files changed, tests run,
+   completed work, in-progress work, exact next action, blockers.
 2. Update `STATUS.md` for every capability you touched.
 3. Append to `DECISIONS.md` any durable decision you made.
-4. Commit and push.
+4. Append to the **AS-BUILT** section of `SLICE-1-LIVING-PURSUIT-CONTEXT.md` if
+   the implementation diverged from the plan.
+5. Commit and push.

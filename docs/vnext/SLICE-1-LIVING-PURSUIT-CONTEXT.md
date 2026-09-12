@@ -1,8 +1,12 @@
 # Vertical Slice 1 — Living Pursuit Context
 
-**Status:** `NOT STARTED` — plan only. **Do not build without explicit approval.**
+**Status:** `BUILDING` — chunks 1–4 complete (2026-09-12). Chunks 5–8 **NOT STARTED**;
+chunk 5 needs explicit approval because it is the first change to what the demo shows.
 **Phase:** P1 · **Flag family:** `VNEXT_CONTEXT_HEALTH/STATE/MEMORY/INTELLIGENCE`
-**Written:** 2026-09-12T02:47Z
+**Written:** 2026-09-12T02:47Z · **As-built section appended:** 2026-09-12T04:05Z
+
+> The plan below is preserved as written. See **AS-BUILT** at the foot of this file
+> for what actually shipped and where it differs.
 
 ---
 
@@ -227,3 +231,92 @@ Estimate: chunks 1–4 ≈ half a day; 5–6 ≈ half a day; 7–8 ≈ a quarter
 Saturday **only if** nothing else competes. Per `BUILD-PLAN.md`, if chunks 5–6 are
 not complete by Saturday night, Slice 1 does not ship to Monday's demo — and chunks
 1–4 sitting unreferenced on the branch is a perfectly good place to stop.
+
+---
+
+# AS-BUILT — chunks 1–4 (2026-09-12)
+
+Chunks 1–4 are complete on `roadmap/pursuitos-vnext`. Chunks 5–8 remain
+**NOT STARTED**. This section records where the implementation differs from the
+plan above; where it is silent, the plan held.
+
+## What shipped
+
+| Chunk | Commit | File | Tests |
+|---|---|---|---|
+| 1 | `d1e5685` | `src/lib/pursuits/read-models/context-health.ts` | 13 |
+| 2 | `b6b7b33` | `src/lib/pursuits/read-models/memory.ts` | 21 |
+| 3 | `ac572ba` | `src/lib/pursuits/read-models/missing-context.ts` | 15 |
+| 4 | `77f72ef` | `src/lib/pursuits/read-models/pertinence.ts` | 18 |
+
+8 files added, **0 pre-existing files modified**. Not exported from
+`read-models/index.ts`, so no UI can reach them. Typecheck clean, 220/220 tests,
+build succeeds.
+
+## Differences from the plan
+
+**1. Pure functions over typed inputs, not async loaders.** The plan implied
+read-models that query. They ship as pure composition functions with explicit
+typed inputs, shaped as direct projections of `facts ⋈ pursuit_facts` and
+`change_ledger`. The SQL loaders move to chunk 5, where they land with their
+consumer and an integration verifier. See **D-016** — a loader with no consumer
+and no integration test would look finished and be unverified.
+
+**2. `pertinence.ts` is pursuit- and decision-scoped, not portfolio-relative.**
+The plan described it as "Why this pursuit? — pertinence relative to the
+portfolio". Building it showed those are two computations: ranking *within* a
+pursuit for the decision at hand needs only pursuit-scoped inputs, while "why
+this pursuit rather than another" needs cross-pursuit inputs that do not belong
+in a pursuit-scoped slice. The former shipped; the latter is deferred to Slice 3.
+See **D-017**.
+
+Consequence for chunk 6: the narrative's "Why this matters" is assembled from
+context health, the top gap and the top pertinent items — all pursuit-scoped.
+It does not yet answer portfolio-relative pertinence, and must not imply it does.
+
+**3. Disclosure filters before ranking rather than penalising within it.** Not in
+the plan, and it matters: an un-entitled item that merely scores lower still
+shifts the positions of visible items around it, making its existence inferable
+from the ordering. Both ranking modules filter first and disclose only an
+aggregate count. See **D-018**.
+
+## Verified against the schema
+
+Two suspected discrepancies were checked and are **not** discrepancies:
+
+- `pursuit_facts.relevance_type` — migration `0066` allows only four values while
+  `deriveRelevance()` returns nine. Migration **`0072` widens the constraint** to
+  all nine. Schema and implementation agree.
+- `change_ledger.change_type` — `FACT_LINKED_TO_PURSUIT` is absent from `0065`'s
+  CHECK. Migrations **`0073`/`0079`/`0084` extend it**. Schema and implementation
+  agree.
+
+Both confirm LOW-materiality linkage events genuinely exist in the ledger — which
+is precisely the connective tissue `getPursuitTimeline` filters out and Pursuit
+Memory retains.
+
+## Architectural discovery: the house four-state conclusion vocabulary
+
+Three domains already express a four-way judgement separating verified /
+inferred / degraded / absent:
+
+| Domain | Vocabulary |
+|---|---|
+| Value case | `STRONG` · `INCOMPLETE` · `CONFLICTING` · `NOT_ESTABLISHED` |
+| Stakeholder coverage | `VERIFIED` · `INFERRED` · `UNVERIFIED` · `MISSING` |
+| Lifecycle dates | `VERIFIED_DATE` · `INFERRED_WINDOW` · `STALE_DATE` · `CONFLICTING_DATE` |
+
+This is a deliberate house pattern, not a coincidence. Context health and
+missing-context adopt the same shape rather than inventing a fourth and fifth,
+which is why "stale", "conflicting", "unverified" and "not established" stay
+distinguishable end to end instead of collapsing into "missing".
+
+**Chunk 6 must preserve this in the UI.** Rendering all four as "missing" would
+discard a distinction the product has maintained in three places.
+
+## Chunk 5 is still the risk
+
+Unchanged from the plan: switching `getFacts` from account-scope to
+`pursuit_facts` is the first change to what the demo shows, and it lands on the
+itinerary's §2 hero screen. Flag-gated, and the beat must be walked both ways
+before any promotion.

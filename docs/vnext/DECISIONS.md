@@ -239,3 +239,69 @@ default answer this weekend is **NO**.
 
 **Why.** There is a demo on Monday 2026-09-14. A feature completed late and promoted
 untested is strictly worse than no feature.
+
+---
+
+## D-016 · Slice 1 read-models are pure functions over typed inputs; loaders land with their consumer
+
+**Decision.** `context-health.ts`, `memory.ts`, `missing-context.ts` and
+`pertinence.ts` export pure composition functions taking explicit typed inputs.
+They perform no database access. The SQL loaders that feed them are written in
+chunk 5, alongside the first consumer and the integration verifier.
+
+**Why.** Chunks 1–4 were required to be independently reviewable and to have no
+rendered consumer. A loader with no consumer and no integration test is code
+nobody has executed against a real schema — it would look finished and be
+unverified. Pure functions with declared inputs can be exhaustively tested with
+no database at all, which is what actually happened: 67 tests, no fixtures, no
+container.
+
+The input types are shaped as direct projections of the canonical tables
+(`facts` ⋈ `pursuit_facts`, `change_ledger`), so the loaders are mechanical
+rather than interpretive. Nothing is reinterpreted between SQL and composition.
+
+**Consequence.** Chunk 5 adds the loaders *and* their verifier together. A loader
+must never merge without an integration test that runs it against a real schema.
+
+---
+
+## D-017 · Pertinence is pursuit- and decision-relative; portfolio-relative pertinence is a different question
+
+**Decision.** `pertinence.ts` answers "within this pursuit, and for the decision
+this caller is making, what should they look at next?" It ranks facts, remembered
+events and open gaps against each other on one list.
+
+It does **not** answer "why this pursuit rather than another one". That is a
+portfolio ranking question, it needs cross-pursuit inputs this module
+deliberately does not take, and it belongs to Slice 3.
+
+**Why.** The Slice 1 plan described this module as "Why this pursuit? — pertinence
+relative to the portfolio". Building it revealed those are two different
+computations with different inputs and different consumers. Conflating them
+would have produced a module that did neither well, and would have pulled
+cross-pursuit data into a pursuit-scoped slice.
+
+**Consequence.** The Slice 1 narrative's "Why this matters" is assembled from
+context health, the top gap and the top pertinent items — all pursuit-scoped.
+A genuine portfolio-relative "why this pursuit" is deferred to Slice 3 and is
+noted as such in `BUILD-PLAN.md`.
+
+---
+
+## D-018 · Disclosure filters before ranking, never penalises within it
+
+**Decision.** Anywhere a read-model ranks or counts, items the caller may not see
+are removed **before** the computation and contribute nothing — not a lowered
+score, not a displaced neighbour, not a reason string. Only an aggregate count is
+disclosed.
+
+**Why.** A restricted item that merely scores lower still shifts the positions of
+the visible items around it. Its existence, and something about its properties,
+becomes inferable from the ordering. That is a leak by arithmetic, and it is
+invisible to a test that only checks "the secret string is absent".
+
+**Consequence.** `rankPertinence` filters first and is tested by comparing the
+complete visible ranking with and without a restricted item present, asserting
+the scores and order are identical. `composeMissingContext` applies the same rule
+and additionally refuses to report un-entitled information as the caller's own
+knowledge gap — a boundary is not a hole.
