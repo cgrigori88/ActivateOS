@@ -87,6 +87,11 @@ export const SUITES: SuiteSpec[] = [
   { name: "route-persistence", cls: "SEEDED", why: "reads a canonical pursuit with >=2 signals and its recorded route history" },
   { name: "scope", cls: "SEEDED", why: "reads the oldest existing organization; fails with 'no org' on a bare database" },
   { name: "team-motion", cls: "SEEDED", why: "reads a canonical routed pursuit and an existing draft motion" },
+  {
+    name: "vnext-context",
+    cls: "SEEDED",
+    why: "vNext Slice 1 loader harness: reads the canonical world's richest pursuit and asserts the loader+read-model composition. Requested as EITHER, but EITHER means run-scoped fixtures on a DISPOSABLE database, and this harness is deliberately READ-ONLY — it writes nothing, so it can only read demo content, which is what SEEDED means. On a disposable database it would find no pursuit and assert nothing (the Wave 6C mislabelling, again)",
+  },
 
   // ── EITHER: run-scoped fixtures (per-run ids), no reliance on demo content.
   //    Because they need nothing from the demo world, they are given a disposable

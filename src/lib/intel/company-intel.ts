@@ -37,7 +37,7 @@ export interface CompanyIntel {
 }
 
 /** Canonical families the company has any signal for — feeds completeness. */
-function familiesFromSignalTypes(types: string[]): Set<string> {
+export function familiesFromSignalTypes(types: string[]): Set<string> {
   const out = new Set<string>();
   for (const t of types) {
     const canonical = SIGNAL_DEFS[t]?.canonical;
