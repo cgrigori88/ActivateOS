@@ -226,24 +226,35 @@ writes). B-2 must be resolved before GATE E.
 
 ## Exact next action
 
-**Nothing. Chunks 1–4 are complete and this session STOPPED by instruction.**
+**Nothing. Chunk 5A is complete and this session STOPPED by instruction.**
 
-Chunk 5 must not begin without explicit approval, because it is the first change
-to what the demo shows and it lands on the itinerary's §2 hero screen.
+Chunk 5B must not begin without explicit approval: it is the first change to
+what the demo shows, and it lands on the itinerary's §2 hero screen.
 
-When approved, chunk 5 is:
+### Recommended chunk 5B scope
 
-1. Write the SQL loaders for the four read-models — mechanical projections of
-   `facts ⋈ pursuit_facts` and `change_ledger` onto the input types the modules
-   already declare (D-016: a loader merges only with an integration test).
-2. Switch `getFacts(db, r.account_id)` in `read-models/detail.ts` to pursuit-scope
-   via `pursuit_facts`, ordered by relevance then freshness — **behind
-   `VNEXT_CONTEXT_HEALTH_ENABLED`**, so flag OFF is byte-identical to today.
-3. Add `scripts/vnext-context-verify.ts` (EITHER class) and register it in
-   `scripts/verify-classes.ts`.
+Two commits, in this order, each independently revertible:
 
-Requires a local synthetic database (`scripts/seed-demo-world.ts` against local
-Postgres `pursuit_demo`). **Still no writes to any hosted database.**
+**5B-1 — feed the gap rank into pertinence (still no rendered change).**
+Carry `rank` and `source` from `ContextGap` onto `PertinenceCandidate`, and let
+linkage use them rather than `gapKind` alone. This fixes the chunk-5A finding:
+today all same-kind gaps tie, so the economic-buyer gap (80) and the
+timing-anchor gap (72) are buried under coverage gaps (69). Also give
+`VALIDATE_TIMING` and `ASSESS_RISK` a way to match a gap's `source`, so the most
+obviously timing-relevant item is not invisible to the timing task. Verify with
+`vnext-context-verify` plus the chunk-4 unit tests. No consumer yet.
+
+**5B-2 — pursuit-scoped facts on Pursuit Detail, flag-gated.**
+Switch `getFacts(db, r.account_id)` in `read-models/detail.ts` to pursuit scope
+via `pursuit_facts`, ordered by relevance then freshness, behind
+`VNEXT_CONTEXT_HEALTH_ENABLED`. **Flag OFF must produce a byte-identical
+payload** — assert it, do not assume it. Then walk the itinerary's §2 beat with
+the flag both ways and compare.
+
+If pursuit-scoping makes the hero screen worse, keep account-scoping and record
+why. That outcome is allowed and is not a failure.
+
+**Do not** compose the narrative surface (chunk 6) in 5B.
 
 ---
 
