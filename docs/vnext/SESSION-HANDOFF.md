@@ -10,12 +10,12 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-12T09:20Z (Saturday) |
+| **Date/time** | 2026-09-12T10:40Z (Saturday) |
 | **Repository** | `cgrigori88/ActivateOS` — working dir `/home/user/ActivateOS` |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `99bd5dd` — "feat(vnext): gate pursuit brief on pursuit detail" (+ a docs commit on top) |
+| **Current commit** | `e0365d4` + the GATE C review-package commit on top |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | Vertical Slice 1, **chunks 6A + 6B — the FIRST RENDERED vNext change.** Slice 1 is functionally complete behind the flag. Next step is GATE C review, not code. |
+| **Session completed** | **GATE C product review PREPARATION.** No product code changed. `docs/vnext/GATE-C-PRODUCT-REVIEW.md` + 5 screenshots in `docs/vnext/review/gate-c/`. Slice 1 remains functionally complete behind the flag; **it is now NOT promotable — see GATE C finding N-1.** |
 | **Preview URL** | **UNVERIFIED** — unchanged from Session 0 |
 | **Preview data safety** | **UNKNOWN** — unchanged from Session 0 |
 
@@ -318,12 +318,47 @@ writes). B-2 must be resolved before GATE E.
 
 ---
 
+## GATE C review package (2026-09-12, docs only)
+
+`docs/vnext/GATE-C-PRODUCT-REVIEW.md` — flag OFF vs flag ON on the seeded Globex
+pursuit, measured from the rendered DOM. Screenshots: `docs/vnext/review/gate-c/`
+(`desktop-off`, `desktop-on`, `mobile-off`, `mobile-on`, `desktop-on-full-context`).
+
+**Zero product-code change.** `tsc` 0 · `npm test` 271/0 · `build` 0 ·
+verifier 55/0 · flag-OFF 235,042 bytes and flag-ON 217,010 bytes, both identical
+to the 6B session.
+
+### Six findings — none fixed, per instruction
+
+| # | Finding | Severity |
+|---|---|---|
+| **N-1** | **`Earlier history (7 more)` reveals NO events** — only "…continues below in the activity record", and that record was one of the three panels this surface replaced. **7 of 10 `change_ledger` rows are unreachable with the flag on, including `PARTNER_OVERRIDE` / `OVERRIDE_RECORDED` (the demo's §2 beat), `ROUTE_RECOMMENDATION_CHANGED` and `PURSUIT_CREATED`.** Verified by opening every `<details>` and probing text: "Route override", "partner override", "Partner-led", "Pursuit detected", "Recommended route" are all absent flag-ON and present flag-OFF. The override *decision* survives in the Route decision panel; the *chronology* does not. | **Promotion blocker** |
+| **N-6** | The merge makes the left column 1,068px against a 475px neighbour → **593px void** beside the new panel just below the fold (48px imbalance before). "Outcome & attribution" is orphaned. This is why the desktop page did not get shorter (3,827 → 3,855px). | High — composition |
+| N-2 | "3 more items of supporting context available." and "10 other unresolved items." are plain text — no link, no disclosure. | Medium |
+| N-3 | All four evidence rows on this pursuit read `Verified`, so the five-state vocabulary is not observable on evidence rows here. Review a thinner pursuit too. | Medium — review coverage |
+| N-4 | Pre-existing copy defects now in the panel's first three lines: "1 independent families" (`read-models/detail.ts:95`) and a semicolon-joined route fragment. Present in **both** states — not a slice regression. | Low |
+| N-5 | Desktop page not shorter (+28px). Mobile −8.9%. | Informational |
+
+Also corrected: the 6B mobile screenshots were **viewport-only** (`fullPage` was
+set for desktop only), so they showed the hero, not the changed surface — which
+is why both were byte-identical at 334,356 bytes. The GATE C captures use
+`fullPage` at both widths. The 6B *overflow* claim is unaffected; it was measured
+from `document.documentElement.scrollWidth`, not from the image.
+
+Also confirmed: `#whynow` → `y` 532, `#evidence` → 745, `#activity` → 1,086 —
+all three land on the right movement, so U-13 holds structurally. N-1 is about
+the **content** the anchor promised, not the anchor.
+
 ## Exact next action
 
-**Nothing. Chunks 6A and 6B are complete and this session STOPPED by instruction.**
+**A decision, not code: GATE C is prepared and awaiting the product review.**
 
 Slice 1 is functionally complete behind `VNEXT_PURSUIT_INTELLIGENCE_ENABLED`.
-Nothing is deployed and the demo is untouched.
+Nothing is deployed and the demo is untouched. **Do not promote Slice 1 until
+N-1 is resolved.**
+
+Monday is unaffected either way: the flag defaults OFF, and flag-OFF is
+byte-identical to the pre-slice page.
 
 ### The next step is a decision, not code
 
