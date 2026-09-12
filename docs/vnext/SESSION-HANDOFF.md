@@ -10,12 +10,12 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-12T06:40Z (Saturday) |
+| **Date/time** | 2026-09-12T07:55Z (Saturday) |
 | **Repository** | `cgrigori88/ActivateOS` — working dir `/home/user/ActivateOS` |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `1b05b8a` — "fix(vnext): preserve gap semantics in pursuit pertinence" (+ a docs commit on top) |
+| **Current commit** | `620bc12` — "feat(vnext): compose pursuit evidence context" (+ a docs commit on top) |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | Vertical Slice 1, **chunk 5B-1** (gap-semantics composition fix). Chunk 5B-2 onward NOT STARTED. |
+| **Session completed** | Vertical Slice 1, **chunk 5B-2** (evidence composition, revised scope). **All Slice 1 backend composition is done.** Chunk 6 — the first rendered change — NOT STARTED. |
 | **Preview URL** | **UNVERIFIED** — unchanged from Session 0 |
 | **Preview data safety** | **UNKNOWN** — unchanged from Session 0 |
 
@@ -39,7 +39,33 @@
 | — | `a13c2fa` | docs(vnext): record chunks 1–4 as built |
 | 5A | `0f86079` | feat(vnext): connect living pursuit context loaders |
 | — | `9744335`, `20ee049` | docs(vnext): chunk 5A record + handoff correction |
-| **5B-1** | **`1b05b8a`** | **fix(vnext): preserve gap semantics in pursuit pertinence** |
+| 5B-1 | `1b05b8a` | fix(vnext): preserve gap semantics in pursuit pertinence |
+| — | `494d166` | docs(vnext): chunk 5B-1 record + D-019 |
+| **5B-2** | **`620bc12`** | **feat(vnext): compose pursuit evidence context** |
+
+## Chunk 5B-2 files
+
+| File | Change |
+|---|---|
+| `src/lib/pursuits/read-models/pursuit-evidence.ts` | **new** — direct vs supporting evidence composition |
+| `src/lib/pursuits/read-models/context-loaders.ts` | `loadPursuitEvidence` / `loadPursuitEvidenceInput`, reusing `deriveRelevance()` |
+| `src/lib/pursuits/read-models/pertinence.ts` | `relevanceInferred` on the candidate — wording only, no score change |
+| `scripts/vnext-context-verify.ts` | 8 new assertions + the evidence report |
+| `tests/vnext-pursuit-evidence.test.ts` | **new** — 18 tests |
+
+**The original 5B-2 plan is superseded, and the reasoning is preserved** in the
+Slice 1 AS-BUILT section. The swap to pursuit-scoped facts would have deleted
+the best evidence on the screen: Globex has 7 account facts, 1 linked, and the
+6 unlinked include the `renewal_date` that answers the pursuit's own
+second-ranked gap. See **D-020**.
+
+**Seeded Globex result:** 1 direct (`strategic_initiative`, SOLUTION_FIT) and
+6 supporting, led by `renewal_date` at 67 as an inferred TIMING_ANCHOR. All 7
+account facts accounted for exactly once; 0 rejected, 0 withheld, 0 below band.
+
+**UI recommendation from the real data: `DIRECT_PLUS_SUPPORTING`.** Direct-only
+would leave a single `strategic_initiative` fact with no timing and no economics
+— materially weaker than today's account-scoped panel.
 
 ## Chunk 5B-1 files
 
@@ -101,13 +127,13 @@ them. They are unreachable from any rendered path.
 
 ## Tests and build
 
-| Check | Session 0 | After 1–4 | After 5A | After 5B-1 |
-|---|---|---|---|---|
-| `npx tsc --noEmit` | exit 0 | exit 0 | exit 0 | **exit 0** |
-| `npm test` | 149 / 0 | 220 / 0 | 220 / 0 | **233 pass / 0 fail** |
-| `npm run build` | exit 0 | exit 0 | exit 0 | **exit 0** |
-| `vnext-context` verifier | — | — | 42 / 0 | **47 passed / 0 failed** |
-| SEEDED spot-check | — | — | green | **interpret 255 · lifecycle-query 80 · value-case 126 · stakeholder-intel 43** |
+| Check | Session 0 | 1–4 | 5A | 5B-1 | 5B-2 |
+|---|---|---|---|---|---|
+| `npx tsc --noEmit` | exit 0 | exit 0 | exit 0 | exit 0 | **exit 0** |
+| `npm test` | 149 / 0 | 220 / 0 | 220 / 0 | 233 / 0 | **251 pass / 0 fail** |
+| `npm run build` | exit 0 | exit 0 | exit 0 | exit 0 | **exit 0** |
+| `vnext-context` verifier | — | — | 42 / 0 | 47 / 0 | **55 passed / 0 failed** |
+| SEEDED spot-check | — | — | green | green | **interpret 255 · lifecycle-query 80 · value-case 126 · stakeholder-intel 43** |
 
 ### Chunk 5B-1 measured effect (Globex pursuit, local synthetic world)
 
@@ -263,41 +289,39 @@ writes). B-2 must be resolved before GATE E.
 
 ## Exact next action
 
-**Nothing. Chunk 5B-1 is complete and this session STOPPED by instruction.**
+**Nothing. Chunk 5B-2 is complete and this session STOPPED by instruction.**
 
-Chunk 5B-2 must not begin without explicit approval: it is the first change to
-what the demo shows, and it lands on the itinerary's §2 hero screen.
+All backend composition for Slice 1 is now done. **Chunk 6 is the first rendered
+change** and must not begin without explicit approval.
 
-### Recommended chunk 5B-2 scope — the first rendered change
+### Recommended chunk 6 scope — the narrative surface
 
-**Switch Pursuit Detail's facts from account scope to pursuit scope, flag-gated.**
+Render `PursuitEvidenceView` on Pursuit Detail behind
+`VNEXT_PURSUIT_INTELLIGENCE_ENABLED`, absorbing `WhyNowBento`, `FactsBento` and
+`MaterialChangeTimeline` into one context narrative. Panel count 18 → 16, per
+`ACCEPTANCE.md`'s density test. **Ending at 19 fails GATE C.**
 
-In `src/lib/pursuits/read-models/detail.ts`, `getFacts(db, r.account_id)`
-currently takes the top 20 facts for the whole *company* by confidence. It
-ignores `pursuit_facts`, which already models fact→pursuit linkage with a typed
-`relevance_type`. So the Facts panel can show facts irrelevant to this pursuit
-and hide relevant lower-confidence ones.
+Recommendation from the seeded data: **DIRECT_PLUS_SUPPORTING.**
 
-Replace it with a pursuit-scoped read ordered by relevance then freshness,
-behind `VNEXT_CONTEXT_HEALTH_ENABLED`.
+Default view — about **5 items**: 1 direct fact, the `renewal_date` supporting
+fact, and the top gap, with everything else behind progressive disclosure.
 
 Non-negotiable conditions:
 
-1. **Flag OFF must produce a byte-identical payload.** Assert it in the
-   integration harness — do not assume it. This is the whole safety argument.
-2. **Walk the itinerary's §2 beat with the flag both ways** and compare, on the
-   local synthetic world, before anything else.
-3. If pursuit-scoping makes the hero screen *worse* — Globex has only **one**
-   linked fact, so a pursuit-scoped panel may be nearly empty where the
-   account-scoped one is full — **keep account-scoping and record why.** That
-   outcome is allowed and is not a failure. The one-linked-fact count is already
-   visible in the verifier output.
-4. No narrative composition (that is chunk 6), no new panel, no UI beyond the
-   scope switch.
+1. **Flag OFF must be byte-identical** to today's payload and render. Assert it.
+2. **The direct/supporting distinction must survive into the copy**, not only the
+   type. Chunk 5B-2 caught a reason string claiming "Linked to this pursuit" for
+   an unlinked fact; the same mistake in UI copy would be a false provenance
+   claim to a user. Supporting items need visibly different treatment — and
+   **not** the word "inferred", which is architecture vocabulary (D-012).
+3. **No architecture terminology on screen**: no "Context Health Engine",
+   "Pertinence", "Pursuit State Engine" (D-012).
+4. **Preserve the four-state vocabulary** in what the user sees — stale,
+   conflicting, unverified and not-established must not all render as "missing".
+5. Walk the itinerary's §2 beat with the flag both ways before anything else.
 
-A reasonable alternative, if §2 degrades: render pursuit-scoped facts *first*
-and account-scoped facts behind progressive disclosure, so nothing is lost. That
-is a larger change and should be its own decision.
+Suggested split: **6-1** the narrative component with the existing panels still
+in place behind the flag, then **6-2** the absorption that removes them.
 
 ---
 
@@ -309,7 +333,7 @@ cd /home/user/ActivateOS
 # 1. Confirm the lane and that nothing drifted.
 git fetch --all --tags
 git checkout roadmap/pursuitos-vnext
-git log --oneline -9                      # newest: docs, 1b05b8a, 20ee049, 9744335, 0f86079, a13c2fa, 77f72ef, ac572ba, b6b7b33
+git log --oneline -11                     # newest: docs, 620bc12, 494d166, 1b05b8a, 20ee049, 9744335, 0f86079, a13c2fa, 77f72ef …
 git status --porcelain                    # expect clean
 git rev-parse origin/claude/activateos-platform-review-xzkgmd   # expect 97e975f0…  (unchanged)
 
@@ -322,11 +346,11 @@ sed -n '/^# AS-BUILT/,$p' docs/vnext/SLICE-1-LIVING-PURSUIT-CONTEXT.md
 # 3. Re-establish the baseline before changing anything.
 npm install
 npx tsc --noEmit                          # expect exit 0
-npm test                                  # expect 233/233
+npm test                                  # expect 251/251
 
 # 4. Re-establish the local synthetic DB before touching the loaders
 #    (see "Local synthetic database" above — pgvector is required).
-#    Then: npx tsx scripts/vnext-context-verify.ts   # expect 47/47
+#    Then: npx tsx scripts/vnext-context-verify.ts   # expect 55/55
 npm run build                             # expect exit 0
 ```
 

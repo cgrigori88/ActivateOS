@@ -489,3 +489,99 @@ All matching is on canonical enums. No keyword framework was introduced.
 
 The GENERAL ordering now mirrors the upstream gap ranking exactly, which is the
 whole point of D-019.
+
+---
+
+# AS-BUILT — chunk 5B-2 (2026-09-12), REVISED SCOPE
+
+Commit `620bc12`. **Chunk 6 (the narrative surface) is NOT STARTED.**
+
+## The prior 5B-2 plan is SUPERSEDED — reasoning preserved
+
+The plan recorded above, and repeated in the chunk-5A handoff, was:
+
+> Switch `getFacts(db, r.account_id)` in `read-models/detail.ts` to pursuit scope
+> via `pursuit_facts` … behind `VNEXT_CONTEXT_HEALTH_ENABLED`.
+
+It also recorded the condition that would decide it: *"Globex has only one linked
+fact, so a pursuit-scoped facts panel may be nearly empty where the
+account-scoped one is full. Keeping account scope and recording why is an allowed
+outcome."*
+
+**That condition held, and it is worse than anticipated.** The seeded Globex
+account carries 7 CURRENT facts, of which **1** is linked. The 6 unlinked include
+`renewal_date` at 0.92 confidence (`CUSTOMER_DECLARED`) — while the pursuit's
+**second-ranked gap is "No verified timing anchor"**. The account already holds
+the answer to its own most important open question, and a pursuit-scoped swap
+would have hidden it.
+
+So neither answer was right. The plan is superseded, not abandoned: the swap was
+the wrong shape, and the reasoning that produced it is kept here because the
+condition it identified is exactly what falsified it.
+
+## What was built instead
+
+`src/lib/pursuits/read-models/pursuit-evidence.ts` — a pure, non-rendered
+composition returning **two arrays**:
+
+| | meaning | decided by |
+|---|---|---|
+| `direct` | explicitly linked through `pursuit_facts` | **linkage**, never score |
+| `supporting` | authorized account facts, materially pertinent, **not** linked | pertinence, after authorization |
+
+Plus `excludedSummary`, which accounts for every considered fact exactly once:
+`direct + supporting + rejected + unauthorized + belowBand + beyondLimit`.
+
+Ordering — `direct` by asserted `relevance_type` (existing `RELEVANCE_WEIGHT`),
+then freshness, then id. `supporting` by pertinence score, then id.
+
+## Inclusion logic, and what it does not reinvent
+
+| Concern | Existing primitive reused |
+|---|---|
+| relevance of an unlinked fact | `deriveRelevance()` — the same function `linkFactToPursuits` uses |
+| freshness | `factFreshness()` |
+| ranking | `rankPertinence` |
+| banding / the gate | `bandOf()` — supporting requires band ≥ `moderate` |
+
+**Staleness is not a separate cutoff.** An aged fact loses recency inside
+pertinence and falls below the band on its own — which is what
+`ACCEPTANCE.md` asks for and what test 9 pins.
+
+**The presentation limit (default 6) is a bound on display, not on truth.**
+Anything above the gate but beyond the limit is counted in `beyondLimit`.
+
+## Seeded Globex result
+
+```
+DIRECT PURSUIT EVIDENCE (1)
+  [SOLUTION_FIT] Globex Manufacturing Inc.  strategic_initiative  conf 0.89 fresh 1.00
+
+SUPPORTING ACCOUNT CONTEXT (6)
+   67 [TIMING_ANCHOR     ] renewal_date          high
+   52 [SUPPORTING_CONTEXT] productivity_impact   moderate
+   51 [SUPPORTING_CONTEXT] avoided_cost          moderate
+   47 [SUPPORTING_CONTEXT] downtime_risk_cost    moderate
+   47 [SUPPORTING_CONTEXT] migration_cost        moderate
+   47 [SUPPORTING_CONTEXT] infrastructure_cost   moderate
+
+EXCLUDED — 7 considered · 1 direct · 6 supporting · 0 below band
+           · 0 beyond limit · 0 rejected · 0 not disclosable
+```
+
+## A wording defect the verifier caught
+
+Supporting items initially read *"Linked to this pursuit as timing anchor"* —
+asserting the exact linkage this layer exists to deny. `PertinenceCandidate` now
+carries `relevanceInferred`, and the reason reads *"Would bear on this pursuit as
+timing anchor — inferred, not linked"*. Wording only; no score changed.
+
+This is worth remembering for chunk 6: the distinction has to survive into the
+copy, not only into the type.
+
+## Open item for a later chunk
+
+`BUILD_VALUE_CASE` does not lift the five economic supporting facts, because
+`TASK_FIT` matches a fact's `relevance` and `refType` — and all five derive to
+`SUPPORTING_CONTEXT` with `refType` "fact". Matching on `family` (these carry
+`family = 'economic'`) would fix it. Out of scope here; not required for chunk 6.

@@ -347,3 +347,54 @@ questions (upstream importance vs task fit), they are separate contributions.
 exposed contributions alone? If the answer requires knowing something the
 upstream layer decided and the downstream layer silently re-derived, the
 composition is wrong.
+
+---
+
+## D-020 · Direct pursuit evidence and pertinent account context are not equivalent
+
+**Decision.**
+
+> Direct pursuit evidence and pertinent account context are not equivalent.
+> PursuitOS should privilege facts explicitly linked to a Pursuit while retaining
+> authorized account-level context that is materially relevant to that Pursuit.
+> The UI must preserve that distinction without forcing users to understand the
+> underlying data model.
+
+**Why this is not theoretical.** The original chunk 5B-2 plan was to replace
+account-scoped facts on Pursuit Detail with pursuit-scoped facts. The seeded
+Globex pursuit has exactly **one** linked fact, while its account holds a
+`renewal_date` at 0.92 confidence (`CUSTOMER_DECLARED`) and five economic
+drivers. Making that swap would have deleted the most useful evidence on the
+screen — including the timing anchor whose absence is the pursuit's
+second-ranked gap. The plan was superseded before it was built.
+
+**The pipeline this implies.** Not `account facts → show them all`, and not
+`pursuit facts → show only those`, but:
+
+```
+account context → authorization → pertinence → supporting pursuit context
+```
+
+**The Pursuit remains the organizing object.** This is not permission to revert
+to account scope. Supporting context is *derived for this pursuit*, ranked by
+this pursuit's decision needs, and always labelled as inferred.
+
+**The distinction is structural, not a flag.** `PursuitEvidenceView` returns
+`direct` and `supporting` as separate arrays. A single array with an
+`isLinked` boolean would work until the first downstream consumer forgot to read
+it — and the failure would be silent and unfalsifiable.
+
+**Why it matters beyond this screen.** "The system considered this pertinent" and
+"this fact was explicitly linked to the pursuit" are different claims. Conflating
+them would poison any later attempt to learn which linkages turned out to be
+right (P8), because the training signal would no longer distinguish a human
+assertion from a machine guess.
+
+**Consequence — no false linkage.** Ranking well never writes `pursuit_facts`.
+Relevance for supporting context is derived with the same canonical
+`deriveRelevance()` the linker uses, so a supporting fact is typed exactly as it
+*would* be if linked, and the derived value travels as ranking input only.
+
+Wording is part of this. A reason string that says "linked to this pursuit"
+about an unlinked fact asserts a linkage nobody made — caught by the verifier
+and corrected to "would bear on this pursuit … inferred, not linked".
