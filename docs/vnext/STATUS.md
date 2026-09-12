@@ -1,7 +1,7 @@
 # PursuitOS vNext — Status
 
 **Last updated:** 2026-09-12T02:47Z
-**Lane:** `roadmap/pursuitos-vnext` @ `97e975f0` + Session 0 commit
+**Lane:** `roadmap/pursuitos-vnext` @ `4bc27a4` (pushed to origin)
 
 States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `BLOCKED`
 
@@ -12,7 +12,7 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | Item | Status | Branch / commit | Updated | What remains | Known risks |
 |---|---|---|---|---|---|
 | vNext branch | **DEMO CERTIFIED** (n/a — infrastructure) | `roadmap/pursuitos-vnext` from `97e975f0` | 2026-09-12 | — | — |
-| Known-good demo reference | **DEMO CERTIFIED** | tag `demo-safe-2026-09-12` → `97e975f0` | 2026-09-12 | Tag push to origin — see risks | Tag pushes to this remote returned 403 three times on 2026-09-04; SHA is recorded in every doc as the durable fallback |
+| Known-good demo reference | **DEMO CERTIFIED** | `backup/2026-09-04/tds-live-demo` → `97e975f0` (on origin) | 2026-09-12 | — | Local tag `demo-safe-2026-09-12` was created at the same commit but its **push was refused (HTTP 403)** — this remote rejects tag pushes. The already-pushed `backup/…/tds-live-demo` tag plus the SHA recorded throughout these docs are the durable references. |
 | Durable agent memory | **DEMO CERTIFIED** | `docs/vnext/*` | 2026-09-12 | Keep `SESSION-HANDOFF.md` current every session | Goes stale silently if a session forgets to update it |
 | Feature-flag scaffolding | **PREVIEW READY** | `src/lib/env/vnext-flags.ts`, `tests/vnext-flags.test.ts` | 2026-09-12 | Nothing — no capability behind any flag yet | None. Default OFF, narrowing-only, 4/4 tests green |
 | Preview environment | **BLOCKED** | — | 2026-09-12 | Verify what `DATABASE_URL` the Preview scope carries | **Preview may share the hosted demo database.** Classified UNKNOWN. No preview writes until resolved. `ENVIRONMENT-MAP.md` §6 |
