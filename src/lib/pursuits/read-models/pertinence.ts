@@ -69,6 +69,14 @@ export interface PertinenceCandidate {
   at: Date | null;
   /** FACT only: how the fact bears on the pursuit (`pursuit_facts.relevance_type`). */
   relevance?: FactRelevanceType;
+  /**
+   * FACT only. True when `relevance` was DERIVED (what the fact would be typed as
+   * if linked) rather than read from a `pursuit_facts` row. It changes only the
+   * wording of the reason, never the score — but the wording matters: saying
+   * "linked to this pursuit" about an unlinked fact asserts a linkage nobody
+   * made, which is the false-linkage failure the evidence layer exists to avoid.
+   */
+  relevanceInferred?: boolean;
   /** EVENT only: the ledger's materiality. */
   materiality?: LedgerMateriality;
   /** GAP only: what kind of unresolved thing this is. */
@@ -250,7 +258,13 @@ export function canDisclose(caller: Caller, disclosure: DisclosureClass): boolea
 
 function linkageOf(c: PertinenceCandidate): { value: number; reason: string } {
   if (c.kind === "FACT" && c.relevance) {
-    return { value: LINKAGE_BY_RELEVANCE[c.relevance] ?? 0.5, reason: `Linked to this pursuit as ${c.relevance.toLowerCase().replace(/_/g, " ")}` };
+    const as = c.relevance.toLowerCase().replace(/_/g, " ");
+    return {
+      value: LINKAGE_BY_RELEVANCE[c.relevance] ?? 0.5,
+      reason: c.relevanceInferred
+        ? `Would bear on this pursuit as ${as} — inferred, not linked`
+        : `Linked to this pursuit as ${as}`,
+    };
   }
   if (c.kind === "EVENT" && c.materiality) {
     return { value: LINKAGE_BY_MATERIALITY[c.materiality], reason: `${c.materiality.toLowerCase()} materiality change on this pursuit` };

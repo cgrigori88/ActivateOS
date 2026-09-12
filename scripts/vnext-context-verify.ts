@@ -7,6 +7,7 @@ import {
   loadMissingContextInput,
   loadPertinence,
   loadPertinenceCandidates,
+  loadPursuitEvidence,
   loadPursuitLedgerRows,
   loadPursuitMemory,
 } from "../src/lib/pursuits/read-models/context-loaders";
@@ -397,7 +398,59 @@ async function main(): Promise<void> {
   }
 
   // =========================================================================
-  console.log("\n5  Scoping");
+  console.log("\n5  Pursuit evidence — direct vs supporting");
+  // =========================================================================
+  const evidence = await inOrg(target.org_id, (db) => loadPursuitEvidence(db, caller, target.id));
+  check("evidence composition resolves for the pursuit", evidence != null);
+
+  if (evidence) {
+    const linkedInDb = Number(target.facts);
+    check("DIRECT contains exactly the pursuit-linked facts",
+      evidence.direct.length === linkedInDb,
+      `direct ${evidence.direct.length} vs pursuit_facts ${linkedInDb}`);
+    check("every DIRECT item is EXPLICIT and carries its asserted relevance",
+      evidence.direct.every((d) => d.linkage === "EXPLICIT" && !!d.relevance));
+    check("every SUPPORTING item is INFERRED and exposes why it was included",
+      evidence.supporting.every((s) => s.linkage === "INFERRED" && s.inclusionReasons.length > 0 && s.signals.length === 5));
+    check("no fact appears in both arrays",
+      evidence.supporting.every((s) => !evidence.direct.some((d) => d.factId === s.factId)));
+    check("every considered account fact is accounted for exactly once",
+      evidence.excludedSummary.accountFactsConsidered ===
+        evidence.direct.length + evidence.supporting.length +
+        evidence.excludedSummary.rejected + evidence.excludedSummary.unauthorized +
+        evidence.excludedSummary.belowBand + evidence.excludedSummary.beyondLimit,
+      JSON.stringify(evidence.excludedSummary));
+    check("supporting context does NOT create a pursuit_facts row",
+      Number((await pool.query<{ n: string }>(
+        `select count(*)::text n from pursuit_facts where pursuit_id = $1`, [target.id])).rows[0].n) === linkedInDb,
+      "composition must be read-only");
+
+    const guestEvidence = await inOrg(target.org_id, (db) => loadPursuitEvidence(db, guest, target.id));
+    check("a guest never sees more evidence than a full tenant",
+      (guestEvidence?.direct.length ?? 0) + (guestEvidence?.supporting.length ?? 0)
+        <= evidence.direct.length + evidence.supporting.length,
+      `guest ${(guestEvidence?.direct.length ?? 0)}+${(guestEvidence?.supporting.length ?? 0)} vs full ${evidence.direct.length}+${evidence.supporting.length}`);
+
+    const e = evidence.excludedSummary;
+    console.log(`\n  → DIRECT PURSUIT EVIDENCE (${evidence.direct.length})`);
+    for (const d of evidence.direct) {
+      console.log(`     [${d.relevance.padEnd(19)}] ${trunc(d.label, 30).padEnd(31)} ${d.predicateKey.padEnd(21)} conf ${d.confidence.toFixed(2)} fresh ${d.freshness.toFixed(2)}`);
+    }
+    if (!evidence.direct.length) console.log("     (none linked)");
+
+    console.log(`\n  → SUPPORTING ACCOUNT CONTEXT (${evidence.supporting.length})`);
+    for (const sc of evidence.supporting) {
+      console.log(`     ${String(sc.pertinence).padStart(3)} [${sc.inferredRelevance.padEnd(19)}] ${trunc(sc.label, 30).padEnd(31)} ${sc.predicateKey.padEnd(21)} ${sc.band}`);
+      console.log(`         because: ${sc.inclusionReasons.join(" · ")}`);
+    }
+    if (!evidence.supporting.length) console.log("     (none pertinent enough)");
+
+    console.log(`\n  → EXCLUDED SUMMARY — ${e.accountFactsConsidered} account fact(s) considered`);
+    console.log(`     direct ${e.direct} · supporting ${e.supporting} · below band ${e.belowBand} · beyond limit ${e.beyondLimit} · rejected ${e.rejected} · not disclosable ${e.unauthorized}`);
+  }
+
+  // =========================================================================
+  console.log("\n6  Scoping");
   // =========================================================================
   const otherOrg = (await pool.query<{ id: string }>(
     `select id from organizations where id <> $1 order by created_at limit 1`, [target.org_id])).rows[0];

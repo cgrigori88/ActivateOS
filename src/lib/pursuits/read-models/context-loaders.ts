@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { familiesFromSignalTypes } from "@/lib/intel/company-intel";
+import { deriveRelevance } from "@/lib/facts/pursuit-link";
 import { meddpiccFor } from "@/lib/opportunities/meddpicc";
 import type { Meddpicc } from "@/lib/opportunities/meddpicc";
 import { getStakeholderCoverage } from "@/lib/stakeholders/coverage";
@@ -29,6 +30,11 @@ import {
   type MissingContextInput,
   type MissingContextView,
 } from "./missing-context";
+import {
+  composePursuitEvidence,
+  type EvidenceFactInput,
+  type PursuitEvidenceView,
+} from "./pursuit-evidence";
 import {
   canDisclose,
   rankPertinence,
@@ -470,6 +476,124 @@ export async function loadPertinence(
     candidates,
     decisionContext: opts.decisionContext,
     limit: opts.limit,
+    now: opts.now,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 5 · Pursuit evidence (direct + supporting)
+// ---------------------------------------------------------------------------
+
+interface AccountFactRow {
+  fact_id: string;
+  predicate_key: string;
+  subject_label: string;
+  family: string | null;
+  status: string;
+  confidence: string;
+  polarity: number;
+  provenance_class: string;
+  disclosure_class: string | null;
+  freshness_policy: string;
+  observed_last_at: Date;
+  half_life_days: number | null;
+  valid_until: Date | null;
+  occurred_at: Date | null;
+  superseded_by: string | null;
+  linked_relevance: string | null;
+  linked_at: Date | null;
+  linked_by_type: string | null;
+  link_reason: string | null;
+}
+
+export interface PursuitEvidenceLoadOptions {
+  decisionContext?: DecisionContext;
+  minSupportingBand?: "low" | "moderate" | "high" | "very_high";
+  supportingLimit?: number;
+  now?: Date;
+}
+
+/**
+ * Project the account's facts, LEFT JOINed to this pursuit's `pursuit_facts`
+ * rows, onto `EvidenceFactInput[]`.
+ *
+ * One left join answers both questions at once: every authorized account fact is
+ * a candidate, and the presence of `pf.relevance_type` is what makes a fact
+ * DIRECT. Nothing here decides membership by score.
+ *
+ * `deriveRelevance()` is called per distinct predicate — the SAME canonical
+ * function `linkFactToPursuits` uses — so a supporting fact is typed exactly as
+ * it would be if someone linked it. Calling it does NOT link anything: no row is
+ * written, and the derived value travels as ranking input only.
+ */
+export async function loadPursuitEvidenceInput(
+  db: PoolClient, caller: Caller, pursuitId: string, opts: PursuitEvidenceLoadOptions = {},
+): Promise<{ accountId: string; accountFacts: EvidenceFactInput[] } | null> {
+  const p = await loadPursuit(db, caller, pursuitId);
+  if (!p) return null;
+
+  const { rows } = await db.query<AccountFactRow>(
+    `select f.id as fact_id, f.predicate_key, f.subject_label, f.family,
+            f.status, f.confidence, f.polarity, f.provenance_class, f.disclosure_class,
+            f.freshness_policy, f.observed_last_at, f.half_life_days, f.valid_until,
+            f.occurred_at, f.superseded_by,
+            pf.relevance_type as linked_relevance, pf.linked_at, pf.linked_by_type,
+            pf.reason as link_reason
+       from facts f
+       left join pursuit_facts pf on pf.ref_id = f.id and pf.pursuit_id = $1
+      where f.company_id = $2 and f.org_id = $3`,
+    [pursuitId, p.account_id, caller.orgId],
+  );
+
+  // Derive once per (predicate, polarity) rather than per row — the predicate
+  // table is cached, but the pair is the only thing the derivation depends on.
+  const derived = new Map<string, FactRelevanceType>();
+  for (const r of rows) {
+    const key = `${r.predicate_key}|${r.polarity}`;
+    if (!derived.has(key)) {
+      derived.set(key, await deriveRelevance(db, r.predicate_key, r.polarity) as FactRelevanceType);
+    }
+  }
+
+  const accountFacts: EvidenceFactInput[] = rows.map((r) => ({
+    factId: r.fact_id,
+    predicateKey: r.predicate_key,
+    subjectLabel: r.subject_label,
+    family: r.family,
+    status: r.status as FactStatus,
+    confidence: Number(r.confidence),
+    provenanceClass: r.provenance_class as ProvenanceClass,
+    disclosure: normalizeDisclosure(r.disclosure_class),
+    freshnessPolicy: r.freshness_policy as EvidenceFactInput["freshnessPolicy"],
+    observedLastAt: r.observed_last_at,
+    halfLifeDays: r.half_life_days,
+    validUntil: r.valid_until,
+    occurredAt: r.occurred_at,
+    superseded: r.superseded_by != null,
+    linkedRelevance: r.linked_relevance as FactRelevanceType | null,
+    linkedAt: r.linked_at,
+    linkedByType: r.linked_by_type,
+    linkReason: r.link_reason,
+    derivedRelevance: derived.get(`${r.predicate_key}|${r.polarity}`) ?? "SUPPORTING_CONTEXT",
+  }));
+
+  return { accountId: p.account_id, accountFacts };
+}
+
+/** Convenience: load and compose in one call. */
+export async function loadPursuitEvidence(
+  db: PoolClient, caller: Caller, pursuitId: string, opts: PursuitEvidenceLoadOptions = {},
+): Promise<PursuitEvidenceView | null> {
+  const loaded = await loadPursuitEvidenceInput(db, caller, pursuitId, opts);
+  if (!loaded) return null;
+  return composePursuitEvidence({
+    pursuitId,
+    accountId: loaded.accountId,
+    caller,
+    accountFacts: loaded.accountFacts,
+    decisionContext: opts.decisionContext,
+    minSupportingBand: opts.minSupportingBand,
+    supportingLimit: opts.supportingLimit,
     now: opts.now,
   });
 }
