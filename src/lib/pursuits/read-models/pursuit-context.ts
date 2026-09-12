@@ -10,7 +10,7 @@ import type { FactStatus, ProvenanceClass } from "./context-health";
 import type { WhyNowView } from "./types";
 
 /**
- * Pursuit Brief (vNext Slice 1, chunk 6A) — the composed view-model behind the
+ * Pursuit Context narrative (vNext Slice 1, chunk 6A) — the composed view-model behind the
  * one surface that replaces Why Now, Facts and What Changed.
  *
  * WHY THIS EXISTS. Pursuit Detail tells one story across three panels that each
@@ -54,7 +54,7 @@ import type { WhyNowView } from "./types";
  * established" (the question is not answerable at this stage) are different
  * answers, and collapsing them is the flattening this layer exists to prevent.
  */
-export type BriefState =
+export type ContextState =
   | "VERIFIED"
   | "NEEDS_VALIDATION"
   | "OUT_OF_DATE"
@@ -62,7 +62,7 @@ export type BriefState =
   | "NOT_IDENTIFIED"
   | "NOT_ESTABLISHED";
 
-export const BRIEF_STATE_LABEL: Record<BriefState, string> = {
+export const CONTEXT_STATE_LABEL: Record<ContextState, string> = {
   VERIFIED: "Verified",
   NEEDS_VALIDATION: "Needs validation",
   OUT_OF_DATE: "Out of date",
@@ -72,7 +72,7 @@ export const BRIEF_STATE_LABEL: Record<BriefState, string> = {
 };
 
 /** Gap kind → the state a reader sees. One phrasing each; nothing collapses. */
-const GAP_STATE: Record<GapKind, BriefState> = {
+const GAP_STATE: Record<GapKind, ContextState> = {
   MISSING: "NOT_IDENTIFIED",
   NOT_ESTABLISHED: "NOT_ESTABLISHED",
   UNVERIFIED: "NEEDS_VALIDATION",
@@ -92,16 +92,16 @@ const PROVENANCE_WORD: Record<ProvenanceClass, string> = {
 };
 
 /** How well-evidenced the pursuit's story is overall. */
-export type BriefConfidence = "WELL_EVIDENCED" | "PARTLY_EVIDENCED" | "THIN" | "NOT_ESTABLISHED";
+export type ContextConfidence = "WELL_EVIDENCED" | "PARTLY_EVIDENCED" | "THIN" | "NOT_ESTABLISHED";
 
-export const BRIEF_CONFIDENCE_LABEL: Record<BriefConfidence, string> = {
+export const CONTEXT_CONFIDENCE_LABEL: Record<ContextConfidence, string> = {
   WELL_EVIDENCED: "Well evidenced",
   PARTLY_EVIDENCED: "Partly evidenced",
   THIN: "Thin evidence",
   NOT_ESTABLISHED: "Not yet established",
 };
 
-const CONFIDENCE_FROM_HEALTH: Record<ContextHealthView["conclusion"], BriefConfidence> = {
+const CONFIDENCE_FROM_HEALTH: Record<ContextHealthView["conclusion"], ContextConfidence> = {
   VERIFIED: "WELL_EVIDENCED",
   INFERRED: "PARTLY_EVIDENCED",
   NEEDS_VALIDATION: "PARTLY_EVIDENCED",
@@ -114,25 +114,25 @@ const CONFIDENCE_FROM_HEALTH: Record<ContextHealthView["conclusion"], BriefConfi
 // Output
 // ---------------------------------------------------------------------------
 
-export interface BriefClause {
+export interface ContextClause {
   /** Canonical text, carried from the domain that wrote it. Never generated. */
   text: string;
   refType: string;
   refId: string | null;
 }
 
-export interface BriefEvidenceLine {
+export interface ContextEvidenceLine {
   factId: string;
   label: string;
   predicateKey: string;
   /** Which group this belongs to. The distinction, preserved for the UI. */
   origin: "PURSUIT" | "ACCOUNT";
-  state: BriefState;
+  state: ContextState;
   /** Short provenance word, e.g. "Customer-declared". */
   note: string;
 }
 
-export interface BriefChangeLine {
+export interface ContextChangeLine {
   id: string;
   /** The ledger's own reason, or its change type when it recorded none. */
   text: string;
@@ -143,8 +143,8 @@ export interface BriefChangeLine {
   byPerson: boolean;
 }
 
-export interface BriefAttention {
-  state: BriefState;
+export interface ContextAttention {
+  state: ContextState;
   /** The gap's canonical text. Not rewritten. */
   headline: string;
   /** Why it matters, when the source domain supplied it. */
@@ -163,40 +163,55 @@ export interface BriefAttention {
   accountSignal: { text: string; refType: string; refId: string | null } | null;
 }
 
-export interface PursuitBriefView {
+export interface ContextTimingNote {
+  text: string;
+  refType: string;
+  refId: string | null;
+}
+
+export interface PursuitContextView {
   pursuitId: string;
   accountLabel: string;
 
   whyThisMatters: {
-    clauses: BriefClause[];
-    confidence: BriefConfidence;
+    clauses: ContextClause[];
+    confidence: ContextConfidence;
     /** One canonical sentence explaining the confidence. Null when obvious. */
     confidenceReason: string | null;
   };
 
   whatWeKnow: {
     /** Explicitly linked to this pursuit. */
-    confirmed: BriefEvidenceLine[];
+    confirmed: ContextEvidenceLine[];
     /** Pertinent account context. Never presented as linked. */
-    accountContext: BriefEvidenceLine[];
+    accountContext: ContextEvidenceLine[];
     /** Evidence available but not shown by default. */
     hiddenCount: number;
   };
 
   whatChanged: {
-    entries: BriefChangeLine[];
+    entries: ContextChangeLine[];
     hiddenCount: number;
   };
 
   needsAttention: {
-    primary: BriefAttention | null;
+    primary: ContextAttention | null;
     otherCount: number;
+    /**
+     * Surfaced whenever the pursuit has an unresolved timing question AND the
+     * account holds timing context — NOT only when timing happens to be the
+     * top-ranked gap. On Globex the economic-buyer gap outranks timing, so a
+     * note tied to the primary alone would stay silent while the page showed a
+     * verified-looking renewal date elsewhere. Saying neither half alone is the
+     * whole requirement.
+     */
+    timingNote: ContextTimingNote | null;
   };
 
   computedAt: string;
 }
 
-export interface PursuitBriefInput {
+export interface PursuitContextInput {
   pursuitId: string;
   accountLabel: string;
   whyNow: WhyNowView | null;
@@ -217,14 +232,14 @@ const DEGRADED: ReadonlySet<FactStatus> = new Set<FactStatus>(["STALE", "SUPERSE
 const WEAK_PROVENANCE: ReadonlySet<ProvenanceClass> = new Set<ProvenanceClass>(["THIRD_PARTY_UNVERIFIED", "INFERRED"]);
 
 /** A fact's state, in the same five-state vocabulary the gaps use. */
-function factState(f: { status: FactStatus; provenanceClass: ProvenanceClass; freshness: number }): BriefState {
+function factState(f: { status: FactStatus; provenanceClass: ProvenanceClass; freshness: number }): ContextState {
   if (f.status === "DISPUTED") return "CONFLICTING";
   if (DEGRADED.has(f.status) || f.freshness < 0.15) return "OUT_OF_DATE";
   if (WEAK_PROVENANCE.has(f.provenanceClass)) return "NEEDS_VALIDATION";
   return "VERIFIED";
 }
 
-function evidenceLine(f: DirectEvidenceItem | SupportingContextItem, origin: "PURSUIT" | "ACCOUNT"): BriefEvidenceLine {
+function evidenceLine(f: DirectEvidenceItem | SupportingContextItem, origin: "PURSUIT" | "ACCOUNT"): ContextEvidenceLine {
   return {
     factId: f.factId,
     label: f.label,
@@ -239,12 +254,26 @@ function evidenceLine(f: DirectEvidenceItem | SupportingContextItem, origin: "PU
 const TIMING_RELEVANCE = new Set(["TIMING_ANCHOR"]);
 
 /**
+ * The one sentence that keeps the Globex case honest. The account holds a
+ * customer-declared renewal date; the pursuit has no verified timing anchor.
+ * "Timing is known" would be false and "timing is not identified" would be
+ * false, so the note says exactly both halves.
+ */
+function timingNoteText(t: SupportingContextItem): ContextTimingNote {
+  return {
+    text: `${PROVENANCE_WORD[t.provenanceClass] ?? "Account"} timing exists on the account — not yet confirmed for this pursuit`,
+    refType: "fact",
+    refId: t.factId,
+  };
+}
+
+/**
  * Compose the brief.
  *
  * Every section degrades honestly: an absent input produces an empty section and
  * a stated reason, never a confident-sounding placeholder.
  */
-export function buildPursuitBrief(input: PursuitBriefInput): PursuitBriefView {
+export function composePursuitContext(input: PursuitContextInput): PursuitContextView {
   const now = input.now ?? new Date();
   const evidenceBudget = input.evidenceBudget ?? 4;
   const changeBudget = input.changeBudget ?? 3;
@@ -252,7 +281,7 @@ export function buildPursuitBrief(input: PursuitBriefInput): PursuitBriefView {
   // --- A · Why this matters -------------------------------------------------
   // Pursuit-scoped: why THIS pursuit looks live on its own evidence. Not why it
   // outranks another pursuit — that is portfolio work (D-017).
-  const clauses: BriefClause[] = [];
+  const clauses: ContextClause[] = [];
   const w = input.whyNow;
   if (w?.present) {
     for (const c of [w.businessTrigger, w.technologyCondition, w.timingAnchor, w.signalConvergence, w.routeRelevance]) {
@@ -271,7 +300,7 @@ export function buildPursuitBrief(input: PursuitBriefInput): PursuitBriefView {
   }
 
   const health = input.contextHealth;
-  const confidence: BriefConfidence = health
+  const confidence: ContextConfidence = health
     ? (clauses.length ? CONFIDENCE_FROM_HEALTH[health.conclusion] : "NOT_ESTABLISHED")
     : "NOT_ESTABLISHED";
   const confidenceReason = health?.concerns[0]?.text ?? null;
@@ -295,7 +324,7 @@ export function buildPursuitBrief(input: PursuitBriefInput): PursuitBriefView {
   // occurred_at; this only takes the head of it (D-006).
   const memoryEntries = input.memory?.entries ?? [];
   const newestFirst = input.memory?.order === "newest" ? memoryEntries : [...memoryEntries].reverse();
-  const entries: BriefChangeLine[] = newestFirst.slice(0, changeBudget).map((e) => ({
+  const entries: ContextChangeLine[] = newestFirst.slice(0, changeBudget).map((e) => ({
     id: e.id,
     text: e.reason ?? e.changeType.replace(/_/g, " ").toLowerCase(),
     at: e.occurredAt,
@@ -306,25 +335,25 @@ export function buildPursuitBrief(input: PursuitBriefInput): PursuitBriefView {
   // --- D · Needs attention --------------------------------------------------
   const gaps = input.missingContext?.gaps ?? [];
   const top = gaps[0] ?? null;
-  let primary: BriefAttention | null = null;
+
+  // Account-held timing, if any. Used twice: to soften a timing gap that happens
+  // to rank first, and to carry the standalone note when it does not.
+  const accountTiming = (input.evidence?.supporting ?? []).find((s) => TIMING_RELEVANCE.has(s.inferredRelevance)) ?? null;
+  const hasTimingGap = gaps.some((g) => g.source === "WHY_NOW");
+  const timingNote: ContextTimingNote | null =
+    hasTimingGap && accountTiming ? timingNoteText(accountTiming) : null;
+  let primary: ContextAttention | null = null;
   if (top) {
     let state = GAP_STATE[top.kind];
-    let accountSignal: BriefAttention["accountSignal"] = null;
+    let accountSignal: ContextAttention["accountSignal"] = null;
 
     // The Globex nuance. When the gap is a timing question and the ACCOUNT holds
     // timing context, the honest answer is neither "not identified" nor "timing
     // is known": the pursuit's timing has not been validated, and the account
     // already offers something to validate it against.
-    if (top.source === "WHY_NOW") {
-      const timing = (input.evidence?.supporting ?? []).find((s) => TIMING_RELEVANCE.has(s.inferredRelevance));
-      if (timing) {
-        state = "NEEDS_VALIDATION";
-        accountSignal = {
-          text: `${PROVENANCE_WORD[timing.provenanceClass] ?? "Account"} timing exists on the account — not yet confirmed for this pursuit`,
-          refType: "fact",
-          refId: timing.factId,
-        };
-      }
+    if (top.source === "WHY_NOW" && accountTiming) {
+      state = "NEEDS_VALIDATION";
+      accountSignal = { ...timingNoteText(accountTiming) };
     }
 
     primary = {
@@ -344,7 +373,7 @@ export function buildPursuitBrief(input: PursuitBriefInput): PursuitBriefView {
     whyThisMatters: { clauses, confidence, confidenceReason },
     whatWeKnow: { confirmed, accountContext, hiddenCount },
     whatChanged: { entries, hiddenCount: Math.max(0, memoryEntries.length - entries.length) },
-    needsAttention: { primary, otherCount: Math.max(0, gaps.length - (primary ? 1 : 0)) },
+    needsAttention: { primary, otherCount: Math.max(0, gaps.length - (primary ? 1 : 0)), timingNote },
     computedAt: now.toISOString(),
   };
 }

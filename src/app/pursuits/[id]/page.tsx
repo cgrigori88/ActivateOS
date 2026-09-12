@@ -17,7 +17,11 @@ import { currentRole } from "@/lib/auth/org";
 import { DisclosureTheater } from "@/components/pursuit/disclosure-theater";
 import { BandPill, SyntheticBadge } from "@/components/pursuit/parts";
 import { humanizeText } from "@/components/pursuit/vocab";
-import { experienceEnabledFor, federationEnabledFor } from "@/lib/pursuits/tenant-flags";
+import { experienceEnabledFor, federationEnabledFor, tenantFeatures } from "@/lib/pursuits/tenant-flags";
+import { vnextCapabilities } from "@/lib/env/vnext-flags";
+import { composePursuitContext } from "@/lib/pursuits/read-models/pursuit-context";
+import { PursuitContextNarrative } from "@/components/pursuit/context-narrative";
+import { loadContextHealth, loadMissingContext, loadPursuitEvidence, loadPursuitMemory } from "@/lib/pursuits/read-models/context-loaders";
 import { getPursuitFederation, getGovernedActions, getPursuitOutcomes } from "@/lib/pursuits/federation/read-models";
 import { buildFederationViewer } from "@/lib/pursuits/federation/grants";
 import { FederationBento } from "@/components/pursuit/federation";
@@ -83,7 +87,28 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
     const contacts = (await db.query<{ id: string; name: string | null; title: string | null }>(
       `select id, name, title from contacts where company_id = $1 and (org_id is null or org_id = $2)
         order by name nulls last limit 40`, [detail.accountId, orgId])).rows;
-    return { kind: "sponsor" as const, detail, federation, canDecide, outcome, motion, contacts };
+
+    /* vNext Slice 1 — the composed context narrative. Resolved through
+       vnextCapabilities(tenant), which ANDs against the already-resolved tenant
+       gate, so a vNext flag can only ever narrow (D-013). Loaded ONLY when
+       armed: with the flag off this block runs no queries, so flag-off costs
+       nothing and the payload is byte-identical to before. */
+    const caller = await callerFor(db, orgId);
+    const vnext = vnextCapabilities(await tenantFeatures(db, orgId));
+    let pursuitContext = null;
+    if (vnext.pursuitIntelligence) {
+      const [health, evidence, memory, missing] = await Promise.all([
+        loadContextHealth(db, caller, id),
+        loadPursuitEvidence(db, caller, id),
+        loadPursuitMemory(db, caller, id, { order: "newest", limit: 40 }),
+        loadMissingContext(db, caller, id),
+      ]);
+      pursuitContext = composePursuitContext({
+        pursuitId: id, accountLabel: detail.accountLabel,
+        whyNow: detail.whyNow, evidence, memory, missingContext: missing, contextHealth: health,
+      });
+    }
+    return { kind: "sponsor" as const, detail, federation, canDecide, outcome, motion, contacts, pursuitContext };
   });
   if (!loaded) notFound();
 
@@ -104,6 +129,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
 
   const d = loaded.detail;
   const federation = loaded.federation;
+  const pursuitContext = loaded.pursuitContext;
   const r = d.route;
   const recWord = r.recommended?.label ?? "the recommended route";
   // Disclosure-aware Pursuit Brief (F1) — a presentation over the already-authorized detail view.
@@ -176,6 +202,18 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         {/* Why Now (carries unknowns + contradictions) + lifecycle timing (P2A).
             `#whynow` is the deep-link anchor from Today, the horizon and ⌘K. */}
         <div id="whynow" className="order-2 scroll-mt-16 lg:order-2">
+        {/* vNext: ONE narrative in place of Why Now + Facts + What changed. It
+            carries the #evidence and #activity anchors internally so Today's
+            deep links, the rail and ⌘K keep resolving after the collapse. */}
+        {pursuitContext ? (
+          <Panel title="This pursuit" hint="Why it matters, what we know, and what still needs attention" accent="var(--color-priority)">
+            <PursuitContextNarrative context={pursuitContext} />
+            <div className="mt-4 border-t border-neutral-200/70 pt-2.5 dark:border-neutral-800">
+              <span className="text-micro font-bold uppercase tracking-[0.05em] text-neutral-400">Lifecycle timing</span>
+              <div className="mt-1"><LifecycleBento events={d.whyNow.lifecycle} /></div>
+            </div>
+          </Panel>
+        ) : (
         <Panel eyebrow="Assembled from the fact & signal graph — traceable" title="Why now" accent="var(--color-priority)">
           <WhyNowBento w={d.whyNow} />
           <div className="mt-3 border-t border-neutral-200/70 pt-2.5 dark:border-neutral-800">
@@ -183,6 +221,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
             <div className="mt-1"><LifecycleBento events={d.whyNow.lifecycle} /></div>
           </div>
         </Panel>
+        )}
         </div>
 
         {/* Value Case (P2B §12) — economics on the Pursuit, not in a room of its own. `#value` is
@@ -264,14 +303,18 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         )}
 
         {/* Facts / evidence — the verification layer. `#evidence` is the section anchor. */}
-        <Panel id="evidence" eyebrow="Trusted intelligence" title="Facts behind this" accent="var(--color-evidence)" tint className="order-6 scroll-mt-16 lg:order-4 lg:col-span-2">
-          <FactsBento facts={d.facts} />
-        </Panel>
+        {!pursuitContext && (
+          <Panel id="evidence" eyebrow="Trusted intelligence" title="Facts behind this" accent="var(--color-evidence)" tint className="order-6 scroll-mt-16 lg:order-4 lg:col-span-2">
+            <FactsBento facts={d.facts} />
+          </Panel>
+        )}
 
         {/* Material changes — `#activity` anchors the last section of the rail. */}
-        <Panel id="activity" eyebrow="Material events only" title="What changed" accent="var(--color-accent-violet)" className="order-7 scroll-mt-16 lg:order-8">
-          <MaterialChangeTimeline timeline={d.timeline} />
-        </Panel>
+        {!pursuitContext && (
+          <Panel id="activity" eyebrow="Material events only" title="What changed" accent="var(--color-accent-violet)" className="order-7 scroll-mt-16 lg:order-8">
+            <MaterialChangeTimeline timeline={d.timeline} />
+          </Panel>
+        )}
 
         {/* Outcome & attribution — the learning half (Phase B). Only when an outcome exists. */}
         {loaded.outcome.latest && (

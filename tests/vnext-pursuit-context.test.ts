@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  BRIEF_STATE_LABEL,
-  buildPursuitBrief,
-  type PursuitBriefInput,
-} from "../src/lib/pursuits/read-models/pursuit-brief";
+  CONTEXT_STATE_LABEL,
+  composePursuitContext,
+  type PursuitContextInput,
+} from "../src/lib/pursuits/read-models/pursuit-context";
 import type { ContextHealthView } from "../src/lib/pursuits/read-models/context-health";
 import type { MissingContextView } from "../src/lib/pursuits/read-models/missing-context";
 import type { PursuitMemoryView } from "../src/lib/pursuits/read-models/memory";
@@ -103,7 +103,7 @@ const whyNowView = (over: Partial<WhyNowView> = {}): WhyNowView => ({
   renderedSummary: null, asOf: null, lifecycle: [], ...over,
 });
 
-function input(over: Partial<PursuitBriefInput> = {}): PursuitBriefInput {
+function input(over: Partial<PursuitContextInput> = {}): PursuitContextInput {
   return {
     pursuitId: "p-1", accountLabel: "Globex Manufacturing Inc.",
     whyNow: null, evidence: null, memory: null, missingContext: null, contextHealth: null,
@@ -114,7 +114,7 @@ function input(over: Partial<PursuitBriefInput> = {}): PursuitBriefInput {
 // --- strong evidence, weak gap ----------------------------------------------
 
 test("brief: strong evidence and a weak gap reads confidently and still names the gap", () => {
-  const v = buildPursuitBrief(input({
+  const v = composePursuitContext(input({
     whyNow: whyNowView({
       businessTrigger: { kind: "trigger", label: "Trigger", present: true, detail: "Licence renewal forces a platform decision", commercialImplication: null, refType: "fact", refId: "f-9" },
     }),
@@ -131,7 +131,7 @@ test("brief: strong evidence and a weak gap reads confidently and still names th
 // --- weak direct, strong supporting -----------------------------------------
 
 test("brief: one linked fact and rich account context still produces a useful picture", () => {
-  const v = buildPursuitBrief(input({
+  const v = composePursuitContext(input({
     evidence: evidence({
       direct: [directFact()],
       supporting: [
@@ -151,7 +151,7 @@ test("brief: one linked fact and rich account context still produces a useful pi
 });
 
 test("brief: account context is never crowded out entirely by linked evidence", () => {
-  const v = buildPursuitBrief(input({
+  const v = composePursuitContext(input({
     evidence: evidence({
       direct: [directFact({ factId: "d-1" }), directFact({ factId: "d-2" }), directFact({ factId: "d-3" }), directFact({ factId: "d-4" }), directFact({ factId: "d-5" })],
       supporting: [supportingFact()],
@@ -165,7 +165,7 @@ test("brief: account context is never crowded out entirely by linked evidence", 
 // --- no direct evidence ------------------------------------------------------
 
 test("brief: no linked evidence does not present account context as confirmed", () => {
-  const v = buildPursuitBrief(input({
+  const v = composePursuitContext(input({
     evidence: evidence({ direct: [], supporting: [supportingFact()] }),
     contextHealth: health(),
   }));
@@ -187,12 +187,12 @@ test("brief: every gap kind renders as its own phrase — nothing collapses to '
   ] as const;
   const labels = new Set<string>();
   for (const [kind, state, label] of kinds) {
-    const v = buildPursuitBrief(input({
+    const v = composePursuitContext(input({
       missingContext: missing({ gaps: [gap({ kind, source: "STAKEHOLDER_COVERAGE" })] }),
       contextHealth: health(),
     }));
     assert.equal(v.needsAttention.primary!.state, state, `${kind} must read as ${state}`);
-    assert.equal(BRIEF_STATE_LABEL[state], label);
+    assert.equal(CONTEXT_STATE_LABEL[state], label);
     labels.add(label);
   }
   assert.equal(labels.size, 5, "five distinct phrasings, none reused");
@@ -200,7 +200,7 @@ test("brief: every gap kind renders as its own phrase — nothing collapses to '
 });
 
 test("brief: fact states are distinguishable too", () => {
-  const v = buildPursuitBrief(input({
+  const v = composePursuitContext(input({
     evidence: evidence({
       direct: [
         directFact({ factId: "ok" }),
@@ -224,7 +224,7 @@ test("brief: fact states are distinguishable too", () => {
 // --- the Globex nuance -------------------------------------------------------
 
 test("brief: account timing does NOT become a claim that pursuit timing is known", () => {
-  const v = buildPursuitBrief(input({
+  const v = composePursuitContext(input({
     evidence: evidence({ direct: [directFact()], supporting: [supportingFact()] }),  // renewal_date, TIMING_ANCHOR
     missingContext: missing({ gaps: [gap({ key: "whynow:unknown:0", source: "WHY_NOW", kind: "MISSING", text: "No verified timing anchor", rank: 72, whyItMatters: null, howToResolve: null })] }),
     contextHealth: health(),
@@ -239,7 +239,7 @@ test("brief: account timing does NOT become a claim that pursuit timing is known
 });
 
 test("brief: with no account timing, a timing gap stays 'not identified'", () => {
-  const v = buildPursuitBrief(input({
+  const v = composePursuitContext(input({
     evidence: evidence({ direct: [directFact()] }),
     missingContext: missing({ gaps: [gap({ key: "whynow:unknown:0", source: "WHY_NOW", kind: "MISSING", text: "No verified timing anchor", rank: 72 })] }),
     contextHealth: health(),
@@ -251,7 +251,7 @@ test("brief: with no account timing, a timing gap stays 'not identified'", () =>
 // --- degraded and conflicting context ---------------------------------------
 
 test("brief: stale context reduces confidence and says why", () => {
-  const v = buildPursuitBrief(input({
+  const v = composePursuitContext(input({
     whyNow: whyNowView({ businessTrigger: { kind: "t", label: "T", present: true, detail: "Renewal on the clock", commercialImplication: null } }),
     evidence: evidence({ direct: [directFact({ status: "STALE", freshness: 0.05 })] }),
     contextHealth: health({
@@ -265,20 +265,20 @@ test("brief: stale context reduces confidence and says why", () => {
 });
 
 test("brief: conflicting context reads as disagreement, not absence", () => {
-  const v = buildPursuitBrief(input({
+  const v = composePursuitContext(input({
     whyNow: whyNowView({ businessTrigger: { kind: "t", label: "T", present: true, detail: "Trigger", commercialImplication: null } }),
     contextHealth: health({ conclusion: "CONFLICTING", overall: 44 }),
     missingContext: missing({ gaps: [gap({ kind: "CONFLICTING", source: "WHY_NOW", text: "Two sources disagree on the renewal date" })] }),
   }));
   assert.equal(v.whyThisMatters.confidence, "THIN");
   assert.equal(v.needsAttention.primary!.state, "CONFLICTING");
-  assert.equal(BRIEF_STATE_LABEL[v.needsAttention.primary!.state], "Sources disagree");
+  assert.equal(CONTEXT_STATE_LABEL[v.needsAttention.primary!.state], "Sources disagree");
 });
 
 // --- changes -----------------------------------------------------------------
 
 test("brief: what changed is newest-first by business time and bounded", () => {
-  const v = buildPursuitBrief(input({
+  const v = composePursuitContext(input({
     memory: memory({
       order: "oldest",
       entries: [
@@ -298,7 +298,7 @@ test("brief: what changed is newest-first by business time and bounded", () => {
 });
 
 test("brief: no meaningful recent changes says so rather than rendering an empty list", () => {
-  const v = buildPursuitBrief(input({ memory: memory(), contextHealth: health() }));
+  const v = composePursuitContext(input({ memory: memory(), contextHealth: health() }));
   assert.deepEqual(v.whatChanged.entries, []);
   assert.equal(v.whatChanged.hiddenCount, 0);
 });
@@ -306,7 +306,7 @@ test("brief: no meaningful recent changes says so rather than rendering an empty
 // --- absent inputs -----------------------------------------------------------
 
 test("brief: unavailable inputs degrade honestly, with no invented content", () => {
-  const v = buildPursuitBrief(input());
+  const v = composePursuitContext(input());
   assert.deepEqual(v.whyThisMatters.clauses, []);
   assert.equal(v.whyThisMatters.confidence, "NOT_ESTABLISHED");
   assert.equal(v.whyThisMatters.confidenceReason, null);
@@ -318,7 +318,7 @@ test("brief: unavailable inputs degrade honestly, with no invented content", () 
 });
 
 test("brief: evidence without a why-now falls back to canonical evidence text, not prose", () => {
-  const v = buildPursuitBrief(input({
+  const v = composePursuitContext(input({
     evidence: evidence({ direct: [directFact({ label: "Modernisation programme underway" })] }),
     contextHealth: health({ conclusion: "INFERRED" }),
   }));
@@ -332,11 +332,11 @@ test("brief: evidence without a why-now falls back to canonical evidence text, n
 
 test("brief: a disclosure-limited caller's evidence view produces a smaller brief, not a leaky one", () => {
   // The evidence layer already filtered; the brief must not reintroduce anything.
-  const full = buildPursuitBrief(input({
+  const full = composePursuitContext(input({
     evidence: evidence({ direct: [directFact()], supporting: [supportingFact(), supportingFact({ factId: "s-2", label: "$1.84M category activity" })] }),
     contextHealth: health(),
   }));
-  const limited = buildPursuitBrief(input({
+  const limited = composePursuitContext(input({
     evidence: evidence({ direct: [directFact()], supporting: [supportingFact()], excludedSummary: { accountFactsConsidered: 3, direct: 1, supporting: 1, rejected: 0, unauthorized: 1, belowBand: 0, beyondLimit: 0 } }),
     contextHealth: health(),
   }));
@@ -352,14 +352,14 @@ test("brief: deterministic and non-mutating", () => {
   const i = input({ evidence: ev, memory: mem, contextHealth: health(), missingContext: missing({ gaps: [gap()] }) });
   const snapshot = JSON.stringify({ ev, mem });
 
-  const a = buildPursuitBrief(i);
-  const b = buildPursuitBrief(i);
+  const a = composePursuitContext(i);
+  const b = composePursuitContext(i);
   assert.deepEqual(a, b, "same inputs, same output");
   assert.equal(JSON.stringify({ ev, mem }), snapshot, "inputs untouched");
 });
 
 test("brief: no architecture vocabulary reaches the composed copy", () => {
-  const v = buildPursuitBrief(input({
+  const v = composePursuitContext(input({
     evidence: evidence({ direct: [directFact()], supporting: [supportingFact()] }),
     memory: memory({ entries: [change()], totalAvailable: 1 }),
     missingContext: missing({ gaps: [gap({ source: "WHY_NOW", kind: "MISSING", text: "No verified timing anchor" })] }),
@@ -368,10 +368,45 @@ test("brief: no architecture vocabulary reaches the composed copy", () => {
   // The view-model's own strings — not upstream canonical text, which is the
   // domain's to word — must avoid internal vocabulary.
   const composed = [
-    ...Object.values(BRIEF_STATE_LABEL),
+    ...Object.values(CONTEXT_STATE_LABEL),
     v.needsAttention.primary?.accountSignal?.text ?? "",
   ].join(" | ");
   for (const banned of ["pursuit_facts", "pertinence", "inferred, not linked", "context health engine", "read-model"]) {
     assert.ok(!composed.toLowerCase().includes(banned), `"${banned}" must not reach a user`);
   }
+});
+
+test("context: the timing note surfaces even when timing is not the top gap", () => {
+  const v = composePursuitContext(input({
+    evidence: evidence({ direct: [directFact()], supporting: [supportingFact()] }),  // account renewal_date
+    missingContext: missing({
+      gaps: [
+        gap({ rank: 80 }),  // economic buyer outranks timing, as on Globex
+        gap({ key: "whynow:unknown:0", source: "WHY_NOW", kind: "MISSING", text: "No verified timing anchor", rank: 72 }),
+      ],
+    }),
+    contextHealth: health(),
+  }));
+  assert.equal(v.needsAttention.primary!.headline, "No economic buyer identified");
+  assert.equal(v.needsAttention.primary!.accountSignal, null, "the primary is not a timing gap");
+  assert.ok(v.needsAttention.timingNote, "but the timing nuance must still be said");
+  assert.match(v.needsAttention.timingNote!.text, /not yet confirmed for this pursuit/);
+});
+
+test("context: no timing note when the account holds no timing", () => {
+  const v = composePursuitContext(input({
+    evidence: evidence({ direct: [directFact()] }),
+    missingContext: missing({ gaps: [gap({ key: "whynow:unknown:0", source: "WHY_NOW", kind: "MISSING", text: "No verified timing anchor" })] }),
+    contextHealth: health(),
+  }));
+  assert.equal(v.needsAttention.timingNote, null);
+});
+
+test("context: no timing note when the pursuit has no timing question", () => {
+  const v = composePursuitContext(input({
+    evidence: evidence({ direct: [directFact()], supporting: [supportingFact()] }),
+    missingContext: missing({ gaps: [gap()] }),
+    contextHealth: health(),
+  }));
+  assert.equal(v.needsAttention.timingNote, null, "nothing to caveat if timing is not in question");
 });

@@ -1,15 +1,21 @@
 import { Disclosure } from "@/components/ui";
 import { humanizeText } from "./vocab";
 import {
-  BRIEF_CONFIDENCE_LABEL,
-  BRIEF_STATE_LABEL,
-  type BriefEvidenceLine,
-  type BriefState,
-  type PursuitBriefView,
-} from "@/lib/pursuits/read-models/pursuit-brief";
+  CONTEXT_CONFIDENCE_LABEL,
+  CONTEXT_STATE_LABEL,
+  type ContextEvidenceLine,
+  type ContextState,
+  type PursuitContextView,
+} from "@/lib/pursuits/read-models/pursuit-context";
 
 /**
- * Pursuit Brief (vNext Slice 1, chunk 6A) — one surface in place of three.
+ * Pursuit Context narrative (vNext Slice 1, chunk 6A) — one surface in place of three.
+ *
+ * NAMED "context", not "brief", deliberately: `read-models/brief.ts` already owns
+ * `PursuitBrief` — the disclosure-aware exportable document behind the Brief
+ * button on this same page. Two different things called a Pursuit Brief in one
+ * route is a maintenance trap, so this one keeps the name the Slice 1 plan gave
+ * it. The rendered headings carry the meaning; the symbol names stay distinct.
  *
  * It replaces the Why Now, Facts and What Changed panels with a single reading
  * order: why this matters → what we know → what changed → what needs attention.
@@ -27,14 +33,14 @@ import {
  * gets a real answer rather than a tooltip about a scoring model.
  *
  * All copy arrives already decided. This component selects no phrasing from a
- * state and invents no sentence: `buildPursuitBrief` did that from canonical
+ * state and invents no sentence: `composePursuitContext` did that from canonical
  * tables, and everything here is either that text or a label from
- * `BRIEF_STATE_LABEL`. Keeping the choosing out of the component is what stops
+ * `CONTEXT_STATE_LABEL`. Keeping the choosing out of the component is what stops
  * the four-state vocabulary quietly collapsing during a later style pass.
  */
 
 /** Tone per state. Absent and degraded read differently — that is the point. */
-const STATE_TONE: Record<BriefState, string> = {
+const STATE_TONE: Record<ContextState, string> = {
   VERIFIED: "var(--color-accent-verified)",
   NEEDS_VALIDATION: "var(--color-accent-attention)",
   OUT_OF_DATE: "var(--color-accent-attention)",
@@ -43,18 +49,18 @@ const STATE_TONE: Record<BriefState, string> = {
   NOT_ESTABLISHED: "var(--color-accent-intelligence)",
 };
 
-function StateChip({ state }: { state: BriefState }) {
+function StateChip({ state }: { state: ContextState }) {
   return (
     <span
       className="inline-flex flex-none items-center rounded-inner px-1.5 py-0.5 text-micro font-bold"
       style={{ color: STATE_TONE[state], background: `color-mix(in srgb, ${STATE_TONE[state]} 12%, transparent)` }}
     >
-      {BRIEF_STATE_LABEL[state]}
+      {CONTEXT_STATE_LABEL[state]}
     </span>
   );
 }
 
-function EvidenceRow({ line }: { line: BriefEvidenceLine }) {
+function EvidenceRow({ line }: { line: ContextEvidenceLine }) {
   return (
     <li className="flex items-start justify-between gap-3 py-2">
       <div className="min-w-0">
@@ -75,7 +81,7 @@ function EvidenceRow({ line }: { line: BriefEvidenceLine }) {
  * without anyone having said so. Neither uses the words `pursuit_facts`,
  * `inferred` or `pertinence` (D-012, D-020).
  */
-function EvidenceGroup({ heading, lines }: { heading: string; lines: BriefEvidenceLine[] }) {
+function EvidenceGroup({ heading, lines }: { heading: string; lines: ContextEvidenceLine[] }) {
   if (!lines.length) return null;
   return (
     <div>
@@ -87,8 +93,8 @@ function EvidenceGroup({ heading, lines }: { heading: string; lines: BriefEviden
   );
 }
 
-export function PursuitBrief({ brief }: { brief: PursuitBriefView }) {
-  const { whyThisMatters: why, whatWeKnow: known, whatChanged: changed, needsAttention: attention } = brief;
+export function PursuitContextNarrative({ context }: { context: PursuitContextView }) {
+  const { whyThisMatters: why, whatWeKnow: known, whatChanged: changed, needsAttention: attention } = context;
   const hasEvidence = known.confirmed.length > 0 || known.accountContext.length > 0;
 
   return (
@@ -97,7 +103,7 @@ export function PursuitBrief({ brief }: { brief: PursuitBriefView }) {
       <section>
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h3 className="text-body font-bold uppercase tracking-[0.05em] text-neutral-400">Why this matters</h3>
-          <span className="text-label font-semibold ink-faint">{BRIEF_CONFIDENCE_LABEL[why.confidence]}</span>
+          <span className="text-label font-semibold ink-faint">{CONTEXT_CONFIDENCE_LABEL[why.confidence]}</span>
         </div>
         {why.clauses.length ? (
           <ul className="mt-1.5 flex flex-col gap-1">
@@ -191,6 +197,12 @@ export function PursuitBrief({ brief }: { brief: PursuitBriefView }) {
           </div>
         ) : (
           <p className="mt-1.5 text-copy italic text-neutral-500">Nothing unresolved on this pursuit.</p>
+        )}
+        {/* Shown whether or not timing is the top gap. The account holding a
+            renewal date while the pursuit has none is precisely the claim a
+            reader could otherwise get wrong in either direction. */}
+        {attention.timingNote && (
+          <p className="mt-2 text-label ink-faint">{attention.timingNote.text}</p>
         )}
       </section>
     </div>
