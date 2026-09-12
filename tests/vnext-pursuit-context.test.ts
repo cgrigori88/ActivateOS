@@ -123,7 +123,8 @@ test("brief: strong evidence and a weak gap reads confidently and still names th
     missingContext: missing({ gaps: [gap({ kind: "UNVERIFIED", text: "Technical buyer is not verified", rank: 48 })] }),
   }));
   assert.equal(v.whyThisMatters.confidence, "WELL_EVIDENCED");
-  assert.equal(v.whyThisMatters.clauses[0].text, "Licence renewal forces a platform decision");
+  assert.equal(v.whyThisMatters.clauses[0].text, "Licence renewal forces a platform decision.",
+    "canonical wording, terminated as a sentence");
   assert.equal(v.whatWeKnow.confirmed.length, 1);
   assert.equal(v.needsAttention.primary!.state, "NEEDS_VALIDATION");
 });
@@ -260,7 +261,7 @@ test("brief: stale context reduces confidence and says why", () => {
     }),
   }));
   assert.equal(v.whyThisMatters.confidence, "THIN");
-  assert.equal(v.whyThisMatters.confidenceReason, "Renewal date has aged past its useful window");
+  assert.equal(v.whyThisMatters.confidenceReason, "Renewal date has aged past its useful window.");
   assert.equal(v.whatWeKnow.confirmed[0].state, "OUT_OF_DATE");
 });
 
@@ -354,7 +355,9 @@ test("context: every memory entry is reachable — head + earlier accounts for a
   //     demo's section-2 beat, and it was the thing that went missing.
   const override = v.whatChanged.earlier.find((e) => e.id === "l06");
   assert.ok(override, "PARTNER_OVERRIDE must be reachable");
-  assert.match(override!.text, /Route override/, "its canonical reason survives");
+  assert.equal(override!.canonicalReason, "Route override (EXECUTIVE_DIRECTION): exec relationship",
+    "the ledger's own reason is preserved verbatim under the rendered title");
+  assert.equal(override!.text, "Route overridden by a person", "and stated in product language");
   assert.equal(override!.byPerson, true, "actor semantics preserved in the tail");
   assert.equal(override!.materiality, "HIGH", "materiality preserved in the tail");
 
@@ -412,7 +415,7 @@ test("brief: evidence without a why-now falls back to canonical evidence text, n
     contextHealth: health({ conclusion: "INFERRED" }),
   }));
   assert.equal(v.whyThisMatters.clauses.length, 1);
-  assert.equal(v.whyThisMatters.clauses[0].text, "Modernisation programme underway");
+  assert.equal(v.whyThisMatters.clauses[0].text, "Modernisation programme underway.");
   assert.equal(v.whyThisMatters.clauses[0].refType, "fact");
   assert.equal(v.whyThisMatters.confidence, "PARTLY_EVIDENCED");
 });
@@ -498,4 +501,279 @@ test("context: no timing note when the pursuit has no timing question", () => {
     contextHealth: health(),
   }));
   assert.equal(v.needsAttention.timingNote, null, "nothing to caveat if timing is not in question");
+});
+
+// =============================================================================
+// GATE C refinement — deterministic product copy, scope-aware state, and a
+// "needs attention" drawer that actually opens.
+// =============================================================================
+
+// --- why it matters: copy ----------------------------------------------------
+
+test("copy: signal convergence is counted with the right plural, not '1 independent families'", () => {
+  const one = composePursuitContext(input({
+    whyNow: whyNowView({ signalConvergence: { kind: "signal_convergence", label: "Signal Convergence", present: true, detail: "1 independent families", commercialImplication: null } }),
+    contextHealth: health(),
+  }));
+  assert.equal(one.whyThisMatters.clauses[0].text, "Corroborated by one independent signal family.");
+
+  const many = composePursuitContext(input({
+    whyNow: whyNowView({ signalConvergence: { kind: "signal_convergence", label: "Signal Convergence", present: true, detail: "3 independent families", commercialImplication: null } }),
+    contextHealth: health(),
+  }));
+  assert.equal(many.whyThisMatters.clauses[0].text, "Corroborated by 3 independent signal families.");
+
+  const none = composePursuitContext(input({
+    whyNow: whyNowView({ signalConvergence: { kind: "signal_convergence", label: "Signal Convergence", present: true, detail: "0 independent families", commercialImplication: null } }),
+    contextHealth: health(),
+  }));
+  assert.equal(none.whyThisMatters.clauses[0].text, "No independent corroboration yet.");
+});
+
+test("copy: an unparseable convergence detail falls back to canonical text, not to silence", () => {
+  const v = composePursuitContext(input({
+    whyNow: whyNowView({ signalConvergence: { kind: "signal_convergence", label: "Signal Convergence", present: true, detail: "several families", commercialImplication: null } }),
+    contextHealth: health(),
+  }));
+  assert.equal(v.whyThisMatters.clauses[0].text, "Several families.", "degrades to the source string");
+});
+
+test("copy: route relevance reads as a sentence, not a semicolon-joined label list", () => {
+  const v = composePursuitContext(input({
+    whyNow: whyNowView({ routeRelevance: { kind: "route_relevance", label: "Route Relevance", present: true, detail: "Relevant delivery capability; Existing customer relationship", commercialImplication: null } }),
+    contextHealth: health(),
+  }));
+  assert.equal(
+    v.whyThisMatters.clauses[0].text,
+    "Relevant delivery capability and existing customer relationship.",
+  );
+});
+
+test("copy: a single route-relevance label needs no conjunction", () => {
+  const v = composePursuitContext(input({
+    whyNow: whyNowView({ routeRelevance: { kind: "route_relevance", label: "Route Relevance", present: true, detail: "Relevant delivery capability", commercialImplication: null } }),
+    contextHealth: health(),
+  }));
+  assert.equal(v.whyThisMatters.clauses[0].text, "Relevant delivery capability.");
+});
+
+test("copy: a missing-coverage concern reads as a research task", () => {
+  const v = composePursuitContext(input({
+    whyNow: whyNowView({ businessTrigger: { kind: "trigger", label: "T", present: true, detail: "A window exists", commercialImplication: null } }),
+    contextHealth: health({
+      concerns: [{ kind: "MISSING_COVERAGE", dimension: "coverage", text: "No identity context researched yet", refType: "coverage_category", refId: "identity", weight: 0.6 }],
+    }),
+  }));
+  assert.equal(v.whyThisMatters.confidenceReason, "Identity context still needs research.");
+});
+
+// --- what changed: copy ------------------------------------------------------
+
+test("copy: stakeholder assertions read as events, with the canonical state preserved", () => {
+  const rows = [
+    change({
+      id: "c1", changeType: "STAKEHOLDER_ROLE_ASSERTED", materiality: "MEDIUM",
+      reason: "champion — verified (supersedes champion — inferred)",
+      actor: { type: "USER", id: "u-1", automated: false },
+      afterState: { role: "champion", assertion_state: "verified" },
+      beforeState: { role: "champion", assertion_state: "inferred" },
+    }),
+    change({
+      id: "c2", changeType: "STAKEHOLDER_ROLE_ASSERTED", materiality: "MEDIUM",
+      reason: "technical buyer — verified",
+      actor: { type: "USER", id: "u-1", automated: false },
+      afterState: { role: "technical_buyer", assertion_state: "verified" },
+    }),
+    change({
+      id: "c3", changeType: "STAKEHOLDER_ROLE_ASSERTED", materiality: "MEDIUM",
+      reason: "influencer — inferred",
+      afterState: { role: "influencer", assertion_state: "inferred" },
+    }),
+  ];
+  const v = composePursuitContext(input({
+    memory: memory({ order: "newest", entries: rows, totalAvailable: 3 }),
+    contextHealth: health(),
+  }));
+  const [a, b, c] = v.whatChanged.entries;
+
+  assert.equal(a.text, "Champion confirmed");
+  assert.equal(a.meta, "Previously inferred · Sep 10", "a confirmation that replaced a machine reading says so");
+  assert.equal(b.text, "Technical buyer confirmed");
+  assert.equal(b.meta, "Sep 10", "nothing to qualify");
+  assert.equal(c.text, "Influencer identified");
+  assert.equal(c.meta, "Needs validation · Sep 10", "an inferred role must not read as confirmed");
+
+  // The audit string is preserved underneath every rendered line.
+  assert.equal(a.canonicalReason, "champion — verified (supersedes champion — inferred)");
+  assert.equal(c.canonicalReason, "influencer — inferred");
+});
+
+test("copy: a route override is attributed to a person and keeps its category", () => {
+  const v = composePursuitContext(input({
+    memory: memory({
+      order: "newest",
+      entries: [change({
+        id: "o1", changeType: "PARTNER_OVERRIDE", materiality: "HIGH",
+        reason: "Route override (EXECUTIVE_DIRECTION): exec relationship",
+        actor: { type: "USER", id: "u-1", automated: false },
+        afterState: { category: "EXECUTIVE_DIRECTION", selectedPartnerId: "p-9" },
+      })],
+      totalAvailable: 1,
+    }),
+    contextHealth: health(),
+  }));
+  assert.equal(v.whatChanged.entries[0].text, "Route overridden by a person");
+  assert.equal(v.whatChanged.entries[0].meta, "Executive direction · Sep 10");
+  assert.equal(v.whatChanged.entries[0].byPerson, true);
+});
+
+test("copy: a withheld state payload degrades to the canonical reason, never to a guess", () => {
+  // What `buildPursuitMemory` hands a caller without internal visibility.
+  const v = composePursuitContext(input({
+    memory: memory({
+      order: "newest",
+      entries: [change({
+        id: "g1", changeType: "STAKEHOLDER_ROLE_ASSERTED", materiality: "MEDIUM",
+        reason: "champion — verified", afterState: null, beforeState: null, stateWithheld: true,
+      })],
+      totalAvailable: 1,
+    }),
+    contextHealth: health(),
+  }));
+  assert.equal(v.whatChanged.entries[0].text, "Champion — verified",
+    "the audit string, tidied — no role or state invented from nothing");
+  assert.equal(v.whatChanged.entries[0].canonicalReason, "champion — verified");
+});
+
+test("copy: an unmapped change type keeps its canonical reason", () => {
+  const v = composePursuitContext(input({
+    memory: memory({
+      order: "newest",
+      entries: [change({ id: "t1", changeType: "TEAM_CHANGED", reason: "Team assembled (5 roles)" })],
+      totalAvailable: 1,
+    }),
+    contextHealth: health(),
+  }));
+  assert.equal(v.whatChanged.entries[0].text, "Team assembled (5 roles)");
+});
+
+test("copy: dates carry the year only once it stops being obvious", () => {
+  const v = composePursuitContext(input({
+    memory: memory({
+      order: "newest",
+      entries: [
+        change({ id: "n1", occurredAt: iso("2026-09-10") }),
+        change({ id: "n2", occurredAt: iso("2025-11-27") }),
+      ],
+      totalAvailable: 2,
+    }),
+    contextHealth: health(),
+  }));
+  assert.equal(v.whatChanged.entries[0].meta, "Sep 10", "same year as `now`");
+  assert.equal(v.whatChanged.entries[1].meta, "Nov 27, 2025", "an older year is stated");
+});
+
+// --- direct vs supporting: scope-aware state --------------------------------
+
+test("state: a supporting account fact is never labelled simply 'Verified'", () => {
+  const v = composePursuitContext(input({
+    evidence: evidence({ direct: [directFact()], supporting: [supportingFact()] }),
+    contextHealth: health(),
+  }));
+  const direct = v.whatWeKnow.confirmed[0];
+  const account = v.whatWeKnow.accountContext[0];
+
+  // Same underlying state; different scope; different words.
+  assert.equal(direct.state, "VERIFIED");
+  assert.equal(direct.stateLabel, "Verified");
+  assert.equal(account.state, "VERIFIED", "the canonical state is NOT altered");
+  assert.equal(account.stateLabel, "Verified on account",
+    "a chip on an account row must not read as verified for the pursuit");
+  assert.equal(account.origin, "ACCOUNT");
+});
+
+test("state: degraded account states are not given a redundant scope suffix", () => {
+  const v = composePursuitContext(input({
+    evidence: evidence({
+      supporting: [
+        supportingFact({ factId: "s-a", status: "DISPUTED" }),
+        supportingFact({ factId: "s-b", provenanceClass: "INFERRED" }),
+        supportingFact({ factId: "s-c", freshness: 0.02 }),
+      ],
+    }),
+    contextHealth: health(),
+  }));
+  const labels = v.whatWeKnow.accountContext.map((l) => l.stateLabel);
+  assert.deepEqual(labels, ["Sources disagree", "Needs validation", "Out of date"],
+    "these already say the claim is not to be relied on");
+});
+
+// --- needs attention: a drawer that opens ------------------------------------
+
+test("attention: one primary is visible and the rest are carried, ranked, for disclosure", () => {
+  const gaps = [
+    gap({ key: "g1", text: "No economic buyer identified", rank: 80, kind: "MISSING" }),
+    gap({ key: "g2", source: "WHY_NOW", text: "No verified timing anchor", rank: 72, kind: "MISSING" }),
+    gap({ key: "g3", source: "MEDDPICC", text: "Decision process not established", rank: 62, kind: "NOT_ESTABLISHED" }),
+    gap({ key: "g4", source: "MEDDPICC", text: "Paper process is unverified", rank: 58, kind: "UNVERIFIED" }),
+    gap({ key: "g5", source: "VALUE_CASE", text: "Value drivers disagree", rank: 50, kind: "CONFLICTING" }),
+    gap({ key: "g6", source: "CONTEXT_HEALTH", text: "Renewal date has aged", rank: 40, kind: "STALE" }),
+  ];
+  const v = composePursuitContext(input({ missingContext: missing({ gaps }), contextHealth: health() }));
+
+  assert.equal(v.needsAttention.primary!.headline, "No economic buyer identified");
+  assert.equal(v.needsAttention.otherCount, 5);
+  assert.equal(v.needsAttention.others.length, 5, "the count and the content agree");
+  assert.deepEqual(
+    v.needsAttention.others.map((o) => o.headline),
+    gaps.slice(1).map((g) => g.text),
+    "Missing Context's ranking is preserved, not re-sorted",
+  );
+
+  // Every state survives into the drawer. Flattening these to "missing" is the
+  // specific failure the five-state vocabulary exists to prevent.
+  assert.deepEqual(
+    v.needsAttention.others.map((o) => o.stateLabel),
+    ["Not identified yet", "Not yet established", "Needs validation", "Sources disagree", "Out of date"],
+  );
+});
+
+test("attention: no drawer when the primary is the only open item", () => {
+  const v = composePursuitContext(input({ missingContext: missing({ gaps: [gap()] }), contextHealth: health() }));
+  assert.equal(v.needsAttention.otherCount, 0);
+  assert.deepEqual(v.needsAttention.others, []);
+});
+
+test("attention: the primary carries its own chosen label", () => {
+  const v = composePursuitContext(input({
+    missingContext: missing({ gaps: [gap({ kind: "CONFLICTING", text: "Value drivers disagree" })] }),
+    contextHealth: health(),
+  }));
+  assert.equal(v.needsAttention.primary!.stateLabel, "Sources disagree");
+});
+
+test("copy: override rationale and fact linkage read as events, not as payloads", () => {
+  const v = composePursuitContext(input({
+    memory: memory({
+      order: "newest",
+      entries: [
+        change({
+          id: "r1", changeType: "OVERRIDE_RECORDED", materiality: "MEDIUM", reason: "exec relationship",
+          actor: { type: "USER", id: "u-1", automated: false },
+        }),
+        change({
+          id: "r2", changeType: "FACT_LINKED_TO_PURSUIT", materiality: "LOW", reason: "Linked fact (SOLUTION_FIT)",
+          afterState: { factId: "f-1", relevance: "SOLUTION_FIT" },
+        }),
+      ],
+      totalAvailable: 2,
+    }),
+    contextHealth: health(),
+  }));
+  assert.equal(v.whatChanged.entries[0].text, "Override rationale recorded");
+  assert.equal(v.whatChanged.entries[0].meta, "exec relationship · Sep 10");
+  assert.equal(v.whatChanged.entries[1].text, "Evidence linked to this pursuit");
+  assert.equal(v.whatChanged.entries[1].meta, "Solution fit · Sep 10");
+  // Still traceable to the ledger.
+  assert.equal(v.whatChanged.entries[1].canonicalReason, "Linked fact (SOLUTION_FIT)");
 });

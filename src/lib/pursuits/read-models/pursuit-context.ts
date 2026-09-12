@@ -80,6 +80,24 @@ const GAP_STATE: Record<GapKind, ContextState> = {
   CONFLICTING: "CONFLICTING",
 };
 
+/**
+ * Scope-aware state label.
+ *
+ * A supporting account fact rendered as a bare "Verified" chip reads, to anyone
+ * skimming chips rather than prose, as verified *for this pursuit*. It is not —
+ * it is verified on the account, and nobody has confirmed it here. The chip is
+ * the most-skimmed element on the row, so the scope belongs in the chip rather
+ * than only in the group heading above it (D-020).
+ *
+ * Only VERIFIED is qualified. "Needs validation on account" would be noise: the
+ * degraded states already say the claim is not to be relied on, so adding scope
+ * changes nothing a reader would act on.
+ */
+export function stateLabelFor(state: ContextState, origin: "PURSUIT" | "ACCOUNT"): string {
+  if (origin === "ACCOUNT" && state === "VERIFIED") return "Verified on account";
+  return CONTEXT_STATE_LABEL[state];
+}
+
 /** Provenance in product language. No `provenance_class` reaches a user. */
 const PROVENANCE_WORD: Record<ProvenanceClass, string> = {
   FIRST_PARTY: "First-party",
@@ -128,14 +146,24 @@ export interface ContextEvidenceLine {
   /** Which group this belongs to. The distinction, preserved for the UI. */
   origin: "PURSUIT" | "ACCOUNT";
   state: ContextState;
+  /**
+   * The chip's words, already chosen — scope-qualified for account context so a
+   * supporting fact cannot read as verified for the pursuit (U-14, D-020).
+   */
+  stateLabel: string;
   /** Short provenance word, e.g. "Customer-declared". */
   note: string;
 }
 
 export interface ContextChangeLine {
   id: string;
-  /** The ledger's own reason, or its change type when it recorded none. */
+  changeType: string;
+  /** Product-language title of what happened. Deterministic; never generated. */
   text: string;
+  /** Qualifier and date, already assembled. e.g. "Previously inferred · Sep 12". */
+  meta: string;
+  /** The ledger's own reason, verbatim. Preserved for audit and traceability. */
+  canonicalReason: string | null;
   /** Business time, ISO. Never record time. */
   at: string;
   materiality: string;
@@ -143,8 +171,23 @@ export interface ContextChangeLine {
   byPerson: boolean;
 }
 
+/**
+ * A secondary unresolved item. Deliberately lighter than `ContextAttention`:
+ * headline and state only. The disclosure exists so the reader can see WHAT
+ * else is open, not to relocate the whole list into a drawer.
+ */
+export interface ContextAttentionBrief {
+  state: ContextState;
+  stateLabel: string;
+  headline: string;
+  refType: string;
+  refId: string | null;
+}
+
 export interface ContextAttention {
   state: ContextState;
+  /** The chip's words, already chosen. */
+  stateLabel: string;
   /** The gap's canonical text. Not rewritten. */
   headline: string;
   /** Why it matters, when the source domain supplied it. */
@@ -210,6 +253,17 @@ export interface PursuitContextView {
 
   needsAttention: {
     primary: ContextAttention | null;
+    /**
+     * The remaining ranked gaps, in Missing Context's order, carried so the
+     * "N other items" affordance can actually reveal them. Chunk 6B stated the
+     * count as plain text with nothing to open — a number where the reader
+     * expected a door.
+     *
+     * Each keeps its own state, so a drawer of ten items does not flatten into
+     * ten identical "missing" rows.
+     */
+    others: ContextAttentionBrief[];
+    /** Always `others.length`. */
     otherCount: number;
     /**
      * Surfaced whenever the pursuit has an unresolved timing question AND the
@@ -242,6 +296,181 @@ export interface PursuitContextInput {
 
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Deterministic copy
+//
+// Canonical records carry operational strings: enum fragments, counts with the
+// wrong plural, semicolon-joined label lists, prose written for an audit trail.
+// They are correct and they read like machine output. This section translates
+// them into product language by table lookup and structural inspection — no
+// model, no template filled from free text, no claim the source does not make.
+//
+// Every translation degrades to the canonical string it could not improve, so a
+// vocabulary this layer has not seen produces slightly clumsy copy rather than
+// silence or a guess. The canonical value is preserved alongside the rendered
+// one on every line.
+// ---------------------------------------------------------------------------
+
+/** Trim, capitalise, and end with a single full stop. Punctuation only. */
+function sentence(text: string): string {
+  const t = text.trim().replace(/\s*[;.]+$/, "");
+  if (!t) return "";
+  const cased = t.charAt(0).toUpperCase() + t.slice(1);
+  return /[.!?]$/.test(cased) ? cased : `${cased}.`;
+}
+
+/** `["A thing", "Another thing"]` → `"A thing and another thing"`. */
+function joinClauses(parts: string[]): string {
+  const clean = parts.map((p) => p.trim()).filter(Boolean);
+  if (clean.length <= 1) return clean[0] ?? "";
+  const lower = (s: string) => (/^[A-Z][a-z]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+  const tail = clean.slice(1).map(lower);
+  return tail.length === 1
+    ? `${clean[0]} and ${tail[0]}`
+    : `${[clean[0], ...tail.slice(0, -1)].join(", ")} and ${tail[tail.length - 1]}`;
+}
+
+/** `technical_buyer` → `Technical buyer`. Lower-snake canonical tokens only. */
+function titleizeToken(token: string): string {
+  const words = token.replace(/_/g, " ").trim().toLowerCase();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : "";
+}
+
+/**
+ * One "why it matters" clause, in product language.
+ *
+ * Two canonical strings need structural help rather than a nicer adjective:
+ * `signal_convergence.detail` is a count with a hard-coded plural
+ * ("1 independent families"), and `route_relevance.detail` is up to two
+ * shareable labels joined with "; ". Both are rebuilt from their parts.
+ */
+function clauseText(c: { kind: string; detail: string | null; commercialImplication: string | null }): string | null {
+  const raw = c.commercialImplication || c.detail;
+  if (!raw) return null;
+
+  if (c.kind === "signal_convergence") {
+    const m = /^\s*(\d+)\b/.exec(c.detail ?? "");
+    if (!m) return sentence(raw);
+    const n = Number(m[1]);
+    if (n === 0) return "No independent corroboration yet.";
+    return n === 1
+      ? "Corroborated by one independent signal family."
+      : `Corroborated by ${n} independent signal families.`;
+  }
+
+  if (c.kind === "route_relevance" && c.detail) {
+    const joined = joinClauses(c.detail.split(";"));
+    return joined ? sentence(joined) : sentence(raw);
+  }
+
+  return sentence(raw);
+}
+
+/** Canonical stakeholder roles (`stakeholders.role` CHECK). */
+const ROLE_LABEL: Record<string, string> = {
+  economic_buyer: "Economic buyer",
+  technical_buyer: "Technical buyer",
+  champion: "Champion",
+  influencer: "Influencer",
+  blocker: "Blocker",
+  end_user: "End user",
+};
+
+/**
+ * Canonical `assertion_state` → what happened, and what it still needs.
+ * `verified` is a confirmation; `inferred` is a machine reading that has not
+ * been confirmed, and the qualifier has to say so or the row overstates itself.
+ */
+const ASSERTION_COPY: Record<string, { verb: string; qualifier: string | null }> = {
+  verified: { verb: "confirmed", qualifier: null },
+  inferred: { verb: "identified", qualifier: "Needs validation" },
+  unverified: { verb: "recorded", qualifier: "Not yet verified" },
+};
+
+interface ChangeCopy {
+  title: string;
+  qualifier: string | null;
+}
+
+/**
+ * A remembered event, in product language.
+ *
+ * Reads the ledger's STRUCTURED payload rather than parsing its prose, so
+ * "champion — verified (supersedes champion — inferred)" is rebuilt from
+ * `afterState.role`, `afterState.assertion_state` and `beforeState.assertion_state`
+ * instead of from a regex over an audit string.
+ *
+ * When the payload is absent — which is exactly what `buildPursuitMemory` does
+ * for a caller without internal visibility — this falls through to the canonical
+ * reason. A guest therefore sees plainer copy, never a fabricated detail and
+ * never a payload they may not read.
+ */
+function changeCopy(e: {
+  changeType: string;
+  reason: string | null;
+  afterState: Record<string, unknown> | null;
+  beforeState: Record<string, unknown> | null;
+}): ChangeCopy {
+  const fallback = e.reason ?? titleizeToken(e.changeType);
+
+  if (e.changeType === "STAKEHOLDER_ROLE_ASSERTED") {
+    const role = typeof e.afterState?.role === "string" ? e.afterState.role : null;
+    const state = typeof e.afterState?.assertion_state === "string" ? e.afterState.assertion_state : null;
+    const copy = state ? ASSERTION_COPY[state] : null;
+    if (role && copy) {
+      const label = ROLE_LABEL[role] ?? titleizeToken(role);
+      const wasInferred = e.beforeState?.assertion_state === "inferred";
+      return {
+        title: `${label} ${copy.verb}`,
+        // A confirmation that replaced a machine reading is the more useful
+        // fact than the generic qualifier, so it wins the one slot available.
+        qualifier: state === "verified" && wasInferred ? "Previously inferred" : copy.qualifier,
+      };
+    }
+    return { title: sentence(fallback).replace(/\.$/, ""), qualifier: null };
+  }
+
+  if (e.changeType === "PARTNER_OVERRIDE") {
+    const category = typeof e.afterState?.category === "string" ? e.afterState.category : null;
+    return {
+      title: "Route overridden by a person",
+      qualifier: category ? titleizeToken(category) : null,
+    };
+  }
+
+  // These two record their own rationale or payload in `reason`, so the reason
+  // is the qualifier and the title has to be supplied. Left unmapped they render
+  // as a bare fragment ("exec relationship") or as a database operation
+  // ("Linked fact (SOLUTION_FIT)") — both visible now that the earlier-history
+  // disclosure actually opens.
+  if (e.changeType === "OVERRIDE_RECORDED") {
+    return { title: "Override rationale recorded", qualifier: e.reason?.trim() || null };
+  }
+  if (e.changeType === "FACT_LINKED_TO_PURSUIT") {
+    const relevance = typeof e.afterState?.relevance === "string" ? e.afterState.relevance : null;
+    return { title: "Evidence linked to this pursuit", qualifier: relevance ? titleizeToken(relevance) : null };
+  }
+
+  // Everything else: the ledger's reason already reads as a short statement
+  // ("Team assembled (5 roles)", "Pursuit detected (SYSTEM_DETECTED)"). Capitalise
+  // it and let the component humanise any embedded enum token.
+  return { title: sentence(fallback).replace(/\.$/, ""), qualifier: null };
+}
+
+/**
+ * "Sep 12", or "Sep 12, 2025" once the year stops being obvious. Fixed en-US
+ * month abbreviations rather than a runtime locale, so server and client render
+ * the same string and a snapshot cannot drift with the host's ICU data.
+ */
+const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function dateLabel(iso: string, now: Date): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const stamp = `${MONTH[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  return d.getUTCFullYear() === now.getUTCFullYear() ? stamp : `${stamp}, ${d.getUTCFullYear()}`;
+}
+
 const DEGRADED: ReadonlySet<FactStatus> = new Set<FactStatus>(["STALE", "SUPERSEDED", "EXPIRED"]);
 const WEAK_PROVENANCE: ReadonlySet<ProvenanceClass> = new Set<ProvenanceClass>(["THIRD_PARTY_UNVERIFIED", "INFERRED"]);
 
@@ -254,12 +483,14 @@ function factState(f: { status: FactStatus; provenanceClass: ProvenanceClass; fr
 }
 
 function evidenceLine(f: DirectEvidenceItem | SupportingContextItem, origin: "PURSUIT" | "ACCOUNT"): ContextEvidenceLine {
+  const state = factState(f);
   return {
     factId: f.factId,
     label: f.label,
     predicateKey: f.predicateKey,
     origin,
-    state: factState(f),
+    state,
+    stateLabel: stateLabelFor(state, origin),
     note: PROVENANCE_WORD[f.provenanceClass] ?? "Source not stated",
   };
 }
@@ -300,7 +531,7 @@ export function composePursuitContext(input: PursuitContextInput): PursuitContex
   if (w?.present) {
     for (const c of [w.businessTrigger, w.technologyCondition, w.timingAnchor, w.signalConvergence, w.routeRelevance]) {
       if (!c?.present) continue;
-      const text = c.commercialImplication || c.detail;
+      const text = clauseText(c);
       if (!text) continue;
       clauses.push({ text, refType: c.refType ?? "pursuit", refId: c.refId ?? input.pursuitId });
     }
@@ -309,7 +540,7 @@ export function composePursuitContext(input: PursuitContextInput): PursuitContex
   if (!clauses.length) {
     const strongest = input.evidence?.direct[0];
     if (strongest) {
-      clauses.push({ text: strongest.label, refType: "fact", refId: strongest.factId });
+      clauses.push({ text: sentence(strongest.label), refType: "fact", refId: strongest.factId });
     }
   }
 
@@ -317,7 +548,15 @@ export function composePursuitContext(input: PursuitContextInput): PursuitContex
   const confidence: ContextConfidence = health
     ? (clauses.length ? CONFIDENCE_FROM_HEALTH[health.conclusion] : "NOT_ESTABLISHED")
     : "NOT_ESTABLISHED";
-  const confidenceReason = health?.concerns[0]?.text ?? null;
+  // The top concern, phrased as something a reader can act on. The canonical
+  // text is an inventory note ("No identity context researched yet"); the gap it
+  // describes is a research task, so it is stated as one.
+  const topConcern = health?.concerns[0] ?? null;
+  const confidenceReason = topConcern
+    ? topConcern.kind === "MISSING_COVERAGE" && topConcern.refId
+      ? `${titleizeToken(topConcern.refId)} context still needs research.`
+      : sentence(topConcern.text)
+    : null;
 
   // --- B · What we know -----------------------------------------------------
   const allConfirmed = (input.evidence?.direct ?? []).map((d) => evidenceLine(d, "PURSUIT"));
@@ -338,13 +577,20 @@ export function composePursuitContext(input: PursuitContextInput): PursuitContex
   // occurred_at; this only takes the head of it (D-006).
   const memoryEntries = input.memory?.entries ?? [];
   const newestFirst = input.memory?.order === "newest" ? memoryEntries : [...memoryEntries].reverse();
-  const allChanges: ContextChangeLine[] = newestFirst.map((e) => ({
-    id: e.id,
-    text: e.reason ?? e.changeType.replace(/_/g, " ").toLowerCase(),
-    at: e.occurredAt,
-    materiality: e.materiality,
-    byPerson: e.actor.type === "USER",
-  }));
+  const allChanges: ContextChangeLine[] = newestFirst.map((e) => {
+    const copy = changeCopy(e);
+    const stamp = dateLabel(e.occurredAt, now);
+    return {
+      id: e.id,
+      changeType: e.changeType,
+      text: copy.title,
+      meta: [copy.qualifier, stamp].filter(Boolean).join(" · "),
+      canonicalReason: e.reason,
+      at: e.occurredAt,
+      materiality: e.materiality,
+      byPerson: e.actor.type === "USER",
+    };
+  });
   // Head stays concise; the tail travels with it so the disclosure has content.
   // Every entry the memory read-model returned is in one list or the other —
   // asserted by test, because "the count matches" is the property that broke.
@@ -377,6 +623,7 @@ export function composePursuitContext(input: PursuitContextInput): PursuitContex
 
     primary = {
       state,
+      stateLabel: CONTEXT_STATE_LABEL[state],
       headline: top.text,
       detail: top.whyItMatters,
       resolution: top.howToResolve,
@@ -386,13 +633,21 @@ export function composePursuitContext(input: PursuitContextInput): PursuitContex
     };
   }
 
+  // The rest, in Missing Context's ranking — carried, not summarised into a
+  // number. Each keeps its own state so the drawer does not read as ten
+  // identical "missing" rows (D-019).
+  const others: ContextAttentionBrief[] = (primary ? gaps.slice(1) : gaps).map((g) => {
+    const s = GAP_STATE[g.kind];
+    return { state: s, stateLabel: CONTEXT_STATE_LABEL[s], headline: g.text, refType: g.refType, refId: g.refId };
+  });
+
   return {
     pursuitId: input.pursuitId,
     accountLabel: input.accountLabel,
     whyThisMatters: { clauses, confidence, confidenceReason },
     whatWeKnow: { confirmed, accountContext, hiddenCount },
     whatChanged: { entries, earlier, hiddenCount: earlier.length },
-    needsAttention: { primary, otherCount: Math.max(0, gaps.length - (primary ? 1 : 0)), timingNote },
+    needsAttention: { primary, others, otherCount: others.length, timingNote },
     computedAt: now.toISOString(),
   };
 }

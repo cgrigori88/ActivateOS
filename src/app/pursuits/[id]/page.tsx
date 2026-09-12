@@ -201,17 +201,21 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
 
         {/* Why Now (carries unknowns + contradictions) + lifecycle timing (P2A).
             `#whynow` is the deep-link anchor from Today, the horizon and ⌘K. */}
-        <div id="whynow" className="order-2 scroll-mt-16 lg:order-2">
-        {/* vNext: ONE narrative in place of Why Now + Facts + What changed. It
-            carries the #evidence and #activity anchors internally so Today's
-            deep links, the rail and ⌘K keep resolving after the collapse. */}
+        {/* vNext: the composed surface spans BOTH desktop columns. As a
+            half-width card it stood 1,068px tall beside a 475px Value case and
+            left 593px of dead space below the fold; full width it lays its
+            evidence and open questions side by side and the row closes.
+            Flag OFF keeps the original half-width Why Now exactly as it was. */}
+        <div id="whynow" className={pursuitContext ? "order-2 scroll-mt-16 lg:order-2 lg:col-span-2" : "order-2 scroll-mt-16 lg:order-2"}>
+        {/* ONE narrative in place of Why Now + Facts + What changed. It carries
+            the #evidence and #activity anchors internally so Today's deep links,
+            the rail and ⌘K keep resolving after the collapse. */}
         {pursuitContext ? (
-          <Panel title="This pursuit" hint="Why it matters, what we know, and what still needs attention" accent="var(--color-priority)">
-            <PursuitContextNarrative context={pursuitContext} />
-            <div className="mt-4 border-t border-neutral-200/70 pt-2.5 dark:border-neutral-800">
-              <span className="text-micro font-bold uppercase tracking-[0.05em] text-neutral-400">Lifecycle timing</span>
-              <div className="mt-1"><LifecycleBento events={d.whyNow.lifecycle} /></div>
-            </div>
+          <Panel title="What matters now" hint="Why it matters, what we know, and what still needs attention" accent="var(--color-priority)">
+            <PursuitContextNarrative
+              context={pursuitContext}
+              lifecycleSlot={<LifecycleBento events={d.whyNow.lifecycle} />}
+            />
           </Panel>
         ) : (
         <Panel eyebrow="Assembled from the fact & signal graph — traceable" title="Why now" accent="var(--color-priority)">
@@ -316,9 +320,18 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
           </Panel>
         )}
 
-        {/* Outcome & attribution — the learning half (Phase B). Only when an outcome exists. */}
+        {/* Outcome & attribution — the learning half (Phase B). Only when an outcome exists.
+
+            Its desktop row partner depends on the flag, and the panel itself is
+            untouched either way. Flag OFF it pairs with "What changed" at
+            order-8, as it always has. Flag ON that panel no longer exists, so it
+            would sit alone at half width — and so would Value case, once the
+            composed surface takes a full-width row of its own. Pairing the two
+            leftovers closes both gaps and reads coherently: what is at stake,
+            beside what happened and who moved it. */}
         {loaded.outcome.latest && (
-          <Panel eyebrow="What happened ≠ who moved it" title="Outcome & attribution" accent="var(--color-accent-verified)" className="order-8 lg:order-8">
+          <Panel eyebrow="What happened ≠ who moved it" title="Outcome & attribution" accent="var(--color-accent-verified)"
+            className={pursuitContext ? "order-8 lg:order-3" : "order-8 lg:order-8"}>
             <OutcomePanel summary={loaded.outcome} />
           </Panel>
         )}
