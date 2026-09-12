@@ -500,3 +500,242 @@ Not decided here. The reviewer's call:
 5. **Whether N-6 is acceptable or needs the layout revisited.** This is a
    composition question the panel-count metric cannot answer, and the two
    full-page desktop captures are the evidence for it.
+
+---
+
+# GATE C REFINEMENT — 2026-09-12
+
+**Commits:** `1ed0105` (correctness) · `6c5b7a9` (experience)
+**Direction:** approved. The composed model is **not** reverted.
+**Environment:** local synthetic only, same seeded Globex pursuit
+`98b1f890-04ac-4461-adaa-f6379acba39a`, same canonical reconciliation
+(3 orgs · 14 companies · 19 opportunities · 11 open · $8,040,000 · 14 pursuits).
+
+Five objectives, all measured from the rendered DOM against the GATE C package
+above.
+
+## R1 · The Earlier History blocker — fixed
+
+`composePursuitContext` now carries the remaining memory entries as
+`whatChanged.earlier`, and the disclosure renders them. `hiddenCount` is
+*defined* as `earlier.length`, so the count and the content cannot drift apart
+again.
+
+| | GATE C | Refined |
+|---|---|---|
+| Entries shown by default | 3 | 3 |
+| Entries the disclosure reveals | **0** | **7** |
+| Ledger rows reachable on the page | **3 of 10** | **10 of 10** |
+| Broken pointer sentence | present | removed |
+
+Verified against the real ledger, with every `<details>` on the page opened:
+
+| Probe | GATE C ON | Refined ON |
+|---|---|---|
+| `Partner-led` | absent | **found** |
+| `Pursuit detected` | absent | **found** |
+| `Recommended route` | absent | **found** |
+| `Executive direction` | 1× | **2×** |
+| `exec relationship` | 1× | **2×** |
+| `activity record` (the broken pointer) | found | **absent** |
+
+The two raw audit strings `Route override` and `partner override` are now
+*deliberately* absent: that event renders as **"Route overridden by a person ·
+Executive direction · Sep 12"**, with `Route override (EXECUTIVE_DIRECTION): exec
+relationship` preserved in `canonicalReason`. The event is present; only the
+machine phrasing is gone.
+
+Preserved: `occurred_at` business-time order, actor (`byPerson`), materiality on
+every line, no materiality filter (D-006), and disclosure — the change line never
+carried before/after state, which `buildPursuitMemory` already withholds
+server-side.
+
+## R2 · Desktop composition
+
+The surface spans both desktop columns and lays What-we-know beside
+Needs-attention. Value case and Outcome & attribution — the two panels the merge
+left without a row partner — now pair. Neither panel's design is touched, only
+its column.
+
+| | GATE C | Refined |
+|---|---|---|
+| Composed surface | 538 × 1,068px | **1,092 × 792px** |
+| Void beside the composed surface | **593px** | **0** |
+| Orphaned "Outcome & attribution" void | 192px | **0** |
+| **Total desktop void** | **785px** | **283px (−64%)** |
+| Desktop document height | 3,855px | 3,861px |
+| Top-level panels | 9 | 9 |
+
+Row structure, flag ON, measured at 1440×1000:
+
+| Row | Contents |
+|---|---|
+| 1 | hero — full width |
+| 2 | **What matters now — full width, 792px** |
+| 3 | Value case (475px) \| Outcome & attribution (192px) — residual 283px |
+| 4 | Route decision — full width |
+| 5 | Why CDW — full width |
+| 6 | Pursuit team \| Stakeholders |
+| 7 | Federation — full width |
+
+**Honest reading.** The void the review flagged is gone, and the surface is 276px
+shorter. Total page height is flat (+6px), because the full-width row plus the
+Value-case row costs about what the tall half-width column cost; what was
+recovered went into removing the orphan row. The residual 283px sits beside
+Value case, a pre-existing half-width card now paired with the smaller Outcome
+panel. See "Open UX issues" below for the one new observation.
+
+## R3 · Title and deterministic copy
+
+Title is **"What matters now"**; subtitle unchanged. No collision — the only
+other occurrences of "This pursuit" in the tree are an unrelated money fallback
+(`lifecycle/horizon.ts`) and an error string (`partnerships/joint.ts`).
+
+Translation is by declared table and structural inspection of canonical payloads.
+No model, no template, no claim the source does not make. Every rendered line
+keeps the ledger's own reason in `canonicalReason`.
+
+| Canonical | Rendered |
+|---|---|
+| `1 independent families` | "Corroborated by one independent signal family." |
+| `Relevant delivery capability; Existing customer relationship` | "Relevant delivery capability and existing customer relationship." |
+| `No identity context researched yet` | "Identity context still needs research." |
+| `champion — verified (supersedes champion — inferred)` | **"Champion confirmed"** · "Previously inferred · Sep 12" |
+| `technical buyer — verified` | **"Technical buyer confirmed"** · "Sep 12" |
+| `influencer — inferred` | **"Influencer identified"** · "Needs validation · Sep 12" |
+| `Route override (EXECUTIVE_DIRECTION): exec relationship` | **"Route overridden by a person"** · "Executive direction · Sep 12" |
+| `exec relationship` | **"Override rationale recorded"** · "exec relationship · Sep 12" |
+| `Linked fact (SOLUTION_FIT)` | **"Evidence linked to this pursuit"** · "Solution fit · Sep 12" |
+
+Stakeholder events are rebuilt from `afterState.role`,
+`afterState.assertion_state` and `beforeState.assertion_state` — **not** parsed
+out of the audit prose. When the payload is withheld, which is exactly what
+`buildPursuitMemory` does for a caller without internal visibility, the copy
+falls through to the canonical reason: a guest sees plainer words, never an
+invented role or state. Pinned by test.
+
+`N-4` from the review is therefore resolved **inside the view-model**, leaving
+`read-models/detail.ts` untouched — which is what keeps flag OFF byte-equal.
+
+## R4 · Direct vs supporting
+
+| Row | GATE C chip | Refined chip |
+|---|---|---|
+| Confirmed for this pursuit | Verified | **Verified** |
+| Relevant account context | Verified | **Verified on account** |
+
+The underlying `ContextState` is unchanged (`VERIFIED`), nothing is written to
+`pursuit_facts`, and no linkage is implied. Degraded states are left unqualified
+— "Sources disagree", "Needs validation", "Out of date" already say the claim is
+not to be relied on, so a scope suffix would be noise. Pinned by test.
+
+The Globex timing case now reads, in this order and in one column:
+
+1. primary attention — "No economic buyer identified · Not identified yet"
+2. `10 other items ›`
+3. the caveat — *"Customer-declared timing exists on the account — not yet confirmed for this pursuit"*
+4. **ACCOUNT LIFECYCLE TIMING** → Renewal · `verified` · 2026-11-27 · in 76d
+
+The lifecycle block moved out of the panel foot and under the caveat it belongs
+to, and its label now names the scope. The verified chip no longer sits beside an
+unexplained contradiction: the sentence above it says whose date it is, and the
+heading above that says it is the account's.
+
+## R5 · Needs attention
+
+Exactly **one** primary item by default, unchanged. The dead sentence became a
+door.
+
+| | GATE C | Refined |
+|---|---|---|
+| Primary items visible | 1 | 1 |
+| Secondary items | "10 other unresolved items." (plain text) | **`10 other items ›` disclosure** |
+| Secondary states | not rendered | each carries its own chip |
+| Resolution line | "Resolve by: …" | "Next: …" |
+
+Missing Context's ranking is preserved, not re-sorted, and all five states
+survive into the drawer — `Not identified yet` / `Not yet established` /
+`Needs validation` / `Sources disagree` / `Out of date`. Ten items do not
+flatten into ten identical "missing" rows.
+
+## Density
+
+Target was ~3–5 evidence items, one primary issue, ~3 recent changes. Measured
+default state, flag ON:
+
+| | Value |
+|---|---|
+| Evidence rows | **4** (1 confirmed + 3 account context) |
+| Primary attention items | **1** |
+| Recent changes | **3** |
+| Visible text, default | 7,024 chars (GATE C: 7,018) |
+| Visible text, every disclosure open | 12,625 chars (GATE C: 11,814) |
+| `<details>` on the page | 20 (GATE C: 19) |
+
+The default state is the same weight as before; the growth is entirely behind
+disclosure, which is where the 7 history entries and 10 secondary gaps now live.
+No gauge, no score grid, no card inside a card, no architecture label.
+
+## Flag OFF
+
+Not asserted from the default — rendered and compared.
+
+| | GATE C | Refined |
+|---|---|---|
+| Page bytes | 235,042 | **235,042** |
+| Desktop document height | 3,827px | **3,827px** |
+| Mobile document height | 7,870px | **7,870px** |
+| Panel geometry (all 11, x/w/y/h) | — | **identical, panel for panel** |
+| Anchors | 532 / 1,071 / 2,767 | **532 / 1,071 / 2,767** |
+
+Byte-level diff of the two flag-OFF responses shows differences in exactly three
+categories, all per-request or per-build: **CSP nonces**, the **Next.js build ID**,
+and **one CSS bundle content-hash** (the stylesheet changed because component
+classNames changed). A control measurement makes the first category concrete:
+**two requests to the same unchanged server differ by 600 bytes** from nonces
+alone, so raw byte equality is not an available proof here. Geometry and rendered
+text are the meaningful comparison, and both are identical.
+
+## Mobile
+
+| | GATE C | Refined |
+|---|---|---|
+| Document height, flag ON | 7,171px | 7,221px (**+50px, +0.7%**) |
+| Composed surface | 326 × 1,201px | 326 × 1,251px |
+| Horizontal overflow @390 | none | **none** |
+| Stacking order | why → know → changed → attention | **why → know → attention → changed** |
+
+**Mobile is 50px taller, and that is a real number rather than a rounding
+artefact.** The cause is the two added affordances and the longer chips: the
+`10 other items` row, and "Verified on account" wrapping some evidence titles
+onto a second line. Against the flag-OFF mobile page (7,870px) the composed
+surface is still **8.2% shorter**. The stacking order now matches the desktop
+reading order, because the middle grid collapses rather than being a second
+composition.
+
+## Open UX issues after the refinement
+
+| # | Issue | Severity |
+|---|---|---|
+| R-1 | **"What changed" leaves its right half empty.** At full width the bottom section is a single chronological column, so roughly 1,092 × 300px of the panel reads as unused. Keeping the list vertical is the right call for a chronology — a two-column chronological list is harder to scan — so this is a composition question, not a defect. It is the reason total page height came out flat rather than lower. | Low — cosmetic |
+| R-2 | **The 283px residual void beside Value case.** Structural: with the composed surface full width, the upper page has an odd number of half-width panels. Value case + Outcome is the only available pairing. | Low |
+| R-3 | **Mobile +50px.** See above. Accepted in exchange for two working affordances. | Low |
+| R-4 | **N-3 is unchanged: all four evidence rows still read "Verified"/"Verified on account"** on this pursuit, so the five-state vocabulary is still only observable in Needs attention. Reviewing a thinner or staler pursuit would show it. | Medium — review coverage, not product |
+| R-5 | `BUILD_VALUE_CASE` family matching — **still deferred**, unchanged and not required for correctness here. | Deferred |
+| R-6 | Synthetic PRODUCTION-lineage defect — **still deferred**, untouched. | Deferred |
+
+Resolved by this session: **N-1** (blocker), **N-2**, **N-4**, **N-6**. **N-5**
+is explained by R-1 rather than fixed.
+
+## Screenshots
+
+`docs/vnext/review/gate-c-refined/` — same names, same dimensions, same
+deviceScaleFactor 2 as the GATE C package, for direct comparison.
+
+| File | What |
+|---|---|
+| `desktop-off.png` | flag OFF, 1440×1000 viewport, full page (3,827px) |
+| `desktop-on.png` | flag ON, 1440×1000 viewport, full page (3,861px) |
+| `desktop-on-full-context.png` | the composed surface unclipped — 1,092 × 792px |
+| `mobile-off.png` | flag OFF, 390×844 viewport, full page (7,870px) |
+| `mobile-on.png` | flag ON, 390×844 viewport, full page (7,221px) |

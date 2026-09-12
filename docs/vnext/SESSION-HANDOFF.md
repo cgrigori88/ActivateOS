@@ -10,12 +10,12 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-12T10:40Z (Saturday) |
+| **Date/time** | 2026-09-12T12:10Z (Saturday) |
 | **Repository** | `cgrigori88/ActivateOS` — working dir `/home/user/ActivateOS` |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `e0365d4` + the GATE C review-package commit on top |
+| **Current commit** | `6c5b7a9` + the refinement docs commit on top |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | **GATE C product review PREPARATION.** No product code changed. `docs/vnext/GATE-C-PRODUCT-REVIEW.md` + 5 screenshots in `docs/vnext/review/gate-c/`. Slice 1 remains functionally complete behind the flag; **it is now NOT promotable — see GATE C finding N-1.** |
+| **Session completed** | **GATE C REFINEMENT.** Product direction approved; the composed model was not reverted. The N-1 blocker is fixed, plus N-2/N-4/N-6. Slice 1 is back at **PREVIEW READY**. |
 | **Preview URL** | **UNVERIFIED** — unchanged from Session 0 |
 | **Preview data safety** | **UNKNOWN** — unchanged from Session 0 |
 
@@ -44,7 +44,12 @@
 | 5B-2 | `620bc12` | feat(vnext): compose pursuit evidence context |
 | — | `b3abac9` | docs(vnext): chunk 5B-2 record + D-020 |
 | 6A | `ed3416c` | feat(vnext): add composed pursuit brief (unrendered) |
-| **6B** | **`99bd5dd`** | **feat(vnext): gate pursuit brief on pursuit detail** |
+| 6B | `99bd5dd` | feat(vnext): gate pursuit brief on pursuit detail |
+| — | `e0365d4` | docs(vnext): record the first rendered vNext surface |
+| GATE C | `a4a3314` | docs(vnext): GATE C product review package |
+| — | `284c4dc` | docs(vnext): always deliver review screenshots in-conversation |
+| **refine** | **`1ed0105`** | **fix(vnext): restore complete pursuit history access** |
+| **refine** | **`6c5b7a9`** | **refactor(vnext): refine pursuit context experience** |
 
 ## Chunks 6A + 6B files
 
@@ -369,16 +374,49 @@ Also confirmed: `#whynow` → `y` 532, `#evidence` → 745, `#activity` → 1,08
 all three land on the right movement, so U-13 holds structurally. N-1 is about
 the **content** the anchor promised, not the anchor.
 
+## GATE C refinement (2026-09-12) — what changed
+
+Two commits, deliberately split: **`1ed0105`** correctness, **`6c5b7a9`**
+experience. Full measured record in `GATE-C-PRODUCT-REVIEW.md`
+§ "GATE C REFINEMENT".
+
+| # | Objective | Outcome |
+|---|---|---|
+| 1 | Earlier History blocker | **FIXED.** `whatChanged.earlier` carries the remaining memory entries and the disclosure renders them. Globex: **10 of 10** ledger rows reachable, override chronology included. `hiddenCount` is now *defined* as `earlier.length`, so count and content cannot drift again. |
+| 2 | Desktop composition | **FIXED.** Surface spans both columns: 538×1,068 → **1,092×792**. Void beside it **593px → 0**; total desktop void 785px → 283px. Value case + Outcome & attribution now pair (`lg:order-3`), which also fixed the 6B orphan. |
+| 3 | Title + deterministic copy | **DONE.** "This pursuit" → **"What matters now"**. Copy translated in the view-model from canonical *structure*, not prose. See **D-022**. |
+| 4 | Supporting-evidence state language | **DONE.** Account rows read **"Verified on account"**; direct rows keep "Verified". Underlying state untouched, nothing written to `pursuit_facts`. Lifecycle block moved under the timing caveat and relabelled "Account lifecycle timing". |
+| 5 | Needs attention | **DONE.** Still one primary by default; "10 other unresolved items." became a real disclosure carrying the ranked gaps, each with its own state chip. |
+
+**Key code shapes now in place**
+
+- `ContextChangeLine` = `{ id, changeType, text, meta, canonicalReason, at, materiality, byPerson }` — rendered words plus the ledger's own reason.
+- `whatChanged.earlier` and `needsAttention.others` — the two lists that make the disclosures real.
+- `stateLabelFor(state, origin)` — the only place a scope-qualified chip label is chosen.
+- `changeCopy()` reads `afterState.role` / `assertion_state` and `beforeState.assertion_state`. When the payload is **withheld** (guest callers) it falls through to the canonical reason — a guest gets plainer copy, never an invented detail. Pinned by test.
+- `PursuitContextNarrative` takes a `lifecycleSlot` node so the component owns placement while the route owns the data.
+
+**Residual, all cosmetic** — R-1 "What changed" leaves its right half empty at
+full width (keeping the chronology vertical is the right call, so this is a
+composition question); R-2 283px void beside Value case (structural: an odd
+number of half-width panels); R-3 mobile +50px, +0.7%, in exchange for two
+working affordances. R-4 restates N-3: every evidence row on Globex is VERIFIED,
+so the five-state vocabulary is only observable in Needs attention — **review a
+thinner or staler pursuit to see it**.
+
 ## Exact next action
 
-**A decision, not code: GATE C is prepared and awaiting the product review.**
+**A decision, not code: product sign-off on the refined surface.**
 
-Slice 1 is functionally complete behind `VNEXT_PURSUIT_INTELLIGENCE_ENABLED`.
-Nothing is deployed and the demo is untouched. **Do not promote Slice 1 until
-N-1 is resolved.**
+Slice 1 is functionally complete and at PREVIEW READY behind
+`VNEXT_PURSUIT_INTELLIGENCE_ENABLED`. Nothing is deployed and the demo is
+untouched. Screenshots for the sign-off are in
+`docs/vnext/review/gate-c-refined/` (same filenames and dimensions as
+`gate-c/`, for direct comparison).
 
-Monday is unaffected either way: the flag defaults OFF, and flag-OFF is
-byte-identical to the pre-slice page.
+Monday is unaffected: the flag defaults OFF, and flag-OFF was verified
+**panel-for-panel identical** to the pre-refinement page — 11 panels at the same
+x/w/y/h, 3,827px desktop, 7,870px mobile, anchors at 532/1,071/2,767.
 
 ### The next step is a decision, not code
 

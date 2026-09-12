@@ -426,3 +426,75 @@ existing navigation breaks. See `ACCEPTANCE.md` U-13.
 **Copy is chosen in the view-model, not the component.** The five state phrasings
 live in one declared table. Keeping the choosing out of the component is what
 stops the vocabulary collapsing in a later style pass. See U-14.
+
+---
+
+## D-022 · Product copy is translated deterministically in the view-model, from structure
+
+**Decision.** Canonical records carry operational strings — enum fragments,
+counts with a hard-coded plural, semicolon-joined label lists, prose written for
+an audit trail. A read-model that feeds a user-facing surface translates them
+into product language itself, by **declared table lookup and inspection of the
+canonical structured payload**. Not by an LLM, not by a template filled from free
+text, and not by regex over the canonical prose.
+
+**Why not an LLM.** This copy states what the record says. A generated sentence
+can assert a causality or a certainty the record does not carry, and there is no
+cheap way to test that it did not — which is D-005 and D-007 applied to wording
+rather than to numbers.
+
+**Why not prose parsing.** The ledger's `reason` for a stakeholder assertion is
+`champion — verified (supersedes champion — inferred)`. Parsing that string for
+role, state and supersession would work until someone reworded the audit
+message. The same facts are in `afterState.role`, `afterState.assertion_state`
+and `beforeState.assertion_state`, which are schema-constrained. Read the
+structure; the prose is a fallback, not a source.
+
+**Three properties every translation must hold.**
+
+1. **Degrade, never guess.** A change type, role or state the table has not seen
+   produces the canonical string, tidied. Slightly clumsy copy is an acceptable
+   outcome; an invented detail is not.
+2. **Disclosure survives.** `buildPursuitMemory` withholds `before_state` /
+   `after_state` from a caller without internal visibility, so the structured
+   path is simply unavailable for a guest and the fallback runs. A guest sees
+   plainer words and never a payload they may not read. This falls out of the
+   design rather than needing a second code path — pinned by test.
+3. **The canonical value travels.** Every rendered line keeps the source string
+   (`canonicalReason`). The rendered words are a presentation of the record, and
+   the record stays inspectable next to them.
+
+**Where it lives.** In the view-model, never the component — the same rule U-14
+already established for state labels, for the same reason: a component that
+picks its own words is where a carefully built vocabulary quietly collapses in a
+later style pass. The one thing the component may still do is `humanizeText`,
+which only title-cases embedded `UPPER_SNAKE` tokens and chooses no word.
+
+---
+
+## D-023 · A composed surface takes the width its content needs, and the grid is rebalanced around it
+
+**Decision.** When one surface absorbs several, its footprint in the page grid is
+part of the merge, not a detail to inherit from whichever panel it replaced. The
+Pursuit Context surface spans both desktop columns and lays its evidence beside
+its open questions; at narrow widths that grid collapses into the same semantic
+order.
+
+**Why.** Inherited as a half-width card, the merged surface stood 1,068px tall
+beside a 475px Value case — 593px of dead space immediately below the fold, in
+the most valuable region of the page — and the page came out 28px *longer* than
+before the merge. The narrative was right and the geometry was wrong, and the
+panel-count metric (11 → 9) could not see it.
+
+**Consequence, and the part that is easy to miss.** Changing one panel's span
+changes the row structure for its neighbours. Absorbing "What changed" left
+"Outcome & attribution" without a row partner, and making the composed surface
+full width left "Value case" without one too. Those two now pair. The rule:
+after a merge, account for **every** half-width panel in the affected rows, not
+just the one that changed — a merge that fixes its own void by creating two
+smaller ones has not finished.
+
+Panels are repositioned by `lg:order` only. No panel outside the merge has its
+content, design or behaviour altered, and the flag-OFF layout keeps its original
+ordering exactly — proven by comparing panel geometry, panel for panel, before
+and after.
