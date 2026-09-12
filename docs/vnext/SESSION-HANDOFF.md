@@ -318,6 +318,26 @@ writes). B-2 must be resolved before GATE E.
 
 ---
 
+## STANDING INSTRUCTION — deliver review screenshots in-conversation
+
+For **every** review/gate phase (GATE C and any later gate, promotion
+certification, or visual review), do not merely commit the screenshots and cite
+their paths. **Send the image files into the conversation** so the reviewer can
+see them without leaving the session. Committing them as well is correct — the
+repo is the archive, the conversation is the review surface.
+
+Practical constraints learned on 2026-09-12:
+
+- The file uploader **rejects very tall images with HTTP 400.** A 2×
+  full-page mobile capture (780×15,740) fails; the 2× desktop full pages
+  (2880×7,654) succeed. When a capture is rejected, re-render the same state at
+  `deviceScaleFactor: 1` (or crop to the changed region) for delivery, keep the
+  2× version in the repo, and say plainly which is which.
+- Verify the re-render is the same state before sending — compare page bytes and
+  `document.documentElement.scrollHeight` against the committed capture.
+- Lead with the element-scoped capture of the surface under review; send the
+  full-page pairs after it, and caption each with what to look at.
+
 ## GATE C review package (2026-09-12, docs only)
 
 `docs/vnext/GATE-C-PRODUCT-REVIEW.md` — flag OFF vs flag ON on the seeded Globex
