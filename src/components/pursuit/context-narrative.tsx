@@ -3,6 +3,7 @@ import { humanizeText } from "./vocab";
 import {
   CONTEXT_CONFIDENCE_LABEL,
   CONTEXT_STATE_LABEL,
+  type ContextChangeLine,
   type ContextEvidenceLine,
   type ContextState,
   type PursuitContextView,
@@ -57,6 +58,19 @@ function StateChip({ state }: { state: ContextState }) {
     >
       {CONTEXT_STATE_LABEL[state]}
     </span>
+  );
+}
+
+/** One remembered event. Shared by the default head and the earlier-history tail. */
+function ChangeRow({ line }: { line: ContextChangeLine }) {
+  return (
+    <li className="py-2">
+      <div className="text-copy font-semibold ink">{humanizeText(line.text)}</div>
+      <div className="tnum mt-0.5 text-label ink-faint">
+        {new Date(line.at).toLocaleDateString()}
+        {line.byPerson && " · changed by a person"}
+      </div>
+    </li>
   );
 }
 
@@ -146,21 +160,17 @@ export function PursuitContextNarrative({ context }: { context: PursuitContextVi
         {changed.entries.length ? (
           <>
             <ul className="mt-1.5 divide-y divide-[var(--border-subtle)]">
-              {changed.entries.map((e) => (
-                <li key={e.id} className="py-2">
-                  <div className="text-copy font-semibold ink">{humanizeText(e.text)}</div>
-                  <div className="tnum mt-0.5 text-label ink-faint">
-                    {new Date(e.at).toLocaleDateString()}
-                    {e.byPerson && " · changed by a person"}
-                  </div>
-                </li>
-              ))}
+              {changed.entries.map((e) => <ChangeRow key={e.id} line={e} />)}
             </ul>
-            {changed.hiddenCount > 0 && (
-              <Disclosure summary={`Earlier history (${changed.hiddenCount} more)`} className="mt-1.5">
-                <p className="text-label ink-faint">
-                  The full history for this pursuit continues below in the activity record.
-                </p>
+            {changed.earlier.length > 0 && (
+              // Renders the remaining memory entries. It previously revealed a
+              // sentence pointing at an activity record this surface had
+              // absorbed, so the older half of the history — including the
+              // partner-override chronology — was reachable nowhere.
+              <Disclosure summary={`Earlier history (${changed.earlier.length})`} className="mt-1.5">
+                <ul className="divide-y divide-[var(--border-subtle)]">
+                  {changed.earlier.map((e) => <ChangeRow key={e.id} line={e} />)}
+                </ul>
               </Disclosure>
             )}
           </>

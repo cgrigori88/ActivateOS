@@ -300,7 +300,96 @@ test("brief: what changed is newest-first by business time and bounded", () => {
 test("brief: no meaningful recent changes says so rather than rendering an empty list", () => {
   const v = composePursuitContext(input({ memory: memory(), contextHealth: health() }));
   assert.deepEqual(v.whatChanged.entries, []);
+  assert.deepEqual(v.whatChanged.earlier, []);
   assert.equal(v.whatChanged.hiddenCount, 0);
+});
+
+/**
+ * GATE C blocker regression.
+ *
+ * Chunk 6B shipped an "Earlier history (7 more)" disclosure that revealed only a
+ * sentence pointing at the activity record — a panel this very surface had
+ * absorbed. Seven of the Globex pursuit's ten ledger events, the partner-override
+ * chronology among them, were reachable nowhere on the page.
+ *
+ * The property that broke is not "the disclosure has a child"; it is that the
+ * default head plus the disclosed tail together account for EVERY memory entry,
+ * exactly once. That is what these assertions pin.
+ */
+test("context: every memory entry is reachable — head + earlier accounts for all of them", () => {
+  // The real Globex ledger shape: 10 rows, mixed materiality, newest four are
+  // MEDIUM stakeholder assertions that displace three HIGH events from the head.
+  const rows = [
+    change({ id: "l10", occurredAt: iso("2026-09-12T03:32:55Z"), changeType: "STAKEHOLDER_ROLE_ASSERTED", materiality: "MEDIUM", reason: "influencer — inferred" }),
+    change({ id: "l09", occurredAt: iso("2026-09-12T03:32:55Z"), changeType: "STAKEHOLDER_ROLE_ASSERTED", materiality: "MEDIUM", reason: "champion — inferred" }),
+    change({ id: "l08", occurredAt: iso("2026-09-12T03:32:55Z"), changeType: "STAKEHOLDER_ROLE_ASSERTED", materiality: "MEDIUM", reason: "technical buyer — verified", actor: { type: "USER", id: "u-1", automated: false } }),
+    change({ id: "l07", occurredAt: iso("2026-09-12T03:32:55Z"), changeType: "STAKEHOLDER_ROLE_ASSERTED", materiality: "MEDIUM", reason: "champion — verified (supersedes champion — inferred)", actor: { type: "USER", id: "u-1", automated: false } }),
+    change({ id: "l06", occurredAt: iso("2026-09-12T03:32:51Z"), changeType: "PARTNER_OVERRIDE", materiality: "HIGH", reason: "Route override (EXECUTIVE_DIRECTION): exec relationship", actor: { type: "USER", id: "u-1", automated: false } }),
+    change({ id: "l05", occurredAt: iso("2026-09-12T03:32:51Z"), changeType: "OVERRIDE_RECORDED", materiality: "MEDIUM", reason: "exec relationship", actor: { type: "USER", id: "u-1", automated: false } }),
+    change({ id: "l04", occurredAt: iso("2026-09-12T03:32:51Z"), changeType: "TEAM_CHANGED", materiality: "MEDIUM", reason: "Team assembled (5 roles)" }),
+    change({ id: "l03", occurredAt: iso("2026-09-12T03:32:51Z"), changeType: "ROUTE_RECOMMENDATION_CHANGED", materiality: "HIGH", reason: "Recommended route → PARTNER_LED (partner)" }),
+    change({ id: "l02", occurredAt: iso("2026-09-12T03:32:51Z"), changeType: "FACT_LINKED_TO_PURSUIT", materiality: "LOW", reason: "Linked fact (SOLUTION_FIT)" }),
+    change({ id: "l01", occurredAt: iso("2026-09-12T03:32:50Z"), changeType: "PURSUIT_CREATED", materiality: "HIGH", reason: "Pursuit detected (SYSTEM_DETECTED)" }),
+  ];
+  const v = composePursuitContext(input({
+    memory: memory({ order: "newest", entries: rows, totalAvailable: rows.length }),
+    contextHealth: health(),
+  }));
+
+  const head = v.whatChanged.entries.map((e) => e.id);
+  const tail = v.whatChanged.earlier.map((e) => e.id);
+
+  // 1 · The head stays concise.
+  assert.equal(head.length, 3, "default history stays short");
+
+  // 2 · The disclosure's count is real, and matches what it will render.
+  assert.equal(v.whatChanged.hiddenCount, 7);
+  assert.equal(v.whatChanged.earlier.length, 7, "the count and the content agree");
+
+  // 3 · Together they account for every entry, exactly once. This is the blocker.
+  assert.deepEqual([...head, ...tail], rows.map((r) => r.id), "all 10 reachable, in order");
+  assert.equal(new Set([...head, ...tail]).size, rows.length, "no entry duplicated");
+
+  // 4 · The partner-override chronology is specifically reachable — it is the
+  //     demo's section-2 beat, and it was the thing that went missing.
+  const override = v.whatChanged.earlier.find((e) => e.id === "l06");
+  assert.ok(override, "PARTNER_OVERRIDE must be reachable");
+  assert.match(override!.text, /Route override/, "its canonical reason survives");
+  assert.equal(override!.byPerson, true, "actor semantics preserved in the tail");
+  assert.equal(override!.materiality, "HIGH", "materiality preserved in the tail");
+
+  // 5 · Memory is not materiality-filtered (D-006). The LOW linkage event, which
+  //     `getPursuitTimeline` deliberately drops, must still be present here.
+  assert.ok([...head, ...tail].includes("l02"), "a LOW-materiality event is still remembered");
+});
+
+test("context: earlier history is empty when everything already fits", () => {
+  const v = composePursuitContext(input({
+    memory: memory({ order: "newest", entries: [change({ id: "a" }), change({ id: "b" })], totalAvailable: 2 }),
+    contextHealth: health(),
+  }));
+  assert.deepEqual(v.whatChanged.entries.map((e) => e.id), ["a", "b"]);
+  assert.deepEqual(v.whatChanged.earlier, [], "no disclosure when there is nothing behind it");
+  assert.equal(v.whatChanged.hiddenCount, 0);
+});
+
+test("context: earlier history honours business-time order when memory reads oldest-first", () => {
+  const v = composePursuitContext(input({
+    memory: memory({
+      order: "oldest",
+      entries: [
+        change({ id: "a", occurredAt: iso("2026-09-01") }),
+        change({ id: "b", occurredAt: iso("2026-09-05") }),
+        change({ id: "c", occurredAt: iso("2026-09-08") }),
+        change({ id: "d", occurredAt: iso("2026-09-10") }),
+        change({ id: "e", occurredAt: iso("2026-09-11") }),
+      ],
+      totalAvailable: 5,
+    }),
+    contextHealth: health(),
+  }));
+  assert.deepEqual(v.whatChanged.entries.map((e) => e.id), ["e", "d", "c"], "newest first");
+  assert.deepEqual(v.whatChanged.earlier.map((e) => e.id), ["b", "a"], "tail continues newest-first");
 });
 
 // --- absent inputs -----------------------------------------------------------

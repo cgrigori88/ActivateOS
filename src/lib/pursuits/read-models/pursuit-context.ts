@@ -191,6 +191,20 @@ export interface PursuitContextView {
 
   whatChanged: {
     entries: ContextChangeLine[];
+    /**
+     * The remaining memory entries, same business-time order, carried in the
+     * payload so the "Earlier history" disclosure can actually render them.
+     *
+     * This field exists because chunk 6B shipped a disclosure that promised
+     * "(7 more)" and revealed only a sentence pointing at the activity record —
+     * which this very surface had absorbed. Seven of the Globex pursuit's ten
+     * ledger events, the partner-override chronology among them, were reachable
+     * nowhere on the page. A disclosure must reveal the thing it counted.
+     *
+     * Not materiality-filtered (D-006): this is memory, not an attention feed.
+     */
+    earlier: ContextChangeLine[];
+    /** Entries behind the disclosure. Always `earlier.length`. */
     hiddenCount: number;
   };
 
@@ -324,13 +338,18 @@ export function composePursuitContext(input: PursuitContextInput): PursuitContex
   // occurred_at; this only takes the head of it (D-006).
   const memoryEntries = input.memory?.entries ?? [];
   const newestFirst = input.memory?.order === "newest" ? memoryEntries : [...memoryEntries].reverse();
-  const entries: ContextChangeLine[] = newestFirst.slice(0, changeBudget).map((e) => ({
+  const allChanges: ContextChangeLine[] = newestFirst.map((e) => ({
     id: e.id,
     text: e.reason ?? e.changeType.replace(/_/g, " ").toLowerCase(),
     at: e.occurredAt,
     materiality: e.materiality,
     byPerson: e.actor.type === "USER",
   }));
+  // Head stays concise; the tail travels with it so the disclosure has content.
+  // Every entry the memory read-model returned is in one list or the other —
+  // asserted by test, because "the count matches" is the property that broke.
+  const entries = allChanges.slice(0, changeBudget);
+  const earlier = allChanges.slice(changeBudget);
 
   // --- D · Needs attention --------------------------------------------------
   const gaps = input.missingContext?.gaps ?? [];
@@ -372,7 +391,7 @@ export function composePursuitContext(input: PursuitContextInput): PursuitContex
     accountLabel: input.accountLabel,
     whyThisMatters: { clauses, confidence, confidenceReason },
     whatWeKnow: { confirmed, accountContext, hiddenCount },
-    whatChanged: { entries, hiddenCount: Math.max(0, memoryEntries.length - entries.length) },
+    whatChanged: { entries, earlier, hiddenCount: earlier.length },
     needsAttention: { primary, otherCount: Math.max(0, gaps.length - (primary ? 1 : 0)), timingNote },
     computedAt: now.toISOString(),
   };

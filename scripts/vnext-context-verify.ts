@@ -12,6 +12,8 @@ import {
   loadPursuitMemory,
 } from "../src/lib/pursuits/read-models/context-loaders";
 import { rankPertinence } from "../src/lib/pursuits/read-models/pertinence";
+import { composePursuitContext } from "../src/lib/pursuits/read-models/pursuit-context";
+import type { PursuitMemoryView } from "../src/lib/pursuits/read-models/memory";
 import type { Caller } from "../src/lib/pursuits/read-models/helpers";
 
 /**
@@ -46,6 +48,11 @@ const pool = new Pool({ connectionString: CONN, max: 2 });
 
 let passed = 0, failed = 0;
 const failures: string[] = [];
+/** Business time of one remembered entry, for order assertions. */
+function byOccurred(memory: PursuitMemoryView, id: string): string {
+  return memory.entries.find((e) => e.id === id)?.occurredAt ?? "";
+}
+
 function check(name: string, cond: boolean, detail = ""): void {
   if (cond) { passed++; console.log(`  ✓ ${name}`); }
   else { failed++; failures.push(name + (detail ? ` — ${detail}` : "")); console.log(`  ✗ ${name}${detail ? " — " + detail : ""}`); }
@@ -450,7 +457,61 @@ async function main(): Promise<void> {
   }
 
   // =========================================================================
-  console.log("\n6  Scoping");
+  console.log("\n6  Composed context — history reachability");
+  // =========================================================================
+  // GATE C blocker. The 6B disclosure counted entries it could not render, so
+  // the older half of the history was reachable nowhere on the page. Proving it
+  // against the real ledger — not just a fixture — is the point of this section.
+  const composed = composePursuitContext({
+    pursuitId: target.id,
+    accountLabel: target.legal_name,
+    whyNow: null,
+    evidence,
+    memory,
+    missingContext: missing,
+    contextHealth: health,
+  });
+
+  const headIds = composed.whatChanged.entries.map((e) => e.id);
+  const tailIds = composed.whatChanged.earlier.map((e) => e.id);
+  const reachable = [...headIds, ...tailIds];
+
+  check("the default history stays concise", composed.whatChanged.entries.length <= 3,
+    `${composed.whatChanged.entries.length} shown`);
+  check("the disclosure's count equals what it will render",
+    composed.whatChanged.hiddenCount === composed.whatChanged.earlier.length,
+    `count ${composed.whatChanged.hiddenCount} vs content ${composed.whatChanged.earlier.length}`);
+  check("every memory entry is reachable — head + earlier accounts for all of them",
+    reachable.length === memory.entries.length && new Set(reachable).size === memory.entries.length,
+    `${reachable.length} reachable of ${memory.entries.length} remembered`);
+  check("reachable history preserves business-time order",
+    reachable.every((id, i) => i === 0 || byOccurred(memory, reachable[i - 1]) >= byOccurred(memory, id)));
+
+  // The demo's section-2 beat, specifically. It is the entry that went missing.
+  const overrideEntry = memory.entries.find((e) => e.changeType === "PARTNER_OVERRIDE");
+  if (overrideEntry) {
+    check("the partner-override chronology is reachable", reachable.includes(overrideEntry.id));
+    const line = [...composed.whatChanged.entries, ...composed.whatChanged.earlier]
+      .find((e) => e.id === overrideEntry.id);
+    check("the override keeps its actor and materiality in the disclosed tail",
+      line != null && line.byPerson === (overrideEntry.actor.type === "USER") && line.materiality === overrideEntry.materiality);
+  } else {
+    check("this pursuit has a partner override to verify", false, "no PARTNER_OVERRIDE row");
+  }
+
+  // Memory must stay unfiltered by materiality (D-006), end to end.
+  const lowIds = memory.entries.filter((e) => e.materiality === "LOW").map((e) => e.id);
+  check("LOW-materiality events survive into the composed surface",
+    lowIds.every((id) => reachable.includes(id)), `${lowIds.length} LOW entr(ies)`);
+
+  console.log(`\n  → ${composed.whatChanged.entries.length} shown by default · ` +
+    `${composed.whatChanged.earlier.length} behind "Earlier history" · ${reachable.length} reachable in total`);
+  for (const e of composed.whatChanged.earlier) {
+    console.log(`     [${e.materiality.padEnd(8)}] ${trunc(e.text, 56).padEnd(57)} ${e.byPerson ? "by a person" : ""}`);
+  }
+
+  // =========================================================================
+  console.log("\n7  Scoping");
   // =========================================================================
   const otherOrg = (await pool.query<{ id: string }>(
     `select id from organizations where id <> $1 order by created_at limit 1`, [target.org_id])).rows[0];
