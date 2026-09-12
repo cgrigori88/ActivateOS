@@ -1,7 +1,7 @@
 # Vertical Slice 1 — Living Pursuit Context
 
-**Status:** `BUILDING` — chunks 1–4 and 5A complete (2026-09-12). Chunks 5B–8 **NOT STARTED**;
-5B needs explicit approval because it is the first change to what the demo shows.
+**Status:** `BUILDING` — chunks 1–4, 5A and 5B-1 complete (2026-09-12). Chunks 5B-2–8
+**NOT STARTED**; 5B-2 needs explicit approval — it is the first change to what the demo shows.
 **Phase:** P1 · **Flag family:** `VNEXT_CONTEXT_HEALTH/STATE/MEMORY/INTELLIGENCE`
 **Written:** 2026-09-12T02:47Z · **As-built section appended:** 2026-09-12T04:05Z
 
@@ -421,3 +421,71 @@ and `source`, not just its `kind`.
 
 Still the first change to what the demo shows, still on the itinerary's §2 hero
 screen, still flag-gated. See the recommendation in `SESSION-HANDOFF.md`.
+
+---
+
+# AS-BUILT — chunk 5B-1 (2026-09-12)
+
+The composition defect chunk 5A surfaced is fixed. **Chunk 5B-2 is NOT STARTED.**
+
+Commit `1b05b8a`. Files: `read-models/pertinence.ts`,
+`read-models/context-loaders.ts`, `scripts/vnext-context-verify.ts`,
+`tests/vnext-gap-pertinence.test.ts` (new). No rendered consumer; no seed-path,
+ledger, schema or migration change.
+
+## Semantic fields now carried onto `PertinenceCandidate`
+
+| Field | Source | Why |
+|---|---|---|
+| `gapRank` | `ContextGap.rank` | the upstream layer's declared importance |
+| `gapSource` | `ContextGap.source` | which domain produced it — lets a task match on domain |
+| `whyItMatters` | `ContextGap.whyItMatters` | upstream explanation, never regenerated |
+| `gapKind` | `ContextGap.kind` | already carried; the four-state distinction |
+
+## Ranking design — substitution, not addition
+
+Upstream: `rank = KIND_WEIGHT[kind] + SOURCE_WEIGHT[source] + (blocking ? 20 : 0)`.
+Pertinence previously: `linkage = LINKAGE_BY_GAP[kind]`.
+
+Those two encode the *same* question — how tightly does this bind to the
+decision — at different resolutions. So the richer one **replaces** the coarser
+one at the same `linkage` weight of 0.30. Nothing is added to the score, and
+`LINKAGE_BY_GAP` survives only as the fallback for a candidate that arrives
+without a rank.
+
+Adding them would have counted gap kind twice. The test
+`"upstream importance is not counted twice"` pins the consequence: two gaps with
+identical `gapRank` but different `gapKind` must score identically, which is
+impossible if kind is still applied on top.
+
+**Normalisation is against the fixed 0..100 scale**, not against the other
+candidates present. A relative normalisation would make each score depend on its
+neighbours — and then removing a restricted item could move a visible one, which
+silently breaks the disclosure invariance of D-018.
+
+`taskFit` is a genuinely separate axis and remains a separate contribution:
+upstream rank says how much a gap matters *in general*, task fit says whether it
+serves the decision *at hand*. A VALUE_CASE gap has a constant source weight but
+only leads when you are building a value case.
+
+## Task-fit changes
+
+| Context | Added | Rationale |
+|---|---|---|
+| `VALIDATE_TIMING` | `gapSources: ["WHY_NOW"]` | WHY_NOW **is** the timing/urgency domain |
+| `ASSESS_RISK` | `gapSources: ["CONTEXT_HEALTH"]` | stale / superseded / disputed / weakly-evidenced context is risk to what we believe |
+| `QUALIFY` | `gaps: ["MISSING"]` → `gapSources: ["MEDDPICC"]` | **not in the named scope.** `MISSING` is the commonest kind, so QUALIFY was treating a *timing* gap as a qualification gap — the same semantic confusion this chunk exists to fix. Caught by a test; source is the precise signal now that it travels. |
+
+All matching is on canonical enums. No keyword framework was introduced.
+
+## Measured effect on the Globex pursuit
+
+| | before 5B-1 | after |
+|---|---|---|
+| GENERAL top 5 | five coverage gaps, all tied at 69 | economic buyer 69 · timing anchor 67 · decision process 62 · paper process 62 · value driver 60 |
+| task contexts that reorder | 4 of 6 | **6 of 6** |
+| VALIDATE_TIMING leader | "No economic buyer identified" (69) | **"No verified timing anchor" (79)** |
+| verifier | 42 / 0 | **47 / 0** |
+
+The GENERAL ordering now mirrors the upstream gap ranking exactly, which is the
+whole point of D-019.

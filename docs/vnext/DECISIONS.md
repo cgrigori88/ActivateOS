@@ -305,3 +305,45 @@ complete visible ranking with and without a restricted item present, asserting
 the scores and order are identical. `composeMissingContext` applies the same rule
 and additionally refuses to report un-entitled information as the caller's own
 knowledge gap — a boundary is not a hole.
+
+---
+
+## D-019 · Composition must preserve upstream meaning
+
+**Decision.**
+
+> A downstream intelligence layer may re-rank information for a task, but it must
+> not silently discard the importance, source, state, confidence, provenance, or
+> other decision-relevant semantics established by an upstream canonical or
+> read-model layer.
+
+**Why.** Chunk 5A's harness caught exactly this failure. `composeMissingContext`
+ranked the Globex pursuit's gaps carefully — economic buyer 80, timing anchor 72,
+qualification 56, value drivers 50 — and the conversion into
+`PertinenceCandidate` kept only `gapKind`. All eleven MISSING gaps then tied on
+linkage, the two most important gaps vanished from the top five, and the timing
+task could not see a timing gap. The information was not wrong anywhere; it was
+*dropped in transit*.
+
+**The division of authority this implies.**
+
+| Layer | Authoritative for |
+|---|---|
+| Upstream (gap / canonical read-model) | gap kind and state · source and domain · declared importance / rank · explanation · provenance |
+| Downstream (pertinence) | task-relative relevance · user- and scope-relative relevance · recency · pursuit linkage · unresolved state · corroboration |
+
+**This is not a licence to duplicate business logic.** Preserving upstream
+meaning means *carrying* it, never recomputing a parallel version of it. If a
+downstream layer needs a number the upstream layer already produced, it takes
+that number.
+
+**And carrying is not the same as adding.** Where the upstream value and a
+downstream signal answer the *same* question, the richer one **replaces** the
+coarser one — it is never summed on top, which would count one business signal
+twice and make the arithmetic indefensible. Where they answer *different*
+questions (upstream importance vs task fit), they are separate contributions.
+
+**Test for a violation:** can a reader answer "why did this rank here?" from the
+exposed contributions alone? If the answer requires knowing something the
+upstream layer decided and the downstream layer silently re-derived, the
+composition is wrong.

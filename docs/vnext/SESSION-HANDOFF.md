@@ -10,12 +10,12 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-12T05:30Z (Saturday) |
+| **Date/time** | 2026-09-12T06:40Z (Saturday) |
 | **Repository** | `cgrigori88/ActivateOS` — working dir `/home/user/ActivateOS` |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `0f86079` — "feat(vnext): connect living pursuit context loaders" (+ a docs commit on top) |
+| **Current commit** | `1b05b8a` — "fix(vnext): preserve gap semantics in pursuit pertinence" (+ a docs commit on top) |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | Vertical Slice 1, **chunk 5A** (loaders + verifier). Chunks 5B–8 NOT STARTED. |
+| **Session completed** | Vertical Slice 1, **chunk 5B-1** (gap-semantics composition fix). Chunk 5B-2 onward NOT STARTED. |
 | **Preview URL** | **UNVERIFIED** — unchanged from Session 0 |
 | **Preview data safety** | **UNKNOWN** — unchanged from Session 0 |
 
@@ -37,7 +37,36 @@
 | 3 | `ac572ba` | feat(vnext): compose ranked missing-context read model |
 | 4 | `77f72ef` | feat(vnext): add pursuit pertinence read model |
 | — | `a13c2fa` | docs(vnext): record chunks 1–4 as built |
-| **5A** | **`0f86079`** | **feat(vnext): connect living pursuit context loaders** |
+| 5A | `0f86079` | feat(vnext): connect living pursuit context loaders |
+| — | `9744335`, `20ee049` | docs(vnext): chunk 5A record + handoff correction |
+| **5B-1** | **`1b05b8a`** | **fix(vnext): preserve gap semantics in pursuit pertinence** |
+
+## Chunk 5B-1 files
+
+| File | Change |
+|---|---|
+| `src/lib/pursuits/read-models/pertinence.ts` | `gapRank` / `gapSource` / `whyItMatters` on the candidate; GAP linkage uses the upstream rank; `TASK_FIT` matches `GapSource` |
+| `src/lib/pursuits/read-models/context-loaders.ts` | carries `rank`, `source`, `whyItMatters` from `ContextGap` |
+| `scripts/vnext-context-verify.ts` | 5 new assertions + all six task contexts reported |
+| `tests/vnext-gap-pertinence.test.ts` | **new** — 13 tests |
+
+**Semantic fields preserved:** `gapRank` (upstream importance), `gapSource`
+(producing domain), `whyItMatters` (upstream explanation), `gapKind` (four-state).
+
+**Ranking design:** substitution, not addition. Upstream rank
+(`KIND_WEIGHT + SOURCE_WEIGHT + blocking`) **replaces** `LINKAGE_BY_GAP[kind]` at
+the same 0.30 linkage weight, because both encode the same question at different
+resolutions. Nothing is summed on top, so gap kind is never counted twice —
+pinned by a test asserting two gaps with equal rank but different kind score
+identically. Normalised against the fixed 0..100 scale, never against the other
+candidates, so no score depends on its neighbours (which would break D-018).
+
+**Disclosure invariance evidence:** two tests add a *top-ranked* inaccessible gap
+(rank 100 / rank 95) to a guest's candidate set and assert the visible items,
+scores and order are byte-identical to the set without it — once under GENERAL,
+once under a task that would have boosted it. The verifier re-proves it against
+the real world by comparing a guest ranking to an independently ranked
+guest-visible subset.
 
 ## Chunk 5A files
 
@@ -72,13 +101,21 @@ them. They are unreachable from any rendered path.
 
 ## Tests and build
 
-| Check | Session 0 baseline | After 1–4 | After 5A |
-|---|---|---|---|
-| `npx tsc --noEmit` | exit 0 | exit 0 | **exit 0** |
-| `npm test` | 149 / 0 | 220 / 0 | **220 pass / 0 fail** |
-| `npm run build` | exit 0 | exit 0 | **exit 0** |
-| `vnext-context` verifier | — | — | **42 passed / 0 failed** |
-| SEEDED spot-check | — | — | **interpret 255 · lifecycle-query 80 · value-case 126 · stakeholder-intel 43** |
+| Check | Session 0 | After 1–4 | After 5A | After 5B-1 |
+|---|---|---|---|---|
+| `npx tsc --noEmit` | exit 0 | exit 0 | exit 0 | **exit 0** |
+| `npm test` | 149 / 0 | 220 / 0 | 220 / 0 | **233 pass / 0 fail** |
+| `npm run build` | exit 0 | exit 0 | exit 0 | **exit 0** |
+| `vnext-context` verifier | — | — | 42 / 0 | **47 passed / 0 failed** |
+| SEEDED spot-check | — | — | green | **interpret 255 · lifecycle-query 80 · value-case 126 · stakeholder-intel 43** |
+
+### Chunk 5B-1 measured effect (Globex pursuit, local synthetic world)
+
+| | before | after |
+|---|---|---|
+| GENERAL top 5 | five coverage gaps tied at 69 | economic buyer 69 · timing anchor 67 · decision process 62 · paper process 62 · value driver 60 |
+| task contexts that reorder | 4 of 6 | **6 of 6** |
+| VALIDATE_TIMING leader | "No economic buyer identified" (69) | **"No verified timing anchor" (79)** |
 
 ### Local synthetic database — how it was established
 
@@ -226,35 +263,41 @@ writes). B-2 must be resolved before GATE E.
 
 ## Exact next action
 
-**Nothing. Chunk 5A is complete and this session STOPPED by instruction.**
+**Nothing. Chunk 5B-1 is complete and this session STOPPED by instruction.**
 
-Chunk 5B must not begin without explicit approval: it is the first change to
+Chunk 5B-2 must not begin without explicit approval: it is the first change to
 what the demo shows, and it lands on the itinerary's §2 hero screen.
 
-### Recommended chunk 5B scope
+### Recommended chunk 5B-2 scope — the first rendered change
 
-Two commits, in this order, each independently revertible:
+**Switch Pursuit Detail's facts from account scope to pursuit scope, flag-gated.**
 
-**5B-1 — feed the gap rank into pertinence (still no rendered change).**
-Carry `rank` and `source` from `ContextGap` onto `PertinenceCandidate`, and let
-linkage use them rather than `gapKind` alone. This fixes the chunk-5A finding:
-today all same-kind gaps tie, so the economic-buyer gap (80) and the
-timing-anchor gap (72) are buried under coverage gaps (69). Also give
-`VALIDATE_TIMING` and `ASSESS_RISK` a way to match a gap's `source`, so the most
-obviously timing-relevant item is not invisible to the timing task. Verify with
-`vnext-context-verify` plus the chunk-4 unit tests. No consumer yet.
+In `src/lib/pursuits/read-models/detail.ts`, `getFacts(db, r.account_id)`
+currently takes the top 20 facts for the whole *company* by confidence. It
+ignores `pursuit_facts`, which already models fact→pursuit linkage with a typed
+`relevance_type`. So the Facts panel can show facts irrelevant to this pursuit
+and hide relevant lower-confidence ones.
 
-**5B-2 — pursuit-scoped facts on Pursuit Detail, flag-gated.**
-Switch `getFacts(db, r.account_id)` in `read-models/detail.ts` to pursuit scope
-via `pursuit_facts`, ordered by relevance then freshness, behind
-`VNEXT_CONTEXT_HEALTH_ENABLED`. **Flag OFF must produce a byte-identical
-payload** — assert it, do not assume it. Then walk the itinerary's §2 beat with
-the flag both ways and compare.
+Replace it with a pursuit-scoped read ordered by relevance then freshness,
+behind `VNEXT_CONTEXT_HEALTH_ENABLED`.
 
-If pursuit-scoping makes the hero screen worse, keep account-scoping and record
-why. That outcome is allowed and is not a failure.
+Non-negotiable conditions:
 
-**Do not** compose the narrative surface (chunk 6) in 5B.
+1. **Flag OFF must produce a byte-identical payload.** Assert it in the
+   integration harness — do not assume it. This is the whole safety argument.
+2. **Walk the itinerary's §2 beat with the flag both ways** and compare, on the
+   local synthetic world, before anything else.
+3. If pursuit-scoping makes the hero screen *worse* — Globex has only **one**
+   linked fact, so a pursuit-scoped panel may be nearly empty where the
+   account-scoped one is full — **keep account-scoping and record why.** That
+   outcome is allowed and is not a failure. The one-linked-fact count is already
+   visible in the verifier output.
+4. No narrative composition (that is chunk 6), no new panel, no UI beyond the
+   scope switch.
+
+A reasonable alternative, if §2 degrades: render pursuit-scoped facts *first*
+and account-scoped facts behind progressive disclosure, so nothing is lost. That
+is a larger change and should be its own decision.
 
 ---
 
@@ -266,7 +309,7 @@ cd /home/user/ActivateOS
 # 1. Confirm the lane and that nothing drifted.
 git fetch --all --tags
 git checkout roadmap/pursuitos-vnext
-git log --oneline -7                      # expect docs, 0f86079, a13c2fa, 77f72ef, ac572ba, b6b7b33, d1e5685
+git log --oneline -9                      # newest: docs, 1b05b8a, 20ee049, 9744335, 0f86079, a13c2fa, 77f72ef, ac572ba, b6b7b33
 git status --porcelain                    # expect clean
 git rev-parse origin/claude/activateos-platform-review-xzkgmd   # expect 97e975f0…  (unchanged)
 
@@ -279,11 +322,11 @@ sed -n '/^# AS-BUILT/,$p' docs/vnext/SLICE-1-LIVING-PURSUIT-CONTEXT.md
 # 3. Re-establish the baseline before changing anything.
 npm install
 npx tsc --noEmit                          # expect exit 0
-npm test                                  # expect 220/220
+npm test                                  # expect 233/233
 
 # 4. Re-establish the local synthetic DB before touching the loaders
 #    (see "Local synthetic database" above — pgvector is required).
-#    Then: npx tsx scripts/vnext-context-verify.ts   # expect 42/42
+#    Then: npx tsx scripts/vnext-context-verify.ts   # expect 47/47
 npm run build                             # expect exit 0
 ```
 
