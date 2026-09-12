@@ -1,7 +1,7 @@
 # Vertical Slice 1 — Living Pursuit Context
 
-**Status:** `BUILDING` — chunks 1–4 complete (2026-09-12). Chunks 5–8 **NOT STARTED**;
-chunk 5 needs explicit approval because it is the first change to what the demo shows.
+**Status:** `BUILDING` — chunks 1–4 and 5A complete (2026-09-12). Chunks 5B–8 **NOT STARTED**;
+5B needs explicit approval because it is the first change to what the demo shows.
 **Phase:** P1 · **Flag family:** `VNEXT_CONTEXT_HEALTH/STATE/MEMORY/INTELLIGENCE`
 **Written:** 2026-09-12T02:47Z · **As-built section appended:** 2026-09-12T04:05Z
 
@@ -320,3 +320,104 @@ Unchanged from the plan: switching `getFacts` from account-scope to
 `pursuit_facts` is the first change to what the demo shows, and it lands on the
 itinerary's §2 hero screen. Flag-gated, and the beat must be walked both ways
 before any promotion.
+
+---
+
+# AS-BUILT — chunk 5A (2026-09-12)
+
+Loaders and the integration harness are complete. **Chunk 5B is NOT STARTED.**
+
+## What shipped
+
+| File | Role |
+|---|---|
+| `src/lib/pursuits/read-models/context-loaders.ts` | Four thin loaders + four convenience `load*` wrappers |
+| `scripts/vnext-context-verify.ts` | 42-assertion read-only integration harness |
+| `scripts/verify-classes.ts` | registry entry `vnext-context` (**SEEDED**) |
+| `src/lib/intel/company-intel.ts` | one word: `export function familiesFromSignalTypes` |
+
+Commit `0f86079`. No rendered consumer; nothing imports `context-loaders`.
+
+## Canonical source → read-model
+
+| Read-model input | Canonical source |
+|---|---|
+| `ContextHealthInput.facts` | `pursuit_facts pf JOIN facts f ON f.id = pf.ref_id`, scoped `pf.pursuit_id` + `f.org_id` |
+| `.completeness` | `provider_runs` (status `succeeded`, grouped by `provider_id`) + `distinct signals.signal_type` → `familiesFromSignalTypes()` |
+| `.openContradictions` | `fact_contradictions` where `status='open'` and either fact side is linked to the pursuit |
+| `LedgerRow[]` | `change_ledger` where `pursuit_id` + `org_id`, `order by occurred_at desc`, **no materiality predicate** |
+| `MissingContextInput.stakeholderCoverage` | `getStakeholderCoverage(db, orgId, pursuitId)` |
+| `.meddpicc` | `meddpiccFor(db, [coverage.opportunityIds[0]])` — `null` when no linked opportunity |
+| `.valueCase` | `getValueCase(db, orgId, pursuitId)` → `{ state, missingDrivers: .missing }` |
+| `.whyNow` | `getPursuitWhyNow(db, pursuitId)` |
+| `.contextHealth` | `loadContextHealth(...)` |
+| `PertinenceCandidate[]` | linked facts (non-REJECTED) + memory entries + `composeMissingContext` gaps |
+
+## Decisions taken inside the loaders
+
+**`requiredCategories` is deliberately unset.** Which coverage categories a
+use-case depends on is policy, and encoding it in a loader would be the second
+business-logic layer this chunk exists to avoid. Unset, `computeContextHealth`
+judges against every category — the honest default when the dependency is
+undeclared. Declaring it is follow-up work that belongs beside the other
+coverage policy.
+
+**Null `facts.disclosure_class` normalises to `INTERNAL`.** Not a new rule: the
+existing `PARTNER_WITHHELD` in `src/lib/value/drivers.ts` already documents
+"NULL = unclassified = INTERNAL" and `partnerVisible()` treats null as withheld.
+
+**Null `pursuit_facts.relevance_type` normalises to `SUPPORTING_CONTEXT`** — the
+neutral member of the existing vocabulary, not a new default.
+
+## Verifier classification: SEEDED, not the requested EITHER
+
+The brief asked for EITHER. `verify-classes.ts` defines EITHER as "run-scoped
+fixtures, no reliance on demo content", and `verify-run.ts` gives EITHER suites a
+**disposable** database. The brief also required the harness to mutate nothing.
+Those two constraints are incompatible: a harness that writes nothing can only
+read demo content, which is the definition of SEEDED — and on a disposable
+database it would find no pursuit and assert nothing. Read-only was the stronger
+constraint, so the class follows it. The reasoning is recorded in the registry
+entry itself so it survives without this document.
+
+## Two findings the harness surfaced
+
+### 1. Synthetic-lineage defect in the canonical world — reported, not fixed
+
+Two `change_ledger` rows carry `data_environment = 'PRODUCTION'` in a wholly
+synthetic world: `PARTNER_OVERRIDE` and `OVERRIDE_RECORDED`, both on the Globex
+hero pursuit that the demo's §2 beat turns on.
+
+Cause: `recordChange()` defaults `dataEnvironment` to `'PRODUCTION'`
+(`src/lib/pursuits/ledger.ts`), and the two override call sites —
+`src/lib/routing/override.ts` and `src/lib/pursuits/overrides.ts` — omit it.
+
+Effect: those entries are not labelable as synthetic by any surface that reads
+`data_environment`.
+
+**Not fixed here.** It is a seed-path change two days before the demo, and the
+loader layer is the wrong place for it. The verifier prints it as a prominent
+warning and asserts loader *fidelity* — `synthetic` mirrors the ledger exactly —
+rather than world integrity, because conflating those two claims is what made my
+first assertion wrong.
+
+### 2. Pertinence task-fit ignores gap source — chunk 5B
+
+`"No verified timing anchor"` ranks **second** in missing-context (rank 72) but
+`VALIDATE_TIMING` does not lift it in pertinence. `TASK_FIT` matches `relevance`
+types and `refTypes`; a WHY_NOW gap's `refType` is the generic `"pursuit"`, so
+the single most timing-relevant item is invisible to the timing task.
+
+Relatedly, all gaps of one kind **tie** in pertinence: a GAP's linkage comes from
+`gapKind` alone, so the ranked order missing-context worked out — economic buyer
+80, timing anchor 72 — is discarded. The observed GENERAL top-5 is five coverage
+gaps at 69 while the two most important gaps do not appear.
+
+**Chunk 4 was not redesigned** — it is approved, and its behaviour is correct as
+specified. This is composition work: pertinence should consume the gap's `rank`
+and `source`, not just its `kind`.
+
+## Chunk 5B scope — unchanged risk
+
+Still the first change to what the demo shows, still on the itinerary's §2 hero
+screen, still flag-gated. See the recommendation in `SESSION-HANDOFF.md`.

@@ -1,7 +1,7 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-12T04:05Z
-**Lane:** `roadmap/pursuitos-vnext` @ `77f72ef` (Slice 1 chunks 1–4 complete)
+**Last updated:** 2026-09-12T05:30Z
+**Lane:** `roadmap/pursuitos-vnext` @ `0f86079` (Slice 1 chunks 1–5A complete)
 
 States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `BLOCKED`
 
@@ -25,15 +25,15 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | Capability | Phase | Status | Branch / commit | Updated | What remains | Known risks |
 |---|---|---|---|---|---|---|
 | Canonical commercial foundation | P0 | **DEMO CERTIFIED** (pre-existing) | `97e975f0` | 2026-09-03 | — | Substantially already built: orgs, companies, products, sellers, partners, opportunities, motions, campaigns, entity resolution, aliases, provenance |
-| Living Pursuit Context — **Vertical Slice 1** | P1 | **BUILDING** | `roadmap/pursuitos-vnext` @ `77f72ef` | 2026-09-12 | Chunks 1–4 done (read-models). Chunks 5–8 remain: pursuit-scoped facts, narrative surface, integration verifier, regression evidence | Chunk 5 is the first change to what the demo shows — see `SLICE-1-LIVING-PURSUIT-CONTEXT.md` §regression risk |
+| Living Pursuit Context — **Vertical Slice 1** | P1 | **BUILDING** | `roadmap/pursuitos-vnext` @ `77f72ef` | 2026-09-12 | Chunks 1–4 (read-models) + 5A (loaders + verifier) done. Chunks 5B–8 remain: pursuit-scoped facts on Detail, narrative surface, regression evidence | Chunk 5 is the first change to what the demo shows — see `SLICE-1-LIVING-PURSUIT-CONTEXT.md` §regression risk |
 | · pursuit-scoped facts on detail | P1 | **NOT STARTED** | — | 2026-09-12 | Switch `getFacts` from account-scope to `facts/pursuit-link.ts` | Changes what the Facts panel shows in the demo — flag-gated |
 | · fact freshness | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/facts/freshness.ts` | — | Compose at pursuit level | Exists per-fact; nothing composes per-pursuit |
 | · research coverage | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/intel/completeness.ts` | — | Compose at pursuit level | Account-scoped today |
-| · context health (pursuit level) | P1 | **BUILDING** | `d1e5685` `read-models/context-health.ts` | 2026-09-12 | SQL loader (chunk 5) | Pure function, 13 tests. Composes `factFreshness` + `computeCompleteness`; re-implements neither |
+| · context health (pursuit level) | P1 | **BUILDING** | `d1e5685` `read-models/context-health.ts` | 2026-09-12 | Consumer (chunk 5B) | Pure function, 13 tests. Composes `factFreshness` + `computeCompleteness`; re-implements neither |
 | · pursuit state | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/pursuits/lifecycle.ts`, `src/lib/lifecycle/state.ts` | — | Surface as "current state" narrative | — |
-| · pursuit memory | P1 | **BUILDING** | `b6b7b33` `read-models/memory.ts` | 2026-09-12 | SQL loader (chunk 5) | Pure function, 21 tests. Business-time ordering, no materiality filter, ledger never mutated |
-| · what's missing (ranked) | P1 | **BUILDING** | `ac572ba` `read-models/missing-context.ts` | 2026-09-12 | SQL loader (chunk 5) | Pure function, 15 tests. Composes the 4 existing gap computations; adds no fifth |
-| · pertinence (pursuit + decision scoped) | P2 | **BUILDING** | `77f72ef` `read-models/pertinence.ts` | 2026-09-12 | SQL loader (chunk 5) | Pure function, 18 tests. **Pursuit-scoped, not portfolio-scoped** — see D-017 |
+| · pursuit memory | P1 | **BUILDING** | `b6b7b33` `read-models/memory.ts` | 2026-09-12 | Consumer (chunk 5B) | Pure function, 21 tests. Business-time ordering, no materiality filter, ledger never mutated |
+| · what's missing (ranked) | P1 | **BUILDING** | `ac572ba` `read-models/missing-context.ts` | 2026-09-12 | Consumer (chunk 5B) | Pure function, 15 tests. Composes the 4 existing gap computations; adds no fifth |
+| · pertinence (pursuit + decision scoped) | P2 | **BUILDING** | `77f72ef` `read-models/pertinence.ts` | 2026-09-12 | Consumer (chunk 5B) | Pure function, 18 tests. **Pursuit-scoped, not portfolio-scoped** — see D-017 |
 | · why this pursuit (portfolio-relative) | P2 | **NOT STARTED** | — | 2026-09-12 | Deferred to Slice 3 — needs cross-pursuit inputs | D-017: a different computation from pertinence |
 | Pursuit Intelligence | P2 | **NOT STARTED** | — | 2026-09-12 | Slice 3 | Depends on Slice 1 |
 | Next Move / coordination | P3 | **NOT STARTED** | — | 2026-09-12 | Slice 2 | Depends on Slice 1 |
@@ -49,11 +49,13 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 
 ## Validation
 
-| Check | Session 0 baseline | After Slice 1 chunks 1–4 |
-|---|---|---|
-| `npx tsc --noEmit` | exit 0 | **exit 0** |
-| `npm test` | 149 pass / 0 fail | **220 pass / 0 fail** |
-| `npm run build` | exit 0 | **exit 0** |
+| Check | Session 0 baseline | After chunks 1–4 | After chunk 5A |
+|---|---|---|---|
+| `npx tsc --noEmit` | exit 0 | exit 0 | **exit 0** |
+| `npm test` | 149 pass / 0 fail | 220 pass / 0 fail | **220 pass / 0 fail** |
+| `npm run build` | exit 0 | exit 0 | **exit 0** |
+| `vnext-context` verifier | — | — | **42 passed / 0 failed** |
+| SEEDED spot-check | — | — | **interpret 255 · lifecycle-query 80 · value-case 126 · stakeholder-intel 43, all green** |
 
 **Zero pre-existing failures at any point.** The 71 added tests are 4 flag tests
 (Session 0) plus 67 read-model tests (chunks 1–4: 13 + 21 + 15 + 18). Any future
@@ -70,4 +72,6 @@ affect them): the 33 verifier suites. Run them before GATE B.
 |---|---|
 | `.env.example` incomplete | Missing `PURSUITOS_ENV`, `OPS_FINGERPRINT_TOKEN`, `DATABASE_URL_OWNER`, `BASIC_AUTH_*`, and the shipped feature-flag variables. The vNext block was added in Session 0; the rest was deliberately left to keep the diff reviewable. |
 | `audit/DEMO-ITINERARY.md` ambiguity | Says the demo runs "under `app_rw` + FORCE RLS". True of the **local** demo; **not** true of hosted `demo.pursuitos.io`, which runs as `postgres`/`BYPASSRLS`. Not wrong, but reads as a stronger claim about the hosted demo than the evidence supports. Recorded in `ENVIRONMENT-MAP.md` §4. |
+| **Synthetic-lineage defect (NEW, found by the chunk-5A harness)** | Two `change_ledger` rows in the canonical synthetic world carry `data_environment = 'PRODUCTION'` — `PARTNER_OVERRIDE` and `OVERRIDE_RECORDED`, on the Globex hero pursuit the demo's §2 beat turns on. Cause: `recordChange()` defaults `dataEnvironment` to `'PRODUCTION'` (`src/lib/pursuits/ledger.ts`) and the two override call sites omit it, so those entries are not labelable as synthetic. **Not fixed** — it is a seed-path change two days before the demo. Fix after Monday by passing `dataEnvironment` at `src/lib/routing/override.ts` and `src/lib/pursuits/overrides.ts`. |
+| **Pertinence task-fit ignores gap source (NEW)** | "No verified timing anchor" ranks 2nd in missing-context but `VALIDATE_TIMING` does not lift it, because `TASK_FIT` matches relevance types and refTypes while a WHY_NOW gap's refType is the generic `pursuit`. Relatedly, all same-kind gaps tie because a GAP's linkage comes from `gapKind` alone and the gap's own `rank` is not consumed. Chunk 5B. |
 | Task #67 outstanding | `audit/TASK-67-RLS-RUNTIME-CUTOVER-PLAN.md`. RLS fully built, fully inert on the app path. Not a vNext dependency, but it is the highest-value hardening item. |

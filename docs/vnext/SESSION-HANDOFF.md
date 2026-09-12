@@ -10,12 +10,12 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-12T04:05Z (Saturday) |
+| **Date/time** | 2026-09-12T05:30Z (Saturday) |
 | **Repository** | `cgrigori88/ActivateOS` — working dir `/home/user/ActivateOS` |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `77f72ef` — "feat(vnext): add pursuit pertinence read model" (+ a docs commit on top) |
+| **Current commit** | `0f86079` — "feat(vnext): connect living pursuit context loaders" (+ a docs commit on top) |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | Vertical Slice 1, **chunks 1–4 only**. Chunks 5–8 NOT STARTED. |
+| **Session completed** | Vertical Slice 1, **chunk 5A** (loaders + verifier). Chunks 5B–8 NOT STARTED. |
 | **Preview URL** | **UNVERIFIED** — unchanged from Session 0 |
 | **Preview data safety** | **UNKNOWN** — unchanged from Session 0 |
 
@@ -36,9 +36,21 @@
 | 2 | `b6b7b33` | feat(vnext): add chronological pursuit memory read model |
 | 3 | `ac572ba` | feat(vnext): compose ranked missing-context read model |
 | 4 | `77f72ef` | feat(vnext): add pursuit pertinence read model |
-| — | (docs) | docs(vnext): record chunks 1–4 as built |
+| — | `a13c2fa` | docs(vnext): record chunks 1–4 as built |
+| **5A** | **`0f86079`** | **feat(vnext): connect living pursuit context loaders** |
 
-## Files added — and nothing else touched
+## Chunk 5A files
+
+| File | Change |
+|---|---|
+| `src/lib/pursuits/read-models/context-loaders.ts` | **new** — four thin loaders + convenience wrappers |
+| `scripts/vnext-context-verify.ts` | **new** — 42-assertion read-only integration harness |
+| `scripts/verify-classes.ts` | modified — registry entry `vnext-context` (SEEDED) |
+| `src/lib/intel/company-intel.ts` | modified — **one word**: `export function familiesFromSignalTypes`. Zero runtime effect. |
+
+Nothing imports `context-loaders`; there is still no rendered consumer.
+
+## Chunk 1–4 files — and nothing else touched
 
 | File | Lines |
 |---|---|
@@ -60,11 +72,36 @@ them. They are unreachable from any rendered path.
 
 ## Tests and build
 
-| Check | Session 0 baseline | Now |
-|---|---|---|
-| `npx tsc --noEmit` | exit 0 | **exit 0** |
-| `npm test` | 149 pass / 0 fail | **220 pass / 0 fail** |
-| `npm run build` | exit 0 | **exit 0** |
+| Check | Session 0 baseline | After 1–4 | After 5A |
+|---|---|---|---|
+| `npx tsc --noEmit` | exit 0 | exit 0 | **exit 0** |
+| `npm test` | 149 / 0 | 220 / 0 | **220 pass / 0 fail** |
+| `npm run build` | exit 0 | exit 0 | **exit 0** |
+| `vnext-context` verifier | — | — | **42 passed / 0 failed** |
+| SEEDED spot-check | — | — | **interpret 255 · lifecycle-query 80 · value-case 126 · stakeholder-intel 43** |
+
+### Local synthetic database — how it was established
+
+PostgreSQL 16.13 from `/usr/lib/postgresql/16/bin`, `initdb` as the `postgres`
+user (it refuses to run as root) under `/var/lib/postgresql/vnext/pgdata`, port
+5433. **`pgvector` is required** — `0001_core_schema.sql` does
+`create extension vector` — and is not installed by default:
+`apt-get install -y postgresql-16-pgvector`, then restart the server.
+
+```sh
+export DEMO_PGHOST=127.0.0.1 DEMO_PGPORT=5433 DEMO_DB_NAME=pursuit_demo
+export DEMO_ADMIN_URL="postgresql://postgres:postgres@127.0.0.1:5433/postgres"
+export DEMO_URL="postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo"
+npx tsx scripts/seed-demo-world.ts            # all 10 layers + verify()
+export DATABASE_URL_VERIFY="$DEMO_URL"
+npx tsx scripts/vnext-context-verify.ts       # 42/42
+```
+
+The seeded world reconciled exactly against the certified canonical facts:
+3 orgs · 14 companies · 19 opportunities · **11 open** · **$8,040,000** ·
+14 pursuits · `environment_identity` = `demo` / `is_synthetic=true`.
+
+**No hosted database was contacted at any point.**
 
 71 tests added in total: 4 flag tests (Session 0) + 67 read-model tests
 (13 + 21 + 15 + 18). **Zero pre-existing failures at any point**, so any future
@@ -78,6 +115,27 @@ verified by hand and the *test* corrected, not the implementation.
 ---
 
 ## Architectural discoveries
+
+**0. (chunk 5A) Two real findings the integration harness surfaced.**
+
+*A world defect, reported not fixed.* Two `change_ledger` rows in the wholly
+synthetic canonical world carry `data_environment = 'PRODUCTION'` —
+`PARTNER_OVERRIDE` and `OVERRIDE_RECORDED`, on the **Globex hero pursuit the
+demo's §2 beat turns on**. Cause: `recordChange()` defaults `dataEnvironment` to
+`'PRODUCTION'` (`src/lib/pursuits/ledger.ts`) and the two override call sites
+(`src/lib/routing/override.ts`, `src/lib/pursuits/overrides.ts`) omit it, so
+those entries are not labelable as synthetic. **Left alone** — a seed-path change
+two days before the demo is not worth it. Fix after Monday by passing
+`dataEnvironment` at the two call sites.
+
+*Pertinence task-fit ignores gap source.* `"No verified timing anchor"` ranks
+second in missing-context (72) but `VALIDATE_TIMING` does not lift it, because
+`TASK_FIT` matches relevance types and refTypes while a WHY_NOW gap's `refType`
+is the generic `"pursuit"`. Relatedly, all same-kind gaps **tie** in pertinence:
+a GAP's linkage comes from `gapKind` alone, so missing-context's carefully ranked
+order (economic buyer 80, timing anchor 72) is discarded and the GENERAL top-5 is
+five coverage gaps at 69. Chunk 4 was **not** redesigned — this is composition
+work for 5B: pertinence should consume the gap's `rank` and `source`.
 
 **1. The house four-state conclusion vocabulary.** Three domains already express
 a four-way judgement separating verified / inferred / degraded / absent:
@@ -144,7 +202,7 @@ accurate.
 | B-2 | **Live serving SHA unresolved** | Cannot certify any promotion | `/api/build` with `OPS_FINGERPRINT_TOKEN`, or the Vercel API |
 | B-3 | Tag pushes refused (403) | Cosmetic — durable references exist | None needed |
 
-Neither B-1 nor B-2 blocked chunks 1–4, and neither blocks chunk 5 (still no
+Neither B-1 nor B-2 blocked chunks 1–4 or 5A, and neither blocks 5B (still no
 writes). B-2 must be resolved before GATE E.
 
 ---
@@ -197,7 +255,7 @@ cd /home/user/ActivateOS
 # 1. Confirm the lane and that nothing drifted.
 git fetch --all --tags
 git checkout roadmap/pursuitos-vnext
-git log --oneline -6                      # expect the docs commit, then 77f72ef ac572ba b6b7b33 d1e5685
+git log --oneline -7                      # expect docs, 0f86079, a13c2fa, 77f72ef, ac572ba, b6b7b33, d1e5685
 git status --porcelain                    # expect clean
 git rev-parse origin/claude/activateos-platform-review-xzkgmd   # expect 97e975f0…  (unchanged)
 
@@ -211,6 +269,10 @@ sed -n '/^# AS-BUILT/,$p' docs/vnext/SLICE-1-LIVING-PURSUIT-CONTEXT.md
 npm install
 npx tsc --noEmit                          # expect exit 0
 npm test                                  # expect 220/220
+
+# 4. Re-establish the local synthetic DB before touching the loaders
+#    (see "Local synthetic database" above — pgvector is required).
+#    Then: npx tsx scripts/vnext-context-verify.ts   # expect 42/42
 npm run build                             # expect exit 0
 ```
 
