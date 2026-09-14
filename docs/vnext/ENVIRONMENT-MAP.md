@@ -49,7 +49,7 @@ behaviour. Retries succeed. Expect it when probing from Claude Code Web.
 | `demo.pursuitos.io` (production scope of `PursuitOS-demo`) | Supabase `pursuitos-demo`, ref `qifatlqxfuhwrwvpbwsc`, `ca-central-1`, PG 17.6.1.166 | **SYNTHETIC.** `environment_identity` singleton: `environment='demo'`, `is_synthetic=true`, label "pursuitos-demo — TD SYNNEX walkthrough" | Read-only Supabase audit, 2026-09-07 |
 | Local development | Local Postgres `pursuit_demo` (default port 5433) | **SYNTHETIC.** Built by `scripts/demo-db.ts` → `demo-enrich.ts` → `demo-stories.ts`, orchestrated by `seed-demo-world.ts` | `scripts/demo-db.ts` header |
 | Verifier runs | Disposable databases per run | Synthetic run-scoped fixtures | `scripts/verify-classes.ts`, `verify-run.ts` |
-| vNext isolated target | Supabase project ref `mejokqxriwyawfhawuxu`. Initialized via `aws-0-ca-central-1.pooler.supabase.com:5432` (session pooler); **as of 2026-09-14T16:49Z the supplied `DEMO_TARGET_URL` parses to the same host on `:6543` (transaction pooler)** — parsed only, never printed. Supplied to vNext sessions as `DEMO_TARGET_URL`. | **SYNTHETIC.** `environment_identity` singleton: `environment='demo'`, `is_synthetic=true`, label "pursuitos-vnext — isolated synthetic preview". Migrated **103/103** (0103 applied 2026-09-14T16:49Z); canonical world seeded and reconciled exactly (manifest digest `be0da833990ce436`); Slice 2A Globex plan layer installed (1 goal · 1 plan · 1 recommendation · 0 decisions). **Known defect: no pursuit team — 0 `pursuit_team_requirements`, 0 `pursuit_team_members` (§10, 16:49Z).** **Not yet connected to any Vercel scope.** | `migrate.ts`, `environment-identity.ts --set demo` + read-back, `seed-demo-world.ts` `verify()`, `demo-manifest.ts`, read-only reconciliation — from a laptop, 2026-09-14T02:59Z; 0103 + plan layer, 2026-09-14T16:49Z. See §10 |
+| vNext isolated target | Supabase project ref `mejokqxriwyawfhawuxu`. Initialized via `aws-0-ca-central-1.pooler.supabase.com:5432` (session pooler); **as of 2026-09-14T16:49Z the supplied `DEMO_TARGET_URL` parses to the same host on `:6543` (transaction pooler)** — parsed only, never printed. Supplied to vNext sessions as `DEMO_TARGET_URL`. | **SYNTHETIC.** `environment_identity` singleton: `environment='demo'`, `is_synthetic=true`, label "pursuitos-vnext — isolated synthetic preview". Migrated **103/103** (0103 applied 2026-09-14T16:49Z); canonical world seeded and reconciled exactly (manifest digest `be0da833990ce436`); Slice 2A Globex plan layer installed (1 goal · 1 plan · 1 recommendation · 0 decisions). ~~Known defect: no pursuit team~~ **Fixed and reseeded 2026-09-14 (`6ab3599`): 5 canonical team requirements, 45 team members, Globex ledger 10 — the world now matches a fresh local build table for table (§10, "team layer repaired").** **Not yet connected to any Vercel scope.** | `migrate.ts`, `environment-identity.ts --set demo` + read-back, `seed-demo-world.ts` `verify()`, `demo-manifest.ts`, read-only reconciliation — from a laptop, 2026-09-14T02:59Z; 0103 + plan layer, 2026-09-14T16:49Z. See §10 |
 | vNext preview (Vercel scope) | **UNKNOWN — see §6. Assume it is the hosted demo database until proven otherwise.** No Preview-scoped `DATABASE_URL` has been created. | — | — |
 
 ### Canonical synthetic demo facts (certified)
@@ -288,6 +288,12 @@ fact task #67's cutover must prove. Adding `database.role` is part of that plan.
     `verify()` or the manifest notices. This includes `mejokqxriwyawfhawuxu`, and
     would include the Monday demo database if it was ever reseeded in place
     (**UNVERIFIED** for that database — not queried). (§10)
+    **FIXED in code 2026-09-14 (`6ab3599`)** — the canonical seed now
+    re-establishes the five global requirements on both paths — and
+    `mejokqxriwyawfhawuxu` has been reseeded with the fix (§10, 21:08Z). **Still
+    open:** any *other* database seeded in place before the fix keeps the
+    defect until it is reseeded. Whether that includes the Monday demo database
+    remains **UNVERIFIED**; it was not queried, per standing instruction.
 
 ---
 
@@ -618,3 +624,35 @@ without the SET option — **UNVERIFIED**. Any harness that impersonates `app_rw
 cannot run those checks as `postgres` on this host. The grant-level
 equivalents (`has_table_privilege`, `relforcerowsecurity`, `pg_policies`) can
 run, and pass.
+
+### 2026-09-14T21:08Z — team layer repaired: fixed in code, target reseeded
+
+Fix `6ab3599`: the canonical seed re-establishes the five global team
+requirements from `src/lib/routing/team-requirements.ts` on both provisioning
+paths (0075 untouched; no new migration). Then `seed-demo-world.ts` ran
+**in place** on `mejokqxriwyawfhawuxu`, through the same guard and four-variable
+binding as above: 11/11 layers ok, `verify()` all ok. Full record:
+`SESSION-HANDOFF.md` § "Hosted team-layer repair".
+
+| Fact | Before repair | After repair |
+|---|---|---|
+| `pursuit_team_requirements` | 0 | **5** (canonical, once each) |
+| `pursuit_team_members` | 0 | **45** |
+| Globex ledger | 9 | **10** (one "Team assembled (5 roles)") |
+| Globex plan owner | `UNASSIGNED` | **`ROLE_UNFILLED`** — "Account executive role proposed — no one confirmed yet" |
+| Manifest digest | `be0da833990ce436` | `be0da833990ce436` |
+
+**The world now matches a fresh local build table for table.** The only
+differences are `org_members` (the operator membership, carried by design) and
+the migration tracker. Team digest `b63845ca021fe143` is identical on hosted and
+local.
+
+**The `app_rw` shape, now fully read (read-only):** PG 17.6. `app_rw` is
+`NOLOGIN`. `postgres` holds it with `admin_option` true, `set_option` false and
+`inherit_option` false, granted by `supabase_admin`. So `SET ROLE app_rw` is
+refused by design (the earlier "consistent with PG16+" inference is now
+confirmed). No `app_rw` credential exists for this project. Acting as `app_rw`
+here would need a role or grant change — a login password, or a SET grant to
+`postgres` — which is out of scope. The four as-`app_rw` verifier checks are
+therefore **environmentally not run** on this host, and their grant/RLS
+equivalents pass.

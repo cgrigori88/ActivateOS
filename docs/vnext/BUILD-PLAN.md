@@ -87,8 +87,9 @@ SLICE 1  Living Pursuit Context            (P1)        DEMO CERTIFIED / FROZEN
    │      context health · state · memory · why/why-now/what's-missing
    ↓
 SLICE 2A Pursuit Coordination              (P3)        PREVIEW READY (local)  ← current
-   │      hosted isolated DB: schema + Globex plan installed 2026-09-14T16:49Z;
-   │      hosted verification PARTIAL (world has no pursuit team) — not certified
+   │      hosted isolated DB: schema + Globex plan installed; the no-team seeding defect
+   │      fixed (`6ab3599`) and the world reseeded — coordination 112 pass / 0 fail /
+   │      4 app_rw checks environmentally not run. Not certified: flag + deploy + review remain
    │      Goal → Plan → Motion → Action on Pursuit Detail; durable, revisable plan
    │      (was "Next Move" — superseded by the P3 amendment, D-025)
    ↓
