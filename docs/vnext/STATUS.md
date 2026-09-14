@@ -1,7 +1,7 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-12T14:30Z
-**Lane:** `roadmap/pursuitos-vnext` @ `c4f4196` — Slice 1 **PRODUCT SIGNED OFF / PREVIEW READY**. The 2026-09-12 preview-isolation session **stopped by design**: no credential exists here to verify or establish safe isolation, so no preview was created. See `PREVIEW-ISOLATION-PLAN.md`.
+**Last updated:** 2026-09-14T02:16Z
+**Lane:** `roadmap/pursuitos-vnext` @ `714433b` — Slice 1 **PRODUCT SIGNED OFF / PREVIEW READY**, untouched. The 2026-09-14 vNext-database session **stopped at the target safety gate, by design**: an isolated target now exists and is provably **not** the Monday demo, but this execution environment has **no Postgres egress**, so the database could not be marked, seeded, or even read. Nothing was written anywhere. See `ENVIRONMENT-MAP.md` §10.
 
 States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `BLOCKED`
 
@@ -17,7 +17,8 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | Feature-flag scaffolding | **PREVIEW READY** | `src/lib/env/vnext-flags.ts`, `tests/vnext-flags.test.ts` | 2026-09-12 | Nothing — no capability behind any flag yet | None. Default OFF, narrowing-only, 4/4 tests green |
 | Preview environment | **BLOCKED** — needs a credential, not a decision | — | 2026-09-12 | One read-only Vercel API call, or one signed-in visit to `/api/build`. Isolation design is **complete and waiting**: `PREVIEW-ISOLATION-PLAN.md` Option 2 | Classification still **UNKNOWN**. Newly proven: **no application-layer mitigation exists** if Preview does share the DB — `VERCEL_ENV` gates nothing, `assertSyntheticDatabase` passes for anything marked synthetic (the demo DB is), 22 files carry server actions. Bounded by: a build performs no DB access. `ENVIRONMENT-MAP.md` §6 B-a…B-e |
 | Live serving SHA | **BLOCKED** — every unauthenticated avenue exhausted | — | 2026-09-12 | `/api/build` with `OPS_FINGERPRINT_TOKEN`, **or** an owner signed in visiting `/api/build`, **or** the Vercel API | Branch head is Wave 6D `97e975f0`; last observed serving SHA was Wave 3 `66f72f61`. Seven avenues attempted and closed — recorded in `ENVIRONMENT-MAP.md` §9 so no session repeats the search. Cannot certify a promotion against an unknown baseline |
-| vNext isolated preview | **NOT STARTED** (blocked upstream) | — | 2026-09-12 | Owner resolves preview data safety, then `PREVIEW-ISOLATION-PLAN.md` Objective C Option 2 (5 steps, 4 of them existing tooling) | Nothing built. Objective F fired: do not create a preview against unknown/shared writable data |
+| **vNext isolated database** | **BLOCKED** — needs an execution context with Postgres egress, not a decision | target ref `mejokqxriwyawfhawuxu` | 2026-09-14 | Run the 5-command sequence in `ENVIRONMENT-MAP.md` §10 from anywhere that can reach port 5432: migrate → mark synthetic → read back → seed → reconcile | Target identity **proven distinct** from `qifatlqxfuhwrwvpbwsc` from the connection string. But its `environment_identity` is **UNREADABLE** (connection, not marker) and its schema/seed state is unknown. Claude Code Web blocks TCP 5432/6543 and denies HTTPS to `api.supabase.com`; the seed path has **no HTTPS fallback**, because the ten layer scripts run application code over a live `pg` pool |
+| vNext isolated preview | **NOT STARTED** (blocked upstream) | — | 2026-09-14 | The isolated database first (row above), then `PREVIEW-ISOLATION-PLAN.md` Objective C Option 2 step 5 — the one additive Vercel env var | Nothing built. No Vercel scope was touched. Owning an isolated database does not by itself isolate Preview |
 
 ---
 

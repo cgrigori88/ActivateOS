@@ -10,15 +10,16 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-12T14:30Z (Saturday) |
+| **Date/time** | 2026-09-14T02:16Z (Monday) |
 | **Repository** | `cgrigori88/ActivateOS` — working dir `/home/user/ActivateOS` |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `c4f4196` + the preview-isolation docs commit on top |
+| **Current commit** | `714433b` + the vNext-database docs commit on top |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | **VNEXT PREVIEW ISOLATION — stopped by design.** Slice 1 is PRODUCT SIGNED OFF / PREVIEW READY and was not touched. No credential exists in this environment to verify or establish safe isolation, so **nothing was created and no hosted configuration was changed.** Design, flag plan and workflow are complete and waiting in `PREVIEW-ISOLATION-PLAN.md`. |
+| **Session completed** | **VNEXT DATABASE INITIALIZATION — stopped at the target safety gate, by design.** An isolated target now exists (`mejokqxriwyawfhawuxu`, provably **not** the demo), but this environment has **no Postgres egress**, so the database could not be marked, migrated, seeded, or even read. **Nothing was written anywhere.** Slice 1 untouched. |
 | **Preview URL** | **UNVERIFIED** — unchanged |
-| **Preview data safety** | **UNKNOWN** — unchanged in classification, sharpened in detail (`ENVIRONMENT-MAP.md` §6 B-a…B-e) |
-| **Live serving SHA** | **UNRESOLVED** — all seven unauthenticated avenues now exhausted and recorded (`ENVIRONMENT-MAP.md` §9) |
+| **Preview data safety** | **UNKNOWN** — unchanged. No Vercel scope was touched |
+| **vNext isolated database** | **EXISTS as a target, NOT INITIALIZED.** Ref `mejokqxriwyawfhawuxu`; its `environment_identity` is **UNREADABLE**, not unmarked (`ENVIRONMENT-MAP.md` §10) |
+| **Live serving SHA** | **UNRESOLVED** — all seven unauthenticated avenues exhausted and recorded (`ENVIRONMENT-MAP.md` §9) |
 
 ### Demo baseline, unchanged and re-verified this session
 
@@ -303,6 +304,7 @@ accurate.
 | B-1 | **Preview data access UNKNOWN** | Slice 1 is read-only, so unaffected. Blocks Slice 2+. | `ENVIRONMENT-MAP.md` §6 — one read-only Vercel API call |
 | B-2 | **Live serving SHA unresolved** | Cannot certify any promotion | `/api/build` with `OPS_FINGERPRINT_TOKEN`, or the Vercel API |
 | B-3 | Tag pushes refused (403) | Cosmetic — durable references exist | None needed |
+| B-4 | **No Postgres egress from Claude Code Web** | Blocks marking, migrating, seeding or reading **any** hosted database, the isolated vNext target included. The seed path has no HTTPS fallback | Run the `ENVIRONMENT-MAP.md` §10 sequence from a context that permits TCP 5432 |
 
 Neither B-1 nor B-2 blocked chunks 1–4 or 5A, and neither blocks 5B (still no
 writes). B-2 must be resolved before GATE E.
@@ -467,21 +469,91 @@ nothing), all `VNEXT_*` defaulting OFF, and Slice 1 being read-only — so the
 plausible worst case is *reads* from an opened preview URL. One glance answers
 it: **Vercel → `PursuitOS-demo` → Deployments, filter Preview.**
 
+## vNext database initialization session (2026-09-14T02:16Z) — what happened
+
+**No product code changed. No database was written to. No hosted configuration
+was touched. The Monday demo project was never contacted.** Documentation only.
+
+### What was asked, and how far it got
+
+| Step | Outcome |
+|---|---|
+| Pre-flight — clean tree, HEAD/origin, read the four docs | **DONE.** Tree clean, `714433b`, 0 ahead / 0 behind `origin/roadmap/pursuitos-vnext`. Monday demo ref reconfirmed `qifatlqxfuhwrwvpbwsc` |
+| `DEMO_TARGET_URL` presence check | **PRESENT.** Checked with `test -n` only. **The value was never read, printed, logged, or recorded anywhere** |
+| Inspect `environment-identity.ts`, `seed-demo-world.ts`, `demo-db.ts`, `migrate.ts`, `demo-manifest.ts` | **DONE.** Exact invocations derived from the code — recorded in `ENVIRONMENT-MAP.md` §10 |
+| **TARGET SAFETY GATE** | **PASSED on identity, FAILED on proof-of-marker.** Ref is `mejokqxriwyawfhawuxu` ≠ `qifatlqxfuhwrwvpbwsc`. But the database's own marker is **UNREADABLE** |
+| Step 2 — mark synthetic | **NOT RUN.** The gate says: if identity cannot be proven, STOP |
+| Step 3 — seed | **NOT RUN** |
+| Steps 4-5 — verification | **NOT RUN** — nothing to verify |
+
+### Why it stopped — proven, not inferred
+
+This environment has **no Postgres egress at all**:
+
+| Probe | Result |
+|---|---|
+| DNS `aws-0-ca-central-1.pooler.supabase.com` | resolves (`15.156.180.136`, `15.156.188.226`) |
+| TCP **:5432** | TIMEOUT |
+| TCP **:6543** | TIMEOUT |
+| HTTPS `api.supabase.com` | `connect_rejected` — egress proxy, organization policy |
+
+DNS resolving while both Postgres ports black-hole is a port policy, not a bad
+credential — an auth failure returns a distinct error and none was ever reached.
+**The credential was therefore never validated either way.** The network policy
+is the environment's and was **not** worked around; two probes that would have
+tunnelled around it were correctly denied and not retried.
+
+### The finding worth carrying forward
+
+**The canonical seed path has no HTTPS fallback.** `scripts/db-remote.ts` runs
+SQL over the Supabase Management API "anywhere HTTPS works", but it executes
+plain SQL files only and needs `SUPABASE_ACCESS_TOKEN` (unset here);
+`scripts/generate-seed-sql.ts` emits only the knowledge-base ontology. The demo
+world is built by ten TypeScript layer scripts calling application code over a
+live `pg` pool. **Migrations could travel over HTTPS; the world cannot.** So the
+vNext database must be initialized from a context with direct Postgres egress —
+a laptop, a CI runner, or a cloud environment whose network policy permits 5432.
+
+### And the trap that would have cost a session
+
+`seed-demo-world.ts` orchestrates the layers by `execFileSync`, and the three
+database variables are genuinely distinct: `demo-db.ts` reads `DEMO_TARGET_URL`,
+the nine layer scripts read `DEMO_URL`, `verify()` reads `DEMO_URL ?? DATABASE_URL`.
+Setting **only** `DEMO_TARGET_URL` would seed the hosted target at layer 1 and let
+layers 2-10 silently fall back to `127.0.0.1:5433` — printing `ok` the whole way.
+All three must name the same target. Recorded in `ENVIRONMENT-MAP.md` §10.
+
+### Deliverables
+
+- `ENVIRONMENT-MAP.md` — §3 row for the vNext isolated target, new **§10**
+  (identity, egress evidence, the exact five-command sequence, the trap), risk #7.
+- `STATUS.md` — new **vNext isolated database = BLOCKED** row.
+- `PREVIEW-ISOLATION-PLAN.md` — Option 1 upgraded to PARTIALLY ANSWERED; the
+  missing `migrate.ts` step added to Option 2.
+
 ## Exact next action
 
-**Two credentialed reads by the owner, then the isolation build.** Neither
-involves a deploy; both are in `ENVIRONMENT-MAP.md` §9 and
-`PREVIEW-ISOLATION-PLAN.md`.
+**Initialize the vNext database from a context that can reach port 5432.**
+Nothing about the sequence is unknown any more — only where it runs. Copy it from
+`ENVIRONMENT-MAP.md` §10; in order: read-only identity gate → `migrate.ts` →
+`environment-identity.ts --set demo` → read back → `seed-demo-world.ts` with all
+three variables → `demo-manifest.ts` reconciliation against 3 orgs · 14 companies
+· 19 opportunities · 11 open · $8,040,000 · 14 pursuits.
 
-1. Resolve the serving SHA — cheapest path is to **sign in to
-   `demo.pursuitos.io` and open `/api/build`** (an authenticated session is
-   accepted; the response carries no secret).
-2. Resolve preview data safety — one read-only Vercel API call for
-   `DATABASE_URL`'s `target` / `gitBranch` metadata. **Do not decrypt the value.**
-3. Then `PREVIEW-ISOLATION-PLAN.md` Objective C Option 2.
+**Do not run step 2 (`--set demo`) until the read-only gate has actually printed
+the target's identity.** It would refuse anyway — `environment-identity.ts` exits
+non-zero when the existing identity is `unreadable`, precisely so an unreachable
+connection cannot stamp a marker onto whatever it really reached — but the gate
+is the point, not the backstop.
 
-Until then the local synthetic render loop remains the review mechanism; it
-produced every GATE C measurement.
+Then, and only then, `PREVIEW-ISOLATION-PLAN.md` Objective C Option 2 step 5 (the
+one additive Vercel env var) and Objective D's flag plan. **An isolated database
+does not by itself isolate Preview.**
+
+Still open and unchanged: the live serving SHA (`ENVIRONMENT-MAP.md` §9) and the
+Vercel Preview `DATABASE_URL` classification (§6). Until both are resolved, the
+local synthetic render loop remains the review mechanism; it produced every
+GATE C measurement.
 
 ## Superseded next action (kept for context)
 

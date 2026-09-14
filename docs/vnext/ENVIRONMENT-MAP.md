@@ -1,6 +1,6 @@
 # PursuitOS vNext — Environment Map
 
-**Last updated:** 2026-09-12T14:30Z
+**Last updated:** 2026-09-14T02:16Z
 **Rule for this file: VERIFIED FACTS ONLY.** Anything unverified is marked
 `UNVERIFIED` or `UNKNOWN` with the reason. Never record an inference as a fact.
 
@@ -49,7 +49,8 @@ behaviour. Retries succeed. Expect it when probing from Claude Code Web.
 | `demo.pursuitos.io` (production scope of `PursuitOS-demo`) | Supabase `pursuitos-demo`, ref `qifatlqxfuhwrwvpbwsc`, `ca-central-1`, PG 17.6.1.166 | **SYNTHETIC.** `environment_identity` singleton: `environment='demo'`, `is_synthetic=true`, label "pursuitos-demo — TD SYNNEX walkthrough" | Read-only Supabase audit, 2026-09-07 |
 | Local development | Local Postgres `pursuit_demo` (default port 5433) | **SYNTHETIC.** Built by `scripts/demo-db.ts` → `demo-enrich.ts` → `demo-stories.ts`, orchestrated by `seed-demo-world.ts` | `scripts/demo-db.ts` header |
 | Verifier runs | Disposable databases per run | Synthetic run-scoped fixtures | `scripts/verify-classes.ts`, `verify-run.ts` |
-| vNext preview | **UNKNOWN — see §6. Assume it is the hosted demo database until proven otherwise.** | — | — |
+| vNext isolated target | Supabase project ref `mejokqxriwyawfhawuxu`, reached via `aws-0-ca-central-1.pooler.supabase.com:5432` (session pooler). Supplied to the vNext session as `DEMO_TARGET_URL`. | **UNKNOWN — not marked, not verified migrated, not seeded.** The database's own `environment_identity` is **UNREADABLE from Claude Code Web**, which is a fact about the connection, not about the database. | Connection string parsed by `databaseIdentity()` via `scripts/environment-identity.ts` (read-only), 2026-09-14. See §10 |
+| vNext preview (Vercel scope) | **UNKNOWN — see §6. Assume it is the hosted demo database until proven otherwise.** No Preview-scoped `DATABASE_URL` has been created. | — | — |
 
 ### Canonical synthetic demo facts (certified)
 
@@ -260,6 +261,11 @@ fact task #67's cutover must prove. Adding `database.role` is part of that plan.
 6. **Env changes require a redeploy.** Vercel applies environment-variable changes
    only to new deployments. A flag flip on a hosted environment is not live until a
    build completes.
+7. **Claude Code Web cannot reach any Postgres.** Outbound TCP to 5432/6543 times
+   out and HTTPS to `api.supabase.com` is refused by the egress policy, so *no*
+   hosted database — including the isolated vNext target — can be marked, migrated,
+   seeded, or even read from this environment. The canonical seed path has no
+   HTTPS fallback. (§10)
 
 ---
 
@@ -309,3 +315,119 @@ is accepted, and the response contains no secret.
 **Do not decrypt or print any environment-variable value.** The `target` and
 `gitBranch` metadata is what answers §6; the value is not needed and must not be
 read.
+
+---
+
+## 10. The vNext isolated target (2026-09-14)
+
+A `DEMO_TARGET_URL` was supplied to the vNext session environment for the first
+time. **Its value was never read, printed, or recorded**; only the non-secret
+identity it declares is below, obtained through the repository's own
+`databaseIdentity()` parse (`src/lib/env/environment.ts`), surfaced by the
+read-only form of `scripts/environment-identity.ts`.
+
+| Fact | Value | How |
+|---|---|---|
+| Project ref | **`mejokqxriwyawfhawuxu`** | `scripts/environment-identity.ts` printed `target : project mejokqxriwyawfhawuxu` |
+| Host | `aws-0-ca-central-1.pooler.supabase.com` | same parse |
+| Port | `5432` — the **session** pooler, not the transaction pooler (6543) | same parse |
+| Is it the Monday demo? | **NO.** `mejokqxriwyawfhawuxu` ≠ `qifatlqxfuhwrwvpbwsc` | direct comparison |
+| Branch of the demo project, or an independent project? | **UNVERIFIED.** Distinguishing the two needs a dashboard or Management-API read. Either way the ref differs, and a Supabase branch is a physically separate database. | — |
+| Credential validity | **UNVERIFIED.** The connection never completed, so the password placeholder was never exercised either way. | — |
+
+### Its environment identity is UNREADABLE, not UNMARKED
+
+`scripts/environment-identity.ts` reported `CANNOT READ` with
+`Connection terminated due to connection timeout`. Per that script's own
+doctrine, reporting this as UNMARKED would be a confident lie — it describes the
+connection, not the database. **The marker state on that database remains
+genuinely unknown.**
+
+### Why: this execution environment has no Postgres egress
+
+Proven, not inferred, 2026-09-14:
+
+| Probe | Result |
+|---|---|
+| DNS for `aws-0-ca-central-1.pooler.supabase.com` | resolves — `15.156.180.136`, `15.156.188.226` |
+| TCP connect to that host **:5432** | **TIMEOUT** |
+| TCP connect to that host **:6543** | **TIMEOUT** |
+| HTTPS to `api.supabase.com` | **refused by the egress proxy** — `connect_rejected (organization policy)` |
+
+DNS resolving while both Postgres ports black-hole is the signature of a port
+policy, not of a bad credential: an authentication failure returns a distinct
+error, and none was ever reached. The network policy is the environment's, and
+it was **not** worked around.
+
+### Consequence — the canonical seed path has no HTTPS fallback
+
+This is the durable finding, and it is the one that decides *where* the vNext
+database can be initialized:
+
+- `scripts/db-remote.ts` runs SQL over the Supabase Management API, so it works
+  "anywhere HTTPS works" — but it executes **plain SQL files only**, and it needs
+  `SUPABASE_ACCESS_TOKEN` + `SUPABASE_PROJECT_REF`, **both unset here**.
+- `scripts/generate-seed-sql.ts` emits SQL for the **knowledge base** (ontology +
+  play templates) only. It does not, and is not meant to, emit the demo world.
+- The canonical world is built by the ten TypeScript layer scripts in
+  `scripts/seed-demo-world.ts`, which call application code
+  (`promoteFromSignal`, `recomputeRoute`, `assembleTeam`, the governed
+  stakeholder path …) over a live `pg` pool.
+
+**So seeding requires direct Postgres egress from wherever it runs.** Migrations
+alone could travel over the Management API; the world cannot.
+
+### The exact invocation, derived from the code (not guessed)
+
+Recorded so the next session with egress does not re-derive it. `--set` takes its
+value as the **next** argv entry, and the three database variables are distinct —
+`demo-db.ts` reads `DEMO_TARGET_URL`, the nine layer scripts read `DEMO_URL`, and
+`environment-identity.ts` / `migrate.ts` / `verify()` read `DATABASE_URL`.
+
+```sh
+# 0 · read-only identity gate — confirm the ref is NOT qifatlqxfuhwrwvpbwsc
+DATABASE_URL="$DEMO_TARGET_URL" npx tsx scripts/environment-identity.ts
+
+# 1 · schema. demo-db.ts REFUSES a partially-migrated target by design
+DATABASE_URL="$DEMO_TARGET_URL" npx tsx scripts/migrate.ts
+
+# 2 · mark synthetic BEFORE seeding (assertSyntheticDatabase refuses an unmarked target)
+DATABASE_URL="$DEMO_TARGET_URL" npx tsx scripts/environment-identity.ts \
+  --set demo --label "pursuitos-vnext — isolated synthetic preview"
+
+# 3 · read back: expect environment=demo, is_synthetic=true
+DATABASE_URL="$DEMO_TARGET_URL" npx tsx scripts/environment-identity.ts
+
+# 4 · seed. ALL THREE variables, same target — see the trap below
+DEMO_TARGET_URL="$DEMO_TARGET_URL" DEMO_URL="$DEMO_TARGET_URL" \
+DATABASE_URL="$DEMO_TARGET_URL" npx tsx scripts/seed-demo-world.ts
+
+# 5 · canonical reconciliation
+DEMO_URL="$DEMO_TARGET_URL" npx tsx scripts/demo-manifest.ts
+```
+
+> **The trap worth the sentence.** Setting only `DEMO_TARGET_URL` would seed the
+> hosted target at step 1 of the recipe and then let the nine layer scripts fall
+> back to their default `127.0.0.1:5433` — writing the rest of the world into a
+> *different* database while `seed-demo-world.ts` printed `ok` for every step.
+> `verify()` would then pass or fail against whichever database `DEMO_URL`
+> resolved to. This is the conflation §5 already warns about, in its most
+> expensive form.
+
+**Step 2 is the only write in the sequence, and it was never run.** Had it been,
+it would have refused on its own terms: `environment-identity.ts` exits non-zero
+when the existing identity is `unreadable`, precisely so a typo'd or unreachable
+connection cannot stamp an identity onto whatever it actually reached.
+
+### What this does and does not change
+
+- `PREVIEW-ISOLATION-PLAN.md` **Option 1** ("an existing isolated demo-safe
+  Supabase project · CANNOT CONFIRM") is now **partially answered**: a second
+  project ref exists and has been designated the vNext target. Whether it is
+  empty, migrated, or marked is still unknown.
+- §6's classification of the **Vercel Preview scope** is **unchanged and still
+  UNKNOWN**. Nothing was added to any Vercel scope, and possessing an isolated
+  database does not by itself isolate Preview — that is still the one additive
+  env var in Option 2 step 5.
+- The Monday demo project `qifatlqxfuhwrwvpbwsc` was **not contacted** in any
+  way during this session.

@@ -1,9 +1,19 @@
 # PursuitOS vNext — Preview Isolation Plan
 
 **Created:** 2026-09-12T14:30Z
+**Updated:** 2026-09-14T02:16Z
 **Status:** **DESIGN ONLY — NOTHING BUILT.** Objective F fired: safe isolation
 could not be verified or established with the credentials available in this
 environment, so no preview was created and no hosted configuration was touched.
+
+**2026-09-14 — Option 2 step 1 now has a target, and steps 2-4 have a proven
+blocker.** A `DEMO_TARGET_URL` was supplied, resolving to Supabase project ref
+`mejokqxriwyawfhawuxu` — **not** `qifatlqxfuhwrwvpbwsc`. It could not be marked
+or seeded: Claude Code Web has **no Postgres egress** (TCP 5432/6543 time out;
+HTTPS to `api.supabase.com` is refused by policy), and the canonical seed path
+has no HTTPS fallback. Nothing was written. The full evidence, the exact
+code-derived invocation, and the variable-conflation trap are in
+`ENVIRONMENT-MAP.md` §10.
 
 **This file is a plan, not a record of facts.** Verified environment facts live
 in `ENVIRONMENT-MAP.md`, which is governed by a VERIFIED-FACTS-ONLY rule. Keep
@@ -36,17 +46,27 @@ dynamic. A preview nobody opens has touched nothing.
 
 ## Objective C — the smallest safe isolation, in the stated preference order
 
-### Option 1 — an existing isolated demo-safe Supabase project · **CANNOT CONFIRM**
+### Option 1 — an existing isolated demo-safe Supabase project · **PARTIALLY ANSWERED (2026-09-14)**
 
 Nothing in the repository names a second Supabase project. Only
 `qifatlqxfuhwrwvpbwsc` (`pursuitos-demo`) appears, and the `app.pursuitos.io`
 project is never named. Whether a spare project already exists is a
 dashboard-only question.
 
-**To check, read-only:** Supabase dashboard → organization → project list, or
-`GET https://api.supabase.com/v1/projects` with a personal access token. If an
-unused project exists, Option 1 becomes Option 2's work without the project
-creation step.
+**A second project ref now exists and is designated the vNext target:**
+`mejokqxriwyawfhawuxu`, supplied out-of-band as `DEMO_TARGET_URL`. Whether it is
+a Supabase *branch* of the demo project or an independent project is still
+**UNVERIFIED** (a dashboard or Management-API read answers it); either way the
+ref differs and a branch is a physically separate database. Whether it is empty,
+migrated, or already marked is **unknown** — the marker read failed on the
+connection, not on the marker. So Option 1 has become "Option 2's work without
+the project-creation step", exactly as anticipated — the work simply has to run
+somewhere with Postgres egress.
+
+**Still to check, read-only:** Supabase dashboard → organization → project list,
+or `GET https://api.supabase.com/v1/projects` with a personal access token —
+which answers whether `mejokqxriwyawfhawuxu` is a branch or a standalone project,
+and what tier it sits on.
 
 ### Option 2 — a mechanism the repository already supports · **RECOMMENDED**
 
@@ -69,6 +89,17 @@ and leaves Production's value untouched. Nothing about Production changes.
 (step 3), because `seed-demo-world.ts` calls `assertSyntheticDatabase` and will
 refuse an unmarked target. That refusal is the guard working; it is not a
 configuration error.
+
+**One step was missing from this table, and the code says so: migrate first.**
+The in-place path in `demo-db.ts` compares `count(*)` in `schema_migrations`
+against the number of files on disk and **refuses** a partially-migrated target,
+because "seeding a database whose schema we silently created would hide a
+migration failure behind a seed failure". So step 1 is really
+`DATABASE_URL="$DEMO_TARGET_URL" npx tsx scripts/migrate.ts` — which is also the
+only step in the whole recipe that could travel over the Supabase Management API
+(`scripts/db-remote.ts`), since it is plain SQL. The seed cannot: its ten layer
+scripts run application code over a live `pg` pool. The exact verified sequence
+is in `ENVIRONMENT-MAP.md` §10.
 
 **Supabase branching is the variant worth checking first** — if the plan
 supports it, a branch database is cheaper than a second project and Vercel's
