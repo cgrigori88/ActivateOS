@@ -1,6 +1,6 @@
 # PursuitOS vNext — Environment Map
 
-**Last updated:** 2026-09-14T02:44Z
+**Last updated:** 2026-09-14T02:59Z
 **Rule for this file: VERIFIED FACTS ONLY.** Anything unverified is marked
 `UNVERIFIED` or `UNKNOWN` with the reason. Never record an inference as a fact.
 
@@ -49,7 +49,7 @@ behaviour. Retries succeed. Expect it when probing from Claude Code Web.
 | `demo.pursuitos.io` (production scope of `PursuitOS-demo`) | Supabase `pursuitos-demo`, ref `qifatlqxfuhwrwvpbwsc`, `ca-central-1`, PG 17.6.1.166 | **SYNTHETIC.** `environment_identity` singleton: `environment='demo'`, `is_synthetic=true`, label "pursuitos-demo — TD SYNNEX walkthrough" | Read-only Supabase audit, 2026-09-07 |
 | Local development | Local Postgres `pursuit_demo` (default port 5433) | **SYNTHETIC.** Built by `scripts/demo-db.ts` → `demo-enrich.ts` → `demo-stories.ts`, orchestrated by `seed-demo-world.ts` | `scripts/demo-db.ts` header |
 | Verifier runs | Disposable databases per run | Synthetic run-scoped fixtures | `scripts/verify-classes.ts`, `verify-run.ts` |
-| vNext isolated target | Supabase project ref `mejokqxriwyawfhawuxu`, reached via `aws-0-ca-central-1.pooler.supabase.com:5432` (session pooler). Supplied to the vNext session as `DEMO_TARGET_URL`. | **UNKNOWN — not marked, not verified migrated, not seeded.** The project **exists and answers on all three endpoints**, but the supplied credential is **rejected (`28P01`)**, so `environment_identity` is still **UNREADABLE** — still a fact about the connection, not about the database. | Connection string parsed by `databaseIdentity()` via `scripts/environment-identity.ts` (read-only); three-endpoint auth probe from a laptop, 2026-09-14T02:44Z. See §10 |
+| vNext isolated target | Supabase project ref `mejokqxriwyawfhawuxu`, reached via `aws-0-ca-central-1.pooler.supabase.com:5432` (session pooler). Supplied to the vNext session as `DEMO_TARGET_URL`. | **SYNTHETIC.** `environment_identity` singleton: `environment='demo'`, `is_synthetic=true`, label "pursuitos-vnext — isolated synthetic preview". Migrated 102/102; canonical world seeded and reconciled exactly (manifest digest `be0da833990ce436`). **Not yet connected to any Vercel scope.** | `migrate.ts`, `environment-identity.ts --set demo` + read-back, `seed-demo-world.ts` `verify()`, `demo-manifest.ts`, read-only reconciliation — from a laptop, 2026-09-14T02:59Z. See §10 |
 | vNext preview (Vercel scope) | **UNKNOWN — see §6. Assume it is the hosted demo database until proven otherwise.** No Preview-scoped `DATABASE_URL` has been created. | — | — |
 
 ### Canonical synthetic demo facts (certified)
@@ -274,6 +274,13 @@ fact task #67's cutover must prove. Adding `database.role` is part of that plan.
    which bypasses Supavisor entirely. The project resolves and answers; only the
    password is wrong. **Nothing can be migrated, marked, or seeded until it is
    replaced.** (§10)
+   **RESOLVED 2026-09-14T02:59Z:** replaced by the owner; the target is now
+   migrated, marked `demo` / `is_synthetic=true`, seeded, and reconciled. (§10)
+9. **The isolated database is not yet what Preview reads.** It exists and is
+   correct, but no Vercel scope points at it, and the Preview scope's current
+   `DATABASE_URL` is still UNKNOWN (§6). Until the branch-scoped Preview
+   variable exists and `/api/build` reports `mejokqxriwyawfhawuxu`, a preview of
+   `roadmap/pursuitos-vnext` must be assumed to read the demo database.
 
 ---
 
@@ -341,7 +348,7 @@ read-only form of `scripts/environment-identity.ts`.
 | Port | `5432` — the **session** pooler, not the transaction pooler (6543) | same parse |
 | Is it the Monday demo? | **NO.** `mejokqxriwyawfhawuxu` ≠ `qifatlqxfuhwrwvpbwsc` | direct comparison |
 | Branch of the demo project, or an independent project? | **UNVERIFIED.** Distinguishing the two needs a dashboard or Management-API read. Either way the ref differs, and a Supabase branch is a physically separate database. | — |
-| Credential validity | **UNVERIFIED.** The connection never completed, so the password placeholder was never exercised either way. | — |
+| Credential validity | **VALID as of 2026-09-14T02:59Z** (the owner's fresh credential; the 02:44Z one was rejected `28P01`). *At 02:16Z it was unverified — the connection never completed.* | Authenticated through a raw `pg` client and the app's own `getPool()`; every sequence step succeeded |
 
 ### Its environment identity is UNREADABLE, not UNMARKED
 
@@ -492,3 +499,69 @@ Two things worth checking on that same dashboard visit, because they cost nothin
 extra and both are still open: whether `mejokqxriwyawfhawuxu` is a **branch** of
 the demo project or a standalone project (§10 opening table), and whether the
 Preview scope of `PursuitOS-demo` carries its own `DATABASE_URL` (§6).
+
+### 2026-09-14T02:59Z — attempt 3: INITIALIZED, MARKED, SEEDED, RECONCILED
+
+The owner replaced `DEMO_TARGET_URL` with a fresh credential and the sequence
+above was run, **unchanged**, from the same laptop. **Its value was never
+printed, logged, written to disk, or recorded anywhere**; every command's output
+was piped through a filter that strips the URL and its password, and that filter
+never had to redact anything.
+
+**Pre-conditions, checked by variable name only.** `DEMO_TARGET_URL` set.
+`DATABASE_URL`, `DEMO_URL`, `DATABASE_URL_OWNER`, `DEMO_ADMIN_URL`,
+`DEMO_PGHOST`, `DEMO_PGPORT`, `DEMO_DB_NAME`, `OUTREACH_AUTOSEND`,
+`RESEND_API_KEY` all **unset**. No `.env*` file other than `.env.example`, and
+no local listener on 5432/5433/6543 — so no fallback target existed for any
+script to drift to.
+
+| Step | Result |
+|---|---|
+| Gate · ref | parsed user `postgres.mejokqxriwyawfhawuxu` @ `aws-0-ca-central-1.pooler.supabase.com:5432`, db `postgres`. The string does not contain `qifatlqxfuhwrwvpbwsc` anywhere |
+| Gate · not the demo | `mejokqxriwyawfhawuxu` ≠ `qifatlqxfuhwrwvpbwsc` — **passed** |
+| Gate · authentication | **passed** — see the note on one transient `28P01` below |
+| State before any write | **empty**: 0 tables in `public`, no `schema_migrations`, no `environment_identity`. PG 17.6; Supabase `auth` / `storage` / `extensions` schemas present |
+| 1 · `migrate.ts` | **102 applied, 0 already tracked**, exit 0 — `0001` … `0102_environment_identity.sql` |
+| 2 · `environment-identity.ts --set demo` | `marked project mejokqxriwyawfhawuxu as environment="demo" is_synthetic=true label="pursuitos-vnext — isolated synthetic preview"` |
+| 3 · read back | `environment demo` · `is_synthetic true` · established `2026-09-14T02:56:52Z` |
+| 4 · `seed-demo-world.ts` (all three vars → same target) | **10/10 layers ok**, `verify()` **17/17 ok** (10 hero accounts exactly once, no fixture pollution, no duplicated opportunities / same-amount open deals / motions / pursuits / evidence / propensity scores), exit 0. In-place mode — `demo-db.ts` issued no `DROP`/`CREATE DATABASE` |
+| 5 · reconciliation | below — **exact** |
+| Final identity re-read | project `mejokqxriwyawfhawuxu` · `demo` · `is_synthetic true` |
+
+**Canonical reconciliation**, read-only against the target:
+
+| Fact | Expected | Observed |
+|---|---|---|
+| Organizations | 3 | **3** |
+| Companies | 14 | **14** |
+| Opportunities | 19 | **19** |
+| Open opportunities | 11 | **11** |
+| Open pipeline | $8,040,000 | **$8,040,000** |
+| Pursuits | 14 | **14** (14/14 `data_environment='DEMO'`) |
+| `schema_migrations` rows | 102 | **102** |
+
+`scripts/demo-manifest.ts` produced digest **`be0da833990ce436`**, identical to
+the certified `audit/canonical-demo-world.json`. Tenants, the four headline
+figures (goal $5,000,000 · motion $1,250,000 · goal-linked open $4,920,000 ·
+whole-book open $8,040,000), all fifteen row counts and the 22 hero rows match.
+
+**Send safety.** `messages` 0 rows (0 outbound, 0 queued, 0 sent, 0 with a
+provider id), `email_events` 0, `sending_identities` 0. `OUTREACH_AUTOSEND` and
+`RESEND_API_KEY` unset in the shell that ran every step, so
+`externalSendingArmed()` is false and `apiKey()` in `src/lib/comms/resend.ts`
+would throw before any request.
+
+**The one transient `28P01` — observed, and not over-explained.** The very first
+raw probe returned `28P01`; the repository's own identity read, seconds later
+and with the same string, reached the database. Nothing was written until the
+disagreement was resolved: four consecutive raw probes and one through the app's
+TLS-verifying `getPool()` then all authenticated, as did every later command.
+*Plausible, **unverified**:* the new password had not yet reached every
+Supavisor node (the regional hostname resolves to two addresses). Practical
+consequence for the Vercel step: a freshly reset password can fail briefly —
+retry before concluding it is wrong.
+
+**Still open, unchanged by this:** whether `mejokqxriwyawfhawuxu` is a branch or
+a standalone project (opening table), and the Vercel Preview scope's
+`DATABASE_URL` (§6). The Monday demo `qifatlqxfuhwrwvpbwsc` was **not
+contacted** — not even to prove it was unchanged.

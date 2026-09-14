@@ -10,15 +10,15 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-14T02:44Z (Sunday evening local; the demo is Monday) |
-| **Repository** | `cgrigori88/ActivateOS` — this session ran **locally on the owner's Mac** at `/Users/cgrigori/Documents/ActivateOS/pursuitos-vnext`, not in Claude Code Web. That is what cleared the egress blocker |
+| **Date/time** | 2026-09-14T02:59Z (Sunday evening local; the demo is Monday) |
+| **Repository** | `cgrigori88/ActivateOS` — this session ran **locally on the owner's Mac** at `/Users/cgrigori/Documents/ActivateOS/pursuitos-vnext`, not in Claude Code Web (B-4) |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `072bd56` + this session's docs commit on top |
+| **Current commit** | `5ee1dfe` + this session's docs commit on top |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | **VNEXT DATABASE INITIALIZATION, attempt 2 (local) — stopped at the target safety gate again, by design, for a different reason.** Egress is **resolved**: the target answers on all three endpoints. The **credential is rejected** (`28P01`) on all three, so `environment_identity` is still unreadable and the gate refused to go further. **Nothing was written anywhere.** Slice 1 untouched. |
+| **Session completed** | **VNEXT DATABASE INITIALIZATION, attempt 3 (local) — COMPLETED.** With the owner's fresh credential the gate passed (ref `mejokqxriwyawfhawuxu`, not the demo, authenticated). Then: 102 migrations applied → marked `demo` / `is_synthetic=true` → read back → canonical world seeded (10/10 layers, `verify()` 17/17) → **reconciled exactly**, manifest digest `be0da833990ce436` = certified. No product code, no Vercel, no flags. Slice 1 untouched. |
 | **Preview URL** | **UNVERIFIED** — unchanged |
 | **Preview data safety** | **UNKNOWN** — unchanged. No Vercel scope was touched |
-| **vNext isolated database** | **EXISTS as a target, NOT INITIALIZED.** Ref `mejokqxriwyawfhawuxu`; its `environment_identity` is **UNREADABLE**, not unmarked — now because the password is rejected, not because the port is closed (`ENVIRONMENT-MAP.md` §10) |
+| **vNext isolated database** | **READY FOR VERCEL PREVIEW.** Ref `mejokqxriwyawfhawuxu`: migrated 102/102, `environment_identity` = `demo` / `is_synthetic=true` / "pursuitos-vnext — isolated synthetic preview", canonical world seeded and reconciled, zero messages of any kind (`ENVIRONMENT-MAP.md` §10) |
 | **Live serving SHA** | **UNRESOLVED** — all seven unauthenticated avenues exhausted and recorded (`ENVIRONMENT-MAP.md` §9) |
 
 ### Demo baseline, unchanged and re-verified this session
@@ -55,7 +55,8 @@
 | — | `c4f4196` | docs(vnext): record the GATE C refinement |
 | preview | `714433b` | docs(vnext): plan isolated vNext preview, record blockers as exhausted |
 | vNext DB #1 | `072bd56` | docs(vnext): record the isolated vNext target and its egress blocker |
-| **vNext DB #2** | **(this session)** | **docs(vnext): record the vNext target credential blocker** — documentation only |
+| vNext DB #2 | `5ee1dfe` | docs(vnext): record the vNext target credential blocker |
+| **vNext DB #3** | **(this session)** | **docs(vnext): record the initialized isolated vNext database** — documentation only; the database work itself leaves no commit |
 
 ## Chunks 6A + 6B files
 
@@ -307,11 +308,12 @@ accurate.
 | B-2 | **Live serving SHA unresolved** | Cannot certify any promotion | `/api/build` with `OPS_FINGERPRINT_TOKEN`, or the Vercel API |
 | B-3 | Tag pushes refused (403) | Cosmetic — durable references exist | None needed |
 | B-4 | ~~**No Postgres egress from Claude Code Web**~~ — **CLEARED 2026-09-14T02:44Z** for this work, by running locally. Still true *of Claude Code Web*: do not attempt hosted-database work from there | — | Run the §10 sequence locally, as this session did |
-| B-5 | **The `DEMO_TARGET_URL` credential is rejected by `mejokqxriwyawfhawuxu`** — `28P01` from the session pooler, the transaction pooler **and** the direct host. The project resolves; only the password is wrong | Blocks migrate, mark-synthetic and seed. This is now **the** blocker for the isolated database and therefore for the isolated preview | **Owner action:** Supabase → project `mejokqxriwyawfhawuxu` → Settings → Database → **Reset database password**, re-export `DEMO_TARGET_URL`, re-run §10 from step 0 |
+| B-5 | ~~**The `DEMO_TARGET_URL` credential is rejected by `mejokqxriwyawfhawuxu`**~~ — **CLEARED 2026-09-14T02:59Z.** The owner supplied a fresh credential; it authenticated (after one transient `28P01` on the very first probe) and the database was initialized | — | Done |
 
 Neither B-1 nor B-2 blocked chunks 1–4 or 5A, and neither blocks 5B (still no
-writes). B-2 must be resolved before GATE E. **B-5 is the only one that needs an
-action rather than a credential lookup, and it is a one-click action.**
+writes). B-2 must be resolved before GATE E. **With B-5 cleared, B-1 is now the
+blocker that matters: the isolated database exists, but the Vercel Preview scope
+has not been pointed at it, and what it points at today is still UNKNOWN.**
 
 ---
 
@@ -619,7 +621,96 @@ by construction and is recorded below under *Monday demo zero-change*.
 - Nothing in this session executed a send path at all: the only code run was the
   read-only identity script and a raw `pg` probe.
 
-## Exact next action
+## vNext database initialization, attempt 3 — LOCAL, COMPLETED (2026-09-14T02:59Z)
+
+**The isolated vNext database is initialized, marked synthetic, seeded, and
+reconciled exactly.** Run on the owner's Mac after the owner replaced
+`DEMO_TARGET_URL` with a fresh credential. **No product code changed. No Vercel
+surface touched. No feature flag changed. No deployment. No deferred defect
+fixed. The Monday demo project was never addressed.**
+
+| Step | Outcome |
+|---|---|
+| Pre-flight | Clean tree, `5ee1dfe`, 0 ahead / 0 behind origin; production branch still `97e975f0`. By name only: `DEMO_TARGET_URL` set; `DATABASE_URL`, `DEMO_URL`, `DATABASE_URL_OWNER`, `DEMO_ADMIN_URL`, `DEMO_PGHOST/PORT`, `DEMO_DB_NAME`, `OUTREACH_AUTOSEND`, `RESEND_API_KEY` unset. No `.env*` but `.env.example`; no local Postgres listener — so nothing to fall back to |
+| **Gate** — ref / not-demo / auth | `postgres.mejokqxriwyawfhawuxu` @ the ca-central-1 session pooler; the demo ref appears nowhere in the string; **authenticated** (one transient `28P01` first — below) |
+| Pre-write state | **Empty** — 0 `public` tables, no `schema_migrations`, no `environment_identity` |
+| 1 · migrate | **102 applied, 0 already tracked**, exit 0 |
+| 2 · mark | `environment="demo" is_synthetic=true label="pursuitos-vnext — isolated synthetic preview"` |
+| 3 · read back | `demo` · `true` · established `2026-09-14T02:56:52Z` |
+| 4 · seed | all three vars bound to the same target · **10/10 layers ok** · `verify()` **17/17** · "canonical demo world built and verified." · exit 0 |
+| 5 · reconcile | **3 · 14 · 19 · 11 open · $8,040,000 · 14** (14/14 `DEMO`) — exact. Manifest digest **`be0da833990ce436`** = certified `audit/canonical-demo-world.json` |
+| Final re-verify | project `mejokqxriwyawfhawuxu` · `demo` · `is_synthetic true` · sending unarmed |
+
+### The transient `28P01`, and why it did not stop the session
+
+The first raw probe failed `28P01`; the repository's own identity read, seconds
+later with the same string, reached the database. **No write was issued while
+the two disagreed.** The disagreement was resolved by evidence, not by retrying
+until green: no `.env` redirect, no local listener, and `getPool()` passes
+`DATABASE_URL` straight to `pg`, so both reads used the same string and host.
+Then four consecutive raw probes and one through the app's TLS-verifying pool
+all authenticated, as did every later command. The likely cause — the new
+password not yet on every Supavisor node — is **unverified**, and recorded as
+such in `ENVIRONMENT-MAP.md` §10.
+
+### Send safety
+
+`messages` 0 rows (0 outbound / queued / sent / with a provider id),
+`email_events` 0, `sending_identities` 0. `OUTREACH_AUTOSEND` and
+`RESEND_API_KEY` unset in the shell that ran every step, so
+`externalSendingArmed()` is false and `apiKey()` throws before any request.
+
+### Monday demo zero-change — by construction, not by contact
+
+- Every command bound `DATABASE_URL` / `DEMO_TARGET_URL` / `DEMO_URL` to one
+  value whose parsed user is `postgres.mejokqxriwyawfhawuxu`; on Supabase the
+  pooler host is shared and **the project is selected by the ref in the
+  username**. The demo ref occurs in no command, variable, or probe.
+- No fallback existed: every other database variable was unset, no `.env` file
+  supplies one, no local Postgres was listening.
+- `qifatlqxfuhwrwvpbwsc` was **not contacted, queried, or modified** — including
+  not to prove it was unchanged, per instruction.
+- No Vercel, Supabase dashboard, DNS, or production-branch surface was touched.
+
+### Secret handling
+
+The value of `DEMO_TARGET_URL` was never printed, echoed, logged, persisted, or
+documented. No `env`/`printenv`. Every command's output was piped through a
+scratchpad filter that strips the URL and its password; **it never had to
+redact anything.** No repository file contains it.
+
+## Exact next action — the Vercel Preview wiring (NOT executed; owner-approved only)
+
+`PREVIEW-ISOLATION-PLAN.md` Objective C Option 2 **step 5**. It is the first
+change to hosted configuration in this whole effort, so it needs the owner's
+explicit go-ahead.
+
+1. **Read first (read-only, answers B-1 / §6):** Vercel → `PursuitOS-demo`
+   (`prj_mMYSZIaIQPwkqRrhKPcV7HbhdpXc`) → Settings → Environment Variables →
+   look at **which environments** the existing `DATABASE_URL` is scoped to.
+   Do not reveal or edit its value.
+2. **Add, don't edit:** a **new** `DATABASE_URL` entry, environment **Preview
+   only**, Git branch **`roadmap/pursuitos-vnext`**, value = the isolated
+   target's connection string (the one proven here), marked Sensitive. The
+   existing Production (and any existing Preview) entry stays untouched.
+3. On the same Preview + branch scope, the Objective D variables:
+   `VNEXT_CONTEXT_HEALTH_ENABLED` · `VNEXT_PURSUIT_STATE_ENABLED` ·
+   `VNEXT_PURSUIT_MEMORY_ENABLED` · `VNEXT_PURSUIT_INTELLIGENCE_ENABLED` = `1`;
+   `PURSUITS_ENABLED` · `FACTS_ENABLED` · `ROUTING_ENABLED` ·
+   `PURSUIT_EXPERIENCE_ENABLED` · `FEDERATION_ENABLED` = `1`;
+   `PURSUITOS_ENV` = `demo`; `OPS_FINGERPRINT_TOKEN` set.
+   **Leave `OUTREACH_AUTOSEND` and `RESEND_API_KEY` absent.** No Production-scope
+   change of any kind.
+4. Redeploy the `roadmap/pursuitos-vnext` head (env binds at build time), then
+   run V-1…V-10 — above all **V-4**: `/api/build` must report
+   `database.projectRef = mejokqxriwyawfhawuxu`, not `qifatlqxfuhwrwvpbwsc`.
+
+Open consideration, not decided here: serverless functions on the **session**
+pooler (`:5432`) hold connections per instance; Supabase generally steers
+serverless to the transaction pooler (`:6543`). Watch for connection exhaustion
+on the first preview.
+
+## Superseded next action — database password reset (DONE 2026-09-14T02:59Z)
 
 **Reset the database password on `mejokqxriwyawfhawuxu` and re-run the sequence.**
 Nothing else about it is unknown — not the commands, not the variables, not where

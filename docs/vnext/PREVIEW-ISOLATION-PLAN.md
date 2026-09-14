@@ -1,10 +1,21 @@
 # PursuitOS vNext — Preview Isolation Plan
 
 **Created:** 2026-09-12T14:30Z
-**Updated:** 2026-09-14T02:44Z
-**Status:** **DESIGN ONLY — NOTHING BUILT.** Objective F fired: safe isolation
-could not be verified or established with the credentials available in this
-environment, so no preview was created and no hosted configuration was touched.
+**Updated:** 2026-09-14T02:59Z
+**Status:** **Option 2 steps 1-4 DONE — the isolated database is initialized.
+Step 5 (the Vercel Preview scope) NOT STARTED.** No preview has been created and
+no Vercel configuration has been touched. *(Originally: Objective F fired — safe
+isolation could not be verified or established with the credentials available,
+so no preview was created and no hosted configuration was touched.)*
+
+**2026-09-14T02:59Z — steps 1-4 complete.** With a fresh credential the target
+safety gate passed (ref `mejokqxriwyawfhawuxu`, not `qifatlqxfuhwrwvpbwsc`,
+authenticated). 102 migrations applied to an empty database → marked
+`demo` / `is_synthetic=true` → read back → canonical world seeded (10/10 layers,
+`verify()` 17/17) → reconciled exactly: 3 · 14 · 19 · 11 open · $8,040,000 · 14,
+manifest digest `be0da833990ce436` = certified. Zero messages. Evidence in
+`ENVIRONMENT-MAP.md` §10. **What remains is step 5 alone** — and the validation
+checklist below, which becomes runnable once a preview exists.
 
 **2026-09-14 — Option 2 step 1 now has a target, and steps 2-4 have a proven
 blocker.** A `DEMO_TARGET_URL` was supplied, resolving to Supabase project ref
@@ -40,7 +51,7 @@ becomes a "fact" nobody checked.
 | Read the live serving commit | `OPS_FINGERPRINT_TOKEN`, or a signed-in session, or `VERCEL_TOKEN` | ✗ |
 | Create a Preview-scoped `DATABASE_URL` | Vercel dashboard or `VERCEL_TOKEN` | ✗ |
 | Create or seed an isolated Supabase project | Supabase access token / dashboard | ✗ |
-| **Migrate / mark / seed the isolated target** (2026-09-14T02:44Z) | Postgres egress **✓ from a laptop** + a **valid `DEMO_TARGET_URL` password** | **✗ — password rejected `28P01`** |
+| **Migrate / mark / seed the isolated target** | Postgres egress **✓ from a laptop** + a **valid `DEMO_TARGET_URL` password** | **✓ DONE 2026-09-14T02:59Z** (was ✗ `28P01` at 02:44Z) |
 
 Preview data safety is therefore still **UNKNOWN**, and the standing instruction
 is explicit: *do not create a preview connected to unknown or shared writable
@@ -79,8 +90,10 @@ or `GET https://api.supabase.com/v1/projects` with a personal access token —
 which answers whether `mejokqxriwyawfhawuxu` is a branch or a standalone project,
 and what tier it sits on.
 
-**And one write, which is now the single thing gating Option 2:** on that same
-project, **Settings → Database → Reset database password**. The credential
+**~~And one write, which is now the single thing gating Option 2~~ — DONE
+2026-09-14T02:59Z; the fresh credential works and the database is
+initialized.** Kept for the record: on that same project,
+**Settings → Database → Reset database password**. The credential
 supplied so far is rejected at every endpoint (`ENVIRONMENT-MAP.md` §10). Note
 that if `mejokqxriwyawfhawuxu` turns out to be a Supabase **branch**, its
 credentials are branch-scoped and are read from the branch, not from the parent
