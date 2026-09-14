@@ -3,7 +3,7 @@
 Durable architecture, product and UX decisions for the vNext lane. Append, don't
 rewrite: a superseded decision stays, marked `SUPERSEDED`, with the reason.
 
-**Last updated:** 2026-09-12T02:47Z
+**Last updated:** 2026-09-14 (Slice 2A — D-024…D-032)
 
 ---
 
@@ -498,3 +498,126 @@ Panels are repositioned by `lg:order` only. No panel outside the merge has its
 content, design or behaviour altered, and the flag-OFF layout keeps its original
 ordering exactly — proven by comparing panel geometry, panel for panel, before
 and after.
+
+---
+
+## D-024 · Pursuit Coordination is Goal → Plan → Motion → Action, composed over what already exists
+
+**Decision.** Slice 2A adds exactly three things — a pursuit goal, a pursuit plan
+identity, and the plan's append-only revision history — and composes everything else
+from existing primitives:
+
+| Concept | Existing primitive reused | New? |
+|---|---|---|
+| Motion | `revenue_motions` | no |
+| Action | `motion_actions` (the Queue) | no |
+| Approval | `dispatchSkill` → `governed_action_invocations` | no — two new skills on it |
+| Override | `pursuit_overrides` (`field = 'plan'` added) | no |
+| History | `change_ledger` (`PLAN_DECIDED`, `PLAN_REVIEW_REQUIRED` added) | no |
+| Owner | `pursuit_team_members` roles | no |
+| Focus + why | Slice 1 missing-context / evidence semantics | no |
+| Goal | `pursuit_goals` | **yes** |
+| Plan | `pursuit_plans` + `pursuit_plan_revisions` | **yes** |
+
+**Why.** The prompt's stop condition — "the proposed model would require replacing
+existing motion/approval primitives" — was checked first and does not fire. A plan
+*references* a motion and *stages* an action; it does not model either.
+
+## D-025 · The flag is `VNEXT_PURSUIT_COORDINATION_ENABLED`; `next_best_action` stays reserved
+
+**Decision.** The P3 surface ships behind a new flag, `pursuit_coordination`, which
+requires `pursuit_intelligence` (a plan's focus and why are composed from Slice 1 and
+cannot render without it). `VNEXT_NEXT_BEST_ACTION_ENABLED` is left exactly as it was
+— never implemented, now marked reserved.
+
+**Why not reuse `next_best_action`.** The roadmap amendment replaced the isolated
+next-best-action idea with a plan. Giving the old name a new meaning would make any
+deployment that already names the variable change behaviour silently.
+
+## D-026 · A pursuit goal is not an org goal
+
+**Decision.** `pursuit_goals` is a new table, not a `pursuit_id` column on `goals`.
+
+**Why.** `goals` (0026) is an org-level S.M.A.R.T. portfolio target whose progress is
+computed from linked motions, which the /goals room lists — and which the certified
+demo manifest counts. A pursuit's goal ("close the $920K opportunity with WWT") is a
+different object, owned differently, with a different lifecycle. Overloading `goals`
+would put pursuit goals into the portfolio room and move the certified digest.
+
+## D-027 · Plan history is append-only revisions; only human decisions and review triggers reach the ledger
+
+**Decision.** Every recommendation and every decision is its own
+`pursuit_plan_revisions` row. A DECISION references the RECOMMENDATION it answers
+(`responds_to_revision_id`) and carries its own copy of the content, so a revision is
+self-contained. Revisions are INSERT-only for `app_rw`. `change_ledger` receives
+`PLAN_DECIDED` (a person decided) and `PLAN_REVIEW_REQUIRED` (the system found an
+approved plan stale) — **not** a row for each system recommendation.
+
+**Why the ledger asymmetry.** A recommendation is a proposal, not a change to the
+pursuit; its history is the revision table. And writing one would have put "Pursuit plan
+recommended" at the top of the frozen Slice 1 "What changed" for Globex, altering a
+certified surface for an event nobody acted on. Verified: seeding the Globex plan leaves
+its ledger at 10 rows.
+
+**P8 consequence.** Recommendation, recommendation time (`created_at`), evidence basis
+(`basis`), human decision, override (`adjustments` + `pursuit_overrides`), action selected
+(`content.nextAction`, same `key` across revisions) and what actually happened
+(`motion_actions.status`, ledger, outcomes) are separate, joinable, append-only facts.
+
+## D-028 · Course correction is a fingerprint comparison; evidence makes a plan reviewable, never rewrites it
+
+**Decision.** A recommendation carries a deterministic fingerprint of the normalized
+inputs it was computed from (focus gap, milestone statuses, route decision, motion,
+owner assignment, opportunity stage, pursuit status — nothing time-varying). The plan in
+force is CURRENT while the live fingerprint matches, and REVIEW_NEEDED when it does not,
+with reasons produced by a structural diff of the inputs. Reading the page computes this
+and writes nothing. Recording an updated recommendation appends a revision with a
+`review_trigger` (the plan it responds to, the reasons, the ledger events since) and a
+`PLAN_REVIEW_REQUIRED` event. The approved plan stays in force until a person decides.
+
+**And a stale recommendation cannot be approved.** `decidePlan` recomputes the live
+fingerprint and refuses to put a recommendation in force against a pursuit that has
+moved since it was made. Declining is always allowed.
+
+## D-029 · Milestone status is computed from canonical domains; dependencies are declared policy
+
+**Decision.** Each milestone resolves from one canonical domain (route decision,
+stakeholder assertion state, Why-Now timing anchor, MEDDPICC element state, value-case
+state, opportunity stage) — never typed, the rule `goals.ts` already follows. Dependencies
+("decision and paper process" waits on the economic buyer; closed-won waits on
+everything) are declared in one table with their rationale, and are planning policy, not
+commercial facts. A milestone whose domain is withheld or not established is
+NOT_ESTABLISHED or omitted — never OPEN work the reader failed to do.
+
+## D-030 · The motion is named only through a canonical link; approval stages the action onto an active motion only
+
+**Decision.** The plan's motion is the `revenue_motions` row that names the pursuit, or
+the motion this pursuit's opportunity is attributed to (`opportunities.motion_id`) —
+labelled as such. Never an account/category inference. On Globex, the WWT Virtualization
+motion carries `pursuit_id = null` and is reached through the opportunity.
+
+Approval (APPROVED/ADJUSTED) stages the next action as a pending `motion_actions` step on
+that motion **only if the motion is active**; otherwise the action stays with the plan,
+unqueued, and the surface says so. No approval sends, calls a provider, or touches the
+outbox.
+
+## D-031 · New history tables must REVOKE the 0058 default privileges explicitly
+
+**Decision.** Migration 0103 revokes UPDATE/DELETE from `app_rw` on its three tables and
+re-grants only forward lifecycle columns.
+
+**Why this is recorded.** 0058 runs `alter default privileges … grant select, insert,
+update, delete on tables to app_rw`, so a new table's `grant select, insert` alone leaves
+it fully mutable. The first draft of 0103 did exactly that; the Slice 2A harness caught
+it (six failed privilege checks) before commit. Any future append-only table needs the
+explicit REVOKE that 0094 and 0103 carry.
+
+## D-032 · The owner is a pursuit-team role, and "unassigned" is a first-class answer
+
+**Decision.** A next action's owner is resolved from `pursuit_team_members` by the role a
+declared table assigns to the focus's source (account executive for coverage,
+qualification and timing gaps; solution architect for value; specialist for research).
+Three honest states: a named PERSON, a ROLE_UNFILLED (the role exists only as a
+recommendation — "Unassigned — Account executive role proposed, no one confirmed yet"),
+or UNASSIGNED. On Globex every team role is still RECOMMENDED with no person, so the
+owner reads Unassigned. A person can assign an owner when adjusting.

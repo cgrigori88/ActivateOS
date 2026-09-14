@@ -1,6 +1,9 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-14T02:59Z
+**Last updated:** 2026-09-14 (Vertical Slice 2A session)
+
+**2026-09-14 — Vertical Slice 1 is DEMO CERTIFIED / FROZEN. Vertical Slice 2A (Pursuit Coordination — Goal → Plan → Motion → Action) is PREVIEW READY on the local synthetic path**, behind `VNEXT_PURSUIT_COORDINATION_ENABLED` (default OFF). Verified locally: `tsc` 0 · `npm test` 313/0 · build 0 · `vnext-coordination` 86/0 · `vnext-context` 62/0 · manifest digest `be0da833990ce436` unchanged · flag-OFF page byte-identical to the pre-slice build · "What matters now" byte-identical with the slice ON. **Not yet visible on the hosted Preview**: the isolated vNext database does not have migration 0103 or the plan layer, and the Preview scope does not arm the flag — both are owner-approved steps (`SESSION-HANDOFF.md` → exact next step). No hosted database, Vercel setting or deployment was touched.
+
 **Lane:** `roadmap/pursuitos-vnext` @ `5ee1dfe` + docs — Slice 1 **PRODUCT SIGNED OFF / PREVIEW READY**, untouched. **2026-09-14T02:59Z: the isolated vNext database `mejokqxriwyawfhawuxu` is INITIALIZED** — 102 migrations, marked `demo` / `is_synthetic=true`, canonical world seeded and reconciled exactly (3 · 14 · 19 · 11 open · $8,040,000 · 14; manifest digest `be0da833990ce436` = certified). It is ready to be wired to the Vercel Preview scope; **nothing on Vercel has been touched.** History: before the owner's credential reset, the initialization had stopped at the target safety gate **twice, by design, for two different reasons**. First from Claude Code Web (no Postgres egress). Then from a laptop, which **resolved the egress blocker** — the project answers on all three endpoints — only to hit a **rejected credential**: `28P01 password authentication failed`, identically from the session pooler, the transaction pooler and the direct host. The target ref is confirmed `mejokqxriwyawfhawuxu` and confirmed **not** the Monday demo. **Nothing has been written to any database.** See `ENVIRONMENT-MAP.md` §10.
 
 States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `BLOCKED`
@@ -27,7 +30,8 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | Capability | Phase | Status | Branch / commit | Updated | What remains | Known risks |
 |---|---|---|---|---|---|---|
 | Canonical commercial foundation | P0 | **DEMO CERTIFIED** (pre-existing) | `97e975f0` | 2026-09-03 | — | Substantially already built: orgs, companies, products, sellers, partners, opportunities, motions, campaigns, entity resolution, aliases, provenance |
-| Living Pursuit Context — **Vertical Slice 1** | P1 | **PREVIEW READY** — product signed off | `roadmap/pursuitos-vnext` @ `c4f4196` | 2026-09-12 | Nothing in the slice. Next state is DEMO CERTIFIED, which is a separate owner decision (`DEMO-PROMOTION-GATE.md`) | Read-only, flag-gated, flag OFF verified identical panel-for-panel. Cannot be reviewed on a hosted preview until preview isolation is resolved |
+| Living Pursuit Context — **Vertical Slice 1** | P1 | **DEMO CERTIFIED / FROZEN** (owner, 2026-09-14) | `roadmap/pursuitos-vnext` @ `c4f4196` | 2026-09-14 | Nothing. "What matters now" is frozen absent real pilot feedback — do not redesign, rename or restructure it | Slice 2A re-proved it byte-identical (12,761 bytes, 1,092×792 desktop / 326×1,251 mobile) with the coordination flag ON |
+| **Pursuit Coordination — Vertical Slice 2A** | P3 | **PREVIEW READY** (local synthetic) | `roadmap/pursuitos-vnext` (this session) | 2026-09-14 | Hosted Preview: apply 0103 + run `demo-plan-story.ts` on `mejokqxriwyawfhawuxu`, arm the flag on the Preview scope (owner-approved). Then product review | Goal → Plan → Motion → Action on Pursuit Detail. Migration 0103 (3 tables, additive). Two INTERNAL_WRITE skills; no send path. Deferred: Today integration, goal editing, plan closure on WON/LOST (see `SESSION-HANDOFF.md`) |
 | · pursuit context narrative (rendered) | P1 | **PREVIEW READY** | `6c5b7a9` `components/pursuit/context-narrative.tsx` | 2026-09-12 | Product sign-off on the refined surface, then GATE D/E | Titled **"What matters now"**, full-width on desktop. GATE C **N-1 fixed** (all 10 ledger rows reachable, override chronology included), **N-2/N-4/N-6 fixed**. Flag OFF verified identical panel-for-panel. Residual: R-1 "What changed" right half empty (cosmetic), R-2 283px void beside Value case. See `GATE-C-PRODUCT-REVIEW.md` § GATE C REFINEMENT |
 | · pursuit evidence (direct + supporting) | P1 | **PREVIEW READY** | `620bc12` `read-models/pursuit-evidence.ts` | 2026-09-12 | Consumed by "What matters now" since `99bd5dd` | 18 tests. **Supersedes the plan to swap `getFacts` to pursuit scope** — Globex has 1 linked fact, so the swap would have deleted the best evidence on the screen. See D-020 |
 | · fact freshness | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/facts/freshness.ts` | — | Compose at pursuit level | Exists per-fact; nothing composes per-pursuit |
@@ -39,7 +43,10 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | · pertinence (pursuit + decision scoped) | P2 | **PREVIEW READY** | `1b05b8a` `read-models/pertinence.ts` | 2026-09-12 | Consumed via `pursuit-evidence` ranking since `620bc12` | 18 + 13 tests. Pursuit-scoped, not portfolio-scoped (D-017). Consumes upstream gap rank/source (D-019) |
 | · why this pursuit (portfolio-relative) | P2 | **NOT STARTED** | — | 2026-09-12 | Deferred to Slice 3 — needs cross-pursuit inputs | D-017: a different computation from pertinence |
 | Pursuit Intelligence | P2 | **NOT STARTED** | — | 2026-09-12 | Slice 3 | Depends on Slice 1 |
-| Next Move / coordination | P3 | **NOT STARTED** | — | 2026-09-12 | Slice 2 | Depends on Slice 1 |
+| Next Move / coordination | P3 | **SUPERSEDED** by Slice 2A | — | 2026-09-14 | — | The P3 amendment replaced isolated next-best-action with Goal → Plan → Motion → Action (D-025). `VNEXT_NEXT_BEST_ACTION_ENABLED` stays reserved and unimplemented |
+| · pursuit goal | P3 | **PREVIEW READY** | `pursuit_goals` (0103) | 2026-09-14 | Human-authored goal editing (schema supports it; no UI) | Not the org-level `goals` table (D-026) |
+| · pursuit plan + revisions | P3 | **PREVIEW READY** | `pursuit_plans`, `pursuit_plan_revisions` (0103), `read-models/pursuit-plan.ts`, `coordination/plan-store.ts` | 2026-09-14 | Worker-driven review recording; plan closure | Append-only by grant, proven as `app_rw` (42501) |
+| · course correction | P3 | **PREVIEW READY** | `assessPlanReview` + `PLAN_REVIEW_REQUIRED` | 2026-09-14 | Automatic recording on material events (today: detected on read, recorded on request) | Fingerprint comparison, never a rewrite (D-028) |
 | AI Control Plane | P4 | **NOT STARTED** | — | 2026-09-12 | Slice 4, thin backend only | D-011: no new room |
 | Pursuit Runtime | P5 | **BUILDING** (partial, pre-existing) | `governed_action_invocations`, `GOVERNED_ACTION_ENABLED` | — | Run ledger, cost tracking | Governed actions + append-only ledgers already exist |
 | Intercompany Governance | P6 | **DEMO CERTIFIED** (pre-existing) | disclosure ladder, grants, contributions | 2026-09-03 | — | Server-side withholding is load-bearing for the demo; do not touch |
@@ -74,6 +81,26 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | Desktop void | 785px → **283px** (beside the surface: 593px → **0**) |
 | History reachable, flag ON | 3 of 10 → **10 of 10** |
 | Horizontal overflow @1440 / @390 | none / none |
+
+### Vertical Slice 2A validation (2026-09-14, local synthetic, Globex)
+
+Local Postgres 17.11 + pgvector 0.8.6 (Homebrew) on `127.0.0.1:5433`, canonical world rebuilt from scratch with the new 11th layer. No hosted database contacted.
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| `npm test` | **313 pass / 0 fail** (from 290; +23: 22 plan tests + 1 flag test) |
+| `npm run build` | exit 0 |
+| `vnext-coordination` verifier (new, SEEDED) | **86 passed / 0 failed** — all writes rolled back, world unchanged afterwards |
+| `vnext-context` verifier (Slice 1) | **62 passed / 0 failed** — Globex ledger still 10 rows |
+| Manifest digest | `be0da833990ce436` — **unchanged** (= certified) |
+| SEEDED spot-check | append-only 11/0 · stakeholder-intel 43/0 · value-case 126/0 |
+| Flag-OFF, pre-slice build (`a04f0c8`) vs this build | same raw size (234,511 bytes); **full body byte-identical** after normalizing only per-build asset names, build id, per-request CSP nonce, server-action id hashes and the request-time timestamp existing team gap actions stamp; panel geometry identical panel-for-panel (3,827px desktop / 7,916px mobile, 11 panels) |
+| "What matters now", Slice-1-only vs 2A ON | outerHTML **byte-identical** at 1440 and 390 |
+| Flag-ON | "Pursuit plan" at 1,092×547 directly beneath "What matters now"; 10 panels; no horizontal overflow @1440 / @390 |
+| Screenshots | `docs/vnext/review/slice-2a/` |
+
+**Defects found and fixed before commit** (all caught by the new harness or the render review, none shipped): 0103 first draft left `app_rw` full DML on the new tables because of 0058's default privileges (D-031); the two plan skills appeared in the Federation panel's registry list and the seed's invocation became its "Last action" — both visible flag-OFF — fixed by keeping them in `COORDINATION_SKILLS` and seeding through the store; a `plan && …` child that left a `null` in the flag-OFF flight payload (5 bytes, no markup) — fixed with a ternary; a raw ISO date and a two-column grid that did not form.
 
 ### Chunk 6B rendered evidence (local synthetic, Globex pursuit)
 

@@ -70,8 +70,19 @@ relationship strength, execution readiness, partner/route selection, *Why this p
 *Why now?*, *What's missing?*
 
 ### P3 — Pursuit Coordination
-Pursuit Teams, recommended motions, next-best action, commitments, owners, milestones,
-Today integration.
+Pursuit Teams, recommended motions, commitments, owners, milestones, Today integration —
+organised as **Pursuit Goal → Pursuit Plan → Motion → Action**, not as isolated
+next-best-action recommendations. *(Amended 2026-09-14.)*
+
+The Pursuit Plan is a durable, evolvable object. Over time it must support:
+
+- milestones and dependencies between them,
+- plan progress, computed from canonical state rather than typed,
+- course correction — new evidence makes an approved plan **reviewable**, never silently rewritten,
+- human changes and overrides, preserved alongside what was recommended,
+- new evidence causing plan review, with the reason recorded.
+
+First vertical cut: Slice 2A (`BUILD-PLAN.md`), decisions D-024…D-032.
 
 ### P4 — AI Control Plane
 Agent/Skill Registry, identities, versions, model routing, scopes, capabilities,
@@ -79,7 +90,11 @@ permissions, lifecycle, observability, cost tracking, evaluation criteria.
 
 ### P5 — Pursuit Runtime
 Governed domain actions, deterministic controls, approvals, execution policies,
-audit events, run ledger, APIs/MCP.
+audit events, run ledger, APIs/MCP. *(Amended 2026-09-14:)* long-horizon execution,
+resumable runs against **durable plans** (a run resumes a Pursuit Plan by its stable id
+across days or weeks), stateful continuation, dynamic steering — with governed domain
+actions reserved for consequential execution. P3 plans are the thing a runtime runs;
+P5 must consume them, not re-model them.
 
 ### P6 — Intercompany Governance
 Consent, disclosure controls, organization boundaries, provenance restrictions,
@@ -104,11 +119,18 @@ These surfaces may compose canonical data, metrics, and governed domain actions,
 
 ### P8 — Learning System
 Prediction snapshots, recommendation history, human decisions, overrides, actions,
-outcomes, causal memory, evaluation, cohort analysis.
+outcomes, causal memory, evaluation, cohort analysis. *(Amended 2026-09-14:)* explicitly
+including **action sequencing**, **timing effectiveness**, and **human-vs-agent decision
+quality** — which is why P3 records recommendation, recommendation time, evidence basis,
+human decision, override, action selected and eventual status as separate, append-only
+facts from its first slice.
 
 ### P9 — Ecosystem Intelligence
 Privacy-safe generalized learning, benchmarking, reusable commercial patterns/playbooks,
-network intelligence.
+network intelligence. *(Amended 2026-09-14:)* including reusable **Pursuit Playbooks**
+learned from winning and losing intercompany motions — i.e. generalised Pursuit Plans. A
+playbook is a plan shape with evidence behind it, so P3's plan structure (milestones,
+dependencies, motion, action, outcome) is the unit P9 will generalise.
 
 ### P10 — Attribution, Reconciliation & Settlement
 Contribution tracking, influence attribution, revenue attribution, reconciliation,

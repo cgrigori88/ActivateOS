@@ -10,12 +10,13 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-14T02:59Z (Sunday evening local; the demo is Monday) |
+| **Date/time** | 2026-09-14 (Vertical Slice 2A session, run locally on the owner's Mac) |
 | **Repository** | `cgrigori88/ActivateOS` — this session ran **locally on the owner's Mac** at `/Users/cgrigori/Documents/ActivateOS/pursuitos-vnext`, not in Claude Code Web (B-4) |
 | **Current branch** | `roadmap/pursuitos-vnext` |
 | **Current commit** | `5ee1dfe` + this session's docs commit on top |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | **VNEXT DATABASE INITIALIZATION, attempt 3 (local) — COMPLETED.** With the owner's fresh credential the gate passed (ref `mejokqxriwyawfhawuxu`, not the demo, authenticated). Then: 102 migrations applied → marked `demo` / `is_synthetic=true` → read back → canonical world seeded (10/10 layers, `verify()` 17/17) → **reconciled exactly**, manifest digest `be0da833990ce436` = certified. No product code, no Vercel, no flags. Slice 1 untouched. |
+| **Session completed** | **VERTICAL SLICE 2A — Pursuit Coordination (Goal → Plan → Motion → Action) — PREVIEW READY on the local synthetic path.** Slice 1 marked **DEMO CERTIFIED / FROZEN**. No hosted database, Vercel setting or deployment touched. See § "Vertical Slice 2A" below. |
+| **Previous session** | **VNEXT DATABASE INITIALIZATION, attempt 3 (local) — COMPLETED.** With the owner's fresh credential the gate passed (ref `mejokqxriwyawfhawuxu`, not the demo, authenticated). Then: 102 migrations applied → marked `demo` / `is_synthetic=true` → read back → canonical world seeded (10/10 layers, `verify()` 17/17) → **reconciled exactly**, manifest digest `be0da833990ce436` = certified. No product code, no Vercel, no flags. Slice 1 untouched. |
 | **Preview URL** | **UNVERIFIED** — unchanged |
 | **Preview data safety** | **UNKNOWN** — unchanged. No Vercel scope was touched |
 | **vNext isolated database** | **READY FOR VERCEL PREVIEW.** Ref `mejokqxriwyawfhawuxu`: migrated 102/102, `environment_identity` = `demo` / `is_synthetic=true` / "pursuitos-vnext — isolated synthetic preview", canonical world seeded and reconciled, zero messages of any kind (`ENVIRONMENT-MAP.md` §10) |
@@ -27,6 +28,128 @@
 - Also the head of `ui-wave-6d`, and tagged `backup/2026-09-04/tds-live-demo`
   (annotated, already on origin — the durable immutable reference).
 - Working tree clean at session start and at session end.
+
+---
+
+## Vertical Slice 2A — Pursuit Coordination (2026-09-14)
+
+**State: PREVIEW READY on the local synthetic path. Not yet visible on the hosted
+Preview** (needs the owner-approved steps under "Exact next step" below).
+
+### What it is
+
+On Pursuit Detail, one full-width **"Pursuit plan"** panel directly beneath the frozen
+"What matters now", behind `VNEXT_PURSUIT_COORDINATION_ENABLED` (requires the Slice 1
+chain). It answers: goal · progress · current focus · why · motion · next action ·
+owner · when · approve / adjust — with milestones and plan history each behind one
+disclosure, and a "This plan needs review" block only when new evidence has made the
+approved plan stale.
+
+### Model (D-024…D-032)
+
+```
+pursuit_goals            the commercial outcome; PROPOSED by PursuitOS → ACTIVE when a person approves
+pursuit_plans            stable identity (what a P5 runtime resumes)
+pursuit_plan_revisions   APPEND-ONLY. RECOMMENDATION rows (system) and DECISION rows (person:
+                         APPROVED / ADJUSTED / REJECTED) — a decision references the recommendation
+                         it answers; content = focus · motion ref · next action · owner ·
+                         milestones · why; basis = evidence refs + normalized inputs + fingerprint
+revenue_motions          REUSED — the motion, reached only by a canonical link (pursuit, or the
+                         pursuit's opportunity). Globex: the WWT Virtualization motion, via the opp
+motion_actions           REUSED — approval stages the next action as a pending step (active motion only)
+dispatchSkill            REUSED — recommend_pursuit_plan / decide_pursuit_plan (INTERNAL_WRITE),
+                         held in COORDINATION_SKILLS, not SKILL_REGISTRY (keeps the flag-OFF
+                         Federation panel unchanged)
+pursuit_overrides        REUSED — field 'plan' for ADJUSTED / REJECTED
+change_ledger            REUSED — PLAN_DECIDED, PLAN_REVIEW_REQUIRED (recommendations write none)
+pursuit_team_members     REUSED — owner = a role; Unassigned is explicit
+```
+
+### Globex, as seeded (layer 11, `scripts/demo-plan-story.ts`)
+
+Goal "Exit legacy virtualization before renewal — close the $920K opportunity with WWT"
+· Target Oct 24 (the opportunity's close date) · proposed, not yet confirmed · 4 of 8
+milestones (route, champion, technical buyer, value case done; economic buyer and
+pursuit timing open; decision/paper process waiting on the economic buyer; close) ·
+focus "No economic buyer identified" · motion "Virtualization motion · via WWT · active,
+linked through this pursuit's opportunity" · next "Identify and verify the economic
+buyer at Globex Manufacturing Inc." · owner **Unassigned — account executive role
+proposed, no one confirmed yet** · why: buying authority; "Runs through WWT — the route a
+person chose over the CDW recommendation"; champion (Sarah Kim) and technical buyer
+(Mike Rivera) confirmed; renewal held on the account for Nov 29, 2026 — account context,
+not confirmed for this pursuit. **Awaiting approval** — no decision is seeded.
+
+### Files
+
+| File | Change |
+|---|---|
+| `supabase/migrations/0103_pursuit_coordination.sql` | **new** — 3 tables, RLS forced, append-only by REVOKE, ledger + override vocab widened |
+| `src/lib/pursuits/read-models/pursuit-plan.ts` | **new** — pure: goal, milestones, focus, owner, why, fingerprint, review, adjustments, view-model |
+| `src/lib/pursuits/read-models/plan-loaders.ts` | **new** — tenant-scoped, disclosure-aware loaders; reading never writes |
+| `src/lib/pursuits/coordination/plan-store.ts` | **new** — the two governed write paths |
+| `src/components/pursuit/pursuit-plan.tsx`, `pursuit-plan-controls.tsx` | **new** — surface + approve/adjust |
+| `src/app/pursuits/[id]/page.tsx` | flag-gated load + render beneath "What matters now" |
+| `src/app/pursuits/[id]/actions.ts` | `requestPlanRecommendationAction`, `decidePlanAction` |
+| `src/lib/pursuits/federation/skills.ts` | `COORDINATION_SKILLS` + `pursuitInOrg`; `defFor` resolves both arrays |
+| `src/lib/env/vnext-flags.ts` | `pursuit_coordination` flag; `next_best_action` marked reserved |
+| `src/lib/pursuits/ledger.ts`, `overrides.ts` | two change types, one override field |
+| `scripts/demo-plan-story.ts`, `seed-demo-world.ts` | layer 11 |
+| `scripts/vnext-coordination-verify.ts`, `verify-classes.ts` | new SEEDED harness (86 checks, all writes rolled back) |
+| `tests/vnext-pursuit-plan.test.ts`, `tests/vnext-flags.test.ts` | +23 tests |
+| `docs/vnext/review/slice-2a/*.png` | desktop/mobile, flag ON/OFF, plan panel default + expanded |
+
+### Local environment established this session
+
+Homebrew `postgresql@17` + `pgvector` (local only). Cluster in the session scratchpad,
+port 5433, socket dir `/tmp/pgv5433` (the scratchpad path exceeds the 103-byte socket
+limit). Recreate:
+
+```sh
+PG=/opt/homebrew/opt/postgresql@17/bin
+$PG/initdb -D <dir> -U postgres --auth=trust -E UTF8 --locale=en_US.UTF-8
+mkdir -p /tmp/pgv5433 && $PG/pg_ctl -D <dir> -o "-p 5433 -k /tmp/pgv5433" -l <dir>/log start
+env -u DEMO_TARGET_URL -u DATABASE_URL DEMO_PGHOST=127.0.0.1 DEMO_PGPORT=5433 DEMO_DB_NAME=pursuit_demo \
+  DEMO_ADMIN_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres \
+  DEMO_URL=postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo npx tsx scripts/seed-demo-world.ts
+DATABASE_URL_VERIFY=postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo npx tsx scripts/vnext-coordination-verify.ts
+```
+
+Note: a `demo-db.ts`-built database applies every migration file directly and leaves
+`schema_migrations` empty, so `scripts/migrate.ts` against it replays 0001 and fails.
+Rebuild the world (as above) rather than migrating it. The hosted isolated database IS
+tracked (102 rows), so `migrate.ts` there applies only 0103.
+
+### Deferred (explicitly not built)
+
+- **Today integration** — a plan awaiting approval / needing review is not yet a Today item (Today is shared and not flag-scoped; kept untouched).
+- **Human-authored goal editing** — schema supports `HUMAN_AUTHORED` + supersession; no UI.
+- **Plan closure** on WON / LOST / DISQUALIFIED; `CLOSED` status exists, nothing sets it.
+- **Automatic review recording** — staleness is detected on every read; it is *recorded* (revision + `PLAN_REVIEW_REQUIRED`) when someone asks for the updated recommendation. A worker hook on material ledger events is P5 work.
+- **Superseded staged actions** — a re-approved plan queues a new step; the earlier queued step is left for a person to close (no silent rewrite).
+- **Plans for pursuits other than Globex** — any pursuit shows "Recommend a plan" to an operator when the flag is on; only Globex is seeded.
+- P5 runtime, P8 learning/analysis, P9 playbooks — the data they will need is recorded; nothing consumes it yet.
+
+### Observed, not fixed (pre-existing, outside this slice)
+
+- Globex's `PARTNER_ACCOUNT_MANAGER` team recommendation still names **CDW** after the WWT override (team assembled before the override; `assembleTeam` is idempotent per role).
+- Globex MEDDPICC marks `economic_buyer` **strong** while stakeholder coverage has **no** economic buyer. The plan follows coverage (the ranked gap); the disagreement is a Slice-1-era data question.
+- Slice 1 loaders queue concurrent queries on one pg client (`Promise.all`) → pg 8 DeprecationWarning. The new loaders are sequential.
+- The synthetic PRODUCTION-lineage defect on the two route-override rows (STATUS debt) is still open. The new plan override path passes the pursuit's own lineage.
+
+### Exact next step — owner-approved, NOT executed
+
+To show Slice 2A on the hosted isolated Preview (never the Monday demo `qifatlqxfuhwrwvpbwsc`):
+
+1. Locally, against `mejokqxriwyawfhawuxu` only, with the §10 gate first:
+   `DATABASE_URL="$DEMO_TARGET_URL" npx tsx scripts/environment-identity.ts` (must read `demo` / synthetic, ref `mejokqxriwyawfhawuxu`), then
+   `DATABASE_URL="$DEMO_TARGET_URL" npx tsx scripts/migrate.ts` (applies 0103 only), then
+   `DEMO_URL="$DEMO_TARGET_URL" npx tsx scripts/demo-plan-story.ts`, then
+   `DATABASE_URL_VERIFY="$DEMO_TARGET_URL" npx tsx scripts/vnext-coordination-verify.ts` (expect 86/0).
+2. Vercel Preview scope for `roadmap/pursuitos-vnext` only: add `VNEXT_PURSUIT_COORDINATION_ENABLED=1`; redeploy; confirm `/api/build` → `mejokqxriwyawfhawuxu`.
+3. Product review of the "Pursuit plan" surface on Globex (approve, adjust, then verify the economic buyer in Stakeholders and watch the plan go to "needs review").
+
+Until step 1 runs, pushing this branch is safe: with the flag unset the page never
+touches the new tables.
 
 ---
 
@@ -57,6 +180,8 @@
 | vNext DB #1 | `072bd56` | docs(vnext): record the isolated vNext target and its egress blocker |
 | vNext DB #2 | `5ee1dfe` | docs(vnext): record the vNext target credential blocker |
 | **vNext DB #3** | **(this session)** | **docs(vnext): record the initialized isolated vNext database** — documentation only; the database work itself leaves no commit |
+| **Slice 2A** | **`524af12`** | **feat(vnext): pursuit coordination — goal, plan, motion, action (Slice 2A)** |
+| Slice 2A docs | (the commit after `524af12`) | docs(vnext): record Slice 2A and freeze Slice 1 |
 
 ## Chunks 6A + 6B files
 
@@ -679,7 +804,7 @@ documented. No `env`/`printenv`. Every command's output was piped through a
 scratchpad filter that strips the URL and its password; **it never had to
 redact anything.** No repository file contains it.
 
-## Exact next action — the Vercel Preview wiring (NOT executed; owner-approved only)
+## Superseded next action — the Vercel Preview wiring (the owner reports the isolated Preview operational and certified, 2026-09-14; not re-verified in the Slice 2A session)
 
 `PREVIEW-ISOLATION-PLAN.md` Objective C Option 2 **step 5**. It is the first
 change to hosted configuration in this whole effort, so it needs the owner's

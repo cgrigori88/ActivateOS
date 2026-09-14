@@ -1,6 +1,6 @@
 # PursuitOS vNext — Build Plan
 
-**Last updated:** 2026-09-12T02:47Z
+**Last updated:** 2026-09-14 (Slice 1 frozen; Slice 2A PREVIEW READY locally)
 **Lane:** `roadmap/pursuitos-vnext`
 **Weekend target:** GATE A complete (done), then GATE B on explicit approval.
 
@@ -83,11 +83,15 @@ Each slice must:
 ### Slice order and dependencies
 
 ```
-SLICE 1  Living Pursuit Context            (P1)        ← current target
+SLICE 1  Living Pursuit Context            (P1)        DEMO CERTIFIED / FROZEN
    │      context health · state · memory · why/why-now/what's-missing
    ↓
-SLICE 2  Next Move                         (P2→P3)
-   │      one recommended next action, evidence-bound, on Pursuit Detail + Today
+SLICE 2A Pursuit Coordination              (P3)        PREVIEW READY (local)  ← current
+   │      Goal → Plan → Motion → Action on Pursuit Detail; durable, revisable plan
+   │      (was "Next Move" — superseded by the P3 amendment, D-025)
+   ↓
+SLICE 2B Coordination breadth              (P3)        NOT STARTED
+   │      Today integration · goal editing · plan closure · multi-pursuit plans
    ↓
 SLICE 3  Portfolio Pertinence              (P2)
    │      "why this pursuit" ranked across the portfolio; Today + Pipeline ordering
@@ -124,7 +128,32 @@ canonical existing pursuit
 Proving ground: **existing Pursuit Detail**, via progressive disclosure. Not a
 redesign of Pursuit Detail.
 
-**NOT STARTED.** Do not begin without explicit approval.
+**DEMO CERTIFIED / FROZEN (2026-09-14).** "What matters now" is frozen absent real
+pilot feedback. Its accepted hierarchy: Why it matters · What we know (Confirmed for
+this pursuit / Relevant account context) · Needs attention · What changed · Earlier
+history.
+
+### VERTICAL SLICE 2A — "Pursuit Coordination" (P3)
+
+**PREVIEW READY on the local synthetic path (2026-09-14).** Acceptance: `ACCEPTANCE.md`
+§ Slice 2A. Decisions: D-024…D-032.
+
+```
+Slice 1 context (focus gap · evidence · scope)
+  → Pursuit Goal        pursuit_goals            proposed by PursuitOS, confirmed by a person
+  → Pursuit Plan        pursuit_plans            stable identity a runtime can resume
+      revisions         pursuit_plan_revisions   append-only: RECOMMENDATION ≠ DECISION
+      milestones        computed from canonical domains, with declared dependencies
+  → Motion              revenue_motions          reused — reached by a canonical link only
+  → Action              motion_actions           reused — staged on approval, active motions only
+  owner                 pursuit_team_members     a role; "Unassigned" is a first-class answer
+  approve / adjust      dispatchSkill            recommend_pursuit_plan · decide_pursuit_plan
+  divergence            pursuit_overrides        field 'plan'
+  history               change_ledger            PLAN_DECIDED · PLAN_REVIEW_REQUIRED
+```
+
+Surface: one full-width "Pursuit plan" panel directly beneath "What matters now",
+behind `VNEXT_PURSUIT_COORDINATION_ENABLED` (requires the Slice 1 chain).
 
 ---
 
