@@ -1,7 +1,7 @@
 # PursuitOS vNext — Preview Isolation Plan
 
 **Created:** 2026-09-12T14:30Z
-**Updated:** 2026-09-14T02:16Z
+**Updated:** 2026-09-14T02:44Z
 **Status:** **DESIGN ONLY — NOTHING BUILT.** Objective F fired: safe isolation
 could not be verified or established with the credentials available in this
 environment, so no preview was created and no hosted configuration was touched.
@@ -14,6 +14,16 @@ HTTPS to `api.supabase.com` is refused by policy), and the canonical seed path
 has no HTTPS fallback. Nothing was written. The full evidence, the exact
 code-derived invocation, and the variable-conflation trap are in
 `ENVIRONMENT-MAP.md` §10.
+
+**2026-09-14T02:44Z — the egress blocker is cleared; a credential blocker took
+its place.** The sequence was re-run from a laptop. The host, both pooler ports
+and the direct `db.<ref>.supabase.co` all connect, so **where** to run this is
+settled. But the supplied credential is rejected `28P01 password authentication
+failed` at all three endpoints — including the direct host, which bypasses
+Supavisor — so the project resolves and only the password is wrong. The gate
+held: `environment_identity` is still **UNREADABLE**, and **nothing was written
+to any database**. Option 2 steps 2-4 remain unrun and unchanged. The unblock is
+one dashboard action, recorded in `ENVIRONMENT-MAP.md` §10.
 
 **This file is a plan, not a record of facts.** Verified environment facts live
 in `ENVIRONMENT-MAP.md`, which is governed by a VERIFIED-FACTS-ONLY rule. Keep
@@ -30,6 +40,7 @@ becomes a "fact" nobody checked.
 | Read the live serving commit | `OPS_FINGERPRINT_TOKEN`, or a signed-in session, or `VERCEL_TOKEN` | ✗ |
 | Create a Preview-scoped `DATABASE_URL` | Vercel dashboard or `VERCEL_TOKEN` | ✗ |
 | Create or seed an isolated Supabase project | Supabase access token / dashboard | ✗ |
+| **Migrate / mark / seed the isolated target** (2026-09-14T02:44Z) | Postgres egress **✓ from a laptop** + a **valid `DEMO_TARGET_URL` password** | **✗ — password rejected `28P01`** |
 
 Preview data safety is therefore still **UNKNOWN**, and the standing instruction
 is explicit: *do not create a preview connected to unknown or shared writable
@@ -67,6 +78,13 @@ somewhere with Postgres egress.
 or `GET https://api.supabase.com/v1/projects` with a personal access token —
 which answers whether `mejokqxriwyawfhawuxu` is a branch or a standalone project,
 and what tier it sits on.
+
+**And one write, which is now the single thing gating Option 2:** on that same
+project, **Settings → Database → Reset database password**. The credential
+supplied so far is rejected at every endpoint (`ENVIRONMENT-MAP.md` §10). Note
+that if `mejokqxriwyawfhawuxu` turns out to be a Supabase **branch**, its
+credentials are branch-scoped and are read from the branch, not from the parent
+project — which would explain a parent-project password failing here.
 
 ### Option 2 — a mechanism the repository already supports · **RECOMMENDED**
 

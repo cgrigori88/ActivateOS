@@ -1,6 +1,6 @@
 # PursuitOS vNext — Environment Map
 
-**Last updated:** 2026-09-14T02:16Z
+**Last updated:** 2026-09-14T02:44Z
 **Rule for this file: VERIFIED FACTS ONLY.** Anything unverified is marked
 `UNVERIFIED` or `UNKNOWN` with the reason. Never record an inference as a fact.
 
@@ -49,7 +49,7 @@ behaviour. Retries succeed. Expect it when probing from Claude Code Web.
 | `demo.pursuitos.io` (production scope of `PursuitOS-demo`) | Supabase `pursuitos-demo`, ref `qifatlqxfuhwrwvpbwsc`, `ca-central-1`, PG 17.6.1.166 | **SYNTHETIC.** `environment_identity` singleton: `environment='demo'`, `is_synthetic=true`, label "pursuitos-demo — TD SYNNEX walkthrough" | Read-only Supabase audit, 2026-09-07 |
 | Local development | Local Postgres `pursuit_demo` (default port 5433) | **SYNTHETIC.** Built by `scripts/demo-db.ts` → `demo-enrich.ts` → `demo-stories.ts`, orchestrated by `seed-demo-world.ts` | `scripts/demo-db.ts` header |
 | Verifier runs | Disposable databases per run | Synthetic run-scoped fixtures | `scripts/verify-classes.ts`, `verify-run.ts` |
-| vNext isolated target | Supabase project ref `mejokqxriwyawfhawuxu`, reached via `aws-0-ca-central-1.pooler.supabase.com:5432` (session pooler). Supplied to the vNext session as `DEMO_TARGET_URL`. | **UNKNOWN — not marked, not verified migrated, not seeded.** The database's own `environment_identity` is **UNREADABLE from Claude Code Web**, which is a fact about the connection, not about the database. | Connection string parsed by `databaseIdentity()` via `scripts/environment-identity.ts` (read-only), 2026-09-14. See §10 |
+| vNext isolated target | Supabase project ref `mejokqxriwyawfhawuxu`, reached via `aws-0-ca-central-1.pooler.supabase.com:5432` (session pooler). Supplied to the vNext session as `DEMO_TARGET_URL`. | **UNKNOWN — not marked, not verified migrated, not seeded.** The project **exists and answers on all three endpoints**, but the supplied credential is **rejected (`28P01`)**, so `environment_identity` is still **UNREADABLE** — still a fact about the connection, not about the database. | Connection string parsed by `databaseIdentity()` via `scripts/environment-identity.ts` (read-only); three-endpoint auth probe from a laptop, 2026-09-14T02:44Z. See §10 |
 | vNext preview (Vercel scope) | **UNKNOWN — see §6. Assume it is the hosted demo database until proven otherwise.** No Preview-scoped `DATABASE_URL` has been created. | — | — |
 
 ### Canonical synthetic demo facts (certified)
@@ -263,9 +263,17 @@ fact task #67's cutover must prove. Adding `database.role` is part of that plan.
    build completes.
 7. **Claude Code Web cannot reach any Postgres.** Outbound TCP to 5432/6543 times
    out and HTTPS to `api.supabase.com` is refused by the egress policy, so *no*
-   hosted database — including the isolated vNext target — can be marked, migrated,
-   seeded, or even read from this environment. The canonical seed path has no
-   HTTPS fallback. (§10)
+   hosted database can be marked, migrated, seeded, or even read from that
+   environment. The canonical seed path has no HTTPS fallback. (§10)
+   **Scope correction, 2026-09-14T02:44Z:** this is a property of Claude Code Web
+   **only**. From a laptop the same host, both pooler ports, and the direct host
+   all connect. Egress is no longer the blocker for the vNext target — risk 8 is.
+8. **The supplied `DEMO_TARGET_URL` credential is rejected by `mejokqxriwyawfhawuxu`.**
+   `28P01 password authentication failed`, identically from the session pooler, the
+   transaction pooler, and the direct host — three independent endpoints, one of
+   which bypasses Supavisor entirely. The project resolves and answers; only the
+   password is wrong. **Nothing can be migrated, marked, or seeded until it is
+   replaced.** (§10)
 
 ---
 
@@ -431,3 +439,56 @@ connection cannot stamp an identity onto whatever it actually reached.
   env var in Option 2 step 5.
 - The Monday demo project `qifatlqxfuhwrwvpbwsc` was **not contacted** in any
   way during this session.
+
+### 2026-09-14T02:44Z — re-run from a laptop: egress resolved, credential rejected
+
+The sequence above was re-attempted from a local machine specifically because
+Claude Code Web has no Postgres egress. **That blocker is gone. A different one
+replaced it, and it is not one this session can clear.**
+
+| Probe (all against `mejokqxriwyawfhawuxu`, never the demo) | Result |
+|---|---|
+| `scripts/environment-identity.ts` read-only gate | `target : project mejokqxriwyawfhawuxu` — **ref confirmed, and confirmed ≠ `qifatlqxfuhwrwvpbwsc`** |
+| …its identity read | `CANNOT READ` — `password authentication failed for user "postgres"` |
+| Session pooler `…pooler.supabase.com:5432`, user `postgres.<ref>` | **`28P01`** |
+| Transaction pooler `…pooler.supabase.com:6543`, user `postgres.<ref>` | **`28P01`** |
+| Direct `db.<ref>.supabase.co:5432`, user `postgres` | **`28P01`** |
+
+**Why this is a credential fact, not a connection fact.** All three endpoints
+completed TCP and TLS and returned a *Postgres* error code. The direct host does
+not go through Supavisor at all, so the pooled-username convention is not
+implicated. Supavisor returns `Tenant or user not found` for an unknown project
+ref; it did not — the tenant resolved. The only remaining variable is the
+password.
+
+**The connection string itself was also cleared of blame, without reading it.**
+Its structure was parsed twice — by WHATWG `URL` and by `pg-connection-string`,
+the parser `pg` actually uses — and both agree on host, port, user and database.
+The password round-trips byte-identically through both (no percent-encoding, no
+characters that either parser treats specially) and its component lengths account
+for the whole string exactly, so nothing was truncated at a `#` or `?`. **The
+value was never printed, logged, written to disk, or recorded anywhere.**
+
+### What this changes
+
+- `STATUS.md`'s **vNext isolated database** row stays **BLOCKED**, but the reason
+  changes from *"needs an execution context with Postgres egress"* to
+  **"needs a working credential"**. The execution context is now correct.
+- The five-command sequence above is **unchanged and still the recipe.** It was
+  not run past step 0. **Nothing was written to any database.**
+- The three-variable trap is still the trap, and was still respected: every
+  command in the 2026-09-14 local session bound `DATABASE_URL`,
+  `DEMO_TARGET_URL` and `DEMO_URL` to the same value, so no layer could have
+  fallen back to `127.0.0.1:5433`.
+
+### The unblock, in the owner's hands
+
+Supabase dashboard → project `mejokqxriwyawfhawuxu` → **Settings → Database →
+Reset database password**, then re-export `DEMO_TARGET_URL` with the new password
+and re-run the sequence from step 0. The gate at step 0 is the proof that it
+worked: it must print `environment`/`is_synthetic` instead of `CANNOT READ`.
+
+Two things worth checking on that same dashboard visit, because they cost nothing
+extra and both are still open: whether `mejokqxriwyawfhawuxu` is a **branch** of
+the demo project or a standalone project (§10 opening table), and whether the
+Preview scope of `PursuitOS-demo` carries its own `DATABASE_URL` (§6).

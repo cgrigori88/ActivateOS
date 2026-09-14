@@ -10,15 +10,15 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-14T02:16Z (Monday) |
-| **Repository** | `cgrigori88/ActivateOS` — working dir `/home/user/ActivateOS` |
+| **Date/time** | 2026-09-14T02:44Z (Sunday evening local; the demo is Monday) |
+| **Repository** | `cgrigori88/ActivateOS` — this session ran **locally on the owner's Mac** at `/Users/cgrigori/Documents/ActivateOS/pursuitos-vnext`, not in Claude Code Web. That is what cleared the egress blocker |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `714433b` + the vNext-database docs commit on top |
+| **Current commit** | `072bd56` + this session's docs commit on top |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | **VNEXT DATABASE INITIALIZATION — stopped at the target safety gate, by design.** An isolated target now exists (`mejokqxriwyawfhawuxu`, provably **not** the demo), but this environment has **no Postgres egress**, so the database could not be marked, migrated, seeded, or even read. **Nothing was written anywhere.** Slice 1 untouched. |
+| **Session completed** | **VNEXT DATABASE INITIALIZATION, attempt 2 (local) — stopped at the target safety gate again, by design, for a different reason.** Egress is **resolved**: the target answers on all three endpoints. The **credential is rejected** (`28P01`) on all three, so `environment_identity` is still unreadable and the gate refused to go further. **Nothing was written anywhere.** Slice 1 untouched. |
 | **Preview URL** | **UNVERIFIED** — unchanged |
 | **Preview data safety** | **UNKNOWN** — unchanged. No Vercel scope was touched |
-| **vNext isolated database** | **EXISTS as a target, NOT INITIALIZED.** Ref `mejokqxriwyawfhawuxu`; its `environment_identity` is **UNREADABLE**, not unmarked (`ENVIRONMENT-MAP.md` §10) |
+| **vNext isolated database** | **EXISTS as a target, NOT INITIALIZED.** Ref `mejokqxriwyawfhawuxu`; its `environment_identity` is **UNREADABLE**, not unmarked — now because the password is rejected, not because the port is closed (`ENVIRONMENT-MAP.md` §10) |
 | **Live serving SHA** | **UNRESOLVED** — all seven unauthenticated avenues exhausted and recorded (`ENVIRONMENT-MAP.md` §9) |
 
 ### Demo baseline, unchanged and re-verified this session
@@ -53,7 +53,9 @@
 | refine | `1ed0105` | fix(vnext): restore complete pursuit history access |
 | refine | `6c5b7a9` | refactor(vnext): refine pursuit context experience |
 | — | `c4f4196` | docs(vnext): record the GATE C refinement |
-| **preview** | **(this session)** | **docs(vnext): plan isolated vNext preview** — documentation only |
+| preview | `714433b` | docs(vnext): plan isolated vNext preview, record blockers as exhausted |
+| vNext DB #1 | `072bd56` | docs(vnext): record the isolated vNext target and its egress blocker |
+| **vNext DB #2** | **(this session)** | **docs(vnext): record the vNext target credential blocker** — documentation only |
 
 ## Chunks 6A + 6B files
 
@@ -304,10 +306,12 @@ accurate.
 | B-1 | **Preview data access UNKNOWN** | Slice 1 is read-only, so unaffected. Blocks Slice 2+. | `ENVIRONMENT-MAP.md` §6 — one read-only Vercel API call |
 | B-2 | **Live serving SHA unresolved** | Cannot certify any promotion | `/api/build` with `OPS_FINGERPRINT_TOKEN`, or the Vercel API |
 | B-3 | Tag pushes refused (403) | Cosmetic — durable references exist | None needed |
-| B-4 | **No Postgres egress from Claude Code Web** | Blocks marking, migrating, seeding or reading **any** hosted database, the isolated vNext target included. The seed path has no HTTPS fallback | Run the `ENVIRONMENT-MAP.md` §10 sequence from a context that permits TCP 5432 |
+| B-4 | ~~**No Postgres egress from Claude Code Web**~~ — **CLEARED 2026-09-14T02:44Z** for this work, by running locally. Still true *of Claude Code Web*: do not attempt hosted-database work from there | — | Run the §10 sequence locally, as this session did |
+| B-5 | **The `DEMO_TARGET_URL` credential is rejected by `mejokqxriwyawfhawuxu`** — `28P01` from the session pooler, the transaction pooler **and** the direct host. The project resolves; only the password is wrong | Blocks migrate, mark-synthetic and seed. This is now **the** blocker for the isolated database and therefore for the isolated preview | **Owner action:** Supabase → project `mejokqxriwyawfhawuxu` → Settings → Database → **Reset database password**, re-export `DEMO_TARGET_URL`, re-run §10 from step 0 |
 
 Neither B-1 nor B-2 blocked chunks 1–4 or 5A, and neither blocks 5B (still no
-writes). B-2 must be resolved before GATE E.
+writes). B-2 must be resolved before GATE E. **B-5 is the only one that needs an
+action rather than a credential lookup, and it is a one-click action.**
 
 ---
 
@@ -531,24 +535,112 @@ All three must name the same target. Recorded in `ENVIRONMENT-MAP.md` §10.
 - `PREVIEW-ISOLATION-PLAN.md` — Option 1 upgraded to PARTIALLY ANSWERED; the
   missing `migrate.ts` step added to Option 2.
 
+## vNext database initialization, attempt 2 — LOCAL (2026-09-14T02:44Z)
+
+**Run on the owner's Mac precisely because Claude Code Web has no Postgres
+egress.** That worked. **No product code changed. No database was written to. No
+hosted configuration was touched. The Monday demo project was never addressed.**
+
+### What was asked, and how far it got
+
+| Step | Outcome |
+|---|---|
+| Pre-flight — clean tree, branch, fetch, read the four docs | **DONE.** Clean, `roadmap/pursuitos-vnext` @ `072bd56`, 0 ahead / 0 behind origin. Both refs reconfirmed from the docs |
+| `DEMO_TARGET_URL` presence check | **PRESENT.** Checked with a `-n` test only. **The value was never printed, logged, written to a file, or recorded anywhere** |
+| Derive the required database variables **from the code, not the prompt** | **DONE — the docs' three are confirmed correct.** `migrate.ts` → `getPool()` → `DATABASE_URL`; `environment-identity.ts` → `getOwnerPool()`, which falls back to `getPool()` because `DATABASE_URL_OWNER` is unset, → `DATABASE_URL`; `demo-db.ts` → `DEMO_TARGET_URL`; the nine layer scripts → `DEMO_URL`; `seed-demo-world.ts` `verify()` and `demo-manifest.ts` → `DEMO_URL ?? DATABASE_URL`. So: **`DATABASE_URL`, `DEMO_TARGET_URL`, `DEMO_URL`** |
+| **STEP 1 — connection + identity safety gate** | **PASSED on identity. FAILED on connection.** `scripts/environment-identity.ts` printed `target : project mejokqxriwyawfhawuxu` — the required ref, and **not** `qifatlqxfuhwrwvpbwsc` — then `CANNOT READ` |
+| Steps 2-5 — migrate, mark synthetic, seed, reconcile | **NOT RUN.** The gate says: if identity cannot be proven, STOP without writing |
+
+### Why it stopped — a credential, proven at three endpoints
+
+| Probe (every one against `mejokqxriwyawfhawuxu`) | Result |
+|---|---|
+| Session pooler `:5432`, user `postgres.<ref>` | **`28P01` password authentication failed** |
+| Transaction pooler `:6543`, user `postgres.<ref>` | **`28P01`** |
+| Direct `db.<ref>.supabase.co:5432`, user `postgres` | **`28P01`** |
+
+**This is a fact about the password, not about the network or the string.** All
+three completed TCP and TLS and returned a *Postgres* error; the direct host does
+not traverse Supavisor at all, so the pooled-username convention is not
+implicated; and Supavisor answers `Tenant or user not found` for an unknown ref,
+which it did not — the project resolved. The connection string's own structure
+was cleared separately, **without reading it**: WHATWG `URL` and
+`pg-connection-string` (the parser `pg` actually uses) agree on host, port, user
+and database; the password round-trips byte-identically through both; and the
+component lengths account for the whole string exactly, so nothing was truncated
+at a `#` or `?`.
+
+### What is now settled that was not before
+
+- **Where this work runs is settled.** A laptop reaches the target fine. B-4 is
+  a property of Claude Code Web, not of the task.
+- **The three-variable trap was respected and is now confirmed from the code**,
+  not from prior notes. Every command bound all three to the same value.
+- **The gate is doing its job, twice over.** `environment-identity.ts --set`
+  refuses an `unreadable` identity, and `assertSyntheticDatabase` refuses an
+  unmarked or unreadable target. Neither was reached, because the read-only gate
+  stopped first — which is the intended order.
+
+### What was NOT done, deliberately
+
+The demo project `qifatlqxfuhwrwvpbwsc` was **not contacted, queried, or
+modified** — including not being queried to prove it was untouched. The proof is
+by construction and is recorded below under *Monday demo zero-change*.
+
+### Monday demo zero-change — the evidence
+
+- Every command in this session bound `DATABASE_URL` / `DEMO_TARGET_URL` /
+  `DEMO_URL` to one value, whose parsed identity is `postgres.mejokqxriwyawfhawuxu`
+  @ `aws-0-ca-central-1.pooler.supabase.com`. The demo ref appears in **no**
+  command, no variable, and no probe.
+- The three raw probes named their host and user explicitly, all
+  `mejokqxriwyawfhawuxu`. On Supabase the pooler hostname is regional and shared;
+  **the project is selected by the ref in the username**, which was never the
+  demo's.
+- No `DATABASE_URL` was inherited: it was **unset** in this shell before the
+  session, as were `DEMO_URL`, `DATABASE_URL_OWNER`, `DEMO_ADMIN_URL`,
+  `DEMO_PGHOST`, `DEMO_PGPORT` and `DEMO_DB_NAME` — so no fallback existed
+  either to the demo or to `127.0.0.1:5433`.
+- **Zero writes were issued to any database.** The only statements executed were
+  `select` in the identity read and `select current_user, current_database()` in
+  the probe, and all of them failed at authentication before reaching a server-side
+  query.
+- No Vercel, Supabase dashboard, or DNS surface was touched.
+
+### Send safety — verified by code and environment, nothing sent
+
+- `externalSendingArmed()` (`src/lib/env/environment.ts:131`) returns
+  `process.env.OUTREACH_AUTOSEND === "on"`, and **`OUTREACH_AUTOSEND` is unset**
+  in this shell — so sending is disarmed by the invariant, not by convention.
+- **`RESEND_API_KEY` is unset**, so `apiKey()` in `src/lib/comms/resend.ts`
+  throws before any request is constructed; `send.ts:162` persists such a message
+  as *failed* rather than sending it. **No real outreach provider credential is
+  present, required, or used.**
+- Nothing in this session executed a send path at all: the only code run was the
+  read-only identity script and a raw `pg` probe.
+
 ## Exact next action
 
-**Initialize the vNext database from a context that can reach port 5432.**
-Nothing about the sequence is unknown any more — only where it runs. Copy it from
-`ENVIRONMENT-MAP.md` §10; in order: read-only identity gate → `migrate.ts` →
-`environment-identity.ts --set demo` → read back → `seed-demo-world.ts` with all
-three variables → `demo-manifest.ts` reconciliation against 3 orgs · 14 companies
-· 19 opportunities · 11 open · $8,040,000 · 14 pursuits.
+**Reset the database password on `mejokqxriwyawfhawuxu` and re-run the sequence.**
+Nothing else about it is unknown — not the commands, not the variables, not where
+to run them. Only the credential is wrong.
 
-**Do not run step 2 (`--set demo`) until the read-only gate has actually printed
-the target's identity.** It would refuse anyway — `environment-identity.ts` exits
-non-zero when the existing identity is `unreadable`, precisely so an unreachable
-connection cannot stamp a marker onto whatever it really reached — but the gate
-is the point, not the backstop.
+1. Supabase dashboard → project **`mejokqxriwyawfhawuxu`** → Settings → Database
+   → **Reset database password**. If that project turns out to be a Supabase
+   *branch*, take the branch's own credentials — a parent-project password would
+   fail exactly like this.
+2. Re-export `DEMO_TARGET_URL` with the new password in the shell that will run
+   the work, **locally, not in Claude Code Web** (B-4).
+3. Run `ENVIRONMENT-MAP.md` §10 from step 0, unchanged. Step 0 is the proof: it
+   must print `environment` and `is_synthetic` instead of `CANNOT READ`. Do not
+   run step 2 (`--set demo`) until it does.
+4. Reconcile against the canonical facts: 3 orgs · 14 companies · 19
+   opportunities · 11 open · $8,040,000 · 14 pursuits.
 
 Then, and only then, `PREVIEW-ISOLATION-PLAN.md` Objective C Option 2 step 5 (the
-one additive Vercel env var) and Objective D's flag plan. **An isolated database
-does not by itself isolate Preview.**
+one additive Vercel env var, `DATABASE_URL` scoped to **Preview only**, pointing
+at the isolated target) and Objective D's flag plan. **An isolated database does
+not by itself isolate Preview.**
 
 Still open and unchanged: the live serving SHA (`ENVIRONMENT-MAP.md` §9) and the
 Vercel Preview `DATABASE_URL` classification (§6). Until both are resolved, the
@@ -615,7 +707,9 @@ begins only after GATE C.
 ## Run these first in the next session
 
 ```sh
-cd /home/user/ActivateOS
+# Locally: cd /Users/cgrigori/Documents/ActivateOS/pursuitos-vnext
+# In Claude Code Web: cd /home/user/ActivateOS
+# Hosted-database work must run LOCALLY — see B-4.
 
 # 1. Confirm the lane and that nothing drifted.
 git fetch --all --tags
