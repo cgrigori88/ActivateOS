@@ -44,7 +44,7 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | · why this pursuit (portfolio-relative) | P2 | **NOT STARTED** | — | 2026-09-12 | Deferred to Slice 3 — needs cross-pursuit inputs | D-017: a different computation from pertinence |
 | Pursuit Intelligence | P2 | **NOT STARTED** | — | 2026-09-12 | Slice 3 | Depends on Slice 1 |
 | Next Move / coordination | P3 | **SUPERSEDED** by Slice 2A | — | 2026-09-14 | — | The P3 amendment replaced isolated next-best-action with Goal → Plan → Motion → Action (D-025). `VNEXT_NEXT_BEST_ACTION_ENABLED` stays reserved and unimplemented |
-| · pursuit goal | P3 | **PREVIEW READY** | `pursuit_goals` (0103) | 2026-09-14 | Human-authored goal editing (schema supports it; no UI) | Not the org-level `goals` table (D-026) |
+| · pursuit goal | P3 | **PREVIEW READY** | `pursuit_goals` (0103) | 2026-09-14 | A UI for goal replacement (the governed `replace_pursuit_goal` path exists and is verified) | The commercial outcome only — route-, motion- and action-independent; append-only replacement via `supersedes_goal_id` (D-033). Not the org-level `goals` table (D-026) |
 | · pursuit plan + revisions | P3 | **PREVIEW READY** | `pursuit_plans`, `pursuit_plan_revisions` (0103), `read-models/pursuit-plan.ts`, `coordination/plan-store.ts` | 2026-09-14 | Worker-driven review recording; plan closure | Append-only by grant, proven as `app_rw` (42501) |
 | · course correction | P3 | **PREVIEW READY** | `assessPlanReview` + `PLAN_REVIEW_REQUIRED` | 2026-09-14 | Automatic recording on material events (today: detected on read, recorded on request) | Fingerprint comparison, never a rewrite (D-028) |
 | AI Control Plane | P4 | **NOT STARTED** | — | 2026-09-12 | Slice 4, thin backend only | D-011: no new room |
@@ -101,6 +101,25 @@ Local Postgres 17.11 + pgvector 0.8.6 (Homebrew) on `127.0.0.1:5433`, canonical 
 | Screenshots | `docs/vnext/review/slice-2a/` |
 
 **Defects found and fixed before commit** (all caught by the new harness or the render review, none shipped): 0103 first draft left `app_rw` full DML on the new tables because of 0058's default privileges (D-031); the two plan skills appeared in the Federation panel's registry list and the seed's invocation became its "Last action" — both visible flag-OFF — fixed by keeping them in `COORDINATION_SKILLS` and seeding through the store; a `plan && …` child that left a `null` in the flag-OFF flight payload (5 bytes, no markup) — fixed with a ternary; a raw ISO date and a two-column grid that did not form.
+
+### Slice 2A Goal ↔ Plan boundary refinement (2026-09-14, D-033)
+
+The goal is now the durable commercial outcome only. Globex: "Exit legacy virtualization before renewal and close the $920K opportunity" — previously "…with WWT". The route, motion, action and owner live in plan revisions. 0103 was amended in place (never applied to any hosted/shared database): an append-only `supersedes_goal_id` + `supersession_reason` on the new goal row replaces the mutable forward pointer, plus `GOAL_REPLACED` and the governed USER-only `replace_pursuit_goal` skill (no UI). The local world was rebuilt from scratch.
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| `npm test` | **316 pass / 0 fail** (+3: route WWT↔CDW, motion/action, 0103 supersession schema; Globex goal test rewritten) |
+| `vnext-coordination` verifier | **116 passed / 0 failed** (from 86): WWT → CDW → WWT keeps the same goal row and changes only plan history; motion change and action adjustment keep the goal; replacement keeps the old goal byte-identical and SUPERSEDED, forks refused (23505), non-human/unexplained supersession refused (23514), `app_rw` cannot rewrite objective or pointer (42501), another org cannot replace |
+| `vnext-context` verifier (Slice 1) | 62 passed / 0 failed — Globex ledger still 10 rows |
+| Manifest digest | `be0da833990ce436` — unchanged |
+| SEEDED spot-check | append-only 11/0 · stakeholder-intel 43/0 · value-case 126/0 |
+| `npm run build` | exit 0 |
+| Flag-OFF, pre-slice build vs refined build | same raw size (234,511 bytes); full body byte-identical under the same normalization as before; zero plan markers |
+| "What matters now", Slice-1-only vs refined 2A ON | outerHTML byte-identical at 1440 and 390 (1,092×792 / 326×1,251) |
+| Flag-ON goal area | shows "Exit legacy virtualization before renewal and close the $920K opportunity"; "opportunity with WWT" absent; "via WWT" present only in the plan's Next move; plan panel geometry unchanged (1,092×547) |
+
+**Found while testing the boundary, fixed:** when a person approves the *recommended* route, the route read-model deliberately reports `selected = null`. The plan loader took that as "no route", which left the plan unable to name an approved recommendation. It now resolves the choice from `selectedKey`. Globex (an override) was unaffected.
 
 ### Chunk 6B rendered evidence (local synthetic, Globex pursuit)
 

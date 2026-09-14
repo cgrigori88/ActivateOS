@@ -90,7 +90,10 @@ export async function recordPlanRecommendation(
        actor.type, actor.id, opts.env])).rows[0].id;
   }
 
-  let planId = records.plan && (records.plan.status === "PROPOSED" || records.plan.status === "ACTIVE") ? records.plan.id : null;
+  // A plan is reused only for the goal it implements. After a goal is replaced its plan is
+  // SUPERSEDED, so the new goal always gets a plan of its own.
+  let planId = records.plan && (records.plan.status === "PROPOSED" || records.plan.status === "ACTIVE") && records.plan.goalId === goalId
+    ? records.plan.id : null;
   if (!planId) {
     planId = (await db.query<{ id: string }>(
       `insert into pursuit_plans (org_id, pursuit_id, goal_id, status, data_environment)
@@ -133,6 +136,71 @@ export async function recordPlanRecommendation(
   }
 
   return { status: "RECORDED", goalId, planId, revisionId, reviewRequired: reviewTrigger != null };
+}
+
+export interface ReplaceGoalArgs {
+  pursuitId: string;
+  objective: string;
+  targetDate?: string | null;
+  reason: string;
+}
+
+/**
+ * Replace a pursuit's commercial objective (D-033).
+ *
+ * Only for a GENUINELY different outcome. Choosing another route, motion or action is
+ * plan state and never comes here — the goal does not encode any of them.
+ *
+ * Append-only: the live goal keeps its objective byte for byte and only moves to
+ * SUPERSEDED; the plan that implemented it moves to SUPERSEDED with every revision
+ * intact; a NEW, human-authored, active goal names the goal it replaces and why. The
+ * next recommendation starts a fresh plan for the new goal.
+ */
+export async function replacePursuitGoal(
+  db: PoolClient, actor: PlanActor, args: ReplaceGoalArgs, opts: WriteOpts,
+): Promise<{ goalId: string; replacedGoalId: string; supersededPlanId: string | null }> {
+  const objective = args.objective?.trim() ?? "";
+  const reason = args.reason?.trim() ?? "";
+  if (objective.length < 3 || objective.length > 300) throw new Error("A goal's objective must be between 3 and 300 characters.");
+  if (!reason) throw new Error("A reason is required to replace a pursuit's goal.");
+  const targetDate = args.targetDate ?? null;
+  if (targetDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) throw new Error("Target date must be YYYY-MM-DD.");
+
+  const lock = await db.query(`select id from pursuits where id = $1 and org_id = $2 for update`, [args.pursuitId, actor.orgId]);
+  if (!lock.rows[0]) throw new Error("pursuit not found in this organization");
+
+  const live = (await db.query<{ id: string; objective: string }>(
+    `select id, objective from pursuit_goals
+      where pursuit_id = $1 and org_id = $2 and status in ('PROPOSED','ACTIVE') for update`,
+    [args.pursuitId, actor.orgId])).rows[0];
+  if (!live) throw new Error("This pursuit has no live goal to replace.");
+  if (live.objective.trim() === objective) throw new Error("That is the current objective — nothing to replace.");
+
+  // Old meaning preserved: only its lifecycle status moves (the one updatable column that matters).
+  await db.query(`update pursuit_goals set status = 'SUPERSEDED', updated_at = now() where id = $1 and org_id = $2`, [live.id, actor.orgId]);
+  const plan = (await db.query<{ id: string }>(
+    `update pursuit_plans set status = 'SUPERSEDED', updated_at = now()
+      where goal_id = $1 and org_id = $2 and status in ('PROPOSED','ACTIVE') returning id`,
+    [live.id, actor.orgId])).rows[0];
+
+  const goalId = (await db.query<{ id: string }>(
+    `insert into pursuit_goals (org_id, pursuit_id, objective, target_date, status, origin, basis,
+                                proposed_by_actor_type, proposed_by_actor_id, decided_by_actor_id, decided_at,
+                                supersedes_goal_id, supersession_reason, data_environment)
+     values ($1,$2,$3,$4,'ACTIVE','HUMAN_AUTHORED',$5,$6,$7,$7, now(), $8,$9,$10) returning id`,
+    [actor.orgId, args.pursuitId, objective, targetDate, JSON.stringify({ replaces: live.id }),
+     actor.type, actor.id, live.id, reason, opts.env])).rows[0].id;
+
+  await recordChange(db, {
+    orgId: actor.orgId, pursuitId: args.pursuitId, entityType: "pursuit_goal", entityId: goalId,
+    changeType: "GOAL_REPLACED", materiality: "MEDIUM",
+    reason: `Pursuit goal replaced — ${reason}`,
+    actorType: actor.type, actorId: actor.id, triggerType: "MANUAL", dataEnvironment: opts.env,
+    before: { goalId: live.id, objective: live.objective, planId: plan?.id ?? null },
+    after: { goalId, objective, supersedesGoalId: live.id },
+  });
+
+  return { goalId, replacedGoalId: live.id, supersededPlanId: plan?.id ?? null };
 }
 
 export type PlanDecision = "APPROVED" | "ADJUSTED" | "REJECTED";

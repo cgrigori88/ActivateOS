@@ -99,7 +99,7 @@ function revision(kind: RevisionRecord["kind"], rec: ReturnType<typeof recommend
 
 function records(revisions: RevisionRecord[], goalStatus: "PROPOSED" | "ACTIVE" = "PROPOSED"): PlanRecords {
   return {
-    goal: { id: "g-1", objective: "Exit legacy virtualization before renewal — close the $920K opportunity with WWT", targetDate: "2026-10-24", status: goalStatus, origin: "SYSTEM_RECOMMENDED", decidedAt: null, createdAt: NOW.toISOString() },
+    goal: { id: "g-1", objective: "Exit legacy virtualization before renewal and close the $920K opportunity", targetDate: "2026-10-24", status: goalStatus, origin: "SYSTEM_RECOMMENDED", decidedAt: null, supersedesGoalId: null, createdAt: NOW.toISOString() },
     plan: { id: "plan-1", goalId: "g-1", status: goalStatus === "ACTIVE" ? "ACTIVE" : "PROPOSED", createdAt: NOW.toISOString() },
     revisions, stagedActions: {},
   };
@@ -107,12 +107,56 @@ function records(revisions: RevisionRecord[], goalStatus: "PROPOSED" | "ACTIVE" 
 
 // --- goal ---------------------------------------------------------------------
 
-test("plan: the goal is composed from thesis, open opportunity and the route a PERSON selected", () => {
+test("plan: Globex's goal is the commercial outcome — thesis and opportunity, no route choice (D-033)", () => {
   const g = draftGoal(globex());
-  assert.match(g.objective, /^Exit legacy virtualization before renewal — close the \$920K opportunity with WWT$/);
+  assert.equal(g.objective, "Exit legacy virtualization before renewal and close the $920K opportunity");
   assert.equal(g.targetDate, "2026-10-24", "target is the opportunity's canonical close date");
-  assert.ok(!g.objective.includes("CDW"), "never the recommended-but-overridden route");
-  assert.deepEqual(g.basis.map((b) => b.refType), ["pursuit", "opportunity", "route"]);
+  assert.ok(!/WWT|CDW/.test(g.objective), "no partner or route in the objective");
+  assert.deepEqual(g.basis.map((b) => b.refType), ["pursuit", "opportunity"], "no route in the goal's basis either");
+});
+
+test("plan: a route change WWT → CDW (or back) leaves the goal identical and changes only the plan", () => {
+  const wwt = globex();
+  const cdw = globex({ route: { decided: true, selectedLabel: "CDW", recommendedLabel: "CDW", overridden: false } });
+  const undecided = globex({ route: { decided: false, selectedLabel: null, recommendedLabel: "CDW", overridden: false } });
+  assert.deepEqual(draftGoal(cdw), draftGoal(wwt), "WWT → CDW: same goal");
+  assert.deepEqual(draftGoal(undecided), draftGoal(wwt), "no decision yet: same goal");
+  const planWwt = recommendPursuitPlan(wwt, NOW);
+  const planCdw = recommendPursuitPlan(cdw, NOW);
+  assert.notEqual(planWwt.basis.fingerprint, planCdw.basis.fingerprint, "the route is plan state, so the plan moves");
+  assert.deepEqual(planWwt.goal, planCdw.goal, "…and the goal does not");
+  const review = assessPlanReview(planWwt, planCdw);
+  assert.equal(review.state, "REVIEW_NEEDED");
+  assert.ok(review.reasons.includes("Route is now CDW."));
+  assert.ok(!review.reasons.some((r) => /goal|objective/i.test(r)), "a route change never reads as a change of objective");
+  assert.ok(/WWT/.test(JSON.stringify(planWwt.content)) && /CDW/.test(JSON.stringify(planCdw.content)), "the route lives in the plan revision");
+});
+
+test("plan: a motion change or an action adjustment never touches the goal", () => {
+  const base = globex();
+  const noMotion = globex({ motion: null });
+  const abandoned = globex({ motion: { ...base.motion!, status: "completed" } });
+  assert.deepEqual(draftGoal(noMotion), draftGoal(base));
+  assert.deepEqual(draftGoal(abandoned), draftGoal(base));
+  const rec = recommendPursuitPlan(base, NOW);
+  const { content } = applyAdjustments(rec.content, { nextActionText: "Book time with the CFO office", ownerTeamMemberId: "tm-sp" }, base.team);
+  assert.ok(!("goalObjective" in content) && !("goal" in content), "a plan revision carries no goal text to adjust");
+  assert.deepEqual(draftGoal(base), rec.goal, "the goal is what it was before the adjustment");
+});
+
+test("plan: 0103 gives goals append-only replacement — a back-pointer on the new row, never a rewritable one", () => {
+  const sql = readFileSync(new URL("../supabase/migrations/0103_pursuit_coordination.sql", import.meta.url), "utf8");
+  assert.match(sql, /supersedes_goal_id\s+uuid references pursuit_goals\(id\)/);
+  assert.match(sql, /supersession_reason\s+text/);
+  assert.ok(!/superseded_by/.test(sql), "no forward pointer that would have to be written onto the old row");
+  assert.match(sql, /pursuit_goals_supersession_shape check/);
+  assert.match(sql, /pursuit_goals_supersedes_once on pursuit_goals \(supersedes_goal_id\)/, "a goal is replaced at most once");
+  const grant = sql.match(/grant update \(([^)]*)\) on pursuit_goals to app_rw/)?.[1] ?? "";
+  for (const col of ["objective", "basis", "origin", "supersedes_goal_id", "supersession_reason", "target_date"]) {
+    assert.ok(!grant.includes(col), `${col} must not be updatable`);
+  }
+  // Doubled quotes: the value is written inside the dynamic SQL string that rebuilds the CHECK.
+  assert.match(sql, /''GOAL_REPLACED''::text/);
 });
 
 test("plan: without an opportunity the goal falls back to the thesis and has no invented date", () => {

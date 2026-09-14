@@ -48,7 +48,10 @@ approved plan stale.
 ### Model (D-024…D-032)
 
 ```
-pursuit_goals            the commercial outcome; PROPOSED by PursuitOS → ACTIVE when a person approves
+pursuit_goals            the commercial OUTCOME only (never route/motion/action/owner — D-033);
+                         PROPOSED by PursuitOS → ACTIVE when a person approves a plan for it;
+                         replaced only append-only: new row supersedes_goal_id + reason, old row
+                         SUPERSEDED with its meaning intact (governed replace_pursuit_goal, USER only)
 pursuit_plans            stable identity (what a P5 runtime resumes)
 pursuit_plan_revisions   APPEND-ONLY. RECOMMENDATION rows (system) and DECISION rows (person:
                          APPROVED / ADJUSTED / REJECTED) — a decision references the recommendation
@@ -67,7 +70,8 @@ pursuit_team_members     REUSED — owner = a role; Unassigned is explicit
 
 ### Globex, as seeded (layer 11, `scripts/demo-plan-story.ts`)
 
-Goal "Exit legacy virtualization before renewal — close the $920K opportunity with WWT"
+Goal "Exit legacy virtualization before renewal and close the $920K opportunity" (no route
+in it — WWT appears only in the plan, D-033)
 · Target Oct 24 (the opportunity's close date) · proposed, not yet confirmed · 4 of 8
 milestones (route, champion, technical buyer, value case done; economic buyer and
 pursuit timing open; decision/paper process waiting on the economic buyer; close) ·

@@ -3,7 +3,7 @@
 Durable architecture, product and UX decisions for the vNext lane. Append, don't
 rewrite: a superseded decision stays, marked `SUPERSEDED`, with the reason.
 
-**Last updated:** 2026-09-14 (Slice 2A — D-024…D-032)
+**Last updated:** 2026-09-14 (Slice 2A — D-024…D-033)
 
 ---
 
@@ -540,7 +540,7 @@ deployment that already names the variable change behaviour silently.
 
 **Why.** `goals` (0026) is an org-level S.M.A.R.T. portfolio target whose progress is
 computed from linked motions, which the /goals room lists — and which the certified
-demo manifest counts. A pursuit's goal ("close the $920K opportunity with WWT") is a
+demo manifest counts. A pursuit's goal ("close the $920K opportunity" — the outcome, never the route; D-033) is a
 different object, owned differently, with a different lifecycle. Overloading `goals`
 would put pursuit goals into the portfolio room and move the certified digest.
 
@@ -621,3 +621,59 @@ Three honest states: a named PERSON, a ROLE_UNFILLED (the role exists only as a
 recommendation — "Unassigned — Account executive role proposed, no one confirmed yet"),
 or UNASSIGNED. On Globex every team role is still RECOMMENDED with no person, so the
 owner reads Unassigned. A person can assign an owner when adjusting.
+
+---
+
+## D-033 · Pursuit Goals express durable commercial outcomes; Plans express how the ecosystem intends to achieve them
+
+**Decision.**
+
+> **Pursuit Goals express durable commercial outcomes; Plans express how the
+> ecosystem intends to achieve them.**
+
+A goal states WHAT the pursuit is for — "Exit legacy virtualization before renewal and
+close the $920K opportunity". It never encodes the selected partner or route, the
+motion, the action, the owner, or any other tactical choice. Those are plan state: they
+live in `pursuit_plan_revisions`, where changing them is a recommendation and a human
+decision with history — never a change of objective.
+
+**What this corrected.** Slice 2A as first built composed the Globex goal as "…close the
+$920K opportunity **with WWT**", and cited the route in the goal's basis. So the goal's
+meaning depended on a route decision. A WWT → CDW switch would have implied the
+commercial objective had changed, when only the way of achieving it had — the hierarchy
+GOAL → PLAN → MOTION → ACTION was not semantically true. 0103 had not been applied to any
+hosted or shared database, so 0103 itself was amended instead of adding a cleanup
+migration.
+
+**How it holds, structurally.**
+- `draftGoal` reads only the pursuit thesis and the open opportunity. It has no input
+  through which a route, motion, action or owner could enter. Pinned by test: WWT, CDW
+  and undecided produce identical goals.
+- A plan revision carries no copy of the goal (the old `goalObjective` field is gone).
+  The plan *implements* a goal through `pursuit_plans.goal_id`. It does not restate it,
+  so plan revisions cannot drift from, or rewrite, what the goal says.
+- A route, motion or action change moves the plan's fingerprint, so the approved plan
+  becomes reviewable ("Route is now CDW."). The goal row, id and objective are
+  untouched, and no review reason may mention the objective.
+- Goal confirmation is still tied to a person approving a plan that implements it. It
+  is not tied to any particular route or motion.
+
+**Replacement, when the objective genuinely changes.** Minimal and append-only; there is
+no goal-revision system:
+- The NEW goal row carries `supersedes_goal_id` and `supersession_reason`, set once at
+  insert and never updatable.
+- The replaced goal keeps its objective, basis and origin byte for byte; only its
+  status moves to SUPERSEDED.
+- Only a HUMAN_AUTHORED goal with a reason may supersede (CHECK), and a goal can be
+  superseded at most once (unique index), so history is a line, never a fork.
+- The plan that implemented the old goal is SUPERSEDED with every revision intact, and
+  the next recommendation starts a new plan for the new goal.
+- Replacement runs only through the governed, USER-only `replace_pursuit_goal` skill,
+  and writes `GOAL_REPLACED` to the ledger.
+- The old forward pointer (`superseded_by` on the old row) was removed. It would have
+  required writing onto the historical row.
+
+**Deliberately not done.** No UI for goal replacement: the semantics exist and are
+verified, but no surface complexity was added. The system never replaces a goal itself.
+If the opportunity amount later changes, the goal still says what a person confirmed;
+proposing a replacement is future work.

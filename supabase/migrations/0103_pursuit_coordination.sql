@@ -5,7 +5,9 @@
 -- is rewritten. Inert until VNEXT_PURSUIT_COORDINATION_ENABLED reads it.
 --
 -- WHAT IS NEW, AND WHAT IS DELIBERATELY NOT.
---   pursuit_goals           — the commercial outcome a pursuit is trying to achieve. Not the org-level
+--   pursuit_goals           — the DURABLE COMMERCIAL OUTCOME a pursuit is trying to achieve — never
+--                             the route, partner, motion, action or owner chosen to get there; those
+--                             are plan state (D-033). Not the org-level
 --                             S.M.A.R.T. `goals` table (0026): that is a portfolio target whose progress
 --                             is computed from linked motions, and it is counted by the certified demo
 --                             manifest. A pursuit goal is a different object with a different owner.
@@ -44,13 +46,25 @@ create table if not exists pursuit_goals (
   proposed_by_actor_id    uuid,
   decided_by_actor_id     uuid,
   decided_at              timestamptz,
-  superseded_by           uuid references pursuit_goals(id),
+  -- Replacement, append-only (D-033). A genuinely different commercial objective is a NEW row
+  -- that names the goal it replaces and says why; the replaced row keeps its meaning and only
+  -- moves to SUPERSEDED. The pointer lives on the NEW row, is set once at insert, and is never
+  -- updatable — so history is read backwards from the present, and nothing is rewritten.
+  supersedes_goal_id      uuid references pursuit_goals(id),
+  supersession_reason     text,
   data_environment        text not null default 'PRODUCTION',
   created_at              timestamptz not null default now(),
-  updated_at              timestamptz not null default now()
+  updated_at              timestamptz not null default now(),
+  -- Only a person replaces a goal, always with a reason, never with itself.
+  constraint pursuit_goals_supersession_shape check (
+    supersedes_goal_id is null
+    or (supersedes_goal_id <> id and supersession_reason is not null and origin = 'HUMAN_AUTHORED')
+  )
 );
 -- One live goal per pursuit. Terminal and superseded goals stay as history.
 create unique index if not exists pursuit_goals_one_live on pursuit_goals (pursuit_id) where status in ('PROPOSED','ACTIVE');
+-- A goal is replaced at most once: the replacement history is a single line, never a fork.
+create unique index if not exists pursuit_goals_supersedes_once on pursuit_goals (supersedes_goal_id) where supersedes_goal_id is not null;
 create index if not exists pursuit_goals_org_pursuit on pursuit_goals (org_id, pursuit_id, created_at desc);
 
 -- ── 2. Pursuit plan (identity) ──────────────────────────────────────────────────────────────────
@@ -108,7 +122,7 @@ grant select, insert on pursuit_goals, pursuit_plans, pursuit_plan_revisions to 
 -- without this, "append-only" would have been a comment, not a constraint.)
 revoke update, delete on pursuit_goals, pursuit_plans, pursuit_plan_revisions from app_rw;
 -- Forward-only lifecycle columns. Identity, objective, content and basis are never updatable.
-grant update (status, decided_by_actor_id, decided_at, superseded_by, updated_at) on pursuit_goals to app_rw;
+grant update (status, decided_by_actor_id, decided_at, updated_at) on pursuit_goals to app_rw;
 grant update (status, updated_at) on pursuit_plans to app_rw;
 -- pursuit_plan_revisions: no UPDATE, no DELETE — history is corrected by appending.
 
@@ -130,10 +144,10 @@ drop policy if exists pursuit_plan_revisions_rw on pursuit_plan_revisions;
 create policy pursuit_plan_revisions_rw on pursuit_plan_revisions for all to app_rw
   using (is_org_member(org_id)) with check (is_org_member(org_id));
 
--- ── 5. Ledger vocabulary — two values, every prior value kept ────────────────────────────────────
--- Only HUMAN decisions and SYSTEM-detected review triggers reach the universal ledger. A system
--- recommendation is a proposal, not a change to the pursuit, and its history lives in
--- pursuit_plan_revisions (see D-027).
+-- ── 5. Ledger vocabulary — three values, every prior value kept ──────────────────────────────────
+-- Only HUMAN decisions (a plan decided, a goal replaced) and SYSTEM-detected review triggers reach
+-- the universal ledger. A system recommendation is a proposal, not a change to the pursuit, and its
+-- history lives in pursuit_plan_revisions (see D-027).
 do $$
 declare def text;
 begin
@@ -142,7 +156,7 @@ begin
   if def is not null and def not like '%PLAN_DECIDED%' then
     execute 'alter table change_ledger drop constraint change_ledger_change_type_check';
     execute 'alter table change_ledger add constraint change_ledger_change_type_check ' ||
-      replace(def, ']))', ', ''PLAN_DECIDED''::text, ''PLAN_REVIEW_REQUIRED''::text]))');
+      replace(def, ']))', ', ''PLAN_DECIDED''::text, ''PLAN_REVIEW_REQUIRED''::text, ''GOAL_REPLACED''::text]))');
   end if;
 end $$;
 

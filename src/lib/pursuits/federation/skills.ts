@@ -184,6 +184,18 @@ export const COORDINATION_SKILLS: SkillDef[] = [
         reason: ctx.args?.reason ? String(ctx.args.reason) : null,
       },
       { env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null }) },
+  // Replacing the COMMERCIAL OBJECTIVE itself (D-033) — a person only, with a reason. Append-only:
+  // the old goal keeps its meaning and is superseded; the new goal names it. A route, motion or
+  // action change never comes here — those are plan decisions above.
+  { skillId: "replace_pursuit_goal", version: 1, description: "Replace a pursuit's commercial objective with a genuinely different one (human decision; history preserved)", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER"], requiredPermission: "operator", precheck: pursuitInOrg,
+    handler: async (db, actor, ctx) => (await import("../coordination/plan-store")).replacePursuitGoal(
+      db, { type: actor.type, id: actor.id ?? null, orgId: actor.orgId },
+      {
+        pursuitId: String(ctx.pursuitId), objective: String(ctx.args?.objective ?? ""),
+        targetDate: ctx.args?.targetDate ? String(ctx.args.targetDate) : null, reason: String(ctx.args?.reason ?? ""),
+      },
+      { env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null }) },
 ];
 
 /** Tenant guard for pursuit-scoped skills: the pursuit id in the request must belong to the actor's org. */

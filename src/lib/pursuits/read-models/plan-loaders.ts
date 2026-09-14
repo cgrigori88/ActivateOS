@@ -111,6 +111,12 @@ export async function loadPlanState(db: PoolClient, caller: Caller, pursuitId: s
   const o = opp.rows[0];
   const m = motion.rows[0];
   const routeKnown = route.recommended != null || route.selected != null || route.decided;
+  // The route a person chose. `route.selected` is deliberately null when the choice EQUALS the
+  // recommendation (the route surface reads that as "approved the recommended route"), so the
+  // raw selection is resolved from `selectedKey`, which the route read-model keeps either way.
+  const chosen = route.decided
+    ? [route.recommended, ...route.alternatives].find((c) => c != null && c.key === route.selectedKey) ?? route.selected
+    : null;
 
   return {
     pursuitId,
@@ -123,7 +129,7 @@ export async function loadPlanState(db: PoolClient, caller: Caller, pursuitId: s
     route: routeKnown
       ? {
         decided: route.decided,
-        selectedLabel: route.selected?.label ?? null,
+        selectedLabel: chosen?.label ?? null,
         recommendedLabel: route.recommended?.label ?? null,
         overridden: route.decided && !route.selectionMatchesRecommendation,
       }
@@ -156,7 +162,7 @@ export async function loadPlanState(db: PoolClient, caller: Caller, pursuitId: s
 
 // ---------------------------------------------------------------------------
 
-interface GoalRow { id: string; objective: string; target_date: string | null; status: GoalRecord["status"]; origin: GoalRecord["origin"]; decided_at: Date | null; created_at: Date }
+interface GoalRow { id: string; objective: string; target_date: string | null; status: GoalRecord["status"]; origin: GoalRecord["origin"]; decided_at: Date | null; supersedes_goal_id: string | null; created_at: Date }
 interface PlanRow { id: string; goal_id: string; status: PlanRecord["status"]; created_at: Date }
 interface RevisionRow {
   id: string; revision_no: number; kind: RevisionRecord["kind"]; decision: RevisionRecord["decision"];
@@ -168,18 +174,23 @@ interface RevisionRow {
 /** The live goal, the live plan, and the plan's full revision history. */
 export async function loadPlanRecords(db: PoolClient, caller: Caller, pursuitId: string): Promise<PlanRecords> {
   const goal = await db.query<GoalRow>(
-    `select id, objective, to_char(target_date, 'YYYY-MM-DD') as target_date, status, origin, decided_at, created_at
+    `select id, objective, to_char(target_date, 'YYYY-MM-DD') as target_date, status, origin, decided_at, supersedes_goal_id, created_at
        from pursuit_goals where pursuit_id = $1 and org_id = $2
       order by (status in ('PROPOSED','ACTIVE')) desc, created_at desc limit 1`,
     [pursuitId, caller.orgId],
   );
-  const plan = await db.query<PlanRow>(
-    `select id, goal_id, status, created_at
-       from pursuit_plans where pursuit_id = $1 and org_id = $2
-      order by (status in ('PROPOSED','ACTIVE')) desc, created_at desc limit 1`,
-    [pursuitId, caller.orgId],
-  );
   const g = goal.rows[0];
+  // The plan shown is the one implementing the CURRENT goal. After a goal is replaced, the old
+  // goal's plan is superseded with its history intact — it is not this goal's plan and is never
+  // shown as if it were (D-033).
+  const plan = g
+    ? await db.query<PlanRow>(
+      `select id, goal_id, status, created_at
+         from pursuit_plans where pursuit_id = $1 and org_id = $2 and goal_id = $3
+        order by (status in ('PROPOSED','ACTIVE')) desc, created_at desc limit 1`,
+      [pursuitId, caller.orgId, g.id],
+    )
+    : { rows: [] as PlanRow[] };
   const p = plan.rows[0];
   if (!p) return { goal: g ? goalRecord(g) : null, plan: null, revisions: [], stagedActions: {} };
 
@@ -210,7 +221,7 @@ export async function loadPlanRecords(db: PoolClient, caller: Caller, pursuitId:
 function goalRecord(g: GoalRow): GoalRecord {
   return {
     id: g.id, objective: g.objective, targetDate: g.target_date, status: g.status, origin: g.origin,
-    decidedAt: g.decided_at?.toISOString() ?? null, createdAt: g.created_at.toISOString(),
+    decidedAt: g.decided_at?.toISOString() ?? null, supersedesGoalId: g.supersedes_goal_id, createdAt: g.created_at.toISOString(),
   };
 }
 

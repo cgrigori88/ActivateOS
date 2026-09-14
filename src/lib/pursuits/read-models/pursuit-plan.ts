@@ -13,8 +13,9 @@ import type { DisclosureClass } from "./types";
  * canonical state of one pursuit (already loaded, already tenant-scoped, already
  * disclosure-filtered), it composes
  *
- *   • a GOAL draft — the commercial outcome, from the pursuit's thesis, its open
- *     opportunity and the route a person selected;
+ *   • a GOAL draft — the durable commercial outcome, from the pursuit's thesis and
+ *     its open opportunity. Never the route, motion, action or owner: those are how
+ *     the ecosystem intends to get there, and they belong to the plan (D-033);
  *   • a PLAN — milestones with dependencies, each resolved from a canonical domain
  *     rather than typed by hand (the house rule `goals.ts` already follows);
  *   • the CURRENT FOCUS — the top-ranked unresolved gap, carried from Missing
@@ -184,9 +185,13 @@ export interface PlanFocus {
   milestoneKey: string | null;
 }
 
+/**
+ * What a plan revision carries. Deliberately NO goal text: the plan implements a goal
+ * (`pursuit_plans.goal_id`), it does not restate it — a copied objective would drift
+ * from the goal it claims to serve, and would couple the goal to plan revisions.
+ */
 export interface PlanContent {
   schema: typeof PLAN_CONTENT_SCHEMA;
-  goalObjective: string;
   focus: PlanFocus | null;
   motion: PlanMotionRef;
   nextAction: PlanNextAction | null;
@@ -378,18 +383,22 @@ export function dayLabel(iso: string | null, now: Date): string | null {
 // Composition
 // ---------------------------------------------------------------------------
 
-/** The goal, composed from the pursuit's thesis, its open opportunity, and the route a person chose. */
+/**
+ * The goal: the durable COMMERCIAL OUTCOME, composed from the pursuit's thesis and its
+ * open opportunity — and from nothing else. It reads no route, partner, motion, action
+ * or owner, so choosing WWT over CDW (or back), changing the motion, or adjusting the
+ * next action cannot change what the pursuit is trying to achieve (D-033). Those are
+ * plan state and live in plan revisions.
+ */
 export function draftGoal(s: PlanState): GoalDraft {
   const thesis = (s.businessProblem ?? "").trim().replace(/\.$/, "");
   const basis: GoalDraft["basis"] = [{ refType: "pursuit", refId: s.pursuitId }];
   if (s.opportunity) {
     basis.push({ refType: "opportunity", refId: s.opportunity.id });
-    const partner = s.route?.decided && s.route.selectedLabel ? ` with ${s.route.selectedLabel}` : "";
-    if (partner) basis.push({ refType: "route", refId: s.pursuitId });
     const amount = s.opportunity.amountUsd != null ? ` ${formatMoney(s.opportunity.amountUsd)}` : "";
-    const close = `close the${amount} opportunity${partner}`;
+    const close = `close the${amount} opportunity`;
     return {
-      objective: thesis ? `${thesis} — ${close}` : `${close.charAt(0).toUpperCase()}${close.slice(1)}`,
+      objective: thesis ? `${thesis} and ${close}` : `${close.charAt(0).toUpperCase()}${close.slice(1)}`,
       targetDate: s.opportunity.expectedClose,
       basis,
     };
@@ -593,7 +602,6 @@ export function recommendPursuitPlan(s: PlanState, now: Date = new Date()): Plan
     goal,
     content: {
       schema: PLAN_CONTENT_SCHEMA,
-      goalObjective: goal.objective,
       focus, motion: motionRef(s), nextAction, milestones, why,
     },
     basis: {
@@ -732,6 +740,8 @@ export interface GoalRecord {
   status: "PROPOSED" | "ACTIVE" | "ACHIEVED" | "ABANDONED" | "SUPERSEDED";
   origin: "SYSTEM_RECOMMENDED" | "HUMAN_AUTHORED";
   decidedAt: string | null;
+  /** The goal this one replaced, when a person replaced the commercial objective (D-033). */
+  supersedesGoalId: string | null;
   createdAt: string;
 }
 

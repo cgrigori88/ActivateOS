@@ -36,7 +36,7 @@ export type ChangeType =
   | "STAKEHOLDER_ROLE_ASSERTED"
   // vNext Slice 2A — Pursuit Coordination (0103). Human plan decisions and system-detected review
   // triggers only; a system recommendation is a proposal and lives in pursuit_plan_revisions.
-  | "PLAN_DECIDED" | "PLAN_REVIEW_REQUIRED";
+  | "PLAN_DECIDED" | "PLAN_REVIEW_REQUIRED" | "GOAL_REPLACED";
 
 export type ActorType = "USER" | "AGENT" | "WORKER" | "SYSTEM" | "IMPORT" | "API";
 export type TriggerType =

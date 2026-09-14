@@ -5,6 +5,7 @@ import { loadPlanRecords, loadPursuitPlanView } from "../src/lib/pursuits/read-m
 import { resolvePlanStanding } from "../src/lib/pursuits/read-models/pursuit-plan";
 import { COORDINATION_SKILLS, dispatchSkill, SKILL_REGISTRY } from "../src/lib/pursuits/federation/skills";
 import { getGovernedActions } from "../src/lib/pursuits/federation/read-models";
+import { transitionMotion } from "../src/lib/motions/lifecycle";
 
 /**
  * Pursuit Coordination — integration harness (vNext Slice 2A).
@@ -114,8 +115,9 @@ async function main(): Promise<void> {
   console.log(`     next     : ${view.nextAction?.text} · owner ${view.nextAction?.ownerLabel} — ${view.nextAction?.ownerNote}`);
   for (const w of view.why) console.log(`     why      : ${w.text}${w.scopeLabel ? ` [${w.scopeLabel}]` : ""}`);
   check("status is awaiting a person's decision", view.status.state === "AWAITING_DECISION");
-  check("goal composed from canonical thesis, opportunity and selected route",
-    !!view.goal && view.goal.objective.startsWith("Exit legacy virtualization before renewal") && view.goal.objective.includes("WWT") && !view.goal.objective.includes("CDW"));
+  check("goal is the commercial outcome from thesis + opportunity — no route choice in it (D-033)",
+    view.goal?.objective === "Exit legacy virtualization before renewal and close the $920K opportunity" && !/WWT|CDW/.test(view.goal.objective), view.goal?.objective);
+  check("the route a person chose lives in the plan (motion via WWT, why)", /WWT/.test(view.motion.line ?? "") && view.why.some((w) => /WWT/.test(w.text)));
   const oppClose = (await pool.query<{ d: string }>(`select to_char(expected_close_date,'YYYY-MM-DD') d from opportunities where pursuit_id = $1`, [hero.id])).rows[0]?.d;
   check("goal target is the opportunity's canonical close date", !!oppClose && view.goal?.targetLabel === `Target ${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][Number(oppClose.slice(5, 7)) - 1]} ${Number(oppClose.slice(8, 10))}`, `${view.goal?.targetLabel} vs ${oppClose}`);
   check("goal is proposed, not yet confirmed", view.goal?.confirmed === false);
@@ -242,6 +244,8 @@ async function main(): Promise<void> {
       `select field, original_recommendation, human_decision, data_environment from pursuit_overrides where pursuit_id = $1 and field = 'plan'`, [hero.id])).rows[0];
     check("the divergence lands on pursuit_overrides (field 'plan') with both sides", !!ov && ov.original_recommendation.revisionId === rec.id && ov.human_decision.decision === "ADJUSTED");
     check("the override carries the pursuit's synthetic lineage, not PRODUCTION", ov?.data_environment === hero.env);
+    const goalAfter = (await loadPlanRecords(db, caller, hero.id)).goal;
+    check("an action adjustment leaves the goal's identity and objective untouched", goalAfter?.id === recs.goal?.id && goalAfter?.objective === recs.goal?.objective);
   });
 
   // =========================================================================
@@ -260,6 +264,129 @@ async function main(): Promise<void> {
     check("the goal stays proposed and nothing is queued", after.goal?.status === "PROPOSED" && !st.latestDecision?.content.nextAction?.stagedMotionActionId);
     const v = await loadPursuitPlanView(db, caller, hero.id);
     check("the surface says the recommendation was declined", v?.status.state === "DECLINED");
+  });
+
+  // =========================================================================
+  console.log("\n7b Goal ↔ plan boundary — route, motion and action are plan state; the goal is the outcome");
+  // =========================================================================
+  await readOnly(hero.org_id, async (db) => {
+    const g = (await db.query(`select objective, basis from pursuit_goals where pursuit_id = $1`, [hero.id])).rows;
+    check("exactly one goal, and neither its objective nor its basis names a partner or route", g.length === 1 && !/WWT|CDW|route/i.test(JSON.stringify(g)), JSON.stringify(g));
+    const rec = resolvePlanStanding((await loadPlanRecords(db, caller, hero.id)).revisions).pending!;
+    check("the plan revision carries the route; it carries no copy of the goal", /WWT/.test(JSON.stringify(rec.content)) && !("goalObjective" in (rec.content as object)));
+  });
+
+  const routeCandidate = async (db: PoolClient, partner: string) => (await db.query<{ id: string }>(
+    `select rc.id from route_candidates rc
+       join pursuit_route_snapshots sn on sn.id = rc.route_snapshot_id
+       join partners p on p.id = rc.partner_id
+      where sn.pursuit_id = $1 and sn.is_current and p.name = $2 order by rc.rank limit 1`, [hero.id, partner])).rows[0]?.id;
+
+  await scenario(hero.org_id, async (db) => {
+    const r0 = await loadPlanRecords(db, caller, hero.id);
+    const goal0 = r0.goal!;
+    const plan0 = r0.plan!;
+    const rec0 = resolvePlanStanding(r0.revisions).pending!;
+    await dispatchSkill(db, "decide_pursuit_plan", operator, { pursuitId: hero.id, args: { planId: plan0.id, recommendationId: rec0.id, decision: "APPROVED" }, dataEnvironment: hero.env });
+
+    const toCdw = await dispatchSkill(db, "select_partner_route", operator, { pursuitId: hero.id, args: { candidateKey: await routeCandidate(db, "CDW") }, dataEnvironment: hero.env });
+    check("route WWT → CDW through the governed route decision", toCdw.status === "EXECUTED", toCdw.reason ?? "");
+    const r1 = await loadPlanRecords(db, caller, hero.id);
+    const v1 = await loadPursuitPlanView(db, caller, hero.id);
+    check("WWT → CDW: the SAME goal row, the same objective", r1.goal?.id === goal0.id && r1.goal?.objective === goal0.objective && v1?.goal?.objective === goal0.objective);
+    check("WWT → CDW: the approved PLAN becomes reviewable because the route changed",
+      v1?.review.state === "REVIEW_NEEDED" && v1.review.reasons.some((r) => /^Route is now CDW/.test(r)), JSON.stringify(v1?.review.reasons));
+    check("WWT → CDW: no review reason claims the objective changed", !(v1?.review.reasons ?? []).some((r) => /goal|objective/i.test(r)));
+    const rr = await dispatchSkill(db, "recommend_pursuit_plan", operator, { pursuitId: hero.id, dataEnvironment: hero.env });
+    const r1b = await loadPlanRecords(db, caller, hero.id);
+    check("WWT → CDW: plan history gains a recommendation on the SAME plan, with a review trigger",
+      rr.status === "EXECUTED" && r1b.plan?.id === plan0.id && r1b.revisions.length === r1.revisions.length + 1 && !!r1b.revisions.at(-1)?.reviewTrigger);
+    const upd = resolvePlanStanding(r1b.revisions).pending!;
+    check("WWT → CDW: the updated plan names the route a person approved (a recommendation accepted is still a choice)",
+      upd.content.why.some((w) => w.text === "Runs through CDW, the recommended route, approved by a person."), JSON.stringify(upd.content.why.map((w) => w.text)));
+    const ap = await dispatchSkill(db, "decide_pursuit_plan", operator, { pursuitId: hero.id, args: { planId: plan0.id, recommendationId: upd.id, decision: "APPROVED" }, dataEnvironment: hero.env });
+    check("WWT → CDW: a person approves the route-updated plan; the goal row is unchanged", ap.status === "EXECUTED" && (await loadPlanRecords(db, caller, hero.id)).goal?.id === goal0.id);
+
+    const toWwt = await dispatchSkill(db, "override_partner_route", operator, { pursuitId: hero.id, args: { candidateKey: await routeCandidate(db, "WWT"), reason: "exec relationship", category: "EXECUTIVE_DIRECTION" }, dataEnvironment: hero.env });
+    const r2 = await loadPlanRecords(db, caller, hero.id);
+    const v2 = await loadPursuitPlanView(db, caller, hero.id);
+    check("CDW → WWT: the SAME goal again; only the plan is reviewable",
+      toWwt.status === "EXECUTED" && r2.goal?.id === goal0.id && r2.goal?.objective === goal0.objective && v2?.review.reasons.some((r) => /^Route is now WWT/.test(r)) === true, JSON.stringify(v2?.review.reasons));
+    check("neither route change created or superseded a goal", await count(db, `select count(*)::text n from pursuit_goals where pursuit_id = $1`, [hero.id]) === 1);
+  });
+
+  await scenario(hero.org_id, async (db) => {
+    const r0 = await loadPlanRecords(db, caller, hero.id);
+    const rec0 = resolvePlanStanding(r0.revisions).pending!;
+    await dispatchSkill(db, "decide_pursuit_plan", operator, { pursuitId: hero.id, args: { planId: r0.plan!.id, recommendationId: rec0.id, decision: "APPROVED" }, dataEnvironment: hero.env });
+    await transitionMotion(db, rec0.content.motion.motionId!, "abandoned");
+    const r1 = await loadPlanRecords(db, caller, hero.id);
+    const v = await loadPursuitPlanView(db, caller, hero.id);
+    check("motion change: the SAME goal row and objective", r1.goal?.id === r0.goal?.id && r1.goal?.objective === r0.goal?.objective);
+    check("motion change: the plan is reviewable because its motion changed", v?.review.state === "REVIEW_NEEDED" && v.review.reasons.some((r) => /motion/i.test(r)), JSON.stringify(v?.review.reasons));
+  });
+
+  await scenario(hero.org_id, async (db) => {
+    const r0 = await loadPlanRecords(db, caller, hero.id);
+    const old = (await db.query(`select * from pursuit_goals where id = $1`, [r0.goal!.id])).rows[0];
+    const revs0 = r0.revisions.length;
+    const noReason = await dispatchSkill(db, "replace_pursuit_goal", operator, { pursuitId: hero.id, args: { objective: "Consolidate onto one platform" }, dataEnvironment: hero.env });
+    check("replacing a goal without a reason is refused", noReason.status === "FAILED");
+    const same = await dispatchSkill(db, "replace_pursuit_goal", operator, { pursuitId: hero.id, args: { objective: old.objective, reason: "restated" }, dataEnvironment: hero.env });
+    check("restating the current objective is not a replacement", same.status === "FAILED");
+    const newObjective = "Exit legacy virtualization and consolidate onto one platform before renewal";
+    const rep = await dispatchSkill(db, "replace_pursuit_goal", operator, {
+      pursuitId: hero.id, args: { objective: newObjective, targetDate: "2026-12-15", reason: "Customer widened the program at the QBR" }, dataEnvironment: hero.env,
+    });
+    check("a genuinely different objective replaces the goal (governed, human, with a reason)", rep.status === "EXECUTED", rep.reason ?? "");
+    const res = rep.result as { goalId: string; replacedGoalId: string; supersededPlanId: string | null };
+    const oldAfter = (await db.query(`select * from pursuit_goals where id = $1`, [old.id])).rows[0];
+    check("the historical goal keeps its meaning byte for byte; only its status moved to SUPERSEDED",
+      oldAfter.status === "SUPERSEDED" && oldAfter.objective === old.objective && JSON.stringify(oldAfter.basis) === JSON.stringify(old.basis)
+        && oldAfter.origin === old.origin && String(oldAfter.target_date) === String(old.target_date) && oldAfter.supersedes_goal_id === null);
+    const neu = (await db.query(`select * from pursuit_goals where id = $1`, [res.goalId])).rows[0];
+    check("the new goal names the goal it replaces, and why — set by a person, active",
+      neu.supersedes_goal_id === old.id && neu.supersession_reason === "Customer widened the program at the QBR" && neu.origin === "HUMAN_AUTHORED" && neu.status === "ACTIVE" && neu.objective === newObjective);
+    check("the old goal's plan is superseded with every revision intact",
+      res.supersededPlanId === r0.plan!.id && (await db.query(`select status from pursuit_plans where id = $1`, [r0.plan!.id])).rows[0].status === "SUPERSEDED"
+        && await count(db, `select count(*)::text n from pursuit_plan_revisions where plan_id = $1`, [r0.plan!.id]) === revs0);
+    check("GOAL_REPLACED is on the ledger", await count(db, `select count(*)::text n from change_ledger where pursuit_id = $1 and change_type = 'GOAL_REPLACED'`, [hero.id]) === 1);
+    const v0 = await loadPursuitPlanView(db, caller, hero.id);
+    check("the old plan is not shown as the new goal's plan", v0?.exists === false);
+    const rr = await dispatchSkill(db, "recommend_pursuit_plan", operator, { pursuitId: hero.id, dataEnvironment: hero.env });
+    const r2 = await loadPlanRecords(db, caller, hero.id);
+    check("the next recommendation starts a NEW plan implementing the NEW goal", rr.status === "EXECUTED" && r2.goal?.id === res.goalId && r2.plan?.goalId === res.goalId && r2.plan.id !== r0.plan!.id && r2.revisions.length === 1);
+    const v2 = await loadPursuitPlanView(db, caller, hero.id);
+    check("the goal area shows the new commercial outcome, set by a person", v2?.goal?.objective === newObjective && v2.goal.provenanceLabel === "Set by a person");
+
+    const attempt = async (sql: string, params: unknown[]) => {
+      await db.query("savepoint probe");
+      try { await db.query(sql, params); await db.query("release savepoint probe"); return "OK"; }
+      catch (e) { await db.query("rollback to savepoint probe"); return (e as { code?: string }).code ?? "ERR"; }
+    };
+    check("a goal can be replaced only once — history cannot fork (23505)", await attempt(
+      `insert into pursuit_goals (org_id, pursuit_id, objective, status, origin, proposed_by_actor_type, supersedes_goal_id, supersession_reason)
+       values ($1,$2,'fork','SUPERSEDED','HUMAN_AUTHORED','USER',$3,'fork')`, [hero.org_id, hero.id, old.id]) === "23505");
+    check("only a human-authored goal with a reason may supersede another (23514)", await attempt(
+      `insert into pursuit_goals (org_id, pursuit_id, objective, status, origin, proposed_by_actor_type, supersedes_goal_id)
+       values ($1,$2,'machine','SUPERSEDED','SYSTEM_RECOMMENDED','SYSTEM',$3)`, [hero.org_id, hero.id, res.goalId]) === "23514");
+  });
+
+  await scenario(hero.org_id, async (db) => {
+    await db.query("set local role app_rw");
+    const attempt = async (sql: string) => {
+      await db.query("savepoint probe");
+      try { await db.query(sql, [hero.id]); await db.query("release savepoint probe"); return "OK"; }
+      catch (e) { await db.query("rollback to savepoint probe"); return (e as { code?: string }).code ?? "ERR"; }
+    };
+    check("as app_rw, a goal's objective cannot be rewritten (42501)", await attempt(`update pursuit_goals set objective = 'x' where pursuit_id = $1`) === "42501");
+    check("as app_rw, a goal's supersession pointer cannot be rewritten (42501)", await attempt(`update pursuit_goals set supersedes_goal_id = null where pursuit_id = $1`) === "42501");
+  });
+
+  await scenario(otherOrg, async (db) => {
+    const r = await dispatchSkill(db, "replace_pursuit_goal", { type: "USER", id: null, orgId: otherOrg, role: "operator" }, {
+      pursuitId: hero.id, args: { objective: "hijacked objective", reason: "x" } });
+    check("another org cannot replace this pursuit's goal", r.status === "REJECTED");
   });
 
   // =========================================================================
