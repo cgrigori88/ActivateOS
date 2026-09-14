@@ -93,6 +93,11 @@ export const SUITES: SuiteSpec[] = [
     why: "vNext Slice 2A plan harness: reads the canonical Globex pursuit and its seeded recommendation, and exercises approve / adjust / decline / review / tenant / disclosure paths inside transactions that are ROLLED BACK — the world it reads is left exactly as it found it",
   },
   {
+    name: "demo-team",
+    cls: "SEEDED",
+    why: "reads the canonical global team requirements and the Globex hero team the seed assembles from them; READ-ONLY. Supplemental to the manifest, which counts no team table — the gap that let an in-place reseed ship a world with no pursuit team (2026-09-14)",
+  },
+  {
     name: "vnext-context",
     cls: "SEEDED",
     why: "vNext Slice 1 loader harness: reads the canonical world's richest pursuit and asserts the loader+read-model composition. Requested as EITHER, but EITHER means run-scoped fixtures on a DISPOSABLE database, and this harness is deliberately READ-ONLY — it writes nothing, so it can only read demo content, which is what SEEDED means. On a disposable database it would find no pursuit and assert nothing (the Wave 6C mislabelling, again)",

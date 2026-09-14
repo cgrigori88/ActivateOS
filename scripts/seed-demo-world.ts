@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { CANONICAL_TEAM_REQUIREMENTS } from "../src/lib/routing/team-requirements";
 
 /**
  * Build the canonical synthetic demo world (Wave 6B §8).
@@ -152,6 +153,24 @@ async function verify(): Promise<number> {
         console.log(`  FAIL  ${rows.length} duplicated ${label}, e.g. ${rows.slice(0, 3).map((r) => `${r.k} ×${r.n}`).join(", ")}`);
       }
     }
+
+    /**
+     * The team layer (2026-09-14). An in-place reseed once cleared the global team
+     * requirements, so no pursuit got a team — and nothing here noticed, because the
+     * checks above and the manifest count no team table. Assert the canonical set,
+     * once each, and that the hero pursuit was actually assembled from it.
+     */
+    const req = await pool.query<{ role: string; required: boolean; pursuit_type: string | null; n: string }>(
+      `select role, required, pursuit_type, count(*)::text n from pursuit_team_requirements where org_id is null group by 1, 2, 3`);
+    const wantReq = CANONICAL_TEAM_REQUIREMENTS.map((r) => `${r.role}:${r.required}`).sort();
+    const gotReq = req.rows.map((r) => `${r.role}:${r.required}${r.pursuit_type ? `@${r.pursuit_type}` : ""}${r.n === "1" ? "" : ` ×${r.n}`}`).sort();
+    if (JSON.stringify(gotReq) === JSON.stringify(wantReq)) console.log(`  ok    canonical team requirements (${wantReq.length})`);
+    else { bad++; console.log(`  FAIL  team requirements — expected ${wantReq.join(", ")}; found ${gotReq.join(", ") || "none"}`); }
+    const heroTeam = Number((await pool.query<{ n: string }>(
+      `select count(*)::text n from pursuit_team_members m join pursuits p on p.id = m.pursuit_id join companies c on c.id = p.account_id
+        where c.legal_name = 'Globex Manufacturing Inc.' and p.pursuit_type = 'MODERNIZATION' and m.status <> 'SUPERSEDED'`)).rows[0].n);
+    if (heroTeam === CANONICAL_TEAM_REQUIREMENTS.length) console.log(`  ok    Globex hero team assembled (${heroTeam} roles)`);
+    else { bad++; console.log(`  FAIL  Globex hero team — expected ${CANONICAL_TEAM_REQUIREMENTS.length} roles, found ${heroTeam}`); }
   } finally { await pool.end(); }
   return bad;
 }

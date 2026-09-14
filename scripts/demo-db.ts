@@ -28,6 +28,7 @@ import { linkFactToPursuits } from "../src/lib/facts/pursuit-link";
 import { recomputeRoute } from "../src/lib/routing/route-model";
 import { selectPartnerRoute } from "../src/lib/routing/override";
 import { assembleTeam } from "../src/lib/routing/team";
+import { establishCanonicalTeamRequirements } from "../src/lib/routing/team-requirements";
 import { ingestFeatures } from "../src/lib/transactions/features";
 import { addParticipant, acceptParticipation } from "../src/lib/pursuits/federation/participation";
 import { proposeGrant, acceptGrant } from "../src/lib/pursuits/federation/grants";
@@ -91,6 +92,13 @@ async function seed(pool: Pool) {
     try { await c.query("begin"); await c.query("select set_config('app.org_id',$1,true)", [orgId]); const r = await fn(c); await c.query("commit"); return r; }
     catch (e) { await c.query("rollback").catch(() => {}); throw e; } finally { c.release(); }
   };
+
+  // The canonical global team requirements, re-established by the seed itself rather than
+  // inherited from migration 0075 — the in-place clear empties this table and never replays
+  // migrations, so without this an in-place reseed assembles no team for any pursuit. On a
+  // freshly migrated database the plan is empty and nothing is written; both paths converge.
+  const req = await asOwner((db) => establishCanonicalTeamRequirements(db));
+  console.log(`[demo-db] canonical team requirements: inserted ${req.insert.length}, corrected ${req.correct.length}, removed ${req.remove.length}`);
 
   const s = await asOwner(async (db) => {
     // Vendor tenant is DETERMINISTICALLY earliest (staggered created_at) so the
@@ -299,6 +307,13 @@ async function main() {
      * confirms it is not tenant data that merely got a seed row (audit_log and
      * pursuit_team_requirements are both migration-touched AND tenant-scoped, so
      * they are demo world and get cleared).
+     *
+     * Clearing pursuit_team_requirements is only correct because seed() then
+     * re-establishes its canonical GLOBAL rows (establishCanonicalTeamRequirements).
+     * Before that existed, this clear removed the five rows migration 0075 had
+     * inserted, nothing put them back, and every pursuit in an in-place-seeded
+     * world came out with no team (found 2026-09-14). Any other table whose
+     * canonical rows only a migration ever inserted has the same exposure.
      *
      * Plus the two structural tables: schema_migrations (the parity check above
      * reads it — wiping it makes the next run believe the database is unmigrated
