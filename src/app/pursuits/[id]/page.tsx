@@ -22,6 +22,8 @@ import { vnextCapabilities } from "@/lib/env/vnext-flags";
 import { composePursuitContext } from "@/lib/pursuits/read-models/pursuit-context";
 import { PursuitContextNarrative } from "@/components/pursuit/context-narrative";
 import { loadContextHealth, loadMissingContext, loadPursuitEvidence, loadPursuitMemory } from "@/lib/pursuits/read-models/context-loaders";
+import { loadPursuitPlanView } from "@/lib/pursuits/read-models/plan-loaders";
+import { PlanStatusChip, PursuitPlanSurface } from "@/components/pursuit/pursuit-plan";
 import { getPursuitFederation, getGovernedActions, getPursuitOutcomes } from "@/lib/pursuits/federation/read-models";
 import { buildFederationViewer } from "@/lib/pursuits/federation/grants";
 import { FederationBento } from "@/components/pursuit/federation";
@@ -108,7 +110,12 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
         whyNow: detail.whyNow, evidence, memory, missingContext: missing, contextHealth: health,
       });
     }
-    return { kind: "sponsor" as const, detail, federation, canDecide, outcome, motion, contacts, pursuitContext };
+    /* vNext Slice 2A — the Pursuit plan. Same resolver, same narrowing rule; it
+       also requires the Slice 1 capability, because a plan's focus and "why" are
+       composed from that context. Loaded ONLY when armed: with the flag off this
+       issues no query, touches no plan table, and the page is unchanged. */
+    const pursuitPlan = vnext.pursuitCoordination ? await loadPursuitPlanView(db, caller, id) : null;
+    return { kind: "sponsor" as const, detail, federation, canDecide, outcome, motion, contacts, pursuitContext, pursuitPlan };
   });
   if (!loaded) notFound();
 
@@ -146,6 +153,50 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
     { href: "#route", label: "Route & team" },
     { href: "#activity", label: "Activity" },
   ];
+
+  /* Why Now (carries unknowns + contradictions) + lifecycle timing (P2A).
+     `#whynow` is the deep-link anchor from Today, the horizon and ⌘K. */
+  /* vNext: the composed surface spans BOTH desktop columns. As a
+     half-width card it stood 1,068px tall beside a 475px Value case and
+     left 593px of dead space below the fold; full width it lays its
+     evidence and open questions side by side and the row closes.
+     Flag OFF keeps the original half-width Why Now exactly as it was. */
+  const whyNowSection = (
+        <div id="whynow" className={pursuitContext ? "order-2 scroll-mt-16 lg:order-2 lg:col-span-2" : "order-2 scroll-mt-16 lg:order-2"}>
+        {/* ONE narrative in place of Why Now + Facts + What changed. It carries
+            the #evidence and #activity anchors internally so Today's deep links,
+            the rail and ⌘K keep resolving after the collapse. */}
+        {pursuitContext ? (
+          <Panel title="What matters now" hint="Why it matters, what we know, and what still needs attention" accent="var(--color-priority)">
+            <PursuitContextNarrative
+              context={pursuitContext}
+              lifecycleSlot={<LifecycleBento events={d.whyNow.lifecycle} />}
+            />
+          </Panel>
+        ) : (
+        <Panel eyebrow="Assembled from the fact & signal graph — traceable" title="Why now" accent="var(--color-priority)">
+          <WhyNowBento w={d.whyNow} />
+          <div className="mt-3 border-t border-neutral-200/70 pt-2.5 dark:border-neutral-800">
+            <span className="text-micro font-bold uppercase tracking-[0.05em] text-neutral-400">Lifecycle timing</span>
+            <div className="mt-1"><LifecycleBento events={d.whyNow.lifecycle} /></div>
+          </div>
+        </Panel>
+        )}
+        </div>
+  );
+
+  /* vNext Slice 2A — Pursuit plan: goal → plan → motion → next action,
+     immediately beneath "What matters now" and full width like it. Same order
+     slot, so it follows the context on desktop and mobile without moving any
+     other panel. Null with the flag off. */
+  const planSection = loaded.pursuitPlan ? (
+          <div id="plan" className="order-2 scroll-mt-16 lg:order-2 lg:col-span-2">
+            <Panel title="Pursuit plan" hint="What we are trying to achieve, and the next move" accent="var(--color-readiness)"
+              aside={<PlanStatusChip view={loaded.pursuitPlan} />}>
+              <PursuitPlanSurface view={loaded.pursuitPlan} pursuitId={d.pursuitId} canDecide={loaded.canDecide} />
+            </Panel>
+          </div>
+  ) : null;
 
   return (
     <div className="mx-auto max-w-[1240px] px-4 py-6">
@@ -199,34 +250,11 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
           </div>
         </Panel>
 
-        {/* Why Now (carries unknowns + contradictions) + lifecycle timing (P2A).
-            `#whynow` is the deep-link anchor from Today, the horizon and ⌘K. */}
-        {/* vNext: the composed surface spans BOTH desktop columns. As a
-            half-width card it stood 1,068px tall beside a 475px Value case and
-            left 593px of dead space below the fold; full width it lays its
-            evidence and open questions side by side and the row closes.
-            Flag OFF keeps the original half-width Why Now exactly as it was. */}
-        <div id="whynow" className={pursuitContext ? "order-2 scroll-mt-16 lg:order-2 lg:col-span-2" : "order-2 scroll-mt-16 lg:order-2"}>
-        {/* ONE narrative in place of Why Now + Facts + What changed. It carries
-            the #evidence and #activity anchors internally so Today's deep links,
-            the rail and ⌘K keep resolving after the collapse. */}
-        {pursuitContext ? (
-          <Panel title="What matters now" hint="Why it matters, what we know, and what still needs attention" accent="var(--color-priority)">
-            <PursuitContextNarrative
-              context={pursuitContext}
-              lifecycleSlot={<LifecycleBento events={d.whyNow.lifecycle} />}
-            />
-          </Panel>
-        ) : (
-        <Panel eyebrow="Assembled from the fact & signal graph — traceable" title="Why now" accent="var(--color-priority)">
-          <WhyNowBento w={d.whyNow} />
-          <div className="mt-3 border-t border-neutral-200/70 pt-2.5 dark:border-neutral-800">
-            <span className="text-micro font-bold uppercase tracking-[0.05em] text-neutral-400">Lifecycle timing</span>
-            <div className="mt-1"><LifecycleBento events={d.whyNow.lifecycle} /></div>
-          </div>
-        </Panel>
-        )}
-        </div>
+        {/* Why Now / What matters now, then — only when armed — the Pursuit plan.
+            A ternary, not `plan && …`: a `&&` child leaves a null in the
+            serialized tree with the flag off, so the flag-OFF payload would no
+            longer match the pre-slice page byte for byte (U-16). */}
+        {planSection ? <>{whyNowSection}{planSection}</> : whyNowSection}
 
         {/* Value Case (P2B §12) — economics on the Pursuit, not in a room of its own. `#value` is
             the deep-link anchor from Today, the Brief and ⌘K. */}

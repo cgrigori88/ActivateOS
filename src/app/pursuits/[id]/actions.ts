@@ -5,8 +5,74 @@ import { revalidatePath } from "next/cache";
 import { withTenant } from "@/lib/db/tenant";
 import { currentRole } from "@/lib/auth/org";
 import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
-import { experienceEnabledFor } from "@/lib/pursuits/tenant-flags";
+import { experienceEnabledFor, tenantFeatures } from "@/lib/pursuits/tenant-flags";
 import { dispatchSkill } from "@/lib/pursuits/federation/skills";
+import { vnextCapabilities } from "@/lib/env/vnext-flags";
+import type { PlanAdjustments } from "@/lib/pursuits/read-models/pursuit-plan";
+
+/**
+ * Pursuit Coordination (vNext Slice 2A) — the two human entry points for the plan.
+ *
+ * Both are narrowed by the vNext capability as well as the tenant gate: with
+ * VNEXT_PURSUIT_COORDINATION_ENABLED off the action refuses, exactly as the surface
+ * is absent (D-013 — a flag can only ever narrow). Both run through `dispatchSkill`;
+ * the governed boundary re-checks permission, scopes the pursuit to the org, and
+ * records the invocation. Neither can send, execute or reach an external system.
+ */
+async function coordinationGate(db: import("pg").PoolClient, orgId: string): Promise<string | null> {
+  if (!(await experienceEnabledFor(db, orgId))) return "Not enabled for this tenant.";
+  if (!vnextCapabilities(await tenantFeatures(db, orgId)).pursuitCoordination) return "Pursuit plans are not enabled here.";
+  const role = await currentRole(db);
+  if (role !== "owner" && role !== "operator") return "Read-only access — ask an owner to make you an operator.";
+  return null;
+}
+
+/** Ask PursuitOS for a (new or updated) recommended plan. A proposal only — nothing comes into force. */
+export async function requestPlanRecommendationAction(pursuitId: string): Promise<{ ok: boolean; error?: string }> {
+  if (!pursuitId) return { ok: false, error: "Missing pursuit." };
+  if (!pursuitExperienceEnabled()) return { ok: false, error: "Pursuit experience is not enabled." };
+  const correlationId = randomUUID();
+  const result = await withTenant(async (db, orgId) => {
+    const refused = await coordinationGate(db, orgId);
+    if (refused) return { ok: false as const, error: refused };
+    const role = await currentRole(db);
+    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId])).rows[0]?.data_environment ?? "PRODUCTION";
+    const dispatch = await dispatchSkill(db, "recommend_pursuit_plan", { type: "USER", id: null, orgId, role }, {
+      pursuitId, correlationId, idempotencyKey: `plan-recommend:${pursuitId}:${correlationId}`, dataEnvironment: env,
+    });
+    return { ok: dispatch.status === "EXECUTED", error: dispatch.status === "EXECUTED" ? undefined : (dispatch.reason ?? "No recommendation was recorded.") };
+  });
+  if (result.ok) revalidatePath(`/pursuits/${pursuitId}`);
+  return result;
+}
+
+/** A person's decision on the recommended plan awaiting one: approve, approve with changes, or decline. */
+export async function decidePlanAction(
+  pursuitId: string,
+  input: { planId: string; recommendationId: string; decision: "APPROVED" | "ADJUSTED" | "REJECTED"; adjustments?: PlanAdjustments; reason?: string | null },
+): Promise<{ ok: boolean; error?: string }> {
+  if (!pursuitId || !input?.planId || !input.recommendationId) return { ok: false, error: "Missing plan or recommendation." };
+  if (input.decision !== "APPROVED" && !input.reason?.trim()) return { ok: false, error: "Say why — the recommendation is preserved either way." };
+  if (!pursuitExperienceEnabled()) return { ok: false, error: "Pursuit experience is not enabled." };
+  const correlationId = randomUUID();
+  const result = await withTenant(async (db, orgId) => {
+    const refused = await coordinationGate(db, orgId);
+    if (refused) return { ok: false as const, error: refused };
+    const role = await currentRole(db);
+    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId])).rows[0]?.data_environment ?? "PRODUCTION";
+    const dispatch = await dispatchSkill(db, "decide_pursuit_plan", { type: "USER", id: null, orgId, role }, {
+      pursuitId,
+      args: { planId: input.planId, recommendationId: input.recommendationId, decision: input.decision, adjustments: input.adjustments, reason: input.reason ?? undefined },
+      correlationId, idempotencyKey: `plan-decision:${input.recommendationId}:${correlationId}`, dataEnvironment: env,
+    });
+    return { ok: dispatch.status === "EXECUTED", error: dispatch.status === "EXECUTED" ? undefined : (dispatch.reason ?? "Decision was not accepted.") };
+  });
+  if (result.ok) {
+    revalidatePath(`/pursuits/${pursuitId}`);
+    revalidatePath("/queue");
+  }
+  return result;
+}
 
 /**
  * Governed route decision (canonical micro-loop). The Pursuit detail route panel calls this; it is

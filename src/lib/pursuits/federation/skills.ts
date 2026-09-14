@@ -156,6 +156,44 @@ export const SKILL_REGISTRY: SkillDef[] = [
 ];
 
 /**
+ * vNext Slice 2A — Pursuit Coordination skills. Dispatchable exactly like the registry above
+ * (`defFor` resolves both), but kept OUT of `SKILL_REGISTRY` on purpose: the Federation panel
+ * lists every registry skill as "actions you can take", and `seedGovernedSkills` mirrors the
+ * registry into `governed_skills`. Adding these there would change the flag-OFF Pursuit page and
+ * the mirrored registry for a capability that is switched off. They are decided on the Pursuit
+ * plan surface, not the Federation panel. They join the registry when the capability graduates.
+ */
+export const COORDINATION_SKILLS: SkillDef[] = [
+  // vNext Slice 2A — Pursuit Coordination. Two INTERNAL_WRITE skills and nothing else: a
+  // recommendation is a proposal (system, agent or person may record one), and only a PERSON
+  // decides. Neither can reach the outbox or a provider — the plan may stage an action onto the
+  // motion's own queue; it never executes one. Handlers load lazily, like the P1C/P2B skills.
+  { skillId: "recommend_pursuit_plan", version: 1, description: "Record PursuitOS's recommended pursuit plan (a proposal — never in force until a person decides)", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER", "AGENT", "WORKER", "SYSTEM"], requiredPermission: "operator", precheck: pursuitInOrg,
+    handler: async (db, actor, ctx) => (await import("../coordination/plan-store")).recordPlanRecommendation(
+      db, { type: actor.type, id: actor.id ?? null, orgId: actor.orgId }, String(ctx.pursuitId),
+      { env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null }) },
+  { skillId: "decide_pursuit_plan", version: 1, description: "Approve, adjust or decline a recommended pursuit plan (human decision)", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER"], requiredPermission: "operator", precheck: pursuitInOrg,
+    handler: async (db, actor, ctx) => (await import("../coordination/plan-store")).decidePlan(
+      db, { type: actor.type, id: actor.id ?? null, orgId: actor.orgId },
+      {
+        pursuitId: String(ctx.pursuitId), planId: String(ctx.args?.planId), recommendationId: String(ctx.args?.recommendationId),
+        decision: String(ctx.args?.decision) as "APPROVED" | "ADJUSTED" | "REJECTED",
+        adjustments: (ctx.args?.adjustments as import("../read-models/pursuit-plan").PlanAdjustments | undefined) ?? undefined,
+        reason: ctx.args?.reason ? String(ctx.args.reason) : null,
+      },
+      { env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null }) },
+];
+
+/** Tenant guard for pursuit-scoped skills: the pursuit id in the request must belong to the actor's org. */
+async function pursuitInOrg(db: PoolClient, actor: Actor, ctx: DispatchCtx): Promise<{ ok: boolean; reason?: string }> {
+  if (!ctx.pursuitId) return { ok: false, reason: "missing pursuitId" };
+  const { rows } = await db.query(`select 1 from pursuits where id = $1 and org_id = $2`, [ctx.pursuitId, actor.orgId]);
+  return rows[0] ? { ok: true } : { ok: false, reason: "pursuit not found in this org" };
+}
+
+/**
  * Tenant guard for team-member skills (R9 precondition). A member id is a bare uuid in the
  * request; before we transition it we prove it belongs to the actor's org and pursuit. A
  * cross-tenant member id is a governed REJECTION (audited), not a silent failure.
@@ -171,7 +209,7 @@ async function teamMemberInOrg(db: PoolClient, actor: Actor, ctx: DispatchCtx): 
 }
 
 function defFor(skillId: string, version?: number): SkillDef | undefined {
-  const matches = SKILL_REGISTRY.filter((s) => s.skillId === skillId);
+  const matches = [...SKILL_REGISTRY, ...COORDINATION_SKILLS].filter((s) => s.skillId === skillId);
   if (!matches.length) return undefined;
   return version ? matches.find((s) => s.version === version) : matches.sort((a, b) => b.version - a.version)[0];
 }

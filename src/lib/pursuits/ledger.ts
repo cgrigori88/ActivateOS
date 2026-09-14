@@ -33,7 +33,10 @@ export type ChangeType =
   | "STAGE_CHANGED" | "PURSUIT_WON" | "PURSUIT_LOST" | "PURSUIT_DORMANT" | "READINESS_CHANGED"
   | "ACTION_INVOKED" | "ACTION_EXECUTED" | "CONTRIBUTION_ADDED" | "CONTRIBUTION_REVOKED"
   // Intelligence Wave P1C — governed stakeholder role assertions (append-only history)
-  | "STAKEHOLDER_ROLE_ASSERTED";
+  | "STAKEHOLDER_ROLE_ASSERTED"
+  // vNext Slice 2A — Pursuit Coordination (0103). Human plan decisions and system-detected review
+  // triggers only; a system recommendation is a proposal and lives in pursuit_plan_revisions.
+  | "PLAN_DECIDED" | "PLAN_REVIEW_REQUIRED";
 
 export type ActorType = "USER" | "AGENT" | "WORKER" | "SYSTEM" | "IMPORT" | "API";
 export type TriggerType =

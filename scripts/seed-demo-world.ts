@@ -46,6 +46,9 @@ const STEPS: Step[] = [
   { script: "demo-ask-story.ts", label: "Ask exchanges" },
   { script: "demo-goal.ts", label: "computed goal" },
   { script: "demo-meddpicc.ts", label: "MEDDPICC enrichment" },
+  // vNext Slice 2A — last, because the plan is composed from everything above it
+  // (MEDDPICC included). Writes no goals / motions rows, so the manifest digest holds.
+  { script: "demo-plan-story.ts", label: "pursuit plan (Globex — recommendation awaiting approval)" },
 ];
 
 const layersOnly = process.argv.includes("--layers-only");

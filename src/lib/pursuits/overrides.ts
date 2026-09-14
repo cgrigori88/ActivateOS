@@ -12,7 +12,9 @@ import type { DataEnvironment } from "./lineage";
 
 export type OverrideField =
   | "partner" | "vendor_seller" | "partner_seller" | "motion" | "timing" | "status"
-  | "priority" | "expected_value" | "other";
+  | "priority" | "expected_value" | "other"
+  // vNext Slice 2A (0103): a person adjusting or declining a recommended pursuit plan.
+  | "plan";
 
 export interface RecordOverrideInput {
   orgId: string;

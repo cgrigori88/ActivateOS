@@ -25,8 +25,32 @@ import type { TenantFeatureView } from "../src/lib/pursuits/tenant-flags";
 
 const ALL: VNextFlag[] = [
   "context_health", "pursuit_state", "pursuit_memory", "pursuit_intelligence",
-  "next_best_action", "control_plane", "dynamic_surfaces",
+  "next_best_action", "pursuit_coordination", "control_plane", "dynamic_surfaces",
 ];
+
+test("vnext: pursuit coordination is OFF by default, needs intelligence, and cannot satisfy the tenant gate", () => {
+  // Default off, even with the Slice 1 chain fully armed.
+  withEnv({
+    VNEXT_PURSUIT_INTELLIGENCE_ENABLED: "1", VNEXT_PURSUIT_STATE_ENABLED: "1", VNEXT_PURSUIT_MEMORY_ENABLED: "1",
+  }, () => {
+    const caps = vnextCapabilities(TENANT_ON);
+    assert.equal(caps.pursuitIntelligence, true);
+    assert.equal(caps.pursuitCoordination, false, "Slice 1 armed alone must not reveal the plan");
+  });
+  // Its own flag without the intelligence chain does nothing — a plan with no context to cite.
+  withEnv({ VNEXT_PURSUIT_COORDINATION_ENABLED: "1" }, () => {
+    assert.equal(vnextCapabilities(TENANT_ON).pursuitCoordination, false);
+  });
+  // Armed on top of the chain: on — and only where the tenant gate already allows.
+  withEnv({
+    VNEXT_PURSUIT_COORDINATION_ENABLED: "1",
+    VNEXT_PURSUIT_INTELLIGENCE_ENABLED: "1", VNEXT_PURSUIT_STATE_ENABLED: "1", VNEXT_PURSUIT_MEMORY_ENABLED: "1",
+  }, () => {
+    assert.equal(vnextCapabilities(TENANT_ON).pursuitCoordination, true);
+    assert.equal(vnextCapabilities(TENANT_OFF).pursuitCoordination, false, "narrowing only");
+  });
+  assert.ok(VNEXT_ENV_VARS.includes("VNEXT_PURSUIT_COORDINATION_ENABLED"));
+});
 
 const TENANT_ON: TenantFeatureView = {
   experience: true, federation: true, governedAction: true, outcomeLearning: true,
