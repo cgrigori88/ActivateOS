@@ -169,3 +169,67 @@ matters now" is **frozen** and must render identically with this slice on or off
 | S2A-U4 | Does not duplicate "What matters now" (focus is one line; its explanation lives above) or the Route decision (the route appears only as the motion's "via"). |
 | S2A-U5 | All state words chosen in the view-model from declared tables (U-14); no architecture terms reach the reader (U-12) — pinned by test. |
 | S2A-U6 | Unassigned and unqueued are said plainly, never hidden: "Unassigned — Account executive role proposed, no one confirmed yet", "Not queued — no active motion to carry it". |
+
+### Slice 2A human product acceptance — PASSED (isolated hosted Preview, 2026-09-14) → DEMO CERTIFIED / FROZEN
+
+Manually proven by the owner on the isolated hosted Preview (`mejokqxriwyawfhawuxu`, Globex):
+
+1. The goal remained route-independent.
+2. The plan carried the WWT route, motion and action.
+3. A person approved the recommendation.
+4. Exactly one economic-buyer action entered the Queue.
+5. The recommendation and the human approval remained separate history records.
+6. The economic buyer was later verified.
+7. Milestones moved from 4 of 8 to 5 of 8.
+8. The approved plan changed to NEEDS REVIEW. It did not silently rewrite itself.
+9. The next unresolved gap became timing.
+10. Requesting an updated recommendation added a third history record: "Updated recommendation from PursuitOS".
+11. The approved historical plan remained intact.
+12. External sending remained off.
+
+One UX note came out of that review. While a plan needs review, the panel still shows the
+preserved approved content ("No economic buyer identified") while current reality has a
+verified economic buyer. That is architecturally correct. Slice 2B addresses it with labelling
+only (S2B-U5).
+
+**Frozen:** do not materially redesign the Goal → Plan → Motion → Action model, its surface
+or its semantics absent real pilot feedback.
+
+---
+
+## Slice 2B — Pursuit Attention + Today / Queue coordination
+
+Flag: `VNEXT_PURSUIT_ATTENTION_ENABLED`. It requires `VNEXT_PURSUIT_COORDINATION_ENABLED` and
+the Slice 1 chain.
+
+> **Today = decision / attention layer. Queue = execution layer.** The same pursuit, plan,
+> motion and action primitives power both. Nothing is stored twice. D-034…D-040.
+
+### Functional
+
+| # | Criterion |
+|---|---|
+| S2B-1 | **Derived, not stored.** No new table, no migration, and no attention row. Every reason is recomputed from the Slice 2A plan context Pursuit Detail renders. Each reason carries a deterministic key grounded in canonical ids (a revision, a motion action, the live fingerprint). |
+| S2B-2 | **States.** The model derives these reasons: `PLAN_REVIEW_REQUIRED`, `PLAN_DECISION_REQUIRED`, `ACTION_OVERDUE`, `ACTION_BLOCKED` (a real dependency only), `OWNER_MISSING`, `ACTION_DUE` (inside the Queue's own seven-day window), and `MILESTONE_ADVANCED`. |
+| S2B-3 | **Priority.** Within a pursuit: review › decision › overdue › blocked › owner › due › progress. This order never contradicts Today's class ranking (pinned by test). Across pursuits, cards rank by the existing materiality policy, with a stable final tie-break. |
+| S2B-4 | **One card per pursuit.** Every other reason for the pursuit is counted beneath the card as "N other items". A reason the card already carries is subsumed, never repeated: a pending update inside a review, or progress that caused the review. Nothing is lost by collapsing: every original item is either a card or listed beneath one (verified on the real world, 36 → 11). |
+| S2B-5 | **Globex States A–D.** A: "Plan awaiting approval" → Review plan. B: the approved action surfaces with no higher plan decision, and exists in the Queue exactly once. C: "Plan needs review" outranks the old queued action, the action stays in the Queue, and the Queue row says "Plan needs review". D: still one plan-review card, which invites the pending decision. No Globex-specific code. |
+| S2B-6 | **Queue composes, never mutates.** No action is removed, cancelled, replaced or blocked because its plan needs review. Lineage comes from the existing `stagedMotionActionId`: which pursuit, which plan and decision, whether that plan is still current, and whether a person approved it. No action is duplicated to establish it. |
+| S2B-7 | **Reads never write.** Opening Today or Queue creates no ledger event, recommendation, plan change, queue change, owner or status. Every read is proven inside a `READ ONLY` transaction. |
+| S2B-8 | **Tenant.** Attention is derived only for the caller's org. The composed Today drops any pursuit item the org does not own, before grouping, ranking and counting. Another org's plan changes no card, count, rank, badge or hidden "other items" number. |
+| S2B-9 | **Disclosure.** A partner-safe caller gets declared wording only: no names, warm paths, plan free text, reasoning or economics. Filtering happens before ranking and counting (D-018). |
+| S2B-10 | **Flag OFF is certified.** Today, Queue and Pursuit Detail render byte-identically to the pre-slice build (U-16), with Slice 2A on or with no vNext flags at all. |
+| S2B-11 | **No send path.** Zero outbox, message or email rows. |
+
+### UX
+
+| # | Criterion |
+|---|---|
+| S2B-U1 | No new navigation. The existing Today decision panel is composed (retitled "Needs your attention" under the flag), not joined by a second list. |
+| S2B-U2 | A card reads: pursuit · reason · why now · owner · due (execution reasons only) · CTA, with the rest behind "Why is this here?" and "N other items". |
+| S2B-U3 | CTAs: plan reasons → "Review plan" (`#plan`) · due / overdue → "Open the work" (the Queue's own destination) · blocked → "Open pursuit" · no owner → "Open team" (`#team`). |
+| S2B-U4 | Queue: one quiet lineage segment on the row's meta line. "From the approved plan · View plan →", or a restrained "PLAN NEEDS REVIEW" chip with "Review plan →". |
+| S2B-U5 | Pursuit Detail, labelling only: once a plan needs review, its preserved content sits under "Current approved plan — Approved <date>, recorded before the changes above", and the focus reads "Focus when approved". |
+| S2B-U6 | Mobile: composed cards stack (chip · body · CTA) below `sm`, with no horizontal overflow at 390px. |
+
+**Not certified.** Slice 2B is PREVIEW READY (local) at most until a hosted human review.

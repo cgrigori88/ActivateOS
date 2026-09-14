@@ -38,7 +38,8 @@ function whyHere(item: DecisionItem): string[] {
     `Operational urgency: ${item.operationalUrgency}`,
     `Commercial priority: ${band}`,
     `Unresolved ${ageDays === 0 ? "today" : `${ageDays} day${ageDays === 1 ? "" : "s"}`} — older decisions break ties upward`,
-    ...(governed ? [`Acting on it runs the governed skill: ${skillLabel(governed.skill)}`] : []),
+    // A pursuit-attention card whose CTA only navigates runs nothing governed — so it does not claim to.
+    ...(governed && !(item.attention && governed.sideEffect === "READ") ? [`Acting on it runs the governed skill: ${skillLabel(governed.skill)}`] : []),
     ...(item.reason ? [item.reason] : []),
   ];
 }
@@ -62,13 +63,32 @@ export function TodayDecisionCard({
   const drawerHref = item.companyId && drawerBase !== undefined
     ? (() => { const p = new URLSearchParams(drawerBase); p.set("drawer", item.companyId!); const qs = p.toString(); return qs ? `/?${qs}` : "/"; })()
     : null;
+  const attention = item.attention;
+  const others = item.others ?? [];
+  /* A composed card (Slice 2B) carries more than a title, so below `sm` it stacks — chip,
+     body, CTA — instead of squeezing the body between a fixed chip column and the button.
+     Certified cards never carry attention or folded items and keep their exact classes. */
+  const composed = !!attention || others.length > 0;
+  const why = (
+    <details className="mt-1.5 group">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-label font-medium text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200">
+        <svg viewBox="0 0 16 16" className="h-3 w-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M6 4l4 4-4 4" /></svg>
+        Why is this here?
+      </summary>
+      <ol className="mt-1 space-y-0.5 pl-4 text-label text-neutral-500">
+        {factors.map((f, i) => (
+          <li key={i} className="list-decimal"><span className={i === 0 ? "font-medium text-neutral-600 dark:text-neutral-300" : ""}>{f}</span></li>
+        ))}
+      </ol>
+    </details>
+  );
   // The decision class was carried twice: a 3px coloured rail on the card AND a
   // tinted class chip. A thick coloured edge is decoration doing a job the chip
   // already does, and Motions signals the same thing with a dot — so the two
   // rooms now share one vocabulary. The card keeps a plain hairline.
   return (
     <div
-      className="pos-lift flex items-center gap-4 rounded-card p-4"
+      className={composed ? "pos-lift flex flex-col items-start gap-3 rounded-card p-4 sm:flex-row sm:items-center sm:gap-4" : "pos-lift flex items-center gap-4 rounded-card p-4"}
       style={{ background: "var(--surface-primary)", boxShadow: "var(--shadow-low)", border: "1px solid var(--border-subtle)" }}
     >
       <div className="flex flex-none items-center gap-2">
@@ -99,6 +119,32 @@ export function TodayDecisionCard({
             self-describing; urgency earns a chip only when it is elevated,
             because "normal" on every row is not information. What runs when you
             act moved into the disclosure below, beside the other ranking facts. */}
+        {/* Two complete rows, chosen whole: a pursuit-attention card adds when its approved
+            action is due and who holds it (words chosen by the read model). The certified row is
+            kept verbatim in its own branch — an `attention && …` child would serialize a
+            "$undefined" into every flag-OFF card's Flight payload (U-16). */}
+        {attention ? (
+          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-label">
+            <BandPill band={item.commercialPriority} />
+            {showUrgency && (item.operationalUrgency === "critical" || item.operationalUrgency === "high") && (
+              <span className="rounded-full px-2 py-px text-micro font-bold uppercase tracking-[0.04em]"
+                style={{ color: "var(--color-accent-attention)", background: "color-mix(in srgb, var(--color-accent-attention) 12%, transparent)" }}>
+                {item.operationalUrgency} urgency
+              </span>
+            )}
+            {attention.dueLabel ? (
+              <span className="tnum font-semibold" style={{ color: attention.dueState === "OVERDUE" ? "var(--color-accent-risk)" : "var(--color-neutral-500)" }}>
+                {attention.dueLabel}
+              </span>
+            ) : null}
+            {attention.ownerLabel ? (
+              <span className="min-w-0 text-neutral-500">
+                Owner <span className="font-medium text-neutral-700 dark:text-neutral-300">{attention.ownerLabel}</span>
+                {attention.ownerNote ? <span className="text-neutral-400"> — {attention.ownerNote}</span> : null}
+              </span>
+            ) : null}
+          </div>
+        ) : (
         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-label">
           <BandPill band={item.commercialPriority} />
           {showUrgency && (item.operationalUrgency === "critical" || item.operationalUrgency === "high") && (
@@ -108,23 +154,34 @@ export function TodayDecisionCard({
             </span>
           )}
         </div>
-        <details className="mt-1.5 group">
-          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-label font-medium text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200">
-            <svg viewBox="0 0 16 16" className="h-3 w-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M6 4l4 4-4 4" /></svg>
-            Why is this here?
-          </summary>
-          <ol className="mt-1 space-y-0.5 pl-4 text-label text-neutral-500">
-            {factors.map((f, i) => (
-              <li key={i} className="list-decimal"><span className={i === 0 ? "font-medium text-neutral-600 dark:text-neutral-300" : ""}>{f}</span></li>
-            ))}
-          </ol>
-        </details>
+        )}
+        {/* One card per pursuit: its other reasons are counted and one click away, never
+            separate cards. Without them the card renders exactly as it always has. */}
+        {others.length > 0 ? (
+          <div className="flex flex-wrap items-start gap-x-4">
+            {why}
+            <details className="mt-1.5 group">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-label font-medium text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200">
+                <svg viewBox="0 0 16 16" className="h-3 w-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M6 4l4 4-4 4" /></svg>
+                {others.length} other {others.length === 1 ? "item" : "items"}
+              </summary>
+              <ul className="mt-1 space-y-0.5 pl-4 text-label text-neutral-500">
+                {others.map((o) => (
+                  <li key={o.key} className="list-disc">
+                    <Link href={o.deepLink} className="font-medium text-neutral-600 hover:underline dark:text-neutral-300">{o.title}</Link>
+                    {o.detail && <span> — {o.detail}</span>}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </div>
+        ) : why}
       </div>
       {/* One CTA grammar. This was filled with the row's class hue, so the same
           control was blue, red, violet or green depending on which kind of item
           it sat on — four colours for one action. The class is already stated by
           the chip on the left. */}
-      <Link href={item.deepLink} className={`flex-none ${buttonClass("primary", "md")}`}>
+      <Link href={item.deepLink} className={composed ? `flex-none self-start sm:self-auto ${buttonClass("primary", "md")}` : `flex-none ${buttonClass("primary", "md")}`}>
         {action?.label ?? "Open"} →
       </Link>
     </div>

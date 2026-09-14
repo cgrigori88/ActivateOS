@@ -3,7 +3,7 @@
 Durable architecture, product and UX decisions for the vNext lane. Append, don't
 rewrite: a superseded decision stays, marked `SUPERSEDED`, with the reason.
 
-**Last updated:** 2026-09-14 (Slice 2A — D-024…D-033)
+**Last updated:** 2026-09-14 (Slice 2A — D-024…D-033 · Slice 2B — D-034…D-040)
 
 ---
 
@@ -677,3 +677,198 @@ no goal-revision system:
 verified, but no surface complexity was added. The system never replaces a goal itself.
 If the opportunity amount later changes, the goal still says what a person confirmed;
 proposing a replacement is future work.
+
+---
+
+## D-034 · Today is the attention layer, Queue the execution layer — and attention is derived, never stored
+
+**Decision.**
+
+> **Today answers "what needs my judgment or attention across my pursuits right now, and why?"
+> Queue answers "what work exists, and what do I need to execute?"** One set of primitives
+> (pursuit, plan, revision, motion, action, team, ledger) powers both. Neither owns a copy of
+> the other's facts.
+
+Pursuit attention (`read-models/pursuit-attention.ts`) is a **pure, derived read-model**. It
+has no table and writes nothing. Every reason is recomputed on read from the same Slice 2A plan
+context Pursuit Detail renders (`loadPursuitPlanContext`). So "this plan needs review" cannot
+mean one thing on Pursuit Detail and another on Today.
+
+**Why not a table.** Every attention fact already has an owner:
+- the plan standing belongs to `pursuit_plan_revisions`;
+- the action and its due date to `motion_actions`;
+- the owner to `pursuit_team_members`;
+- what changed to `change_ledger`.
+
+A stored "attention item" would be a second copy of those facts, stale the moment any of them
+moved. It would also need its own lifecycle, and that is how a task system starts.
+
+**What a later learning system still gets (P8).** Each reason carries a deterministic key built
+from the canonical records it rests on:
+- `attention:<pursuit>:PLAN_REVIEW_REQUIRED:<revision in force>:<live fingerprint>`;
+- `…:ACTION_DUE:<motion action>:<bucket>`;
+- and so on for the other kinds.
+
+It also carries a `ref` to that record. Attention shown can therefore be joined to the decision
+that followed (`pursuit_plan_revisions`), the action's execution (`motion_actions.status`,
+`outcome_events`) and the eventual outcome, without anyone having written an attention row.
+Persisting "attention was shown to person X at time T" would need an impression log, and that
+is P8's job, not this slice's.
+
+**Reads never write.** Opening Today or Queue creates:
+- no ledger event;
+- no recommendation;
+- no plan, queue, owner or status change.
+
+The Slice 2B harness proves this by running every Today and Queue read inside a `READ ONLY`
+transaction.
+
+## D-035 · One card per pursuit; the plan leads where a person is coordinating it
+
+**Decision.** With the attention capability on, Today's decision queue is composed per pursuit
+(`composeAttentionQueue`):
+
+1. **Tenant first.** Any pursuit-scoped item whose pursuit the caller's organization does not
+   own is dropped before anything is grouped, ranked or counted (D-038).
+2. **Where the pursuit has a live plan that needs a person, the plan's attention is the
+   card.** A plan already composes the pursuit's focus gap, route, team and milestones. The
+   existing Today items for that pursuit (economic-buyer gap, route change, renewal window…)
+   fold beneath it as "N other items". They are not lost, and they are not duplicated.
+3. **Every other pursuit keeps its most material existing item** as its card, chosen by
+   `todaySort`, with the rest folded. A pursuit with a single item renders exactly the
+   certified card.
+4. Items with no pursuit (a fact review, a motion-wide aggregate) are untouched.
+5. **Cards rank by the existing materiality policy** (class → operational urgency →
+   commercial priority → age), with a stable key as the final tie-break. Ranking never depends
+   on arrival order.
+
+On the canonical world, the Vertex org's Today goes from **36 item cards to 11 pursuit cards**,
+and the verifier proves every one of the 36 is still reachable.
+
+**Within one pursuit, the declared order** is:
+
+```
+PLAN_REVIEW_REQUIRED › PLAN_DECISION_REQUIRED › ACTION_OVERDUE › ACTION_BLOCKED › OWNER_MISSING › ACTION_DUE › MILESTONE_ADVANCED
+```
+
+This was validated against Today's class ranking before it was hard-coded:
+- the two plan reasons are `DECISION_REQUIRED`;
+- the four execution reasons are `ACTION_REQUIRED`;
+- progress is `MATERIAL_CHANGE`.
+
+So the order never contradicts class, and a unit test pins that. It only adds what the class
+cannot say:
+- **review before decision** — an approved plan is steering live work on a basis that moved;
+- **overdue before blocked** — late work is already costing time;
+- **blocked before owner** — an owner cannot move a step that cannot proceed;
+- **owner before due** — a due action nobody holds will not happen on its date.
+
+**Subsumption.** Some reasons are derived but never shown separately, because the card already
+says them:
+- a pending update inside a review (State D) is carried by the review card;
+- milestones reached since approval are the reason the review exists.
+
+They stay on the model (`reasons`, `subsumedBy`) and are never counted as "other items".
+
+**Why not a second "Needs attention" list beside the decision queue.** Wave 2 made the
+decision queue Today's only ranked worklist, after three renderings of two rows taught readers
+that no list was authoritative. A parallel list would undo that. The existing panel is composed
+instead, retitled "Needs your attention" under the flag.
+
+## D-036 · Operational urgency for plan attention, declared once
+
+| Reason | Class | Urgency | Why |
+|---|---|---|---|
+| Plan needs review | DECISION_REQUIRED | **critical** while the stale plan's queued action is still pending; **high** otherwise | The acting-blindly case: executable work on a basis that moved (a route change would send the reader to the wrong partner) |
+| Plan awaiting approval | DECISION_REQUIRED | high | The same shape as a route awaiting approval, which Today already treats as high |
+| Approved action overdue | ACTION_REQUIRED | high | |
+| Approved action cannot proceed | ACTION_REQUIRED | high | Execution is held |
+| No confirmed owner | ACTION_REQUIRED | normal | |
+| Approved action due | ACTION_REQUIRED | high today · normal this week | |
+| Milestone reached | MATERIAL_CHANGE | low | Informational |
+
+**Consequence, stated plainly.** A plan awaiting approval ranks alongside the seven
+canonical route approvals, and the older ones break the tie. So in State A, Globex is card 8
+of 11, reachable through "View all". Nothing gives it special pleading. A plan that needs
+review with live queued work ranks first.
+
+## D-037 · Only plan-approved actions earn Today attention; the due window is the Queue's own
+
+**Decision.** `ACTION_DUE`, `ACTION_OVERDUE`, `ACTION_BLOCKED` and `OWNER_MISSING` are raised
+only for the action a person approved through the pursuit's plan: the in-force revision's
+`nextAction`, joined to the Queue by its `stagedMotionActionId`. A motion's own cadence steps
+are Queue work and never become Today cards. Otherwise Today becomes the task list it must not
+be.
+
+The buckets come from one module, `src/lib/motions/due-buckets.ts`:
+- overdue = before local midnight today;
+- due = today, or inside the Queue's seven-day "this week".
+
+The Queue now groups by the same module, so an action cannot be "overdue" in one room and "this
+week" in the other. That extraction is behaviour-identical for the Queue, and the flag-OFF
+render comparison proves it.
+
+**Blocked means a real dependency.** Two causes qualify:
+- (a) approval could not queue the action because the plan's motion is not active — the same
+  words the plan surface already shows;
+- (b) the milestone the action serves waits on an earlier milestone, per D-029's declared
+  dependencies.
+
+Nothing else counts as blocked.
+
+## D-038 · The composed Today is tenant-scoped even where the certified queue is not
+
+**Finding.** Several existing `getTodayQueue` reads carry no `org_id` predicate: route
+approvals, route changes, team waits and fact reviews. They rely on RLS, which is inert on the
+owner-role app path (task #67). Locally, the guest org Meridian's certified Today therefore
+shows 18 of Vertex's items.
+
+**Decision.** With the attention capability on, the composition drops every pursuit-scoped
+item whose pursuit the caller's org does not own. This happens before grouping, ranking,
+counting and the synthetic badge. Attention itself is derived only from
+`pursuit_plans.org_id = caller.orgId`. So no other org's pursuit, plan or action can move a
+card, a count, a rank, a badge or a hidden "other items" number. The harness proves it by
+giving Meridian a live plan and showing Vertex's composed Today is identical.
+
+**Not done.** Flag-OFF Today is unchanged; it is the certified surface. Fixing the underlying
+queries is task #67, not this slice.
+
+## D-039 · Attention wording for a partner-safe caller is declared, never plan free text
+
+**Decision.** The plan view reaches attention already disclosure-filtered (D-018). On top of
+that, a caller without internal visibility gets only declared-table wording:
+- "The pursuit has changed since the plan was approved."
+- "The approved next action — due …"
+- "No confirmed owner on the pursuit team yet."
+- owner "Assigned on the pursuit team" / "Unassigned".
+
+They never receive a person's reworded action text, a gap headline, a review reason, a
+person's name or a warm path. Nothing withheld contributes a reason, an order or a count.
+
+## D-040 · The flag is `VNEXT_PURSUIT_ATTENTION_ENABLED`; the plan lineage and the framing ride on it
+
+**Decision.** A new capability, `pursuit_attention`, requires `pursuit_coordination`: every
+reason is derived from a plan's standing, so without a plan there is nothing to derive.
+`VNEXT_NEXT_BEST_ACTION_ENABLED` stays reserved and unimplemented, exactly as D-025 left it.
+
+The capability gates three things:
+- the Today composition;
+- the Queue's plan lineage;
+- the Pursuit Detail framing.
+
+The framing is `frameApprovedPlan`. It is applied after the Slice 2A composer, so with the
+capability off the 2A view passes through untouched, byte for byte. With it on, a plan that
+needs review is labelled "Current approved plan — Approved Sep 14, recorded before the changes
+above", and its focus reads "Focus when approved". **Labelling only:** not one field of the
+plan changes (unit-tested).
+
+**Queue lineage** uses the existing link `content.nextAction.stagedMotionActionId` on a DECISION
+revision. No action is copied to establish it. Only rows a person queued by approving a plan
+are annotated:
+- "From the approved plan · View plan →";
+- "Plan needs review · Review plan →", as a restrained chip;
+- "From an earlier approved plan", when a later decision or a goal replacement superseded it.
+
+The link's title carries plain provenance, for example "Approved by a person on Sep 14". The
+Queue never cancels, replaces or blocks an action because its plan needs review; the approved
+plan stays in force until a person decides (D-028).

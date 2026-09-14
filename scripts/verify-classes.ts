@@ -93,6 +93,11 @@ export const SUITES: SuiteSpec[] = [
     why: "vNext Slice 2A plan harness: reads the canonical Globex pursuit and its seeded recommendation, and exercises approve / adjust / decline / review / tenant / disclosure paths inside transactions that are ROLLED BACK — the world it reads is left exactly as it found it",
   },
   {
+    name: "vnext-attention",
+    cls: "SEEDED",
+    why: "vNext Slice 2B Today/Queue harness: reads the canonical Globex pursuit and its seeded recommendation, runs every Today/Queue read inside READ ONLY transactions, and walks approve → verify → review → update inside transactions that are ROLLED BACK — the world it reads is left exactly as it found it",
+  },
+  {
     name: "demo-team",
     cls: "SEEDED",
     why: "reads the canonical global team requirements and the Globex hero team the seed assembles from them; READ-ONLY. Supplemental to the manifest, which counts no team table — the gap that let an in-place reseed ship a world with no pursuit team (2026-09-14)",

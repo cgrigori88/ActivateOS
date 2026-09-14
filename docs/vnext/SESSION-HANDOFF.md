@@ -10,12 +10,14 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-14T21:08Z (hosted team-layer repair session, run locally on the owner's Mac) |
-| **Repository** | `cgrigori88/ActivateOS` — this session ran **locally on the owner's Mac** at `/Users/cgrigori/Documents/ActivateOS/pursuitos-vnext`, not in Claude Code Web (B-4) |
+| **Date/time** | 2026-09-14 (Slice 2B local implementation + verification session, on the owner's Mac) |
+| **Repository** | `cgrigori88/ActivateOS` — run **locally on the owner's Mac** at `/Users/cgrigori/Documents/ActivateOS/pursuitos-vnext` |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `6ab3599` (seeding fix) + this session's docs commit on top |
+| **Current commit** | this session's Slice 2B commit, on top of `b677acf` |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | **HOSTED TEAM-LAYER REPAIR — FIXED.** Root cause (in-place reseed clears the 0075-only team requirements) reproduced locally and fixed in code (`6ab3599`); `mejokqxriwyawfhawuxu` reseeded in place. Hosted coordination **112 pass / 0 fail / 4 environmentally not run** (as-`app_rw` only; equivalents pass), Slice 1 62/0, demo-team 11/0, manifest unchanged, 0 send rows. Slice 2A stays **PREVIEW READY**, not DEMO CERTIFIED. No Vercel, flag, deploy, auth or Production change; Monday demo never addressed. See § "Hosted team-layer repair" below. |
+| **Slice status** | Slice 1 **DEMO CERTIFIED / FROZEN** · Slice 2A **DEMO CERTIFIED / FROZEN** (human product acceptance on the isolated hosted Preview) · Slice 2B **PREVIEW READY (local)** — not certified, no hosted work done |
+| **Session completed** | **SLICE 2B — PURSUIT ATTENTION + TODAY / QUEUE, LOCAL.** See § "Vertical Slice 2B" below. No hosted database, Vercel, flag, deployment or Production change. |
+| **Previous session** | **HOSTED TEAM-LAYER REPAIR — FIXED.** Root cause (in-place reseed clears the 0075-only team requirements) reproduced locally and fixed in code (`6ab3599`); `mejokqxriwyawfhawuxu` reseeded in place. Hosted coordination **112 pass / 0 fail / 4 environmentally not run** (as-`app_rw` only; equivalents pass), Slice 1 62/0, demo-team 11/0, manifest unchanged, 0 send rows. Slice 2A stays **PREVIEW READY**, not DEMO CERTIFIED. No Vercel, flag, deploy, auth or Production change; Monday demo never addressed. See § "Hosted team-layer repair" below. |
 | **Previous session** | **SLICE 2A HOSTED PROMOTION — INSTALLED, VERIFICATION PARTIAL** (16:49Z, docs `a9846b4`): 0103 + Globex plan story on `mejokqxriwyawfhawuxu`; found the no-team defect. |
 | **Preview URL** | **UNVERIFIED** — unchanged |
 | **Preview data safety** | **UNKNOWN** — unchanged. No Vercel scope was touched |
@@ -28,6 +30,81 @@
 - Also the head of `ui-wave-6d`, and tagged `backup/2026-09-04/tds-live-demo`
   (annotated, already on origin — the durable immutable reference).
 - Working tree clean at session start and at session end.
+
+---
+
+## Vertical Slice 2B — Pursuit Attention + Today / Queue coordination (2026-09-14)
+
+**State: PREVIEW READY on the local synthetic path.** It sits behind `VNEXT_PURSUIT_ATTENTION_ENABLED`, default OFF, which requires `VNEXT_PURSUIT_COORDINATION_ENABLED`. It is not on any hosted scope. Decisions D-034…D-040; acceptance `ACCEPTANCE.md` § Slice 2B; numbers `STATUS.md` § "Vertical Slice 2B validation".
+
+### The boundary
+
+```
+TODAY  = decision / attention  "what needs my judgment across my pursuits right now, and why?"
+QUEUE  = execution             "what work exists, and what do I execute?"
+```
+
+Both run on the same primitives: pursuit, plan and revisions, motion, `motion_actions`, team and ledger. Attention is a **derived read-model** — no table, no migration, nothing persisted.
+
+### How it works
+
+**Attention model.** `read-models/pursuit-attention.ts` is pure.
+- Input: the Slice 2A plan context of one pursuit, via `loadPursuitPlanContext` — the same read Pursuit Detail makes.
+- It derives seven reasons: `PLAN_REVIEW_REQUIRED`, `PLAN_DECISION_REQUIRED`, `ACTION_OVERDUE`, `ACTION_BLOCKED`, `OWNER_MISSING`, `ACTION_DUE`, `MILESTONE_ADVANCED`.
+- It ranks them by a declared order, validated against Today's class ranking.
+- It collapses them to one primary per pursuit. The rest become "other items"; reasons the card already carries are "subsumed".
+- Keys are deterministic, e.g. `attention:<pursuit>:<kind>:<revision / motion action / fingerprint>`.
+
+**Loaders.** `read-models/attention-loaders.ts`:
+- `loadPursuitAttention` — org-scoped: only pursuits with a live plan;
+- `composeTodayAttention` — one card per pursuit, tenant-scoped;
+- `loadQueuePlanLineage` — joins through the existing `stagedMotionActionId`.
+
+**Today** (`app/page.tsx`). With the capability on, the existing decision panel is composed and retitled "Needs your attention". The existing items fold under their pursuit's card. On the seeded world this is 36 → 11 cards, with nothing lost.
+
+**Queue** (`app/queue/page.tsx`). A plan-queued row says so on its meta line: "From the approved plan · View plan →", or a "PLAN NEEDS REVIEW" chip with "Review plan →". Nothing is cancelled or replaced. The due buckets now come from `src/lib/motions/due-buckets.ts`, shared with Today.
+
+**Pursuit Detail.** `frameApprovedPlan`, applied after the 2A composer and only under the capability, adds "Current approved plan — Approved Sep 14, recorded before the changes above" and "Focus when approved". It is labelling only.
+
+### Globex, locally
+
+| State | Today | Queue |
+|---|---|---|
+| A — recommendation awaiting approval | "Plan awaiting approval" · Review plan · card 6 of 11 (ranks with the route approvals — honest materiality) | no lineage (nothing approved) |
+| B — approved, action due | "Approved action has no confirmed owner", with "Approved action is due" beneath · Open team | exactly one row · "From the approved plan · View plan →" |
+| C — economic buyer verified after approval | **"Plan needs review" · CRITICAL · card 1** · Review plan. The old action is only an "other item" | the same row, still pending · "PLAN NEEDS REVIEW · Review plan →" |
+| D — updated recommendation undecided | still ONE card: "Plan needs review … An updated recommendation is waiting for your decision." | unchanged, still marked |
+
+### Local environment (this session)
+
+The cluster is in the session scratchpad, on port 5433, with socket dir `/tmp/pgv5433`. Recreate it as in § Slice 2A below.
+
+Render copies: `createdb -T pursuit_demo pursuit_state_b`, then advance it through `decide_pursuit_plan`. `pursuit_state_c` adds `assert_stakeholder_role` for Dana Whitfield as a verified economic buyer; `pursuit_state_d` adds `recommend_pursuit_plan`.
+
+Run the verifier with: `DATABASE_URL_VERIFY=… npx tsx scripts/vnext-attention-verify.ts`.
+
+**zsh trap.** Pass the server environment as an **array** (`ENV=(A=1 B=1); env $ENV …`). zsh does not word-split a string variable, so every flag but the first silently stays unset.
+
+**Turbopack trap.** Turbopack refuses a `node_modules` symlink that points outside the project root. For a baseline worktree, copy with `cp -cR` (APFS clone).
+
+### Deferred
+
+- **Attention impressions for P8** — who saw which key, when. That is an impression log; the keys make it possible without storing attention.
+- **Automatic review recording** on material events (P5 worker).
+- **Goal editing UI**, and **plan closure** on WON / LOST.
+- **Queue-side cleanup of earlier-plan actions.** They are labelled "From an earlier approved plan" and left for a person to close.
+- **Attention for pursuits without a plan** beyond the existing items.
+- **An expression index** on `content->'nextAction'->>'stagedMotionActionId'`, if revision volume grows.
+- **The pre-existing mobile sliver** of the certified Today card, and the `getTodayQueue` org predicates (task #67).
+
+### Exact next step — owner-approved, NOT executed
+
+1. On the Vercel Preview scope for `roadmap/pursuitos-vnext` only, add `VNEXT_PURSUIT_ATTENTION_ENABLED=1` alongside the already-armed Slice 1 + 2A flags. No database change is needed: Slice 2B has no migration.
+2. Redeploy the branch head, and confirm `/api/build` reports `database.projectRef = mejokqxriwyawfhawuxu`.
+3. Run `vnext-attention-verify.ts` against `mejokqxriwyawfhawuxu`.
+   - Expect the four as-`app_rw`-style constraints not to apply: this harness does not `SET ROLE`.
+   - Because the hosted Globex plan was already walked to State D during Slice 2A acceptance, its State A expectations will differ. Read section 2 as informational there, or reseed first.
+4. Hosted human review of Today, Queue and the Globex plan in States C/D. Only then consider DEMO CERTIFIED.
 
 ---
 

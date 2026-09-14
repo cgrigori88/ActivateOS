@@ -24,6 +24,7 @@ import { PursuitContextNarrative } from "@/components/pursuit/context-narrative"
 import { loadContextHealth, loadMissingContext, loadPursuitEvidence, loadPursuitMemory } from "@/lib/pursuits/read-models/context-loaders";
 import { loadPursuitPlanView } from "@/lib/pursuits/read-models/plan-loaders";
 import { PlanStatusChip, PursuitPlanSurface } from "@/components/pursuit/pursuit-plan";
+import { frameApprovedPlan } from "@/lib/pursuits/read-models/pursuit-plan";
 import { getPursuitFederation, getGovernedActions, getPursuitOutcomes } from "@/lib/pursuits/federation/read-models";
 import { buildFederationViewer } from "@/lib/pursuits/federation/grants";
 import { FederationBento } from "@/components/pursuit/federation";
@@ -115,7 +116,13 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
        composed from that context. Loaded ONLY when armed: with the flag off this
        issues no query, touches no plan table, and the page is unchanged. */
     const pursuitPlan = vnext.pursuitCoordination ? await loadPursuitPlanView(db, caller, id) : null;
-    return { kind: "sponsor" as const, detail, federation, canDecide, outcome, motion, contacts, pursuitContext, pursuitPlan };
+    /* vNext Slice 2B — labelling only: once the approved plan needs review it is framed as the
+       CURRENT APPROVED PLAN, so its preserved content is not read as current reality. Nothing is
+       rewritten, and with the attention capability off the Slice 2A view passes through untouched. */
+    return {
+      kind: "sponsor" as const, detail, federation, canDecide, outcome, motion, contacts, pursuitContext,
+      pursuitPlan: pursuitPlan && vnext.pursuitAttention ? frameApprovedPlan(pursuitPlan) : pursuitPlan,
+    };
   });
   if (!loaded) notFound();
 

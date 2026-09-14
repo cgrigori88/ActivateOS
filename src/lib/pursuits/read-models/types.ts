@@ -44,8 +44,30 @@ export interface DecisionItem {
   deepLink: string;                  // §41
   synthetic: boolean;
   at: string;
+  /**
+   * vNext Slice 2B — present only when Today composes pursuit attention (flag ON): the card is a
+   * pursuit's one attention item. Absent on every flag-OFF item, so the certified card renders
+   * exactly as before.
+   */
+  attention?: DecisionAttention;
+  /** vNext Slice 2B — the pursuit's other reasons, folded beneath this card instead of becoming cards. */
+  others?: DecisionOther[];
 }
 export interface DecisionAction { label: string; skill: string; sideEffect: "READ" | "INTERNAL_WRITE" | "CROSS_TENANT_ACTION"; }
+/** What a pursuit-attention card carries beyond a decision item. All copy is chosen server-side. */
+export interface DecisionAttention {
+  /** Deterministic key of the primary reason — stable while the canonical state is. */
+  key: string;
+  /** PLAN: a person's decision on the plan · EXECUTION: approved work · PROGRESS: informational. */
+  layer: "PLAN" | "EXECUTION" | "PROGRESS";
+  ownerLabel: string | null;
+  ownerNote: string | null;
+  dueLabel: string | null;
+  dueState: "OVERDUE" | "TODAY" | "THIS_WEEK" | "LATER" | null;
+  /** Every reason derived for the pursuit, primary first (for explanation, never for re-ranking). */
+  kinds: string[];
+}
+export interface DecisionOther { key: string; title: string; detail: string | null; deepLink: string; }
 export interface TodayQueueView { generatedAt: string; items: DecisionItem[]; counts: Record<DecisionClass, number>; total?: number; demoBanner: string | null; }
 
 // ---- Portfolio (§5/§6) -----------------------------------------------------

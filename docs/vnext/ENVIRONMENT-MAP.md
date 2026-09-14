@@ -113,8 +113,10 @@ bypass) · `BASIC_AUTH_USER` · `BASIC_AUTH_PASS`
 **vNext staging flags** (new in Session 0; default OFF everywhere)
 `VNEXT_CONTEXT_HEALTH_ENABLED` · `VNEXT_PURSUIT_STATE_ENABLED` ·
 `VNEXT_PURSUIT_MEMORY_ENABLED` · `VNEXT_PURSUIT_INTELLIGENCE_ENABLED` ·
-`VNEXT_NEXT_BEST_ACTION_ENABLED` · `VNEXT_DYNAMIC_SURFACES_ENABLED` ·
-`VNEXT_CONTROL_PLANE_ENABLED`
+`VNEXT_NEXT_BEST_ACTION_ENABLED` (reserved, unimplemented) · `VNEXT_DYNAMIC_SURFACES_ENABLED` ·
+`VNEXT_CONTROL_PLANE_ENABLED` · `VNEXT_PURSUIT_COORDINATION_ENABLED` (Slice 2A) ·
+`VNEXT_PURSUIT_ATTENTION_ENABLED` (Slice 2B; requires coordination — **not set on any
+hosted scope**)
 
 **Demo tooling**
 `DEMO_TARGET_URL` (presence triggers an in-place *guarded* reseed of a hosted DB —

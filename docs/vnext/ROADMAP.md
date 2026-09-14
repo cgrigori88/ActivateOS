@@ -82,7 +82,11 @@ The Pursuit Plan is a durable, evolvable object. Over time it must support:
 - human changes and overrides, preserved alongside what was recommended,
 - new evidence causing plan review, with the reason recorded.
 
-First vertical cut: Slice 2A (`BUILD-PLAN.md`), decisions D-024…D-032.
+First vertical cut: Slice 2A (`BUILD-PLAN.md`), decisions D-024…D-033 — DEMO CERTIFIED / FROZEN.
+Second: Slice 2B, the ATTENTION portion of the loop (WHAT MATTERS NOW → GOAL → PLAN → MOTION →
+ACTION → **ATTENTION** → EXECUTION → NEW EVIDENCE → PLAN REVIEW). Today becomes the decision /
+attention layer over the same plan primitives the Queue executes. Attention is derived, never
+stored (D-034…D-040).
 
 ### P4 — AI Control Plane
 Agent/Skill Registry, identities, versions, model routing, scopes, capabilities,

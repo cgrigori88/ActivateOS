@@ -8,6 +8,12 @@ import { resolveActionAction, resolveCommActionAction } from "./actions";
 import { buttonClass } from "@/components/ui";
 import { ExecutionModel } from "@/components/execution-model";
 import { formatMoney } from "@/lib/format/money";
+import { DAY_MS as DAY, QUEUE_BUCKET_LABEL, dueBucket, startOfToday } from "@/lib/motions/due-buckets";
+import { vnextCapabilities, vnextEnvEnabled } from "@/lib/env/vnext-flags";
+import { tenantFeatures } from "@/lib/pursuits/tenant-flags";
+import { callerFor } from "@/lib/pursuits/read-models/caller";
+import { loadQueuePlanLineage } from "@/lib/pursuits/read-models/attention-loaders";
+import type { QueueLineage } from "@/lib/pursuits/read-models/pursuit-attention";
 
 export const dynamic = "force-dynamic";
 
@@ -33,13 +39,8 @@ interface Item {
   meta: string | null;
   /** Motion-level value of the work this item advances. Null when not applicable. */
   valueUsd: number | null;
-}
-
-const DAY = 86_400_000;
-function startOfToday(): number {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  /** vNext Slice 2B — the pursuit plan that queued this action, when a person approved one. */
+  lineage?: QueueLineage;
 }
 
 export default async function QueuePage({
@@ -59,7 +60,8 @@ export default async function QueuePage({
   const scoped = scopeIds != null;
   const ids = scopeIds ?? [];
 
-  const { cadence, comms, recent } = await withTenant(async (db) => ({
+  const { cadence, comms, recent, lineage } = await withTenant(async (db, orgId) => {
+    const loaded = {
     cadence: (
       await db.query(
         /* Wave 4 §3: `estimated_value_usd` joins the existing select so a queue row
@@ -108,7 +110,15 @@ export default async function QueuePage({
         [ids, scoped],
       )
     ).rows,
-  }));
+    };
+    /* vNext Slice 2B — plan lineage. The Queue is not changed by a plan needing review (the
+       approved plan stays in force until a person decides); a row the plan queued only SAYS so.
+       Capability-gated like Today; flag OFF issues no query and renders the certified rows. */
+    const lineage = vnextEnvEnabled("pursuit_attention") && vnextCapabilities(await tenantFeatures(db, orgId)).pursuitAttention
+      ? await loadQueuePlanLineage(db, await callerFor(db, orgId), loaded.cadence.map((a) => a.id as string))
+      : null;
+    return { ...loaded, lineage };
+  });
 
   const items: Item[] = [
     ...cadence.map((a) => ({
@@ -127,6 +137,7 @@ export default async function QueuePage({
          mechanism; the row leads with the work and what it is worth. */
       meta: `step ${a.step}`,
       valueUsd: a.estimated_value_usd == null ? null : Number(a.estimated_value_usd),
+      ...(lineage?.[a.id as string] ? { lineage: lineage[a.id as string] } : {}),
     })),
     ...comms.map((a) => ({
       id: a.id as string,
@@ -178,14 +189,8 @@ export default async function QueuePage({
   filtered.sort((a, b) => (a.dueAt?.getTime() ?? Infinity) - (b.dueAt?.getTime() ?? Infinity));
 
   // Group
-  const bucketOf = (i: Item): string => {
-    if (!i.dueAt) return "No date";
-    const t = i.dueAt.getTime();
-    if (t < today0) return "Overdue";
-    if (t < today0 + DAY) return "Today";
-    if (t < today0 + 7 * DAY) return "This week";
-    return "Later";
-  };
+  // One definition of the buckets, shared with Today's pursuit attention (Slice 2B).
+  const bucketOf = (i: Item): string => QUEUE_BUCKET_LABEL[dueBucket(i.dueAt, today0)];
   const BUCKET_ORDER = ["Overdue", "Today", "This week", "Later", "No date"];
   const groups = new Map<string, Item[]>();
   for (const i of filtered) {
@@ -319,7 +324,25 @@ export default async function QueuePage({
                               {i.dueAt ? `${overdue ? "overdue · " : "due "}${i.dueAt.toISOString().slice(0, 10)}` : "no date"}
                             </span>
                             <span aria-hidden>·</span>
-                            <span>{i.kind === "conversation" ? "raised by a conversation" : "from the motion's play cadence"}</span>
+                            {/* Slice 2B: an action a person queued by approving a pursuit plan says
+                                which plan — and, restrained, when that plan now needs review. */}
+                            {i.lineage ? (
+                              <>
+                                {i.lineage.state === "REVIEW_NEEDED" ? (
+                                  <span className="rounded-full px-2 py-px text-micro font-bold uppercase tracking-[0.04em]"
+                                    style={{ color: "var(--color-accent-attention)", background: "color-mix(in srgb, var(--color-accent-attention) 12%, transparent)" }}>
+                                    {i.lineage.label}
+                                  </span>
+                                ) : (
+                                  <span>{i.lineage.label}</span>
+                                )}
+                                <Link href={i.lineage.href} title={i.lineage.provenance} className="font-medium hover:underline" style={{ color: "var(--color-readiness)" }}>
+                                  {i.lineage.linkLabel} →
+                                </Link>
+                              </>
+                            ) : (
+                              <span>{i.kind === "conversation" ? "raised by a conversation" : "from the motion's play cadence"}</span>
+                            )}
                             {i.meta && <><span aria-hidden>·</span><span>{i.meta}</span></>}
                           </p>
                         </div>

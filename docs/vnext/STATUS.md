@@ -1,6 +1,23 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-14T16:49Z (Slice 2A hosted promotion session)
+**Last updated:** 2026-09-14 (Slice 2B — Pursuit Attention + Today / Queue coordination, local pass)
+
+**2026-09-14 (latest): Slice 1 and Slice 2A are both DEMO CERTIFIED / FROZEN.** Slice 2A passed human product acceptance on the isolated hosted Preview; the twelve steps are recorded in `ACCEPTANCE.md`.
+
+**Slice 2B (Pursuit Attention + Today / Queue coordination) is PREVIEW READY on the local synthetic path only.** It is behind `VNEXT_PURSUIT_ATTENTION_ENABLED`, default OFF, which requires Slice 2A coordination. It is NOT DEMO CERTIFIED: that needs a hosted human review, and no hosted work was done in this pass.
+
+Verified locally:
+- `tsc` 0;
+- `npm test` 351 / 0 (+25);
+- `vnext-attention` 57 / 0 (new);
+- `vnext-coordination` 116 / 0;
+- Slice 1 62 / 0;
+- `demo-team` 11 / 0;
+- manifest `be0da833990ce436` unchanged;
+- build 0;
+- flag-OFF Today, Queue and Pursuit Detail identical to the pre-slice build.
+
+No migration. No hosted database, Vercel setting, flag, deployment or Production system was touched.
 
 **2026-09-14 (later) — the hosted seeding defect is FIXED and the isolated world REPAIRED; Slice 2A hosted verification now has ZERO failures.** Root cause: the in-place reseed cleared `pursuit_team_requirements` and never replays migration 0075, which is the only thing that ever inserted its five global roles, so no pursuit got a team. Fix `6ab3599`: the canonical seed re-establishes those five from one definition (`src/lib/routing/team-requirements.ts`) on both provisioning paths. Locally, a fresh build, an in-place reseed and a repeated in-place reseed are identical (154 tables; team digest `b63845ca021fe143`). `mejokqxriwyawfhawuxu` was reseeded in place (all 11 layers, plan story re-recorded) and now matches that build table for table, apart from the carried operator membership and the migration tracker. Hosted: coordination **112 pass / 0 fail / 4 not run** — the 4 are the as-`app_rw` checks, **environmentally not run** (hosted `app_rw` is NOLOGIN; `postgres` holds it without SET), with their grant/RLS equivalents passing. Slice 1 62/0 · team 11/0 · manifest `be0da833990ce436` unchanged · 0 messages/outbox/email rows. **Slice 2A stays PREVIEW READY, not DEMO CERTIFIED.** The paragraph below is the prior state.
 
@@ -35,7 +52,8 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 |---|---|---|---|---|---|---|
 | Canonical commercial foundation | P0 | **DEMO CERTIFIED** (pre-existing) | `97e975f0` | 2026-09-03 | — | Substantially already built: orgs, companies, products, sellers, partners, opportunities, motions, campaigns, entity resolution, aliases, provenance |
 | Living Pursuit Context — **Vertical Slice 1** | P1 | **DEMO CERTIFIED / FROZEN** (owner, 2026-09-14) | `roadmap/pursuitos-vnext` @ `c4f4196` | 2026-09-14 | Nothing. "What matters now" is frozen absent real pilot feedback — do not redesign, rename or restructure it | Slice 2A re-proved it byte-identical (12,761 bytes, 1,092×792 desktop / 326×1,251 mobile) with the coordination flag ON |
-| **Pursuit Coordination — Vertical Slice 2A** | P3 | **PREVIEW READY** — hosted schema + data installed and **verified with 0 failures** (4 as-`app_rw` checks environmentally not run); **not** DEMO CERTIFIED | `roadmap/pursuitos-vnext` @ `6ab3599` | 2026-09-14T21:08Z | ~~Apply 0103 + plan story on `mejokqxriwyawfhawuxu`~~ done · ~~fix the hosted no-team defect~~ done (`6ab3599`, reseeded). Next: arm `VNEXT_PURSUIT_COORDINATION_ENABLED` on the Preview scope for this branch (owner-approved), redeploy, then human product review | Goal → Plan → Motion → Action on Pursuit Detail. Migration 0103 (3 tables, additive). Two INTERNAL_WRITE skills; no send path. Deferred: Today integration, goal editing, plan closure on WON/LOST (see `SESSION-HANDOFF.md`) |
+| **Pursuit Coordination — Vertical Slice 2A** | P3 | **DEMO CERTIFIED / FROZEN** (owner, human product acceptance on the isolated hosted Preview, 2026-09-14) | `roadmap/pursuitos-vnext` @ `6ab3599` | 2026-09-14 | Nothing. Do not materially redesign it absent pilot feedback | Goal → Plan → Motion → Action on Pursuit Detail. Migration 0103. The twelve accepted steps are in `ACCEPTANCE.md`. Its UX note (preserved plan content read as current) is addressed by Slice 2B labelling |
+| **Pursuit Attention + Today / Queue — Vertical Slice 2B** | P3 | **PREVIEW READY (local)** — **not** DEMO CERTIFIED; no hosted work done | `roadmap/pursuitos-vnext` (this session's commit) | 2026-09-14 | (1) Owner-approved arming of `VNEXT_PURSUIT_ATTENTION_ENABLED` on the Preview scope for this branch. (2) Redeploy. (3) Run `vnext-attention` on `mejokqxriwyawfhawuxu`. (4) Hosted human review | Derived read-model, no migration. Today composes one card per pursuit (36 → 11 on the seeded world). Queue plan lineage. "Current approved plan" framing. D-034…D-040 |
 | · pursuit context narrative (rendered) | P1 | **PREVIEW READY** | `6c5b7a9` `components/pursuit/context-narrative.tsx` | 2026-09-12 | Product sign-off on the refined surface, then GATE D/E | Titled **"What matters now"**, full-width on desktop. GATE C **N-1 fixed** (all 10 ledger rows reachable, override chronology included), **N-2/N-4/N-6 fixed**. Flag OFF verified identical panel-for-panel. Residual: R-1 "What changed" right half empty (cosmetic), R-2 283px void beside Value case. See `GATE-C-PRODUCT-REVIEW.md` § GATE C REFINEMENT |
 | · pursuit evidence (direct + supporting) | P1 | **PREVIEW READY** | `620bc12` `read-models/pursuit-evidence.ts` | 2026-09-12 | Consumed by "What matters now" since `99bd5dd` | 18 tests. **Supersedes the plan to swap `getFacts` to pursuit scope** — Globex has 1 linked fact, so the swap would have deleted the best evidence on the screen. See D-020 |
 | · fact freshness | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/facts/freshness.ts` | — | Compose at pursuit level | Exists per-fact; nothing composes per-pursuit |
@@ -124,6 +142,34 @@ The goal is now the durable commercial outcome only. Globex: "Exit legacy virtua
 | Flag-ON goal area | shows "Exit legacy virtualization before renewal and close the $920K opportunity"; "opportunity with WWT" absent; "via WWT" present only in the plan's Next move; plan panel geometry unchanged (1,092×547) |
 
 **Found while testing the boundary, fixed:** when a person approves the *recommended* route, the route read-model deliberately reports `selected = null`. The plan loader took that as "no route", which left the plan unable to name an approved recommendation. It now resolves the choice from `selectedKey`. Globex (an override) was unaffected.
+
+### Vertical Slice 2B validation (2026-09-14, local synthetic, Globex)
+
+This is a disposable local Postgres 17 on `127.0.0.1:5433`, rebuilt from scratch. States B, C and D were rendered from template copies of that world (`pursuit_state_b/c/d`), each advanced through the real governed skills. On those copies only, the approved action's due date was moved into this week so that State B shows "due". No hosted database was contacted.
+
+| Check | Result |
+|---|---|
+| `npx tsc --noEmit` | exit 0 |
+| `npm test` | **351 pass / 0 fail** (from 326; +24 attention tests, +1 flag test) |
+| `vnext-attention` verifier (new, SEEDED) | **57 passed / 0 failed**. Every Today and Queue read ran inside `READ ONLY` transactions; all writes were rolled back; the world was unchanged afterwards |
+| `vnext-coordination` (Slice 2A) | **116 passed / 0 failed** |
+| `vnext-context` (Slice 1) | **62 passed / 0 failed** |
+| `demo-team` | 11 / 0 · team digest `b63845ca021fe143` |
+| SEEDED spot-check | append-only 11/0 · stakeholder-intel 43/0 · value-case 126/0 · team-motion 22/0 |
+| Manifest digest | `be0da833990ce436`, unchanged |
+| `npm run build` | exit 0 |
+| Flag-OFF vs pre-slice build (`b677acf`), same env, same DB | **Today (`/` and `/?today=all`) and Pursuit Detail are byte-identical** after normalizing only build assets, build id, nonce, action-id hashes, action-ref numbers and request stamps. This holds in three configurations: Slice 1 + 2A ON on the seeded world; Slice 1 + 2A ON on State C (plan needs review); and no vNext flags. **Queue:** the rendered markup (scripts removed) is identical in all three. Its raw Flight payload is not comparable, because the baseline differs from itself between two requests (React streams server-action chunks in per-request order) |
+| Today, attention ON | 11 pursuit cards instead of 34–36 item cards. Globex is card 6 in A, card 11 in B, and **card 1 in C and D**. No horizontal overflow at 1440 or 390 |
+| Screenshots | `docs/vnext/review/slice-2b/` |
+
+**Defects found and fixed before commit.** Both were caught by the render comparison, and neither shipped:
+- An `attention && …` child in the Today card, and an `approvedPlanFrame && …` slot in the plan surface, each serialized a `"$undefined"` into the flag-OFF Flight payload. Both were restructured so the flag-OFF branch is the original JSX verbatim.
+- Trailing-period stripping turned "Globex Manufacturing Inc." into "Inc".
+
+**Found, pre-existing, not fixed:**
+- The certified Today card collapses to a sliver at 390px ("S…", "A…", with the CTA overlapping). Composed cards stack under the flag instead; flag-OFF is untouched.
+- Several `getTodayQueue` reads have no `org_id` predicate, so the guest org's certified Today shows 18 of Vertex's items while RLS is inert (task #67). The composed Today drops them (D-038).
+- Some existing Today item ids embed `Date.now()`, so they are unstable across reads.
 
 ### Hosted team-layer repair (2026-09-14T21:08Z, fix `6ab3599`)
 

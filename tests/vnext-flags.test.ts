@@ -25,8 +25,31 @@ import type { TenantFeatureView } from "../src/lib/pursuits/tenant-flags";
 
 const ALL: VNextFlag[] = [
   "context_health", "pursuit_state", "pursuit_memory", "pursuit_intelligence",
-  "next_best_action", "pursuit_coordination", "control_plane", "dynamic_surfaces",
+  "next_best_action", "pursuit_coordination", "pursuit_attention", "control_plane", "dynamic_surfaces",
 ];
+
+test("vnext: pursuit attention (Slice 2B) is OFF by default, needs coordination, and cannot satisfy the tenant gate", () => {
+  const chain = { VNEXT_PURSUIT_INTELLIGENCE_ENABLED: "1", VNEXT_PURSUIT_STATE_ENABLED: "1", VNEXT_PURSUIT_MEMORY_ENABLED: "1" };
+  // The whole Slice 2A chain armed, attention not: off — the certified Today / Queue.
+  withEnv({ ...chain, VNEXT_PURSUIT_COORDINATION_ENABLED: "1" }, () => {
+    const caps = vnextCapabilities(TENANT_ON);
+    assert.equal(caps.pursuitCoordination, true);
+    assert.equal(caps.pursuitAttention, false, "Slice 2A armed alone must not change Today or Queue");
+  });
+  // Its own flag without coordination does nothing — there is no plan to derive attention from.
+  withEnv({ ...chain, VNEXT_PURSUIT_ATTENTION_ENABLED: "1" }, () => {
+    assert.equal(vnextCapabilities(TENANT_ON).pursuitAttention, false);
+  });
+  withEnv({ ...chain, VNEXT_PURSUIT_COORDINATION_ENABLED: "1", VNEXT_PURSUIT_ATTENTION_ENABLED: "1" }, () => {
+    assert.equal(vnextCapabilities(TENANT_ON).pursuitAttention, true);
+    assert.equal(vnextCapabilities(TENANT_OFF).pursuitAttention, false, "narrowing only");
+  });
+  // Not the reserved next-best-action flag, whose meaning stays untouched (D-025).
+  withEnv({ ...chain, VNEXT_PURSUIT_COORDINATION_ENABLED: "1", VNEXT_NEXT_BEST_ACTION_ENABLED: "1" }, () => {
+    assert.equal(vnextCapabilities(TENANT_ON).pursuitAttention, false);
+  });
+  assert.ok(VNEXT_ENV_VARS.includes("VNEXT_PURSUIT_ATTENTION_ENABLED"));
+});
 
 test("vnext: pursuit coordination is OFF by default, needs intelligence, and cannot satisfy the tenant gate", () => {
   // Default off, even with the Slice 1 chain fully armed.

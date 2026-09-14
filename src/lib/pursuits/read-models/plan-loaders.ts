@@ -9,6 +9,7 @@ import {
   resolvePlanStanding,
   type GoalRecord,
   type PlanLedgerChange,
+  type PlanRecommendation,
   type PlanRecord,
   type PlanRecords,
   type PlanState,
@@ -254,17 +255,37 @@ export async function loadChangesSince(db: PoolClient, caller: Caller, pursuitId
   return rows.map((r) => ({ id: r.id, changeType: r.change_type, reason: r.reason, occurredAt: r.occurred_at.toISOString() }));
 }
 
+/** The plan surface's inputs and its view — one read, shared by Pursuit Detail, Today and Queue. */
+export interface PursuitPlanContext {
+  state: PlanState;
+  records: PlanRecords;
+  /** The recommendation as the pursuit stands now — computed, never persisted. */
+  live: PlanRecommendation;
+  changesSinceDecision: PlanLedgerChange[];
+  view: PursuitPlanView;
+}
+
+/**
+ * Everything the Pursuit plan surface is composed from, plus the view itself. Today's pursuit
+ * attention (Slice 2B) reads the SAME context, so "this plan needs review" can never mean one
+ * thing on Pursuit Detail and another on Today. Read-only.
+ */
+export async function loadPursuitPlanContext(db: PoolClient, caller: Caller, pursuitId: string, now: Date = new Date()): Promise<PursuitPlanContext | null> {
+  const state = await loadPlanState(db, caller, pursuitId, now);
+  if (!state) return null;
+  const records = await loadPlanRecords(db, caller, pursuitId);
+  const live = recommendPursuitPlan(state, now);
+  const { inForce } = resolvePlanStanding(records.revisions);
+  const changesSinceDecision = inForce ? await loadChangesSince(db, caller, pursuitId, inForce.createdAt) : [];
+  const view = composePursuitPlanView({ pursuitId, caller, state, records, live, changesSinceDecision, now });
+  return { state, records, live, changesSinceDecision, view };
+}
+
 /**
  * Everything the Pursuit plan surface renders, in one call. Computes the live
  * recommendation to judge staleness — and persists nothing: reading a page never
  * writes a recommendation.
  */
 export async function loadPursuitPlanView(db: PoolClient, caller: Caller, pursuitId: string, now: Date = new Date()): Promise<PursuitPlanView | null> {
-  const state = await loadPlanState(db, caller, pursuitId, now);
-  if (!state) return null;
-  const records = await loadPlanRecords(db, caller, pursuitId);
-  const live = recommendPursuitPlan(state, now);
-  const { inForce } = resolvePlanStanding(records.revisions);
-  const changes = inForce ? await loadChangesSince(db, caller, pursuitId, inForce.createdAt) : [];
-  return composePursuitPlanView({ pursuitId, caller, state, records, live, changesSinceDecision: changes, now });
+  return (await loadPursuitPlanContext(db, caller, pursuitId, now))?.view ?? null;
 }

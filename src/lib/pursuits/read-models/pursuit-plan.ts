@@ -841,6 +841,33 @@ export interface PursuitPlanView {
     actionText: string | null;
     dueInDays: number;
   };
+  /**
+   * vNext Slice 2B labelling only. Set by `frameApprovedPlan`, never by the composer, so the
+   * Slice 2A view is byte-identical unless the attention capability asks for the frame.
+   */
+  approvedPlanFrame?: { label: string; note: string; focusLabel: string } | null;
+}
+
+/**
+ * Label the plan in force as what it is once it needs review (vNext Slice 2B).
+ *
+ * The approved plan is deliberately preserved when new evidence arrives (D-028), so its content
+ * — "No economic buyer identified" — can describe a world that has since moved. Nothing about it
+ * is rewritten here: the same content, framed as the CURRENT APPROVED PLAN recorded before the
+ * changes the review describes. Copy is chosen here, not in the component (U-14).
+ */
+export function frameApprovedPlan(view: PursuitPlanView): PursuitPlanView {
+  if (view.status.state !== "REVIEW_NEEDED") return { ...view, approvedPlanFrame: null };
+  return {
+    ...view,
+    approvedPlanFrame: {
+      label: "Current approved plan",
+      note: view.status.atLabel
+        ? `Approved ${view.status.atLabel} — recorded before the changes above`
+        : "Recorded before the changes above",
+      focusLabel: "Focus when approved",
+    },
+  };
 }
 
 export interface PursuitPlanViewInput {
@@ -866,7 +893,7 @@ const CHANGE_FIELD_WORD: Record<PlanAdjustmentChange["field"], string> = {
   "nextAction.dueInDays": "due window changed",
 };
 
-function ownerCopy(o: PlanOwner): { label: string; note: string | null } {
+export function ownerCopy(o: PlanOwner): { label: string; note: string | null } {
   if (o.kind === "PERSON") {
     return { label: `${o.personLabel}${o.roleLabel ? ` · ${o.roleLabel}` : ""}`, note: o.confirmed ? null : "Invited — acceptance pending" };
   }

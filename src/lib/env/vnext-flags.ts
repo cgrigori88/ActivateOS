@@ -52,6 +52,7 @@ export type VNextFlag =
   | "pursuit_intelligence"
   | "next_best_action"
   | "pursuit_coordination"
+  | "pursuit_attention"
   | "control_plane"
   | "dynamic_surfaces";
 
@@ -68,6 +69,7 @@ const ENV_VAR: Record<VNextFlag, string> = {
   pursuit_intelligence: "VNEXT_PURSUIT_INTELLIGENCE_ENABLED",
   next_best_action: "VNEXT_NEXT_BEST_ACTION_ENABLED",
   pursuit_coordination: "VNEXT_PURSUIT_COORDINATION_ENABLED",
+  pursuit_attention: "VNEXT_PURSUIT_ATTENTION_ENABLED",
   control_plane: "VNEXT_CONTROL_PLANE_ENABLED",
   dynamic_surfaces: "VNEXT_DYNAMIC_SURFACES_ENABLED",
 };
@@ -107,6 +109,11 @@ export interface VNextCapabilityView {
   nextBestAction: boolean;
   /** Pursuit Goal → Pursuit Plan → Motion → Action, on Pursuit Detail (Slice 2A). */
   pursuitCoordination: boolean;
+  /**
+   * Pursuit attention on Today and plan lineage on Queue (Slice 2B). Derived from the
+   * Slice 2A plan — it cannot exist without it.
+   */
+  pursuitAttention: boolean;
   /** Thin backend registry/observability primitives. Not a user surface. */
   controlPlane: boolean;
   /** Task-specific composed views over canonical data. */
@@ -116,7 +123,7 @@ export interface VNextCapabilityView {
 const OFF: VNextCapabilityView = {
   contextHealth: false, pursuitState: false, pursuitMemory: false,
   pursuitIntelligence: false, nextBestAction: false, pursuitCoordination: false,
-  controlPlane: false, dynamicSurfaces: false,
+  pursuitAttention: false, controlPlane: false, dynamicSurfaces: false,
 };
 
 /**
@@ -136,6 +143,9 @@ const OFF: VNextCapabilityView = {
  *   • pursuit coordination requires intelligence for the same reason: a plan's
  *     focus and its "why" are composed from the Slice 1 context, and a plan that
  *     could render without it would be recommending from nothing;
+ *   • pursuit attention requires coordination: every attention reason is derived from a
+ *     pursuit plan's standing (awaiting a decision, needing review, its approved action), so
+ *     with no plan there is nothing for it to derive;
  *   • dynamic surfaces require intelligence, since they compose its outputs;
  *   • control plane is backend-only and deliberately independent of
  *     `experience` — it is infrastructure, not a pursuit surface.
@@ -150,10 +160,11 @@ export function vnextCapabilities(tenant: TenantFeatureView): VNextCapabilityVie
   const pursuitIntelligence = vnextEnvEnabled("pursuit_intelligence") && pursuitState && pursuitMemory;
   const nextBestAction = vnextEnvEnabled("next_best_action") && pursuitIntelligence;
   const pursuitCoordination = vnextEnvEnabled("pursuit_coordination") && pursuitIntelligence;
+  const pursuitAttention = vnextEnvEnabled("pursuit_attention") && pursuitCoordination;
   const dynamicSurfaces = vnextEnvEnabled("dynamic_surfaces") && pursuitIntelligence;
 
   return {
     contextHealth, pursuitState, pursuitMemory,
-    pursuitIntelligence, nextBestAction, pursuitCoordination, controlPlane, dynamicSurfaces,
+    pursuitIntelligence, nextBestAction, pursuitCoordination, pursuitAttention, controlPlane, dynamicSurfaces,
   };
 }

@@ -81,56 +81,13 @@ export function PursuitPlanSurface({ view, pursuitId, canDecide }: { view: Pursu
   }
 
   const review = view.review;
-  return (
-    <div className="flex flex-col gap-5">
-      {/* Goal + progress ------------------------------------------------------ */}
-      <section>
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <Label>Goal</Label>
-          {view.progress.total > 0 && <span className="tnum text-label font-semibold ink-faint">{view.progress.label}</span>}
-        </div>
-        {view.goal && (
-          <>
-            <p className="mt-1.5 text-copy font-semibold ink">{humanizeText(view.goal.objective)}</p>
-            <p className="mt-0.5 text-label ink-faint">
-              {[view.goal.targetLabel, view.goal.provenanceLabel].filter(Boolean).join(" · ")}
-            </p>
-          </>
-        )}
-        {view.progress.total > 0 && (
-          <div className="mt-2.5 flex gap-1" aria-label={view.progress.label} role="img">
-            {view.progress.segments.map((s, i) => (
-              <span key={i} className="h-1 flex-1 rounded-full" style={{ background: SEGMENT_TONE[s] }} />
-            ))}
-          </div>
-        )}
-        {view.progress.reachedSinceDecision > 0 && (
-          <p className="mt-1.5 text-label ink-faint">
-            {view.progress.reachedSinceDecision} {view.progress.reachedSinceDecision === 1 ? "milestone" : "milestones"} reached since the plan was approved.
-          </p>
-        )}
-      </section>
 
-      {/* Course correction — the approved plan stays in force until a person decides */}
-      {review.state === "REVIEW_NEEDED" && (
-        <section className="rounded-card p-3.5"
-          style={{ background: "color-mix(in srgb, var(--color-accent-attention) 7%, var(--surface-primary))", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-accent-attention) 24%, transparent)" }}>
-          <p className="text-copy font-semibold ink">This plan needs review</p>
-          <ul className="mt-1 flex flex-col gap-0.5">
-            {review.reasons.map((r, i) => <li key={i} className="text-label ink">{humanizeText(r)}</li>)}
-          </ul>
-          <p className="mt-1.5 text-label ink-faint">The approved plan stays in force until a person decides.</p>
-          {review.update && !review.update.stale && review.update.nextActionText && (
-            <p className="mt-1.5 text-label ink">Updated recommendation: <span className="font-semibold">{humanizeText(review.update.nextActionText)}</span></p>
-          )}
-          <PlanControls mode={review.update && !review.update.stale ? "review" : "request"} pursuitId={pursuitId} view={view} canDecide={canDecide} />
-        </section>
-      )}
-
-      {/* Focus + why | next move ------------------------------------------------ */}
+  /* Focus + why | next move. Declared once so the Slice 2B frame can sit above it in the same
+     child slot, rather than adding a slot of its own. */
+  const focusAndNext = (
       <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
         <section>
-          <Label>Current focus</Label>
+          <Label>{view.approvedPlanFrame?.focusLabel ?? "Current focus"}</Label>
           {view.focus ? (
             <div className="mt-1.5 flex flex-wrap items-start justify-between gap-2">
               <p className="text-copy font-semibold ink">{humanizeText(view.focus.headline)}</p>
@@ -189,6 +146,66 @@ export function PursuitPlanSurface({ view, pursuitId, canDecide }: { view: Pursu
           )}
         </section>
       </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Goal + progress ------------------------------------------------------ */}
+      <section>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <Label>Goal</Label>
+          {view.progress.total > 0 && <span className="tnum text-label font-semibold ink-faint">{view.progress.label}</span>}
+        </div>
+        {view.goal && (
+          <>
+            <p className="mt-1.5 text-copy font-semibold ink">{humanizeText(view.goal.objective)}</p>
+            <p className="mt-0.5 text-label ink-faint">
+              {[view.goal.targetLabel, view.goal.provenanceLabel].filter(Boolean).join(" · ")}
+            </p>
+          </>
+        )}
+        {view.progress.total > 0 && (
+          <div className="mt-2.5 flex gap-1" aria-label={view.progress.label} role="img">
+            {view.progress.segments.map((s, i) => (
+              <span key={i} className="h-1 flex-1 rounded-full" style={{ background: SEGMENT_TONE[s] }} />
+            ))}
+          </div>
+        )}
+        {view.progress.reachedSinceDecision > 0 && (
+          <p className="mt-1.5 text-label ink-faint">
+            {view.progress.reachedSinceDecision} {view.progress.reachedSinceDecision === 1 ? "milestone" : "milestones"} reached since the plan was approved.
+          </p>
+        )}
+      </section>
+
+      {/* Course correction — the approved plan stays in force until a person decides */}
+      {review.state === "REVIEW_NEEDED" && (
+        <section className="rounded-card p-3.5"
+          style={{ background: "color-mix(in srgb, var(--color-accent-attention) 7%, var(--surface-primary))", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--color-accent-attention) 24%, transparent)" }}>
+          <p className="text-copy font-semibold ink">This plan needs review</p>
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {review.reasons.map((r, i) => <li key={i} className="text-label ink">{humanizeText(r)}</li>)}
+          </ul>
+          <p className="mt-1.5 text-label ink-faint">The approved plan stays in force until a person decides.</p>
+          {review.update && !review.update.stale && review.update.nextActionText && (
+            <p className="mt-1.5 text-label ink">Updated recommendation: <span className="font-semibold">{humanizeText(review.update.nextActionText)}</span></p>
+          )}
+          <PlanControls mode={review.update && !review.update.stale ? "review" : "request"} pursuitId={pursuitId} view={view} canDecide={canDecide} />
+        </section>
+      )}
+
+      {/* Slice 2B labelling: the preserved plan, named as what it is once it needs review. It
+          shares the grid's own child slot (a fragment in place of the grid), so without the
+          frame the serialized tree is exactly the Slice 2A one — no extra "$undefined" (U-16). */}
+      {view.approvedPlanFrame ? (
+        <>
+          <div className="-mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-[var(--border-subtle)] pt-4">
+            <Label>{view.approvedPlanFrame.label}</Label>
+            <span className="text-label ink-faint">{view.approvedPlanFrame.note}</span>
+          </div>
+          {focusAndNext}
+        </>
+      ) : focusAndNext}
 
       {/* Depth, one deliberate interaction away ------------------------------------ */}
       <div className="flex flex-col gap-1.5">

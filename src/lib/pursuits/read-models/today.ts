@@ -15,7 +15,7 @@ import { formatMoney } from "@/lib/format/money";
  * distinct from commercial priority. Every action maps to a governed Skill.
  */
 
-const DEMO_BANNER = "Demo environment — includes illustrative synthetic partner/distributor data.";
+export const DEMO_BANNER = "Demo environment — includes illustrative synthetic partner/distributor data.";
 
 /** P1C §11 materiality floor: stakeholder gaps surface on Today only above this expected value. */
 export const STAKEHOLDER_GAP_FLOOR_USD = 500_000;
@@ -291,7 +291,7 @@ export async function buildPendingDecisions(db: PoolClient, caller: Caller, purs
   return all.items.filter((i) => i.pursuitId === pursuitId && (i.decisionClass === "DECISION_REQUIRED" || i.decisionClass === "ACTION_REQUIRED"));
 }
 
-async function orgHasSynthetic(db: PoolClient, orgId: string): Promise<boolean> {
+export async function orgHasSynthetic(db: PoolClient, orgId: string): Promise<boolean> {
   const { rows } = await db.query<{ n: string }>(`select count(*)::text n from transaction_features where org_id = $1 and is_simulated = true`, [orgId]);
   return Number(rows[0].n) > 0;
 }

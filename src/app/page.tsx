@@ -13,6 +13,9 @@ import { TodayQueue } from "@/components/pursuit/today";
 import { SyntheticBadge } from "@/components/pursuit/parts";
 import type { TodayQueueView } from "@/lib/pursuits/read-models/types";
 import { getScopeContext, scopeParamFrom } from "@/lib/scope/server";
+import { vnextCapabilities, vnextEnvEnabled } from "@/lib/env/vnext-flags";
+import { tenantFeatures } from "@/lib/pursuits/tenant-flags";
+import { composeTodayAttention } from "@/lib/pursuits/read-models/attention-loaders";
 import { getAccountIntel } from "@/lib/accounts/intel";
 import { IntelDrawer } from "@/components/intel/intel-drawer";
 import { formatMoney } from "@/lib/format/money";
@@ -149,11 +152,24 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   // command-center top-N by default (§2); the full queue renders under ?today=all.
   let pursuitQueue: TodayQueueView | null = null;
   let exposure: TodayExposure | null = null;
+  let attentionOn = false;
   if (pursuitExperienceEnabled()) {
-    ({ pursuitQueue, exposure } = await withTenant(async (db, orgId) => ({
-      pursuitQueue: await getTodayQueue(db, await callerFor(db, orgId), { companyIds: scopeIds, limit: viewAll ? TODAY_VIEWALL_CAP : TODAY_TOP_DECISIONS }),
-      exposure: await getTodayExposure(db, scopeIds),
-    })));
+    ({ pursuitQueue, exposure, attentionOn } = await withTenant(async (db, orgId) => {
+      const caller = await callerFor(db, orgId);
+      const limit = viewAll ? TODAY_VIEWALL_CAP : TODAY_TOP_DECISIONS;
+      /* vNext Slice 2B — pursuit attention: one card per pursuit, the plan's attention leading
+         where a person is coordinating it. Resolved through vnextCapabilities(tenant), so it can
+         only narrow (D-013); the env check in front is a fast deny, never a grant. Flag OFF runs
+         exactly the certified queue below, with no extra query. */
+      const attention = vnextEnvEnabled("pursuit_attention") && vnextCapabilities(await tenantFeatures(db, orgId)).pursuitAttention;
+      return {
+        pursuitQueue: attention
+          ? await composeTodayAttention(db, caller, await getTodayQueue(db, caller, { companyIds: scopeIds }), { companyIds: scopeIds, limit })
+          : await getTodayQueue(db, caller, { companyIds: scopeIds, limit }),
+        exposure: await getTodayExposure(db, scopeIds),
+        attentionOn: attention,
+      };
+    }));
   }
 
   // Reality-divergence detection (task #83): where the systems disagree —
@@ -224,8 +240,8 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
       {pursuitQueue && pursuitQueue.items.length > 0 && (
         <Panel
-          title="Decisions that move revenue"
-          eyebrow="Ordered by materiality, not arrival — what can materially change revenue"
+          title={attentionOn ? "Needs your attention" : "Decisions that move revenue"}
+          eyebrow={attentionOn ? "One card per pursuit — what needs your judgment first, and why" : "Ordered by materiality, not arrival — what can materially change revenue"}
           accent="var(--color-priority)"
           className="mb-6"
           aside={pursuitQueue.demoBanner ? <SyntheticBadge text="Demo environment" /> : undefined}

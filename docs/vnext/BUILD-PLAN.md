@@ -1,6 +1,6 @@
 # PursuitOS vNext — Build Plan
 
-**Last updated:** 2026-09-14 (Slice 1 frozen; Slice 2A PREVIEW READY locally)
+**Last updated:** 2026-09-14 (Slice 1 and Slice 2A DEMO CERTIFIED / FROZEN; Slice 2B PREVIEW READY locally)
 **Lane:** `roadmap/pursuitos-vnext`
 **Weekend target:** GATE A complete (done), then GATE B on explicit approval.
 
@@ -86,15 +86,17 @@ Each slice must:
 SLICE 1  Living Pursuit Context            (P1)        DEMO CERTIFIED / FROZEN
    │      context health · state · memory · why/why-now/what's-missing
    ↓
-SLICE 2A Pursuit Coordination              (P3)        PREVIEW READY (local)  ← current
-   │      hosted isolated DB: schema + Globex plan installed; the no-team seeding defect
-   │      fixed (`6ab3599`) and the world reseeded — coordination 112 pass / 0 fail /
-   │      4 app_rw checks environmentally not run. Not certified: flag + deploy + review remain
+SLICE 2A Pursuit Coordination              (P3)        DEMO CERTIFIED / FROZEN
    │      Goal → Plan → Motion → Action on Pursuit Detail; durable, revisable plan
-   │      (was "Next Move" — superseded by the P3 amendment, D-025)
+   │      (was "Next Move" — superseded by the P3 amendment, D-025). Human product
+   │      acceptance passed on the isolated hosted Preview (ACCEPTANCE.md § Slice 2A)
    ↓
-SLICE 2B Coordination breadth              (P3)        NOT STARTED
-   │      Today integration · goal editing · plan closure · multi-pursuit plans
+SLICE 2B Pursuit Attention + Today/Queue   (P3)        PREVIEW READY (local)  ← current
+   │      derived pursuit attention on Today (one card per pursuit) · plan lineage on
+   │      Queue · "Current approved plan" labelling · D-034…D-040 · no migration
+   ↓
+SLICE 2C Coordination breadth              (P3)        NOT STARTED
+   │      goal editing · plan closure · multi-pursuit plans · review recording on events
    ↓
 SLICE 3  Portfolio Pertinence              (P2)
    │      "why this pursuit" ranked across the portfolio; Today + Pipeline ordering
@@ -157,6 +159,34 @@ Slice 1 context (focus gap · evidence · scope)
 
 Surface: one full-width "Pursuit plan" panel directly beneath "What matters now",
 behind `VNEXT_PURSUIT_COORDINATION_ENABLED` (requires the Slice 1 chain).
+
+**DEMO CERTIFIED / FROZEN (2026-09-14)** after human product acceptance on the isolated
+hosted Preview. The twelve proven steps are in `ACCEPTANCE.md` § "Slice 2A human product
+acceptance".
+
+### VERTICAL SLICE 2B — "Pursuit Attention + Today / Queue coordination" (P3)
+
+**PREVIEW READY on the local synthetic path (2026-09-14).** Acceptance: `ACCEPTANCE.md`
+§ Slice 2B. Decisions: D-034…D-040.
+
+```
+TODAY  = decision / attention layer          QUEUE = execution layer
+  "what needs my judgment, and why?"           "what work exists, what do I execute?"
+
+Slice 2A plan context (the SAME read Pursuit Detail makes — loadPursuitPlanContext)
+  → pursuit-attention.ts (pure, derived)   7 reasons · declared order · one primary per pursuit
+      keys: attention:<pursuit>:<kind>:<canonical ids>   (no table, nothing persisted)
+  → composeAttentionQueue                  existing Today items fold under the pursuit's card;
+                                           tenant-scoped; ranked by the existing todaySort
+  → Today "Needs your attention"           the existing decision panel, composed — not a 2nd list
+  → Queue lineage                          stagedMotionActionId → plan, decision, still current?
+  → Pursuit Detail                         "Current approved plan" framing (labelling only)
+  due buckets                              src/lib/motions/due-buckets.ts — one definition,
+                                           shared by Queue and Today
+```
+
+Behind `VNEXT_PURSUIT_ATTENTION_ENABLED`, which requires `VNEXT_PURSUIT_COORDINATION_ENABLED`.
+No migration, no new table, no write path.
 
 ---
 
