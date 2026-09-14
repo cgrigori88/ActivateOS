@@ -1,6 +1,6 @@
 # PursuitOS vNext — Environment Map
 
-**Last updated:** 2026-09-14T02:59Z
+**Last updated:** 2026-09-14T16:49Z
 **Rule for this file: VERIFIED FACTS ONLY.** Anything unverified is marked
 `UNVERIFIED` or `UNKNOWN` with the reason. Never record an inference as a fact.
 
@@ -49,7 +49,7 @@ behaviour. Retries succeed. Expect it when probing from Claude Code Web.
 | `demo.pursuitos.io` (production scope of `PursuitOS-demo`) | Supabase `pursuitos-demo`, ref `qifatlqxfuhwrwvpbwsc`, `ca-central-1`, PG 17.6.1.166 | **SYNTHETIC.** `environment_identity` singleton: `environment='demo'`, `is_synthetic=true`, label "pursuitos-demo — TD SYNNEX walkthrough" | Read-only Supabase audit, 2026-09-07 |
 | Local development | Local Postgres `pursuit_demo` (default port 5433) | **SYNTHETIC.** Built by `scripts/demo-db.ts` → `demo-enrich.ts` → `demo-stories.ts`, orchestrated by `seed-demo-world.ts` | `scripts/demo-db.ts` header |
 | Verifier runs | Disposable databases per run | Synthetic run-scoped fixtures | `scripts/verify-classes.ts`, `verify-run.ts` |
-| vNext isolated target | Supabase project ref `mejokqxriwyawfhawuxu`, reached via `aws-0-ca-central-1.pooler.supabase.com:5432` (session pooler). Supplied to the vNext session as `DEMO_TARGET_URL`. | **SYNTHETIC.** `environment_identity` singleton: `environment='demo'`, `is_synthetic=true`, label "pursuitos-vnext — isolated synthetic preview". Migrated 102/102; canonical world seeded and reconciled exactly (manifest digest `be0da833990ce436`). **Not yet connected to any Vercel scope.** | `migrate.ts`, `environment-identity.ts --set demo` + read-back, `seed-demo-world.ts` `verify()`, `demo-manifest.ts`, read-only reconciliation — from a laptop, 2026-09-14T02:59Z. See §10 |
+| vNext isolated target | Supabase project ref `mejokqxriwyawfhawuxu`. Initialized via `aws-0-ca-central-1.pooler.supabase.com:5432` (session pooler); **as of 2026-09-14T16:49Z the supplied `DEMO_TARGET_URL` parses to the same host on `:6543` (transaction pooler)** — parsed only, never printed. Supplied to vNext sessions as `DEMO_TARGET_URL`. | **SYNTHETIC.** `environment_identity` singleton: `environment='demo'`, `is_synthetic=true`, label "pursuitos-vnext — isolated synthetic preview". Migrated **103/103** (0103 applied 2026-09-14T16:49Z); canonical world seeded and reconciled exactly (manifest digest `be0da833990ce436`); Slice 2A Globex plan layer installed (1 goal · 1 plan · 1 recommendation · 0 decisions). **Known defect: no pursuit team — 0 `pursuit_team_requirements`, 0 `pursuit_team_members` (§10, 16:49Z).** **Not yet connected to any Vercel scope.** | `migrate.ts`, `environment-identity.ts --set demo` + read-back, `seed-demo-world.ts` `verify()`, `demo-manifest.ts`, read-only reconciliation — from a laptop, 2026-09-14T02:59Z; 0103 + plan layer, 2026-09-14T16:49Z. See §10 |
 | vNext preview (Vercel scope) | **UNKNOWN — see §6. Assume it is the hosted demo database until proven otherwise.** No Preview-scoped `DATABASE_URL` has been created. | — | — |
 
 ### Canonical synthetic demo facts (certified)
@@ -281,6 +281,13 @@ fact task #67's cutover must prove. Adding `database.role` is part of that plan.
    `DATABASE_URL` is still UNKNOWN (§6). Until the branch-scoped Preview
    variable exists and `/api/build` reports `mejokqxriwyawfhawuxu`, a preview of
    `roadmap/pursuitos-vnext` must be assumed to read the demo database.
+10. **The in-place reseed path silently drops the pursuit-team layer** (found
+    2026-09-14T16:49Z). `demo-db.ts` truncates `pursuit_team_requirements`, whose
+    only rows come from migration 0075, and never replays migrations. Any hosted
+    database seeded in place therefore has no pursuit team, and nothing in
+    `verify()` or the manifest notices. This includes `mejokqxriwyawfhawuxu`, and
+    would include the Monday demo database if it was ever reseeded in place
+    (**UNVERIFIED** for that database — not queried). (§10)
 
 ---
 
@@ -565,3 +572,49 @@ retry before concluding it is wrong.
 a standalone project (opening table), and the Vercel Preview scope's
 `DATABASE_URL` (§6). The Monday demo `qifatlqxfuhwrwvpbwsc` was **not
 contacted** — not even to prove it was unchanged.
+
+### 2026-09-14T16:49Z — Slice 2A schema + Globex plan installed; a pre-existing world defect found
+
+Run from the same laptop against `mejokqxriwyawfhawuxu` only. Full record:
+`SESSION-HANDOFF.md` § "Slice 2A hosted promotion".
+
+**Database-variable binding, re-derived from the code for this run.**
+`migrate.ts` and `environment-identity.ts` → `getPool()`/`getOwnerPool()` →
+`DATABASE_URL`; `demo-plan-story.ts` and `demo-manifest.ts` → `DEMO_URL`; both
+verifiers → `DATABASE_URL_VERIFY ?? DEMO_URL`; every script falls back to
+`127.0.0.1:5433` otherwise, and `src/lib/db/tenant.ts` reaches `getPool()`. So
+every command bound **`DATABASE_URL`, `DEMO_URL`, `DATABASE_URL_VERIFY` and
+`DEMO_TARGET_URL`** to the same value, with every other database and `PG*`
+variable unset and no local listener — nothing could drift.
+
+**Connection.** The supplied string now parses to
+`aws-0-ca-central-1.pooler.supabase.com:6543` — the **transaction** pooler — as
+user `postgres.mejokqxriwyawfhawuxu`. Every script here keeps each transaction
+on one client, so all ran unchanged.
+
+| Fact | Value |
+|---|---|
+| Gate | `project mejokqxriwyawfhawuxu` · `demo` · `is_synthetic true` — before any write and again at the end |
+| `schema_migrations` | 102 → **103** (`0103_pursuit_coordination.sql`, additive) |
+| Plan layer | 1 `pursuit_goals` (PROPOSED, route-free objective) · 1 `pursuit_plans` (PROPOSED, linked) · 1 `pursuit_plan_revisions` (RECOMMENDATION, SYSTEM) · 0 decisions |
+| Canonical | 3 · 14 · 19 · 11 open · $8,040,000 · 14 (14/14 `DEMO`); digest `be0da833990ce436` before and after |
+| Send | `messages` / `action_outbox` / `email_events` / `sending_identities` = 0 throughout |
+
+**The defect: the hosted world has no pursuit team.** `pursuit_team_requirements`
+0 rows, `pursuit_team_members` 0 rows, `TEAM_CHANGED` ledger rows 0; Globex's
+ledger is 9 rows where a local rebuild has 10. `scripts/demo-db.ts` in-place
+mode truncates tables that carry `org_id`, and names `pursuit_team_requirements`
+as one of them (`demo-db.ts:300`). But the only rows that table ever holds are
+the five global (`org_id` null) roles inserted by migration **0075**, and
+in-place mode never replays migrations. So `assembleTeam` found no requirements
+for any pursuit. **This has been true since the 02:59Z initialization.** The
+manifest does not count team tables, so reconciliation could not see it.
+**Not fixed** — out of scope for a plan-story install.
+
+**A hosted-only permission shape.** `postgres` reports membership of `app_rw`
+(`pg_has_role … 'MEMBER'` = true) but `set local role app_rw` is refused
+(`permission denied to set role`). Consistent with PG16+ membership granted
+without the SET option — **UNVERIFIED**. Any harness that impersonates `app_rw`
+cannot run those checks as `postgres` on this host. The grant-level
+equivalents (`has_table_privilege`, `relforcerowsecurity`, `pg_policies`) can
+run, and pass.

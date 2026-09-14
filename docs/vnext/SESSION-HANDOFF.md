@@ -10,16 +10,16 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-14 (Vertical Slice 2A session, run locally on the owner's Mac) |
+| **Date/time** | 2026-09-14T16:49Z (Slice 2A hosted promotion session, run locally on the owner's Mac) |
 | **Repository** | `cgrigori88/ActivateOS` — this session ran **locally on the owner's Mac** at `/Users/cgrigori/Documents/ActivateOS/pursuitos-vnext`, not in Claude Code Web (B-4) |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | `5ee1dfe` + this session's docs commit on top |
+| **Current commit** | `c79efc6` + this session's docs commit on top |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Session completed** | **VERTICAL SLICE 2A — Pursuit Coordination (Goal → Plan → Motion → Action) — PREVIEW READY on the local synthetic path.** Slice 1 marked **DEMO CERTIFIED / FROZEN**. No hosted database, Vercel setting or deployment touched. See § "Vertical Slice 2A" below. |
-| **Previous session** | **VNEXT DATABASE INITIALIZATION, attempt 3 (local) — COMPLETED.** With the owner's fresh credential the gate passed (ref `mejokqxriwyawfhawuxu`, not the demo, authenticated). Then: 102 migrations applied → marked `demo` / `is_synthetic=true` → read back → canonical world seeded (10/10 layers, `verify()` 17/17) → **reconciled exactly**, manifest digest `be0da833990ce436` = certified. No product code, no Vercel, no flags. Slice 1 untouched. |
+| **Session completed** | **SLICE 2A HOSTED PROMOTION — INSTALLED, VERIFICATION PARTIAL.** On `mejokqxriwyawfhawuxu` only: 0103 applied, Globex plan story installed, canonical world and digest unchanged, Slice 1 verifier 62/0. Coordination verifier **not** 116/0 on hosted — both failures trace to a **pre-existing hosted-world defect: no pursuit team**. Slice 2A stays **PREVIEW READY (local)**, not DEMO CERTIFIED. No Vercel, flag, deploy, auth or Production change; Monday demo never addressed. See § "Slice 2A hosted promotion" below. |
+| **Previous session** | **VERTICAL SLICE 2A — Pursuit Coordination — PREVIEW READY on the local synthetic path** (`524af12`, D-033 refinement `c79efc6`). Slice 1 marked **DEMO CERTIFIED / FROZEN**. |
 | **Preview URL** | **UNVERIFIED** — unchanged |
 | **Preview data safety** | **UNKNOWN** — unchanged. No Vercel scope was touched |
-| **vNext isolated database** | **READY FOR VERCEL PREVIEW.** Ref `mejokqxriwyawfhawuxu`: migrated 102/102, `environment_identity` = `demo` / `is_synthetic=true` / "pursuitos-vnext — isolated synthetic preview", canonical world seeded and reconciled, zero messages of any kind (`ENVIRONMENT-MAP.md` §10) |
+| **vNext isolated database** | Ref `mejokqxriwyawfhawuxu`: migrated **103/103**, `environment_identity` = `demo` / `is_synthetic=true` / "pursuitos-vnext — isolated synthetic preview", canonical world reconciled (digest `be0da833990ce436`), **Slice 2A Globex plan installed** (1 goal · 1 plan · 1 recommendation · 0 decisions), zero messages of any kind. **Known defect: no pursuit team anywhere in the hosted world** — decide the fix before the Vercel step (`ENVIRONMENT-MAP.md` §10, 16:49Z) |
 | **Live serving SHA** | **UNRESOLVED** — all seven unauthenticated avenues exhausted and recorded (`ENVIRONMENT-MAP.md` §9) |
 
 ### Demo baseline, unchanged and re-verified this session
@@ -28,6 +28,124 @@
 - Also the head of `ui-wave-6d`, and tagged `backup/2026-09-04/tds-live-demo`
   (annotated, already on origin — the durable immutable reference).
 - Working tree clean at session start and at session end.
+
+---
+
+## Slice 2A hosted promotion (2026-09-14T16:49Z) — INSTALLED, VERIFICATION PARTIAL
+
+**Schema and the Globex plan layer are on the isolated hosted database
+`mejokqxriwyawfhawuxu`. The coordination verifier is not green there, for one
+reason that predates this session: the hosted canonical world has no pursuit
+team.** Slice 2A stays **PREVIEW READY (local)** — hosted schema/data readiness
+is not product certification. No Vercel surface, flag, deployment, auth setting
+or Production system was touched. `VNEXT_PURSUIT_COORDINATION_ENABLED` was not
+set. The Globex plan was not approved or adjusted, and no economic buyer was
+confirmed. The Monday demo `qifatlqxfuhwrwvpbwsc` was never addressed.
+
+### How every command was run
+
+Through a guarded wrapper in the session scratchpad (not committed). It:
+- refused to run unless the parsed `DEMO_TARGET_URL` user named
+  `mejokqxriwyawfhawuxu` and the string contained no `qifatlqxfuhwrwvpbwsc`;
+- bound `DATABASE_URL`, `DEMO_URL`, `DATABASE_URL_VERIFY` and `DEMO_TARGET_URL`
+  to that one value for every command (derivation in `ENVIRONMENT-MAP.md` §10,
+  16:49Z);
+- unset every other database, `PG*`, send and coordination-flag variable;
+- piped all output through a filter that strips the URL, its password and any
+  `postgres://` string.
+
+The filter only ever redacted the password-masked connection line both
+verifiers print about themselves. It never saw the secret.
+
+| Step | Result |
+|---|---|
+| Gate | `target : project mejokqxriwyawfhawuxu` · `environment demo` · `is_synthetic true`. The demo ref does not appear in the string |
+| Pre-write baseline (read-only txn) | 102 migrations; no coordination tables; 3 · 14 · 19 · 11 open · $8,040,000 · 14 (14/14 `DEMO`); messages / outbox / email_events / sending_identities all 0; Globex ledger **9**; digest `be0da833990ce436` |
+| `migrate.ts --dry-run` | 1 would apply (`0103_pursuit_coordination.sql`), 102 already tracked |
+| **1 · `migrate.ts`** | **0103 applied — "1 applied, 102 already tracked", exit 0.** Additive: its `drop` lines are drop-policy-then-create and CHECK widenings that keep every prior value (the ledger CHECK still carries `PURSUIT_CREATED`) |
+| **2 · `demo-plan-story.ts`** | **`✓ Globex — pursuit plan recommended (awaiting a person's decision)`**, exit 0 (plus the known pg `DeprecationWarning`) |
+| Post-install probe (read-only txn) | 1 goal · 1 plan · 1 revision, all Globex. Goal **"Exit legacy virtualization before renewal and close the $920K opportunity"**: `PROPOSED`, `SYSTEM_RECOMMENDED`, target 2026-10-24, `DEMO`. **Neither the objective nor the basis matches `WWT\|CDW`.** Plan: `PROPOSED`, its `goal_id` is that goal. Revision 1: `RECOMMENDATION` by `SYSTEM` (`pursuit-plan-v1`); motion "Virtualization" · partner **WWT** · linked via `OPPORTUNITY` · `active`; next action "Identify and verify the economic buyer at Globex Manufacturing Inc."; focus "No economic buyer identified". **0 `DECISION` rows anywhere, 0 goals past PROPOSED.** RLS enabled and forced with one policy on each new table; `app_rw` has no UPDATE/DELETE on any of them. Ledger 9, governed invocations 18, motion_actions 5, overrides 1, pursuit_facts 2, `goals` 1, `revenue_motions` 7 — all unchanged from the baseline |
+| 3 · `vnext-coordination-verify.ts` (repo, unmodified) | **FAIL — 60 ✓, 1 ✗, then fatal** `TypeError … reading 'id'` at `scripts/vnext-coordination-verify.ts:234` (section 6). Exit 1. **Not 116/0** |
+| 3b · the same harness, as a scratchpad copy | Imports made absolute. **Only** section 6 and the four `set local role app_rw` scenarios are skipped, behind env guards. **103 pass · 2 fail · 11 not run** (7 in section 6, 4 as-`app_rw`) = 116. Tenant isolation 4/4 (another org cannot load, read, decide or recommend), disclosure 3/3, no-send 7/7, "world unchanged after the harness" ✓ |
+| 4 · Slice 1 `vnext-context-verify.ts` | **PASS — 62 passed, 0 failed** |
+| 4 · `demo-manifest.ts` | **`be0da833990ce436`** before and after; counts and figures byte-identical; = certified |
+| 4 · `tsc --noEmit` / `npm test` (local, no DB vars) | exit 0 / **316 pass, 0 fail** |
+| Residue | Re-probed after every verifier run: all 17 probe fields unchanged since post-install |
+| 5 · Final | `mejokqxriwyawfhawuxu` · `demo` · `is_synthetic true`; `OUTREACH_AUTOSEND`, `RESEND_API_KEY`, `VNEXT_PURSUIT_COORDINATION_ENABLED` unset |
+
+### Both failures are one pre-existing defect: the hosted world has no pursuit team
+
+| Fact (read-only) | Hosted | Local rebuild |
+|---|---|---|
+| `pursuit_team_requirements` rows | **0** | 5 global roles from migration 0075 |
+| `pursuit_team_members` rows (all pursuits) | **0** | Globex: every role `RECOMMENDED` |
+| `TEAM_CHANGED` ledger rows | **0** | one "Team assembled (n roles)" per assembled pursuit |
+| Globex ledger rows | **9** | 10 |
+
+**Cause, from the code.** In in-place mode `scripts/demo-db.ts` truncates the
+demo world but preserves reference data. Its rule is "tables a migration
+INSERTs into, minus those carrying `org_id`". `pursuit_team_requirements`
+carries `org_id`, so it is truncated as tenant data — the comment at
+`demo-db.ts:300` names it. But its only rows are the five **global**
+(`org_id` null) roles migration 0075 inserts, and in-place mode never replays
+migrations. `assembleTeam` (`src/lib/routing/team.ts:28`) creates one member per
+requirement, so it created nothing and wrote no `TEAM_CHANGED`. The local path
+drops the database and replays every migration, so it never shows this. **It
+has been true of the hosted world since the 02:59Z initialization.**
+`demo-manifest.ts` does not count team tables, which is why reconciliation stayed
+exact and the defect went unseen.
+
+**What it does to Slice 2A on hosted:**
+- The owner resolves `UNASSIGNED` — "Unassigned — No account executive on the
+  pursuit team yet". The canonical `ROLE_UNFILLED` reads "Unassigned — Account
+  executive role proposed, no one confirmed yet". **S2A-12's owner clause is not
+  met on hosted.** (✗ 1)
+- Section 10's "Globex ledger === 10" fails at 9 (✗ 2). The plan story itself
+  wrote **no** ledger row — 9 before, 9 after — so the property that check guards
+  (a recommendation writes nothing to Slice 1 history) holds.
+- Section 6 finds no `VENDOR_SPECIALIST` to reassign the action to, which crashes
+  the unmodified harness.
+- **The seeded recommendation carries the defect in its fingerprint.** The basis
+  fingerprint includes the owner assignment (D-028). If the team is restored
+  underneath it, the recommendation goes stale and can no longer be approved.
+  Re-running the idempotent plan story would then append a second recommendation
+  rather than correct the first.
+
+**Not fixed, deliberately.** Restoring requirements or teams would rewrite the
+canonical world beyond what `demo-plan-story.ts` is designed to add.
+
+### A hosted-only verifier limit (separate from the defect)
+
+`set local role app_rw` is refused to `postgres` on this host (`permission
+denied to set role "app_rw"`), although `pg_has_role(current_user, 'app_rw',
+'MEMBER')` is true. That is consistent with PG16+ membership granted without the
+SET option (**UNVERIFIED**). So the four behavioural as-`app_rw` checks cannot
+run as `postgres` here: objective rewrite 42501, pointer rewrite 42501, RLS
+cross-org read 0, revision UPDATE 42501. Their grant-level equivalents do run and
+pass: section 1's `has_table_privilege` checks, and the probe's forced RLS with a
+policy on every new table. The behaviour itself is proven locally (116/0).
+
+### Also observed
+
+`DEMO_TARGET_URL` now parses to the **transaction pooler, `:6543`**. It was the
+session pooler, `:5432`, at initialization. It was parsed only, never printed.
+Every script here keeps each transaction on one client, so all ran unchanged. If
+the same string goes into the Preview scope, this also settles the "session vs
+transaction pooler for serverless" consideration under the Vercel step.
+
+### Send safety · Monday demo · secrets
+
+- `messages`, `action_outbox`, `email_events`, `sending_identities`: **0**
+  before, after, and after every harness run. Both plan skills are
+  INTERNAL_WRITE. `OUTREACH_AUTOSEND` and `RESEND_API_KEY` were unset in every
+  command's environment, so `externalSendingArmed()` is false.
+- `qifatlqxfuhwrwvpbwsc` was **not contacted** — not even to prove it
+  unchanged. The wrapper refused any string containing it, and the parsed user
+  in every command was `postgres.mejokqxriwyawfhawuxu`. No fallback existed:
+  every other DB variable was unset, there is no `.env`, and no local Postgres
+  was listening.
+- The `DEMO_TARGET_URL` value was never printed, echoed, logged, persisted or
+  documented. No `env`/`printenv`.
 
 ---
 
@@ -140,20 +258,19 @@ tracked (102 rows), so `migrate.ts` there applies only 0103.
 - Slice 1 loaders queue concurrent queries on one pg client (`Promise.all`) → pg 8 DeprecationWarning. The new loaders are sequential.
 - The synthetic PRODUCTION-lineage defect on the two route-override rows (STATUS debt) is still open. The new plan override path passes the pursuit's own lineage.
 
-### Exact next step — owner-approved, NOT executed
+### Exact next step — owner decision, NOT executed
 
 To show Slice 2A on the hosted isolated Preview (never the Monday demo `qifatlqxfuhwrwvpbwsc`):
 
-1. Locally, against `mejokqxriwyawfhawuxu` only, with the §10 gate first:
-   `DATABASE_URL="$DEMO_TARGET_URL" npx tsx scripts/environment-identity.ts` (must read `demo` / synthetic, ref `mejokqxriwyawfhawuxu`), then
-   `DATABASE_URL="$DEMO_TARGET_URL" npx tsx scripts/migrate.ts` (applies 0103 only), then
-   `DEMO_URL="$DEMO_TARGET_URL" npx tsx scripts/demo-plan-story.ts`, then
-   `DATABASE_URL_VERIFY="$DEMO_TARGET_URL" npx tsx scripts/vnext-coordination-verify.ts` (expect 86/0).
-2. Vercel Preview scope for `roadmap/pursuitos-vnext` only: add `VNEXT_PURSUIT_COORDINATION_ENABLED=1`; redeploy; confirm `/api/build` → `mejokqxriwyawfhawuxu`.
-3. Product review of the "Pursuit plan" surface on Globex (approve, adjust, then verify the economic buyer in Stakeholders and watch the plan go to "needs review").
+1. ~~Apply 0103, install the Globex plan story, verify on `mejokqxriwyawfhawuxu`~~ — **DONE 2026-09-14T16:49Z, verification PARTIAL.** See § "Slice 2A hosted promotion" above.
+2. **Decide the hosted no-team defect — recommended before any Vercel step.** A reviewer would otherwise see a Globex owner line that differs from S2A-12, and the seeded recommendation would go stale the moment a team appears.
+   - *Recommended:* a small fix to `scripts/demo-db.ts` so in-place mode also preserves the global (`org_id is null`) rows of `pursuit_team_requirements` that migration 0075 inserts. Then a guarded in-place reseed of `mejokqxriwyawfhawuxu` (all four DB variables bound to the target, `ENVIRONMENT-MAP.md` §10), which rebuilds every layer including 11.
+   - Re-run both verifiers on hosted: expect 62/0, and 116/0 except the four as-`app_rw` checks, unless `postgres` is given SET on `app_rw` there or those checks are accepted as local-only.
+   - *Alternative:* proceed to Vercel knowing the owner line reads "No account executive on the pursuit team yet".
+3. Vercel Preview scope for `roadmap/pursuitos-vnext` only: add `VNEXT_PURSUIT_COORDINATION_ENABLED=1` alongside the Slice 1 chain (which the owner reports already armed); redeploy the branch head; confirm `/api/build` → `database.projectRef = mejokqxriwyawfhawuxu`.
+4. Product review of the "Pursuit plan" surface on Globex (approve, adjust, then verify the economic buyer in Stakeholders and watch the plan go to "needs review"). Only after that can Slice 2A be considered for DEMO CERTIFIED.
 
-Until step 1 runs, pushing this branch is safe: with the flag unset the page never
-touches the new tables.
+With the flag unset, the hosted page never reads the new tables, so the installed schema and data are inert until step 3.
 
 ---
 
@@ -186,6 +303,8 @@ touches the new tables.
 | **vNext DB #3** | **(this session)** | **docs(vnext): record the initialized isolated vNext database** — documentation only; the database work itself leaves no commit |
 | **Slice 2A** | **`524af12`** | **feat(vnext): pursuit coordination — goal, plan, motion, action (Slice 2A)** |
 | Slice 2A docs | (the commit after `524af12`) | docs(vnext): record Slice 2A and freeze Slice 1 |
+| D-033 | `c79efc6` | refactor(vnext): pursuit goals are commercial outcomes; plans carry the route (D-033) |
+| **Slice 2A hosted** | **(this session)** | **docs(vnext): record Slice 2A installed on the isolated hosted database** — documentation only; the database work itself leaves no commit |
 
 ## Chunks 6A + 6B files
 
