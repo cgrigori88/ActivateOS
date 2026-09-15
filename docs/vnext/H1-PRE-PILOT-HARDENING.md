@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · Gates 5–9 not begun. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · Gates 6–9 not begun. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -1100,4 +1100,99 @@ The results:
 
 A delta accepted under 3A or 3B does not move the baseline of record. The next gate compares against the baseline plus the validated allowlist rows, or against a new owner-approved re-baseline.
 
-**Gate 5 was NOT begun.** Preview `DATABASE_URL` is unchanged and the runtime is still `postgres`. H1B, and so H1, are not complete.
+*(At Gate 4 close-out, Gate 5 had not begun. It is recorded below.)*
+
+---
+
+## Gate 5 — switch the branch Preview runtime to `app_rw`: RESULT (2026-09-15)
+
+**Gate 5 — PASS.** The normal vNext Preview runtime now connects as **`app_rw`**, with BYPASSRLS false and tenantEnforcement true. The narrow privileged paths still use the owner (`postgres`) through the unchanged `DATABASE_URL_OWNER`.
+
+The gate made exactly one mutation, on Vercel only, and changed no database state. There was no role, password, migration, RLS, grant, policy, Supabase-setting, reseed or send change; Production was not touched, and neither was `qifatlqxfuhwrwvpbwsc`.
+
+**Inputs.** `OPS_FINGERPRINT_TOKEN`, `GATE_DEMO_EMAIL`, `GATE_DEMO_PASSWORD`, `GATE_OWNER_DATABASE_URL` and `APP_RW_PASSWORD` were checked by presence only, and none was printed or persisted.
+- **The new value** was built in process memory from the owner string's host, port, database and parameters. The user was replaced with `app_rw.mejokqxriwyawfhawuxu` and the password with `APP_RW_PASSWORD`, giving `aws-0-ca-central-1.pooler.supabase.com:6543`, database `postgres`, no extra parameters.
+- **Pre-mutation probe of that value** (read-only, rolled back): `current_user = session_user = app_rw`, BYPASSRLS false, not superuser, no `app.org_id`, 0 pursuits visible, txid NULL.
+- **The rollback value** `GATE_OWNER_DATABASE_URL` was proven to be `postgres.mejokqxriwyawfhawuxu` on the same pooler.
+
+**Pre-cutover** (deployment `dpl_5xGwSWwybkoLvtsFo3Mv7P4zpNCE`, commit `0570a4c`, Preview, READY, the branch alias target):
+- `/api/build`: `postgres` · bypassRls true · tenantEnforcement false · probe live · sending unarmed.
+- Signed-in crawl: all 37 rooms returned 200.
+- Owner paths: identical to Gate 4.
+- DB snapshot, taken straight after the crawl: 41/0 against the Gate 4 close-out record, 0 tables differ, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, 0 `app_rw` sessions.
+- Env metadata: identical to the Gate 4 close-out record.
+
+**The mutation.**
+- Vercel API `PATCH` of the value only, on the existing entry `m6TuSKisz54kJlsD` (`DATABASE_URL`, sensitive, target `preview`, gitBranch `roadmap/pursuitos-vnext`).
+- A first attempt that also sent `key` was refused with 400 ("cannot change the key of a Sensitive Environment Variable") and changed nothing.
+- Metadata diff: **one entry modified, and only its `updatedAt`**. Id, key, type, target and branch are unchanged; 0 added, 0 removed.
+- `DATABASE_URL_OWNER` (`I2giX3iM1sNwoN47`) and the general Production + Preview `DATABASE_URL` (`G7A2MUVlaDmJxPTs`) are byte-identical in metadata. No send variable appeared.
+
+**Redeploy.** `vercel redeploy dpl_5xGwSWwybkoLvtsFo3Mv7P4zpNCE` → **`dpl_6TmAg49o7CZcsbAjmhQR1mSvQFkY`** (`pursuitos-demo-ill2dfyma-…`): READY, target preview, branch `roadmap/pursuitos-vnext`, commit `0570a4c`, now the branch alias target. The Production target is unchanged (`dpl_Bre6yKpy…`).
+
+**Immediate posture (Part H): PASS.** `/api/build` reports branch `roadmap/pursuitos-vnext` · `preview` · ref `mejokqxriwyawfhawuxu` · **role `app_rw` · bypassRls false · tenantEnforcement true · probe live** · `externalSendingArmed` false.
+
+**Authentication and owner paths: identical to before.**
+- Sign-in through the real `/login` lands on `/` with the auth cookie.
+- `/login` signed out (owner-pool `org_members` count) and signed in both behave as before.
+- The `/join` dead-code loader works.
+- `/admin` passes the owner gate, and its members table still reads `auth.users`, which `app_rw` cannot do. So that read went through the owner pool.
+- `/ops` passes the owner gate.
+- The unsigned webhook still returns 503 (secret unset on Preview) and research still returns 401 (closed).
+
+**Routing.**
+- **Normal path:** `getPool()` → `DATABASE_URL` → **`app_rw`**. This is the live probe of the runtime pool.
+- **Owner path:** `getOwnerPool()` → `DATABASE_URL_OWNER` → **`postgres`**. The metadata is unchanged since Gate 4, and the owner-only reads of `auth.users` succeed.
+- Neither URL was exposed.
+
+**Live tenant runtime.**
+- **Traffic reaches the DB as `app_rw`:** after the crawl, the database had **3 `app_rw` backends** (0 before the cutover), 0 idle in transaction.
+- **Tenant context is set per request:** under `app_rw`, a query without `app.org_id` sees 0 tenant rows (Gate 3, and the pre-mutation probe above). Yet every tenant room rendered Vertex's full data after the cutover, so each tenant request set `app.org_id` through `withTenant`'s transaction-local `set_config`.
+
+**Signed-in crawl, BEFORE → AFTER (37 rooms).**
+- All 200, with the same statuses. No empty state, no missing tenant data, no foreign data.
+- The owner and admin rooms are healthy; the palette JSON is identical.
+- **33 rooms are line-identical.** These include Queue, Pursuit Detail, Accounts, Partners and review, Joint, the joint room, Admin and Ops.
+- **Four show order-only differences:**
+  - Today, Today drawer and Today View All: an order swap. View All has an **identical multiset** of items.
+  - `/pipeline`: one renewal row names a different list.
+- **Root cause: pre-existing nondeterministic ordering that the RLS query plan exposed, not a data change.**
+  - **Today:** `accountDivergences()` (`src/lib/context/divergence.ts`) selects "stage vs engagement" items with `limit 5` and **no ORDER BY**. A read-only proof, rolled back, ran that query for Vertex as the owner and as `app_rw` with the Vertex context. Both return the **same 4 Vertex opportunities**: Core banking resilience, Datacenter exit — phase 1, Kubernetes managed services, Legacy virtualization exit. Only the order differs (the owner returns Core banking first; `app_rw` returns Kubernetes first). Today keeps the first 7 merged items (`overview.ts`), so the capped view shows a different, equally unranked item: Hooli "Kubernetes managed services" in place of Umbrella "Datacenter exit". View All shows all of them under both roles.
+  - **`/pipeline`:** `renewalProjection()` (`src/lib/lifecycle/projection.ts`) names the list with `distinct on (company_id) … order by company_id, ap.created_at`. CDW belongs to two **Vertex** lists, "CDW customer book" and "Our modernization targets", whose `created_at` is **identical** (2026-09-14 21:03:29.063576Z). The tie has no tiebreaker, so the pick is arbitrary. Both lists are the tenant's own.
+- **Judgement:** not a material business-output change and not a rollback trigger. The authorized sets are equal and only tie order moved. It is recorded as the **ordering-determinism defect D-G5-1 below.**
+
+**Database post-check** (read-only, straight after the AFTER crawl): **41/0** against the pre-cutover snapshot, **0 of 155 tables differ** (strict CFR-1; same UTC day, no allowance used).
+- Migrations 105; manifest `db1f78f7a11bbacb`.
+- Business-data `c9623fb5abe2f9bc` and whole-world `dce27935d88743fb`, unchanged.
+- Security hash `30772757ebd4688c`.
+- `app_rw` LOGIN true, BYPASSRLS false, NOINHERIT, member of nothing; 31 protected functions / 0 unsafe.
+- Partnership data unchanged (1 · 1 · 4 · 2, the rest 0).
+- `routines` byte-identical (xmin 2415).
+- The same-day `pipeline_snapshots` row was rewritten with identical values under `app_rw` (11 · $8,040,000 · $3,361,500 · null).
+- **0 send rows**; `externalSendingArmed` false; no webhook event delivered.
+
+**Findings recorded (not fixed in Gate 5).**
+
+| Id | Finding | Must resolve before |
+|---|---|---|
+| D-G5-1 | **Ordering determinism.** Two tied orderings have no tiebreaker: `divergence.ts` "stage vs engagement" (`limit 5`, no ORDER BY), and `projection.ts` list name (`order by company_id, ap.created_at`). Under a different query plan (here `app_rw` against the owner) the capped Today view and a renewal list label can change without any data change. The fix is to add deterministic ORDER BY keys (for example `o.updated_at, o.id` and `ap.created_at, ap.id`) | **Gate 7** (its crawl must be "identical to the Gate 4 crawl"), or Gate 7 compares these rooms by set with the tie documented |
+| D-P1 | **`/pipeline?timeframe=7\|30\|90` overwrites today's `pipeline_snapshots` row with the filtered set** (Gate 4 close-out, semantics (iv)). It was not used during Gate 5 | **Gate 9 / a real pilot** |
+
+**Rollback: ready, not rehearsed.** The rehearsal is Gate 8.
+1. Set the branch-scoped Preview `DATABASE_URL` (`m6TuSKisz54kJlsD`) back to `GATE_OWNER_DATABASE_URL`, with a value-only PATCH or `vercel env` over stdin.
+2. Leave `DATABASE_URL_OWNER` as is.
+3. Redeploy the branch.
+4. Require `/api/build` to report `postgres` / bypassRls true / tenantEnforcement false.
+
+The rollback value is proven present and correct.
+- Pre-cutover deployment: `dpl_5xGwSWwybkoLvtsFo3Mv7P4zpNCE`.
+- Post-cutover deployment: `dpl_6TmAg49o7CZcsbAjmhQR1mSvQFkY`.
+
+**Hosted baseline of record after Gate 5:** unchanged from Gate 4.
+- migrations 105;
+- manifest `db1f78f7a11bbacb`;
+- business-data `c9623fb5abe2f9bc`;
+- whole-world `dce27935d88743fb`;
+- security hash `30772757ebd4688c`.
+
+**Gate 6 was NOT begun.** Gates 6–8 and H1B are not complete, and so neither is H1.
