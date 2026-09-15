@@ -13,6 +13,14 @@ import { formatMoney } from "@/lib/format/money";
  * contradictions, team gaps — ordered by the server-side materiality policy (decision class →
  * operational urgency → commercial priority → age), NOT by recency. Operational urgency is kept
  * distinct from commercial priority. Every action maps to a governed Skill.
+ *
+ * TENANT SCOPING IS EXPLICIT IN EVERY QUERY (2026-09-14 hardening). The app connects as the table
+ * owner, which bypasses RLS (task #67), so a query that leans on RLS alone is a cross-tenant read:
+ * before this pass the route-approval, fact-review, team-wait and ledger queries carried no org
+ * predicate and a guest org's Today listed 18 of another org's items. Each query now names
+ * `caller.orgId` itself (or reaches it through the org-owned pursuit), and the filter runs in SQL —
+ * before any ranking, grouping, counting or LIMIT — so a foreign row behaves as if it did not exist.
+ * RLS stays as the future defence-in-depth layer, not the only one.
  */
 
 export const DEMO_BANNER = "Demo environment — includes illustrative synthetic partner/distributor data.";
@@ -55,8 +63,9 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
        join companies c on c.id = pu.account_id
        left join partners p on p.id = sn.recommended_partner_id
       where sn.is_current and sn.route_status = 'RECOMMENDED' and sn.selected_partner_id is null
+        and pu.org_id = $3
         and pu.status not in ('WON','LOST','DISQUALIFIED')
-        and ($2::boolean is false or pu.account_id = any($1))`, [ids, scoped]);
+        and ($2::boolean is false or pu.account_id = any($1))`, [ids, scoped, caller.orgId]);
   for (const r of routes.rows) items.push(mk("ROUTE_APPROVAL", "DECISION_REQUIRED", "high", bandOf(n(r.priority)), r.pursuit_id, r.company_id, r.account_label,
     `Approve route${r.recommended ? ` via ${r.recommended}` : ""}`, "Recommended route is awaiting your approval.", r.synthetic, r.at, now,
     [{ label: "Approve", skill: "select_partner_route", sideEffect: "INTERNAL_WRITE" }, { label: "Override", skill: "override_partner_route", sideEffect: "INTERNAL_WRITE" }, { label: "Compare", skill: "explain_partner_route", sideEffect: "READ" }],
@@ -72,7 +81,8 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
        left join fact_candidates fc on fc.id = fr.candidate_id
        left join companies c on c.id = fc.company_id
       where fr.human_decision is null and fr.system_recommendation = 'REVIEW'
-        and ($2::boolean is false or fc.company_id = any($1))`, [ids, scoped]);
+        and fr.org_id = $3
+        and ($2::boolean is false or fc.company_id = any($1))`, [ids, scoped, caller.orgId]);
   for (const rv of reviews.rows) items.push(mk("FACT_REVIEW", "DECISION_REQUIRED", "normal", "moderate", rv.pursuit_id, rv.company_id, rv.account_label ?? "Account",
     "Review a proposed fact", rv.reason, false, rv.created_at, now,
     [{ label: "Accept", skill: "review_fact", sideEffect: "INTERNAL_WRITE" }, { label: "Reject", skill: "review_fact", sideEffect: "INTERNAL_WRITE" }], `/review`));
@@ -87,8 +97,8 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
        join pursuits pu on pu.id = tm.pursuit_id
        join companies c on c.id = pu.account_id
        left join partners pn on pn.id = tm.partner_id
-      where tm.status = 'INVITED' and pu.status not in ('WON','LOST','DISQUALIFIED')
-        and ($2::boolean is false or pu.account_id = any($1))`, [ids, scoped]);
+      where tm.status = 'INVITED' and pu.org_id = $3 and pu.status not in ('WON','LOST','DISQUALIFIED')
+        and ($2::boolean is false or pu.account_id = any($1))`, [ids, scoped, caller.orgId]);
   for (const w of waitingTeam.rows) {
     const who = w.partner_name ?? w.role.replace(/_/g, " ").toLowerCase();
     // Materiality escalation (P1B): a partner acceptance holding a HIGH-band pursuit is operationally
@@ -135,10 +145,14 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
           order by sar.strength desc limit 1) sp on true
       where pu.org_id = $3 and pu.status not in ('WON','LOST','DISQUALIFIED')
         and coalesce(pu.expected_value_weighted, 0) >= ${STAKEHOLDER_GAP_FLOOR_USD}
-        and exists (select 1 from opportunities o where o.pursuit_id = pu.id)
+        and exists (select 1 from opportunities o where o.pursuit_id = pu.id and o.org_id = pu.org_id)
         and not exists (select 1 from opportunities o join stakeholders st on st.opportunity_id = o.id
-                         where o.pursuit_id = pu.id and st.role = 'economic_buyer' and st.assertion_state = 'verified')
-        and ($2::boolean is false or pu.account_id = any($1))`, [ids, scoped, caller.orgId]);
+                         where o.pursuit_id = pu.id and o.org_id = pu.org_id and st.role = 'economic_buyer' and st.assertion_state = 'verified')
+        and ($2::boolean is false or pu.account_id = any($1))
+      -- Declared order. These items are stamped at read time, so equal-materiality ties used to
+      -- follow whatever row order the planner returned; the tenant predicates above changed that
+      -- plan (2026-09-14), which exposed it. Ties now break on a stable, declared key.
+      order by pu.created_at, pu.id`, [ids, scoped, caller.orgId]);
   for (const g of ebGaps.rows) {
     const evUsd = g.ev == null ? null : Number(g.ev);
     items.push(mk("STAKEHOLDER_GAP", "ACTION_REQUIRED", "high", bandOf(n(g.priority)), g.pursuit_id, g.company_id, g.account_label,
@@ -226,8 +240,9 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
        join pursuits pu on pu.id = cl.pursuit_id
        join companies c on c.id = pu.account_id
       where cl.pursuit_id is not null and cl.recorded_at > now() - interval '14 days'
+        and cl.org_id = $3 and pu.org_id = $3
         and ($2::boolean is false or pu.account_id = any($1))
-      order by cl.recorded_at desc limit 60`, [ids, scoped]);
+      order by cl.recorded_at desc limit 60`, [ids, scoped, caller.orgId]);
   for (const ch of changes.rows) {
     const cls = classifyChange(ch.change_type);
     if (!cls || !isMaterial(ch.materiality)) continue;
@@ -261,18 +276,21 @@ export interface TodayExposure {
   wonCountPeriod: number;
 }
 
-export async function getTodayExposure(db: PoolClient, companyIds?: string[] | null): Promise<TodayExposure> {
+export async function getTodayExposure(db: PoolClient, orgId: string, companyIds?: string[] | null): Promise<TodayExposure> {
   const scoped = companyIds != null;
   const ids = companyIds ?? [];
   // Per-stage open sums + won-in-period, aggregated once; weighting applied in JS against the
   // canonical STAGE_PROBABILITY curve so the number never drifts from the shared definition.
+  // Tenant-scoped explicitly: RLS is inert on the owner-role app path (task #67), so without
+  // `org_id = $3` another org's pipeline would be summed into this one's.
   const { rows } = await db.query<{ stage: string; usd: string; n: string }>(
     `select stage, coalesce(sum(amount_usd), 0) usd, count(*) n
        from opportunities
-      where ($2::boolean is false or company_id = any($1))
+      where org_id = $3
+        and ($2::boolean is false or company_id = any($1))
         and (stage not in ('closed_won','closed_lost') or (stage = 'closed_won' and closed_at >= now() - interval '90 days'))
       group by stage`,
-    [ids, scoped],
+    [ids, scoped, orgId],
   );
   let openUsd = 0, weightedUsd = 0, openCount = 0, wonUsdPeriod = 0, wonCountPeriod = 0;
   for (const r of rows) {

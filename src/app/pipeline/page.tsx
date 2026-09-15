@@ -447,7 +447,7 @@ export default async function PipelinePage({
   // Contextual intelligence drawer (§4 / R7): body fetched (and serialized) ONLY when ?drawer= is
   // present — closed drawers leak nothing. Reuses getAccountIntel (the viewer's RLS-scoped projection).
   const drawerId = qp("drawer");
-  const drawerIntel = drawerId ? await withTenant((db) => getAccountIntel(db, drawerId)) : null;
+  const drawerIntel = drawerId ? await withTenant((db, orgId) => getAccountIntel(db, drawerId, orgId)) : null;
   // Preserve the whole view (filters, scope, sort) across open/close — the drawer never navigates away.
   const preserved = new URLSearchParams();
   for (const k of ["view", "timeframe", "stage", "partner", "quote", "qual", "scope", "prow", "pcol", "cond", "life", "value"] as const) { const v = qp(k); if (v) preserved.set(k, v); }

@@ -69,6 +69,8 @@ export async function resolveMotionAction(
   db: pg.PoolClient,
   actionId: string,
   status: "done" | "skipped",
+  /** The caller's org (withTenant). The action is resolved only if its motion is this org's. */
+  orgId: string,
 ): Promise<void> {
   const { rows } = await db.query<{
     org_id: string | null;
@@ -78,9 +80,9 @@ export async function resolveMotionAction(
   }>(
     `update motion_actions a set status = $2, completed_at = now()
      from revenue_motions m
-     where a.id = $1 and a.status = 'pending' and m.id = a.motion_id
+     where a.id = $1 and a.status = 'pending' and m.id = a.motion_id and m.org_id = $3
      returning a.org_id, a.motion_id, m.company_id, a.step`,
-    [actionId, status],
+    [actionId, status, orgId],
   );
   if (rows.length === 0) throw new Error(`action not found or already resolved: ${actionId}`);
   await db.query(

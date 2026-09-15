@@ -3,7 +3,7 @@
 Durable architecture, product and UX decisions for the vNext lane. Append, don't
 rewrite: a superseded decision stays, marked `SUPERSEDED`, with the reason.
 
-**Last updated:** 2026-09-14 (Slice 2A — D-024…D-033 · Slice 2B — D-034…D-040)
+**Last updated:** 2026-09-14 (Slice 2A — D-024…D-033 · Slice 2B — D-034…D-040 · tenant hardening — D-041)
 
 ---
 
@@ -833,6 +833,10 @@ giving Meridian a live plan and showing Vertex's composed Today is identical.
 **Not done.** Flag-OFF Today is unchanged; it is the certified surface. Fixing the underlying
 queries is task #67, not this slice.
 
+> **SUPERSEDED in part by D-041 (2026-09-14).** The underlying queries were fixed before Slice 2B
+> could be enabled. Flag-OFF Today is now tenant-safe too. The composition's own tenant guard
+> stays as a second line.
+
 ## D-039 · Attention wording for a partner-safe caller is declared, never plan free text
 
 **Decision.** The plan view reaches attention already disclosure-filtered (D-018). On top of
@@ -872,3 +876,87 @@ are annotated:
 The link's title carries plain provenance, for example "Approved by a person on Sep 14". The
 Queue never cancels, replaces or blocks an action because its plan needs review; the approved
 plan stays in force until a person decides (D-028).
+
+## D-041 · Today and Queue are tenant-scoped explicitly in every query; security correctness supersedes byte-identical flag-OFF output
+
+**The defect (pre-existing, found during Slice 2B, made a Slice 2B release blocker).** The app
+connects as the table owner, which bypasses RLS (task #67). Several Today and Queue reads
+named no org and relied on RLS, which does not run on that path. So they were cross-tenant
+reads.
+
+**Measured before the fix, on the local canonical world.** The guest org's certified,
+flag-OFF Today listed 17–18 of Vertex's pursuit items (route approvals, route changes, a team
+wait). It also showed Vertex's entire open pipeline: $8,040,000 across 11 opportunities, though
+the guest owns none.
+
+**Every unscoped read found, and fixed:**
+- **Today decision queue** (`read-models/today.ts`): route approvals, fact reviews, team
+  waits and material ledger changes.
+- **Today pipeline band:** `getTodayExposure`.
+- **Today standing context:** "Also queued" draft/approved motions, pending review, open
+  contradictions, refresh-due accounts, the At-a-glance counts, the Top-opportunities
+  leaderboard and Recent activity. These moved to `lib/today/overview.ts`.
+- **"Where your systems disagree":** three `NOT EXISTS` / `EXISTS` subqueries in
+  `accountDivergences`, where another org's opportunity, motion or engagement row could hide
+  or raise this org's condition. `motion_stalled` also no longer admits `org_id is null` motions.
+- **The account drawer** (`getAccountIntel`, reached from Today, Pipeline and Accounts by a
+  company id in the URL). Every read about the account was unscoped, and the org used for
+  seller paths, stakeholders, lifecycle and value was guessed from the account's first motion,
+  or `partners limit 1`.
+- **Queue reads:** pending cadence steps, conversation follow-ups, recently resolved. These
+  moved to `lib/motions/queue-read.ts`.
+- **Queue writes:** "Mark handled", "Skip" and "Dismiss" updated a row by id alone, so any org
+  could resolve another org's queue item.
+
+**Already correct, left unchanged:** the economic-buyer gap outer query, the lifecycle
+horizon, value gaps, motion-acceptance blockage, account digests, the scope resolver, the
+layout badges, and all of Slice 2B's attention and lineage loaders.
+
+**The rule applied.** The org always comes from `withTenant` (the caller's session), never from
+input. Each query names it in SQL:
+- a table with `org_id` is filtered on it;
+- one without is scoped through its canonical org-owned parent (a cadence step through its
+  motion, a snapshot through its pursuit, dimensions through an owned score);
+- `companies` is the shared catalog, and an account reaches Today only through something this
+  org owns about it.
+
+The filter sits before ordering, grouping, ranking, `LIMIT`, counts and badges. So a foreign row
+behaves as if it does not exist. It cannot crowd the 60-row ledger window, move a rank, alter an
+urgency, change "N other items", or flip the synthetic badge.
+
+This is not a second tenant model. It is the same caller-org pattern the other Today queries
+already used.
+
+**Security correctness supersedes byte-identical flag-OFF output.** The certified flag-OFF
+Today was byte-identical to its pre-slice build partly because both leaked. Output that differs
+only by no longer carrying another org's data is the fix, not a regression.
+
+For the owning org (Vertex, which owns every canonical row), Today, Queue, Pursuit Detail and
+all three drawers are byte-identical before and after. That was checked in five configurations
+(Slice 2A on, no vNext flags, State C, and attention on for both worlds), with one declared
+exception. The economic-buyer gap query now carries `ORDER BY pu.created_at, pu.id`. Its items
+are stamped at read time, so ties of equal materiality used to follow undeclared planner row
+order, and the tenant predicates changed that plan. In flag-OFF "View all", equally ranked
+economic-buyer cards can therefore appear in the declared order rather than the old planner
+order. The comparison proves this is reorder-only: the same cards, byte for byte, with the same
+page length (for example, Initech and Globex on a fresh seed, or Initech and Wayne on the State C
+copy). No card, count, class ranking or content changes, and the top-4 and every other page are
+byte-identical.
+
+**How it is proven:**
+- `scripts/today-tenant-verify.ts` (SEEDED) reads every org's Today (flag OFF and ON) and Queue
+  inside `READ ONLY` transactions.
+- It plants guest-org clones of real Vertex rows: a route snapshot, a ledger change, a team
+  wait, an opportunity on Globex, draft and active motions, a queue step, an outcome, evidence
+  and a newer propensity score. It then shows Vertex's entire Today and Queue output is
+  identical, while the guest's own rows render for the guest.
+- It shows a guest cannot resolve Vertex's queue item.
+- Run against the pre-fix code, its core check fails: the guest receives 17 foreign items.
+- `tests/today-tenant-scope.test.ts` fails if any Today or Queue query is added without an org
+  predicate.
+
+**Not done — task #67 remains the defence in depth.** Roles, grants and the `app_rw` cutover
+are unchanged. RLS stays correct and inert on the app path. Once the app runs as `app_rw`, RLS
+becomes a second, independent layer under these predicates, not a replacement for them. Other
+rooms (Pipeline, Accounts list, Motions, and so on) were not audited in this pass. They carry the
+same class of risk until #67 lands, or until each is audited the same way.

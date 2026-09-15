@@ -104,7 +104,7 @@ export default async function AccountsPage({
     return COL_KEYS.filter((x) => set.has(x)).join(",");
   };
 
-  const { all, partnerRows, oppRows, dimRows, intel } = await withTenant(async (db) => {
+  const { all, partnerRows, oppRows, dimRows, intel } = await withTenant(async (db, orgId) => {
     const { rows: all } = await db.query(
       `select latest.*, pt.partner_name, pt.team_status,
             c.refresh_tier, c.next_refresh_at, c.country, c.state,
@@ -167,7 +167,7 @@ export default async function AccountsPage({
       [all.map((r) => r.score_id)],
     );
 
-    const intel: AccountIntel | null = params.sel ? await getAccountIntel(db, params.sel) : null;
+    const intel: AccountIntel | null = params.sel ? await getAccountIntel(db, params.sel, orgId) : null;
     return { all, partnerRows, oppRows, dimRows, intel };
   });
 

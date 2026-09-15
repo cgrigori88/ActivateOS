@@ -9,6 +9,7 @@ import { buttonClass } from "@/components/ui";
 import { ExecutionModel } from "@/components/execution-model";
 import { formatMoney } from "@/lib/format/money";
 import { DAY_MS as DAY, QUEUE_BUCKET_LABEL, dueBucket, startOfToday } from "@/lib/motions/due-buckets";
+import { loadQueueWorklist } from "@/lib/motions/queue-read";
 import { vnextCapabilities, vnextEnvEnabled } from "@/lib/env/vnext-flags";
 import { tenantFeatures } from "@/lib/pursuits/tenant-flags";
 import { callerFor } from "@/lib/pursuits/read-models/caller";
@@ -61,56 +62,9 @@ export default async function QueuePage({
   const ids = scopeIds ?? [];
 
   const { cadence, comms, recent, lineage } = await withTenant(async (db, orgId) => {
-    const loaded = {
-    cadence: (
-      await db.query(
-        /* Wave 4 §3: `estimated_value_usd` joins the existing select so a queue row
-           can state the commercial consequence of the work. The queue previously
-           carried dates, a step number and a sentence — everything except what the
-           item is worth, which is the one field that lets an operator choose
-           between two rows. Additive read on a query that already joined the
-           motion; no new table, no new predicate, no semantic change. */
-        `select a.id, a.step, a.action, a.due_at,
-            m.id as motion_id, m.estimated_value_usd, c.id as company_id, c.legal_name,
-            pa.name as partner_name, s.name as seller_name
-     from motion_actions a
-     join revenue_motions m on m.id = a.motion_id
-     join companies c on c.id = m.company_id
-     left join partners pa on pa.id = m.partner_id
-     left join sellers s on s.id = m.partner_seller_id
-     where a.status = 'pending' and m.status = 'active'
-       and ($2::boolean is false or m.company_id = any($1))
-     order by a.due_at, a.step`,
-        [ids, scoped],
-      )
-    ).rows,
-    comms: (
-      await db.query(
-        `select ca.id, ca.title, ca.detail, ca.due_at, ca.confidence, ca.motion_id,
-            t.company_id, c.legal_name, s.name as owner_name
-     from communication_actions ca
-     join communication_threads t on t.id = ca.thread_id
-     join companies c on c.id = t.company_id
-     left join sellers s on s.id = ca.owner_seller_id
-     where ca.status = 'pending'
-       and ($2::boolean is false or t.company_id = any($1))
-     order by ca.due_at nulls last`,
-        [ids, scoped],
-      )
-    ).rows,
-    recent: (
-      await db.query(
-        `select a.action, a.status, a.completed_at, c.legal_name
-     from motion_actions a
-     join revenue_motions m on m.id = a.motion_id
-     join companies c on c.id = m.company_id
-     where a.status in ('done','skipped')
-       and ($2::boolean is false or m.company_id = any($1))
-     order by a.completed_at desc limit 8`,
-        [ids, scoped],
-      )
-    ).rows,
-    };
+    // Tenant-scoped explicitly through each row's org-owned parent (2026-09-14 hardening) —
+    // RLS is inert on the owner-role app path (task #67). See lib/motions/queue-read.ts.
+    const loaded = await loadQueueWorklist(db, orgId, scopeIds);
     /* vNext Slice 2B — plan lineage. The Queue is not changed by a plan needing review (the
        approved plan stays in force until a person decides); a row the plan queued only SAYS so.
        Capability-gated like Today; flag OFF issues no query and renders the certified rows. */

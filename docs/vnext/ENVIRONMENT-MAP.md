@@ -249,6 +249,10 @@ fact task #67's cutover must prove. Adding `database.role` is part of that plan.
    demo database. Highest-priority unblock for any slice needing writes. (§6)
 2. **The app runs as a `BYPASSRLS` role.** RLS is fully built and fully inert on the
    app path. Task #67. (§4)
+   **2026-09-14:** Today, Queue and the account drawer are now tenant-scoped explicitly in every
+   query (D-041), so they no longer depend on RLS. A leak on exactly this path was found and
+   fixed: a guest org's Today listed another org's items and pipeline. Every other room is still
+   unaudited and still relies on RLS that does not run.
 3. **Vercel configuration is not in the repository.** Branch tracking, env scoping
    and domains are dashboard-only and cannot be reviewed in a diff or restored from
    Git. (§1)

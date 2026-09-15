@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
-import { rankNextActions, type NextAction, type PortfolioState } from "@/lib/portfolio/next-best";
 import { BandBadge, Card, CountChip, PageHeader, StatusBadge, Metric, SummaryBand, BlockLabel } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
-import { accountDivergences } from "@/lib/context/divergence";
-import { enabledTriggers } from "@/lib/triggers/catalog";
+import { loadTodayNextActions, loadTodayOverview } from "@/lib/today/overview";
 import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
 import { getTodayQueue, getTodayExposure, type TodayExposure } from "@/lib/pursuits/read-models/today";
 import { callerFor } from "@/lib/pursuits/read-models/caller";
@@ -39,93 +37,10 @@ function cleanQuery(sp: Record<string, string | string[] | undefined>): Record<s
   return out;
 }
 
-async function loadNextActions() {
-  return withTenant(async (db, orgId) => {
-    const [drafts, approved, review, contradictions, refreshes] = await Promise.all([
-      db.query(
-        `select m.id, c.legal_name, m.estimated_value_usd, p.score as propensity
-       from revenue_motions m
-       join companies c on c.id = m.company_id
-       left join propensity_scores p on p.id = m.propensity_score_id
-       where m.status = 'draft'`,
-      ),
-      db.query(
-        `select m.id, c.legal_name, m.estimated_value_usd, p.score as propensity,
-              exists (select 1 from campaigns cp where cp.motion_id = m.id) as has_campaign
-       from revenue_motions m
-       join companies c on c.id = m.company_id
-       left join propensity_scores p on p.id = m.propensity_score_id
-       where m.status = 'approved'`,
-      ),
-      db.query(`select count(*) as n from review_queue where status = 'pending'`),
-      db.query(
-        `select distinct c.id, c.legal_name from contradictions ct
-       join companies c on c.id = ct.company_id where ct.status = 'open'`,
-      ),
-      db.query(
-        `select id, legal_name, refresh_tier from companies
-       where next_refresh_at is not null and next_refresh_at <= now()`,
-      ),
-    ]);
-
-    const expected = (v: unknown, p: unknown) =>
-      v == null ? null : Math.round((Number(v) * (p == null ? 50 : Number(p))) / 100);
-
-    const state: PortfolioState = {
-      draftMotions: drafts.rows.map((m) => ({
-        motionId: m.id,
-        company: m.legal_name,
-        expectedValueUsd: expected(m.estimated_value_usd, m.propensity),
-      })),
-      approvedMotions: approved.rows.map((m) => ({
-        motionId: m.id,
-        company: m.legal_name,
-        expectedValueUsd: expected(m.estimated_value_usd, m.propensity),
-        hasCampaign: m.has_campaign,
-      })),
-      pendingReviewCount: Number(review.rows[0].n),
-      openContradictions: contradictions.rows.map((c) => ({
-        company: c.legal_name,
-        companyId: c.id,
-      })),
-      refreshDue: refreshes.rows.map((r) => ({
-        company: r.legal_name,
-        companyId: r.id,
-        tier: r.refresh_tier ?? "low",
-      })),
-    };
-    const ranked = rankNextActions(state, 6);
-
-    // Renewal windows surfaced by the account-digest routine (task #77): a
-    // renewal inside 90 days is decision-shaped, not FYI — it belongs here,
-    // not just on the account card.
-    const renewalActions: NextAction[] = [];
-    if ((await enabledTriggers(db, orgId)).has("renewal_window")) {
-      const { rows: digests } = await db.query<{
-        company_id: string;
-        legal_name: string;
-        items: { type: string; text: string; at: string }[];
-      }>(
-        `select distinct on (d.company_id) d.company_id, c.legal_name, d.items
-       from account_digests d join companies c on c.id = d.company_id
-       where d.org_id = $1
-       order by d.company_id, d.created_at desc`,
-        [orgId],
-      );
-      for (const d of digests) {
-        const renewal = (d.items ?? []).find((it) => it.type === "renewal");
-        if (!renewal) continue;
-        renewalActions.push({
-          type: "RENEWAL_WINDOW",
-          priority: 70,
-          title: `Plan the renewal — ${d.legal_name}`,
-          reason: `${renewal.text} (from this week's account digest)`,
-          href: `/accounts/${d.company_id}`,
-        });
-      }
-    }
-    return [...ranked, ...renewalActions].slice(0, 7);
-  });
+/* Today's standing context lives in `lib/today/overview.ts`, tenant-scoped explicitly in every
+   query (2026-09-14 hardening) — RLS is inert on the owner-role app path (task #67). */
+function loadNextActions() {
+  return withTenant((db, orgId) => loadTodayNextActions(db, orgId));
 }
 
 export default async function TodayPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -138,7 +53,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
   // Contextual intelligence drawer (§4 / R7): fetched (and serialized) only when ?drawer= is present.
   const drawerId = typeof sp.drawer === "string" ? sp.drawer : undefined;
-  const drawerIntel = drawerId ? await withTenant((db) => getAccountIntel(db, drawerId)) : null;
+  const drawerIntel = drawerId ? await withTenant((db, orgId) => getAccountIntel(db, drawerId, orgId)) : null;
   const preserved = new URLSearchParams();
   for (const kk of ["scope", "today"]) { const v = sp[kk]; if (typeof v === "string") preserved.set(kk, v); }
   const drawerHref = (companyId: string) => { const p = new URLSearchParams(preserved); p.set("drawer", companyId); const qs = p.toString(); return qs ? `/?${qs}` : "/"; };
@@ -166,7 +81,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         pursuitQueue: attention
           ? await composeTodayAttention(db, caller, await getTodayQueue(db, caller, { companyIds: scopeIds }), { companyIds: scopeIds, limit })
           : await getTodayQueue(db, caller, { companyIds: scopeIds, limit }),
-        exposure: await getTodayExposure(db, scopeIds),
+        exposure: await getTodayExposure(db, orgId, scopeIds),
         attentionOn: attention,
       };
     }));
@@ -174,40 +89,10 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
   // Reality-divergence detection (task #83): where the systems disagree —
   // with each other, or with the partner's side of the deal.
-  const { divergences: allDivergences, counts, top, activity } = await withTenant(async (db, orgId) => {
-    const rawDiv = await accountDivergences(db, orgId, 12);
-    // Scope narrowing (§1): keep only conditions on in-scope accounts.
-    const divergences = scopeIds == null ? rawDiv : rawDiv.filter((d) => scopeIds.includes(d.companyId));
-    // Wave 2 §4: the draft-motion detail query went with the "Pending approvals"
-    // card it fed. Those same drafts still reach the reader through the ranked
-    // queue and the "Awaiting approval" count — this was the third telling.
-    const [countsRes, topRes, activityRes] = await Promise.all([
-      db.query(
-        `select
-           (select count(*) from revenue_motions where status = 'draft') as draft_motions,
-           (select count(*) from review_queue where status = 'pending') as pending_review,
-           (select count(distinct company_id) from propensity_scores) as scored_accounts,
-           (select count(*) from evidence where status = 'verified') as verified_evidence`,
-      ),
-      db.query(
-        `select distinct on (p.company_id) p.company_id, p.score, p.band, c.legal_name, n.slug
-         from propensity_scores p
-         join companies c on c.id = p.company_id
-         join taxonomy_nodes n on n.id = p.taxonomy_node_id
-         where ($2::boolean is false or p.company_id = any($1))
-         order by p.company_id, p.computed_at desc`,
-        [scopeIds ?? [], scopeIds != null],
-      ),
-      db.query(
-        `select e.event_type, e.occurred_at, c.legal_name
-         from outcome_events e left join companies c on c.id = e.company_id
-         where ($2::boolean is false or e.company_id = any($1))
-         order by e.occurred_at desc limit 6`,
-        [scopeIds ?? [], scopeIds != null],
-      ),
-    ]);
-    return { divergences, counts: countsRes.rows, top: topRes.rows, activity: activityRes.rows };
-  });
+  // Wave 2 §4: the draft-motion detail query went with the "Pending approvals"
+  // card it fed. Those same drafts still reach the reader through the ranked
+  // queue and the "Awaiting approval" count — this was the third telling.
+  const { divergences: allDivergences, counts, top, activity } = await withTenant((db, orgId) => loadTodayOverview(db, orgId, scopeIds));
   const c = counts[0];
   const topRanked = [...top].sort((a, b) => Number(b.score) - Number(a.score)).slice(0, 5);
   // Command-center cut (§2): show the top conditions by default; ?today=all reveals the rest.

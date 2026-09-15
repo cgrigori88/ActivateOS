@@ -54,7 +54,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
      from opportunities o join companies c on c.id = o.company_id
      where o.stage in ('proposal', 'negotiation') and ($1::uuid is null or o.org_id = $1)
        and not exists (select 1 from engagement_scores es
-                       where es.company_id = o.company_id
+                       where es.company_id = o.company_id and es.org_id = $1
                          and es.last_engaged_at > now() - interval '30 days')
        and not exists (select 1 from meeting_notes mn
                        where mn.company_id = o.company_id and mn.org_id = $1
@@ -115,9 +115,9 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
      where f.org_id = $1 and f.status = 'CURRENT'
        and f.predicate_key in ('renewal_date','contract_expires','subscription_term_end','renewal_window')
        and coalesce(f.date_value, f.valid_from) between now() and now() + interval '60 days'
-       and not exists (select 1 from opportunities o where o.company_id = f.company_id
+       and not exists (select 1 from opportunities o where o.company_id = f.company_id and o.org_id = $1
                        and o.stage not in ('closed_won', 'closed_lost'))
-       and not exists (select 1 from revenue_motions m where m.company_id = f.company_id
+       and not exists (select 1 from revenue_motions m where m.company_id = f.company_id and m.org_id = $1
                        and m.status in ('draft', 'approved', 'active'))
      order by f.company_id, coalesce(f.date_value, f.valid_from) asc limit 5`,
     [orgId],
@@ -137,7 +137,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
     `select m.company_id, c.legal_name, m.id as motion_id
      from revenue_motions m join companies c on c.id = m.company_id
      where m.status = 'active'
-       and (m.org_id is null or m.org_id = $1)
+       and m.org_id = $1
        and not exists (select 1 from campaign_touches t
                        join campaigns ca on ca.id = t.campaign_id
                        where ca.motion_id = m.id and t.sent_at > now() - interval '14 days')

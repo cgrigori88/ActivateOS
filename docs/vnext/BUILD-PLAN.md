@@ -94,6 +94,7 @@ SLICE 2A Pursuit Coordination              (P3)        DEMO CERTIFIED / FROZEN
 SLICE 2B Pursuit Attention + Today/Queue   (P3)        PREVIEW READY (local)  ← current
    │      derived pursuit attention on Today (one card per pursuit) · plan lineage on
    │      Queue · "Current approved plan" labelling · D-034…D-040 · no migration
+   │      security gate PASSED: Today/Queue tenant-scoped explicitly (D-041)
    ↓
 SLICE 2C Coordination breadth              (P3)        NOT STARTED
    │      goal editing · plan closure · multi-pursuit plans · review recording on events

@@ -500,10 +500,10 @@ async function main() {
     ok("the detail read model exposes the INTERNAL projection", gDetail.valueCase != null);
 
     const { getAccountIntel } = await import("../src/lib/accounts/intel");
-    const gi = (await getAccountIntel(db, await cid("Globex")))!;
+    const gi = (await getAccountIntel(db, await cid("Globex"), org))!;
     ok("Accounts shows the Value Case STATE, not a new score",
       gi.valueCase != null && ["strong", "incomplete", "conflicting", "not established"].includes(gi.valueCase.label));
-    const ci = (await getAccountIntel(db, await cid("Cyberdyne")))!;
+    const ci = (await getAccountIntel(db, await cid("Cyberdyne"), org))!;
     ok("Accounts reports NOT ESTABLISHED honestly where there are no economics",
       ci.valueCase == null || ci.valueCase.state === "NOT_ESTABLISHED");
 

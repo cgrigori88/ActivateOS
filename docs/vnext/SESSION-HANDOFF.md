@@ -15,8 +15,9 @@
 | **Current branch** | `roadmap/pursuitos-vnext` |
 | **Current commit** | this session's Slice 2B commit, on top of `b677acf` |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Slice status** | Slice 1 **DEMO CERTIFIED / FROZEN** · Slice 2A **DEMO CERTIFIED / FROZEN** (human product acceptance on the isolated hosted Preview) · Slice 2B **PREVIEW READY (local)** — not certified, no hosted work done |
-| **Session completed** | **SLICE 2B — PURSUIT ATTENTION + TODAY / QUEUE, LOCAL.** See § "Vertical Slice 2B" below. No hosted database, Vercel, flag, deployment or Production change. |
+| **Slice status** | Slice 1 **DEMO CERTIFIED / FROZEN** · Slice 2A **DEMO CERTIFIED / FROZEN** (human product acceptance on the isolated hosted Preview) · Slice 2B **PREVIEW READY (local)** — its tenant security gate passed; not certified; no hosted work done |
+| **Session completed** | **TODAY / QUEUE TENANT HARDENING — PASSED** (the Slice 2B release blocker). See § "Today / Queue tenant hardening" below. No hosted database, Vercel, flag, role, grant, deployment or Production change. |
+| **Before that** | **SLICE 2B — PURSUIT ATTENTION + TODAY / QUEUE, LOCAL** (`8261ef3`). See § "Vertical Slice 2B". |
 | **Previous session** | **HOSTED TEAM-LAYER REPAIR — FIXED.** Root cause (in-place reseed clears the 0075-only team requirements) reproduced locally and fixed in code (`6ab3599`); `mejokqxriwyawfhawuxu` reseeded in place. Hosted coordination **112 pass / 0 fail / 4 environmentally not run** (as-`app_rw` only; equivalents pass), Slice 1 62/0, demo-team 11/0, manifest unchanged, 0 send rows. Slice 2A stays **PREVIEW READY**, not DEMO CERTIFIED. No Vercel, flag, deploy, auth or Production change; Monday demo never addressed. See § "Hosted team-layer repair" below. |
 | **Previous session** | **SLICE 2A HOSTED PROMOTION — INSTALLED, VERIFICATION PARTIAL** (16:49Z, docs `a9846b4`): 0103 + Globex plan story on `mejokqxriwyawfhawuxu`; found the no-team defect. |
 | **Preview URL** | **UNVERIFIED** — unchanged |
@@ -30,6 +31,56 @@
 - Also the head of `ui-wave-6d`, and tagged `backup/2026-09-04/tds-live-demo`
   (annotated, already on origin — the durable immutable reference).
 - Working tree clean at session start and at session end.
+
+---
+
+## Today / Queue tenant hardening (2026-09-14) — PASSED; the Slice 2B security gate
+
+**What was wrong.** A pre-existing leak, found during Slice 2B and made its release blocker.
+- The app connects as the table owner, which bypasses RLS (task #67), and several Today and Queue queries named no org.
+- **Measured on the pre-fix code (`8261ef3`), flag OFF:** the guest org Meridian's Today listed 17 items, all of them Vertex's, plus Vertex's whole $8,040,000 open pipeline (11 opportunities; Meridian owns 0).
+- The account drawer took a company id from the URL, then read the pursuit, pipeline, evidence and history about it with no org. It even guessed the org from the account's first motion.
+- The Queue's resolve actions updated a row by id alone.
+
+**What was fixed (D-041).** Every Today, Queue and drawer query now names the caller's org (from `withTenant`) in SQL, before ranking, counting or `LIMIT`:
+
+| Path | File |
+|---|---|
+| Decision queue: route approvals, fact reviews, team waits, ledger changes | `src/lib/pursuits/read-models/today.ts` |
+| Pipeline band | `getTodayExposure(db, orgId, scope)` |
+| Also queued · At a glance · Top opportunities · Recent activity | new `src/lib/today/overview.ts` (moved from `app/page.tsx`) |
+| "Where your systems disagree" subqueries | `src/lib/context/divergence.ts` |
+| Account drawer (Today, Pipeline, Accounts) | `getAccountIntel(db, companyId, orgId)` |
+| Queue worklist | new `src/lib/motions/queue-read.ts` (moved from `app/queue/page.tsx`) |
+| Queue Mark handled / Skip / Dismiss | `app/queue/actions.ts`, `resolveMotionAction(..., orgId)` |
+
+Already scoped and left alone:
+- the lifecycle horizon, value gaps, motion blockage, digests and the scope resolver;
+- the layout badges;
+- all Slice 2B attention and lineage loaders.
+
+**Proof:**
+- `scripts/today-tenant-verify.ts` (SEEDED, registered): 51 / 0. It includes 10 planted guest-org clones of real rows, which leave Vertex's surfaces identical.
+- `tests/today-tenant-scope.test.ts`: 4 / 0.
+- Full regression is green; see STATUS.
+
+For the owning org, the pages are byte-identical to the pre-fix build in five configurations × 7 pages. The one exception is a declared tie order among equal-materiality economic-buyer cards (`ORDER BY pu.created_at, pu.id`). Before, those ties followed undeclared planner order. In flag-OFF "View all" this is proven reorder-only: the same cards byte for byte, the same page length.
+
+**Security correctness supersedes byte-identical flag-OFF output:** the old identity partly held because both sides leaked.
+
+**Still open:**
+- Task #67, the `app_rw` / RLS cutover: defence in depth, not replaced.
+- Every other room (Pipeline list, Accounts list, Motions, Partners, …) is unaudited and carries the same class of risk.
+
+**Local run:**
+
+```sh
+DATABASE_URL_VERIFY=… npx tsx scripts/today-tenant-verify.ts
+```
+
+**Verifier hygiene trap found this session.** `team-motion-verify` once committed a route selection and team invite/accept onto the Globex hero, taking its ledger from 10 to 17. The seeded Slice 2A recommendation went stale, and `vnext-attention` then failed at State B. So run the committing spot checks **last**, and rebuild the world (`seed-demo-world.ts`) before any certification run. All final numbers here come from a fresh rebuild.
+
+The negative control uses a scratch worktree at `8261ef3` with `cp -cR node_modules` and imports that tree's `today.ts`. The script is in the session scratchpad; it was not committed.
 
 ---
 
@@ -99,9 +150,11 @@ Run the verifier with: `DATABASE_URL_VERIFY=… npx tsx scripts/vnext-attention-
 
 ### Exact next step — owner-approved, NOT executed
 
+The tenant hardening (above) is done, so the security gate no longer blocks this.
+
 1. On the Vercel Preview scope for `roadmap/pursuitos-vnext` only, add `VNEXT_PURSUIT_ATTENTION_ENABLED=1` alongside the already-armed Slice 1 + 2A flags. No database change is needed: Slice 2B has no migration.
 2. Redeploy the branch head, and confirm `/api/build` reports `database.projectRef = mejokqxriwyawfhawuxu`.
-3. Run `vnext-attention-verify.ts` against `mejokqxriwyawfhawuxu`.
+3. Run `vnext-attention-verify.ts` and `today-tenant-verify.ts` against `mejokqxriwyawfhawuxu`. Both write only inside rolled-back transactions.
    - Expect the four as-`app_rw`-style constraints not to apply: this harness does not `SET ROLE`.
    - Because the hosted Globex plan was already walked to State D during Slice 2A acceptance, its State A expectations will differ. Read section 2 as informational there, or reseed first.
 4. Hosted human review of Today, Queue and the Globex plan in States C/D. Only then consider DEMO CERTIFIED.

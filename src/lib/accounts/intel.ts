@@ -24,23 +24,31 @@ export interface AccountIntel {
   stakeholders: { established: boolean; note: string; gapNote: string | null; pursuitId: string } | null;
 }
 
-export async function getAccountIntel(db: PoolClient, companyId: string): Promise<AccountIntel | null> {
+/**
+ * The account drawer. `companyId` arrives from the URL (`?drawer=` / `?sel=`), so every tenant
+ * read below names `orgId` — the caller's org, resolved server-side by `withTenant` — explicitly.
+ * `companies` is the shared account catalog (no org_id); everything read ABOUT the account for
+ * this caller (score, pursuit, pipeline, evidence, history, partners, motion, next step) is the
+ * caller's own. Before the 2026-09-14 hardening these reads were unscoped and the org used for
+ * seller paths, stakeholders, lifecycle and value was guessed from the account's first motion.
+ */
+export async function getAccountIntel(db: PoolClient, companyId: string, orgId: string): Promise<AccountIntel | null> {
   const co = (await db.query<{ legal_name: string; industry: string | null }>(`select legal_name, industry from companies where id=$1`, [companyId])).rows[0];
   if (!co) return null;
 
-  const score = (await db.query<{ score: string; band: string; score_id: string }>(`select id as score_id, score, band from propensity_scores where company_id=$1 order by computed_at desc limit 1`, [companyId])).rows[0];
+  const score = (await db.query<{ score: string; band: string; score_id: string }>(`select id as score_id, score, band from propensity_scores where company_id=$1 and org_id=$2 order by computed_at desc limit 1`, [companyId, orgId])).rows[0];
   const dims = score ? new Map((await db.query<{ dimension: string; value: string }>(`select dimension, value from propensity_dimensions where score_id=$1`, [score.score_id])).rows.map((r) => [r.dimension, Number(r.value)])) : new Map<string, number>();
 
   const pursuit = (await db.query<{ id: string; use_case: string | null; business_problem: string | null; prio: number | null; prop: number | null; tim: number | null; evw: string | null; why_now: unknown }>(
     `select id, use_case, business_problem, current_priority_score prio, current_purchase_propensity_score prop, current_timing_score tim, expected_value_weighted evw, why_now
-       from pursuits where account_id=$1 order by created_at asc limit 1`, [companyId])).rows[0];
+       from pursuits where account_id=$1 and org_id=$2 order by created_at asc limit 1`, [companyId, orgId])).rows[0];
   const wn = (pursuit?.why_now ?? {}) as { business_trigger?: { label?: string } | null; timing_anchor?: unknown; signal_convergence?: { independent_family_count?: number }; evidence_gap?: string | null };
 
-  const opps = (await db.query<{ open: string; pipeline: string }>(`select count(*) filter (where stage not like 'closed%') open, coalesce(sum(amount_usd) filter (where stage not like 'closed%'),0) pipeline from opportunities where company_id=$1`, [companyId])).rows[0];
+  const opps = (await db.query<{ open: string; pipeline: string }>(`select count(*) filter (where stage not like 'closed%') open, coalesce(sum(amount_usd) filter (where stage not like 'closed%'),0) pipeline from opportunities where company_id=$1 and org_id=$2`, [companyId, orgId])).rows[0];
 
-  const evidence = (await db.query<{ claim: string; confidence: string; first_party: boolean }>(`select claim, computed_confidence confidence, first_party from evidence where company_id=$1 and status='verified' order by observed_at desc limit 4`, [companyId])).rows;
+  const evidence = (await db.query<{ claim: string; confidence: string; first_party: boolean }>(`select claim, computed_confidence confidence, first_party from evidence where company_id=$1 and org_id=$2 and status='verified' order by observed_at desc limit 4`, [companyId, orgId])).rows;
 
-  const materialChange = pursuit ? (await db.query<{ change_type: string; reason: string | null }>(`select change_type, reason from change_ledger where pursuit_id=$1 order by occurred_at desc limit 1`, [pursuit.id])).rows[0] : undefined;
+  const materialChange = pursuit ? (await db.query<{ change_type: string; reason: string | null }>(`select change_type, reason from change_ledger where pursuit_id=$1 and org_id=$2 order by occurred_at desc limit 1`, [pursuit.id, orgId])).rows[0] : undefined;
 
   // Route recommendation + human selection (through-whom, recommendation ≠ decision).
   const route = pursuit ? (await db.query<{ rec: string | null; sel: string | null }>(
@@ -50,20 +58,20 @@ export async function getAccountIntel(db: PoolClient, companyId: string): Promis
       where s.pursuit_id=$1 and s.is_current limit 1`, [pursuit.id])).rows[0] : undefined;
 
   const partners = (await db.query<{ name: string; strength: number | null; tenure: number | null }>(
-    `select p.name, pr.strength, pr.tenure_months tenure from partner_relationships pr join partners p on p.id=pr.partner_id where pr.company_id=$1 order by pr.strength desc nulls last`, [companyId])).rows;
+    `select p.name, pr.strength, pr.tenure_months tenure from partner_relationships pr join partners p on p.id=pr.partner_id where pr.company_id=$1 and p.org_id=$2 order by pr.strength desc nulls last`, [companyId, orgId])).rows;
 
   const overlapLists = (await db.query<{ name: string }>(
-    `select ap.name from population_members pm join account_populations ap on ap.id=pm.population_id where pm.company_id=$1 and ap.partner_id is not null`, [companyId])).rows.map((r) => r.name);
+    `select ap.name from population_members pm join account_populations ap on ap.id=pm.population_id where pm.company_id=$1 and ap.org_id=$2 and ap.partner_id is not null`, [companyId, orgId])).rows.map((r) => r.name);
 
-  const motion = (await db.query<{ thesis: string | null; status: string }>(`select thesis, status from revenue_motions where company_id=$1 order by created_at desc limit 1`, [companyId])).rows[0];
-  const nextAction = (await db.query<{ action: string; status: string }>(`select a.action, a.status from motion_actions a join revenue_motions m on m.id=a.motion_id where m.company_id=$1 and a.status='pending' order by a.due_at limit 1`, [companyId])).rows[0];
+  const motion = (await db.query<{ thesis: string | null; status: string }>(`select thesis, status from revenue_motions where company_id=$1 and org_id=$2 order by created_at desc limit 1`, [companyId, orgId])).rows[0];
+  const nextAction = (await db.query<{ action: string; status: string }>(`select a.action, a.status from motion_actions a join revenue_motions m on m.id=a.motion_id where m.company_id=$1 and m.org_id=$2 and a.status='pending' order by a.due_at limit 1`, [companyId, orgId])).rows[0];
 
   const overridden = !!(route?.sel && route.rec && route.sel !== route.rec);
   const recName = route?.rec ?? null;
 
   // Strongest seller path (P1B.5) — evidence-ranked; ownership ≠ recommendation.
-  const orgRow = (await db.query<{ org_id: string | null }>(`select org_id from revenue_motions where company_id=$1 limit 1`, [companyId])).rows[0]
-    ?? (await db.query<{ org_id: string | null }>(`select org_id from partners limit 1`)).rows[0];
+  // The caller's org — never inferred from whichever org happens to own a motion on the account.
+  const orgRow: { org_id: string | null } = { org_id: orgId };
   const sellerPaths = orgRow?.org_id ? await getSellerPaths(db, orgRow.org_id, companyId) : [];
   const topSeller = sellerPaths[0] ?? null;
 

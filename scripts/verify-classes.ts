@@ -93,6 +93,11 @@ export const SUITES: SuiteSpec[] = [
     why: "vNext Slice 2A plan harness: reads the canonical Globex pursuit and its seeded recommendation, and exercises approve / adjust / decline / review / tenant / disclosure paths inside transactions that are ROLLED BACK — the world it reads is left exactly as it found it",
   },
   {
+    name: "today-tenant",
+    cls: "SEEDED",
+    why: "Today/Queue tenant isolation (2026-09-14 hardening): reads every canonical org's Today (flag OFF and ON) and Queue inside READ ONLY transactions, then plants guest-org clones of real rows inside a transaction that is ROLLED BACK and proves the sponsor's surfaces do not move",
+  },
+  {
     name: "vnext-attention",
     cls: "SEEDED",
     why: "vNext Slice 2B Today/Queue harness: reads the canonical Globex pursuit and its seeded recommendation, runs every Today/Queue read inside READ ONLY transactions, and walks approve → verify → review → update inside transactions that are ROLLED BACK — the world it reads is left exactly as it found it",

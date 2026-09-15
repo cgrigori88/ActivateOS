@@ -2,7 +2,27 @@
 
 **Last updated:** 2026-09-14 (Slice 2B — Pursuit Attention + Today / Queue coordination, local pass)
 
-**2026-09-14 (latest): Slice 1 and Slice 2A are both DEMO CERTIFIED / FROZEN.** Slice 2A passed human product acceptance on the isolated hosted Preview; the twelve steps are recorded in `ACCEPTANCE.md`.
+**2026-09-14 (latest) — TENANT HARDENING PASSED: the Slice 2B security gate is closed.**
+
+**The leak.** A pre-existing Today / Queue tenant leak was found during Slice 2B. With the flag OFF, the guest org's certified Today listed 17–18 of Vertex's items and Vertex's whole $8,040,000 open pipeline.
+
+**Root cause.** Several Today and Queue queries named no org and relied on RLS, and RLS is inert while the app connects as the owner (task #67).
+
+**The fix.** Every Today, Queue and drawer query now names the caller's org explicitly in SQL, before any ranking, count or `LIMIT`. The Queue's two resolve actions are also scoped to the caller's org (D-041).
+
+**Proven:**
+- `today-tenant` verifier 51/0: zero foreign items for every org, flag OFF and ON, and planted foreign rows change nothing for Vertex;
+- negative control: the pre-fix code gives the guest 17 foreign items;
+- source guard 4/0;
+- `tsc` 0; `npm test` 355/0; build 0;
+- Slice 1 62/0; 2A 116/0; 2B 57/0; value-case 126/0; team 11/0; spot checks green;
+- manifest `be0da833990ce436`.
+
+For the owning org, the pages are byte-identical to the pre-fix build in five configurations, apart from one declared change in tie order. Security correctness supersedes byte-identical flag-OFF output.
+
+Task #67 (the `app_rw` / RLS cutover) remains the future defence in depth. No role, grant, hosted database, Vercel setting, flag or deployment was touched.
+
+**Slice 1 and Slice 2A are both DEMO CERTIFIED / FROZEN.** Slice 2A passed human product acceptance on the isolated hosted Preview; the twelve steps are recorded in `ACCEPTANCE.md`.
 
 **Slice 2B (Pursuit Attention + Today / Queue coordination) is PREVIEW READY on the local synthetic path only.** It is behind `VNEXT_PURSUIT_ATTENTION_ENABLED`, default OFF, which requires Slice 2A coordination. It is NOT DEMO CERTIFIED: that needs a hosted human review, and no hosted work was done in this pass.
 
@@ -53,7 +73,8 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | Canonical commercial foundation | P0 | **DEMO CERTIFIED** (pre-existing) | `97e975f0` | 2026-09-03 | — | Substantially already built: orgs, companies, products, sellers, partners, opportunities, motions, campaigns, entity resolution, aliases, provenance |
 | Living Pursuit Context — **Vertical Slice 1** | P1 | **DEMO CERTIFIED / FROZEN** (owner, 2026-09-14) | `roadmap/pursuitos-vnext` @ `c4f4196` | 2026-09-14 | Nothing. "What matters now" is frozen absent real pilot feedback — do not redesign, rename or restructure it | Slice 2A re-proved it byte-identical (12,761 bytes, 1,092×792 desktop / 326×1,251 mobile) with the coordination flag ON |
 | **Pursuit Coordination — Vertical Slice 2A** | P3 | **DEMO CERTIFIED / FROZEN** (owner, human product acceptance on the isolated hosted Preview, 2026-09-14) | `roadmap/pursuitos-vnext` @ `6ab3599` | 2026-09-14 | Nothing. Do not materially redesign it absent pilot feedback | Goal → Plan → Motion → Action on Pursuit Detail. Migration 0103. The twelve accepted steps are in `ACCEPTANCE.md`. Its UX note (preserved plan content read as current) is addressed by Slice 2B labelling |
-| **Pursuit Attention + Today / Queue — Vertical Slice 2B** | P3 | **PREVIEW READY (local)** — **not** DEMO CERTIFIED; no hosted work done | `roadmap/pursuitos-vnext` (this session's commit) | 2026-09-14 | (1) Owner-approved arming of `VNEXT_PURSUIT_ATTENTION_ENABLED` on the Preview scope for this branch. (2) Redeploy. (3) Run `vnext-attention` on `mejokqxriwyawfhawuxu`. (4) Hosted human review | Derived read-model, no migration. Today composes one card per pursuit (36 → 11 on the seeded world). Queue plan lineage. "Current approved plan" framing. D-034…D-040 |
+| **Today / Queue tenant scoping (hardening)** | P6 / #67 | **DONE (local)** — the Slice 2B security gate | `roadmap/pursuitos-vnext` (hardening commit) | 2026-09-14 | Nothing for Today / Queue. Other rooms not yet audited; task #67 cutover still open | D-041. `today-tenant` verifier + source guard |
+| **Pursuit Attention + Today / Queue — Vertical Slice 2B** | P3 | **PREVIEW READY (local)** — tenant hardening passed; **not** DEMO CERTIFIED; no hosted work done | `roadmap/pursuitos-vnext` (this session's commit) | 2026-09-14 | (1) Owner-approved arming of `VNEXT_PURSUIT_ATTENTION_ENABLED` on the Preview scope for this branch. (2) Redeploy. (3) Run `vnext-attention` on `mejokqxriwyawfhawuxu`. (4) Hosted human review | Derived read-model, no migration. Today composes one card per pursuit (36 → 11 on the seeded world). Queue plan lineage. "Current approved plan" framing. D-034…D-040 |
 | · pursuit context narrative (rendered) | P1 | **PREVIEW READY** | `6c5b7a9` `components/pursuit/context-narrative.tsx` | 2026-09-12 | Product sign-off on the refined surface, then GATE D/E | Titled **"What matters now"**, full-width on desktop. GATE C **N-1 fixed** (all 10 ledger rows reachable, override chronology included), **N-2/N-4/N-6 fixed**. Flag OFF verified identical panel-for-panel. Residual: R-1 "What changed" right half empty (cosmetic), R-2 283px void beside Value case. See `GATE-C-PRODUCT-REVIEW.md` § GATE C REFINEMENT |
 | · pursuit evidence (direct + supporting) | P1 | **PREVIEW READY** | `620bc12` `read-models/pursuit-evidence.ts` | 2026-09-12 | Consumed by "What matters now" since `99bd5dd` | 18 tests. **Supersedes the plan to swap `getFacts` to pursuit scope** — Globex has 1 linked fact, so the swap would have deleted the best evidence on the screen. See D-020 |
 | · fact freshness | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/facts/freshness.ts` | — | Compose at pursuit level | Exists per-fact; nothing composes per-pursuit |
@@ -142,6 +163,19 @@ The goal is now the durable commercial outcome only. Globex: "Exit legacy virtua
 | Flag-ON goal area | shows "Exit legacy virtualization before renewal and close the $920K opportunity"; "opportunity with WWT" absent; "via WWT" present only in the plan's Next move; plan panel geometry unchanged (1,092×547) |
 
 **Found while testing the boundary, fixed:** when a person approves the *recommended* route, the route read-model deliberately reports `selected = null`. The plan loader took that as "no route", which left the plan unable to name an approved recommendation. It now resolves the choice from `selectedKey`. Globex (an override) was unaffected.
+
+### Today / Queue tenant hardening validation (2026-09-14, local synthetic)
+
+| Check | Result |
+|---|---|
+| Negative control: pre-fix code (`8261ef3`), guest org Meridian, flag OFF | **17 of 17** Today items are Vertex's. The open pipeline shows **$8,040,000 over 11 opportunities**, and the guest owns 0. (18 items earlier in the session; one aged out of the 14-day change window) |
+| `today-tenant` verifier (new, SEEDED) | **51 passed / 0 failed**. All three orgs: every read inside `READ ONLY`, zero foreign Today items flag OFF and ON, own-only pipeline, counts, queue, lineage and drawer. It plants 10 guest-org clones of real Vertex rows, and **Vertex's full Today + Queue projection stays identical**: cards, ranks, urgency, other items, badge, counts, pipeline, activity, leaderboard, drawer, queue, lineage, attention. The guest's own rows render. A guest cannot resolve a Vertex queue item. 0 send rows; world unchanged |
+| `tests/today-tenant-scope.test.ts` | **4 / 0**. Every Today and Queue query carries an org predicate or a declared org-owned parent. The pages run no SQL. The org comes from `withTenant`. The filters sit before `LIMIT` |
+| `tsc` / `npm test` / build | exit 0 / **355 / 0** (+4) / exit 0 |
+| Slice 1 · Slice 2A · Slice 2B | 62 / 0 · 116 / 0 · 57 / 0 |
+| value-case (drawer consumer) · demo-team · append-only · stakeholder-intel · team-motion | 126 / 0 · 11 / 0 · 11 / 0 · 43 / 0 · 22 / 0 |
+| Manifest | `be0da833990ce436`, unchanged |
+| Owning-org render, pre-fix build vs fix, same env and DB, five configurations × 7 pages (Today, view-all, Today drawer, Queue, Pursuit Detail, Pipeline drawer, Accounts drawer) | Byte-identical, or markup-identical for the Queue, whose payload order varies per request. One declared exception: flag-OFF `/?today=all`, proven **reorder-only**. Equal-materiality economic-buyer cards now follow a declared, deterministic tie order; the cards are the same byte for byte and the page length is identical (D-041). Checked on a freshly rebuilt world, with ids resolved per database |
 
 ### Vertical Slice 2B validation (2026-09-14, local synthetic, Globex)
 
@@ -237,5 +271,6 @@ affect them): the 33 verifier suites. Run them before GATE B.
 | **Synthetic-lineage defect (NEW, found by the chunk-5A harness)** | Two `change_ledger` rows in the canonical synthetic world carry `data_environment = 'PRODUCTION'` — `PARTNER_OVERRIDE` and `OVERRIDE_RECORDED`, on the Globex hero pursuit the demo's §2 beat turns on. Cause: `recordChange()` defaults `dataEnvironment` to `'PRODUCTION'` (`src/lib/pursuits/ledger.ts`) and the two override call sites omit it, so those entries are not labelable as synthetic. **Not fixed** — it is a seed-path change two days before the demo. Fix after Monday by passing `dataEnvironment` at `src/lib/routing/override.ts` and `src/lib/pursuits/overrides.ts`. |
 | ~~Pertinence task-fit ignores gap source~~ | **RESOLVED in 5B-1** (`1b05b8a`). Gap `rank` and `source` now travel onto `PertinenceCandidate`; linkage uses the upstream rank instead of `gapKind` alone, and `TASK_FIT` matches on `GapSource`. All six task contexts now reorder, where four did before. See **D-019**. |
 | ~~**In-place reseed drops the pursuit-team layer (2026-09-14T16:49Z)**~~ **FIXED `6ab3599`; `mejokqxriwyawfhawuxu` reseeded 21:08Z** — the canonical seed re-establishes the five global requirements from `src/lib/routing/team-requirements.ts` on both paths; `demo-team` verifier + `verify()` now cover the team layer. Other databases seeded in place before the fix keep the defect until reseeded (Monday demo: UNVERIFIED, not queried). Original note: | `scripts/demo-db.ts` in-place mode truncates `pursuit_team_requirements` (it carries `org_id`), but its only rows are the five global roles migration 0075 inserts, and in-place mode never replays migrations. So `assembleTeam` creates nothing: the isolated hosted world has 0 team members, 0 `TEAM_CHANGED` rows, and a Globex ledger of 9, not 10. `verify()` and the manifest do not cover team tables. **Not fixed.** Fix: preserve `org_id is null` rows of that table in the in-place truncate, then reseed the isolated DB. See `SESSION-HANDOFF.md` → exact next step. |
+| **`team-motion-verify` can commit into the canonical world (NEW, 2026-09-14)** | During one local run it wrote a route selection plus partner-account-manager and account-executive invite/accept onto the Globex hero, taking the ledger from 10 to 17 rows. That moved the route from WWT to CDW and staled the seeded Slice 2A recommendation, so `vnext-attention` then correctly refused to approve it. It picks "a canonical routed pursuit" by a whatever-is-first read (see `verify-classes.ts`), so it does not always hit Globex: on a fresh rebuild it left Globex untouched. **Not fixed** (outside the tenant pass). Until it is, run it last, and rebuild the world before any certification run. |
 | Task #67 outstanding | `audit/TASK-67-RLS-RUNTIME-CUTOVER-PLAN.md`. RLS fully built, fully inert on the app path. Not a vNext dependency, but it is the highest-value hardening item. |
 | ~~GATE C findings N-1 … N-6~~ | **N-1, N-2, N-4 and N-6 RESOLVED** in `1ed0105` + `6c5b7a9`. N-5 is explained rather than fixed (see R-1). N-3 stands as a *review-coverage* note, not a product defect: every evidence row on the Globex pursuit is VERIFIED, so the five-state vocabulary is only observable in Needs attention — review a thinner pursuit to see it. New residuals R-1…R-3 are cosmetic and recorded in `GATE-C-PRODUCT-REVIEW.md` § GATE C REFINEMENT. |

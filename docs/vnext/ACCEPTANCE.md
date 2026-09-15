@@ -232,4 +232,24 @@ the Slice 1 chain.
 | S2B-U5 | Pursuit Detail, labelling only: once a plan needs review, its preserved content sits under "Current approved plan — Approved <date>, recorded before the changes above", and the focus reads "Focus when approved". |
 | S2B-U6 | Mobile: composed cards stack (chip · body · CTA) below `sm`, with no horizontal overflow at 390px. |
 
+### Slice 2B security gate — Today / Queue tenant isolation (PASSED 2026-09-14, local)
+
+A pre-existing leak blocked Slice 2B. With the flag OFF, a guest org's Today listed 17–18 of another org's items and its whole open pipeline. The gate:
+
+| # | Criterion | Proven by |
+|---|---|---|
+| S2B-S1 | The guest org receives zero Vertex Today items with the flag OFF. | `today-tenant` §2 |
+| S2B-S2 | …and zero with the flag ON. | §2 |
+| S2B-S3 | Foreign rows change no card count, ranking, "other items" count, urgency or badge. | §3, with 10 planted clones |
+| S2B-S4 | Vertex's Today and Queue output is unchanged when guest data is added. | §3 (identical projection) |
+| S2B-S5 | The guest's own data still renders. | §3 |
+| S2B-S6 | The Queue exposes no foreign rows or lineage, and no foreign queue item can be resolved. | §2, §4 |
+| S2B-S7 | Plan-review attention still outranks action-due. | `vnext-attention`, unit tests |
+| S2B-S8 | Reads create zero writes. | `READ ONLY` transactions, every org |
+| S2B-S9 | Partner disclosure still holds. | `vnext-attention` disclosure checks |
+| S2B-S10 | Slice 1 and Slice 2A stay green. | 62 / 0 · 116 / 0 |
+| S2B-S11 | Zero external send rows. | §5 |
+
+Flag-OFF Today is no longer required to be byte-identical where the only difference is foreign data removed. Security correctness supersedes byte identity (D-041).
+
 **Not certified.** Slice 2B is PREVIEW READY (local) at most until a hosted human review.
