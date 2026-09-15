@@ -110,19 +110,45 @@ async function main() {
     const { buildPursuitBrief } = await import("../src/lib/pursuits/read-models/brief");
     const { getPursuitDetail } = await import("../src/lib/pursuits/read-models/detail");
     const { callerFor } = await import("../src/lib/pursuits/read-models/caller");
-    const linked = await one<{ pursuit_id: string }>(`select pursuit_id from revenue_motions where org_id=$1 and pursuit_id is not null limit 1`, [org]);
-    if (linked) {
-      await db.query("begin"); await db.query("select set_config('app.org_id',$1,true)", [org]);
-      const detail = await getPursuitDetail(db, await callerFor(db, org), linked.pursuit_id);
-      await db.query("commit");
-      if (detail) {
-        const brief = buildPursuitBrief(detail, null, { hypothesis: f.hypothesis.name, status: "active" });
-        const happening = brief.sections.find((s) => s.key === "happening")!;
-        const hypLine = happening.lines.find((l) => /Serving hypothesis/.test(l.text));
-        ok("Brief carries the motion context for the sponsor", !!hypLine);
-        ok("Brief marks the motion context confidential (withheld from the partner rendering)", hypLine?.confidential === true);
-      } else ok("Brief motion-context check (detail unavailable)", false);
-    } else ok("Brief motion-context check (no linked motion)", false);
+    // The Brief carries motion context only through the deterministic P1A linkage: a motion names a
+    // pursuit_id, or nothing. The canonical world links no motion to a pursuit (the certified Pursuit
+    // Detail renders none). This check once passed only because outcome-bridge-verify, run before it on
+    // the SAME world, had COMMITTED a linked "Verify motion" into it — a hidden cross-suite dependency
+    // that H1A clone isolation removed. So the suite establishes the linkage itself, the way the
+    // reparent service does (same org, same account), inside a transaction that is ALWAYS rolled back,
+    // and reads the motion context with the exact query Pursuit Detail uses.
+    await db.query("begin");
+    try {
+      await db.query("select set_config('app.org_id',$1,true)", [org]);
+      let pursuitId = (await one<{ pursuit_id: string }>(
+        `select pursuit_id from revenue_motions where org_id=$1 and pursuit_id is not null order by created_at limit 1`, [org]))?.pursuit_id ?? null;
+      if (!pursuitId) {
+        const pair = await one<{ motion_id: string; pursuit_id: string }>(
+          `select m.id motion_id, p.id pursuit_id from revenue_motions m
+             join pursuits p on p.account_id = m.company_id and p.org_id = m.org_id
+            where m.org_id = $1 order by p.created_at, m.created_at limit 1`, [org]);
+        if (pair) {
+          await db.query(`update revenue_motions set pursuit_id = $2 where id = $1 and org_id = $3`, [pair.motion_id, pair.pursuit_id, org]);
+          pursuitId = pair.pursuit_id;
+        }
+      }
+      if (pursuitId) {
+        const detail = await getPursuitDetail(db, await callerFor(db, org), pursuitId);
+        const motion = await one<{ status: string; hypothesis: string }>(
+          `select m.id, m.status, n.name as hypothesis from revenue_motions m
+             join taxonomy_nodes n on n.id = m.taxonomy_node_id
+            where m.pursuit_id = $1 and m.org_id = $2 order by m.created_at desc limit 1`, [pursuitId, org]);
+        if (detail && motion) {
+          const brief = buildPursuitBrief(detail, null, { hypothesis: motion.hypothesis, status: motion.status });
+          const happening = brief.sections.find((s) => s.key === "happening")!;
+          const hypLine = happening.lines.find((l) => /Serving hypothesis/.test(l.text));
+          ok("Brief carries the motion context for the sponsor", !!hypLine);
+          ok("Brief marks the motion context confidential (withheld from the partner rendering)", hypLine?.confidential === true);
+        } else ok("Brief motion-context check (detail or linked motion unavailable)", false);
+      } else ok("Brief motion-context check (no motion shares an account with a pursuit of this org)", false);
+    } finally {
+      await db.query("rollback");
+    }
 
     // ---- Today material intervention: only past the floor, from real INVITED rows ---------------
     const before = await motionAcceptanceBlockage(db, org);

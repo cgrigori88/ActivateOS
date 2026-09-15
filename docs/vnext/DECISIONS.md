@@ -1124,3 +1124,49 @@ On Globex:
 Plan review outranks the stale action. The Queue preserves that action once, with plan-review
 context. Pursuit Detail distinguishes "Current approved plan / Focus when approved". External
 sending remains off.
+
+## D-047 · A verifier creates the relationships it asserts; it never borrows them from another suite
+
+**Context.** `motion-intel` failed one assertion ("Brief motion-context check (no linked motion)")
+on every clone-isolated run.
+- The check needs a motion that names a pursuit.
+- The canonical world has none, rightly: the certified Pursuit Detail shows no motion context.
+- It had passed only because `outcome-bridge-verify`, run just before it on the same world, had
+  committed a linked motion.
+
+**Decision.** The fixture belongs to the verifier, not the canonical world.
+- `motion-intel` links a same-org, same-account motion to a pursuit (the reparent service's
+  semantics) inside a transaction it always rolls back.
+- It reads motion context with Pursuit Detail's own query.
+- The canonical seed is not changed. A relationship is added to the certified world only when it
+  is genuinely part of the certified story.
+
+**Result.** 76/76 clean certification runs, and the world is unchanged.
+
+## D-048 · Cross-tenant consent flows must work under `app_rw` before the runtime cutover
+
+**Context (H1B readiness review).** The flows were exercised as the real `app_rw` login.
+- **Counterpart writes abort the action.** Every partnership handshake writes an audit row into the
+  counterpart's ledger. RLS refuses it, and the refusal aborts the transaction. `audit()`'s swallowed
+  error does not save it, because Postgres has no statement-level recovery without a savepoint.
+- **Shared data disappears.** Consented shared reads (settlement, shared skills and evidence,
+  counterpart joint events, list-grant materialisation) return nothing.
+- **Admin invite redemption cannot see the invite.**
+
+The result fails closed (no leak), but a cutover as designed would break every partnership
+collaboration feature.
+
+**Decision.** This is **MUST_RESOLVE_BEFORE_CUTOVER**, done as local work item H1B-0:
+- a savepoint in `audit()`;
+- narrow SECURITY DEFINER functions or consent-scoped policies for the counterpart writes and the
+  consented reads, keyed on the partnership / share / grant the caller is party to;
+- an `app_rw` consent-flow verifier in certification.
+
+No broad policy is allowed: nothing may re-open a counterpart's book beyond what consent grants.
+The migration reaches the hosted database only as its own approval step, Gate 1b.
+
+Classification of the other recorded concerns:
+- global learning tables: POST_CUTOVER, decide before real data;
+- inbound subject matching: POST_CUTOVER, resolve before any sending;
+- stored digests: validate at Gate 1;
+- pooler login: validate at Gate 3, a hard stop.

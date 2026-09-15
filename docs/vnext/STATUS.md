@@ -2,7 +2,18 @@
 
 **Last updated:** 2026-09-14 (H1A — Pre-Pilot Hardening Gate: tenant isolation + certification integrity)
 
-**2026-09-14 (latest) — H1A COMPLETE (local). H1B is design only, and H1 is NOT complete until H1B passes hosted certification.** Record: `H1-PRE-PILOT-HARDENING.md`, decisions D-043…D-046.
+**2026-09-14 (latest) — H1B BASELINE: COMPLETELY GREEN.** `certify-world --runs 2` gives **76/76 suite runs clean**: 3,242 assertions, 0 failures. The canonical digest is `e98b43254f98d5ec` before run 1, after run 1 and after run 2, and the manifest `be0da833990ce436` is unchanged.
+
+The last failure (`motion-intel`, pre-existing) was a verifier fixture gap, fixed in the verifier (D-047): it had borrowed a linked motion that another suite committed.
+
+**H1B readiness review** (D-048; nothing executed):
+- 1 **MUST_RESOLVE_BEFORE_CUTOVER**, proven empirically as `app_rw`: cross-tenant consent flows. Counterpart audit writes abort every partnership handshake, and consented shared reads lose the counterpart's data.
+- 2 **SAFE_TO_VALIDATE_DURING_H1B**: stored digests (Gate 1) and the pooler login (Gate 3).
+- 2 **POST_CUTOVER**: global learning tables, and inbound subject matching.
+
+Nine gates are defined, each hosted mutation separately approved, with local work item H1B-0 first. **Gate 1 (read-only preflight) may begin; Gate 5 may not until H1B-0 is done.**
+
+**Earlier the same day — H1A COMPLETE (local). H1B is design only, and H1 is NOT complete until H1B passes hosted certification.** Record: `H1-PRE-PILOT-HARDENING.md`, decisions D-043…D-046.
 
 **Slices.** Slice 1, Slice 2A and **Slice 2B are DEMO CERTIFIED / FROZEN**; Slice 2B passed hosted human review. One account may contain multiple independent pursuits: Today composes one card per PURSUIT, not per account.
 
@@ -125,7 +136,7 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | **Today / Queue tenant scoping (hardening)** | P6 / #67 | **DONE (local)** — the Slice 2B security gate; subsumed by H1A | `c0eea5a` | 2026-09-14 | — | D-041. `today-tenant` verifier + source guard |
 | **Pursuit Attention + Today / Queue — Vertical Slice 2B** | P3 | **DEMO CERTIFIED / FROZEN** (hosted human review on the isolated Preview, 2026-09-14) | `roadmap/pursuitos-vnext` @ `54ab990` | 2026-09-14 | Nothing. Do not materially redesign it absent pilot feedback | One card per PURSUIT, not per account (Globex modernization → Plan needs review; Globex expansion → its own CDW route decision). Plan review outranks the stale action; the Queue preserves the action once with plan-review context; "Current approved plan / Focus when approved". D-034…D-042, D-046 |
 | **H1A — Tenant isolation + certification integrity** | P6 / #67 | **COMPLETE (local)** | `roadmap/pursuitos-vnext` (H1A commit) | 2026-09-14 | Nothing in H1A. H1 completes with H1B | 293 paths audited; 152 fixed + 1 reclassified; `tenant-isolation` 205/0; 0 UNSAFE verifiers; fingerprint gate PASS (`e98b43254f98d5ec` at start, after run 1 and after run 2; 74/76 suite runs clean, the 2 exceptions being the pre-existing `motion-intel` fixture gap); app_rw rehearsal 36/36. D-043, D-044. Reported, not fixed: global learning tables, inbound subject matching, stored digests (`H1-PRE-PILOT-HARDENING.md` § C) |
-| **H1B — Least-privilege runtime / RLS cutover** | P6 / #67 | **DESIGN ONLY** — not started | — | 2026-09-14 | Owner-approved: `alter role app_rw login` on the isolated DB → Preview env split (`DATABASE_URL_OWNER` then `DATABASE_URL` → app_rw) → hosted certification (§ H1B) | D-045. Supavisor custom-role login asserted only by an unverified log; verify first on `mejokqxriwyawfhawuxu`. Cross-tenant consent flows may need narrow policies under app_rw |
+| **H1B — Least-privilege runtime / RLS cutover** | P6 / #67 | **NOT STARTED** — baseline 76/76 green; readiness reviewed; nine gates defined | — | 2026-09-14 | H1B-0 (local): consent flows under app_rw + `/api/build` posture probe → Gate 1 read-only preflight → Gates 1b–8, each hosted mutation separately approved → Gate 9 pilot decision (`H1-PRE-PILOT-HARDENING.md` § H1B execution plan) | D-045, D-048. Consent flows fail closed under app_rw (proven) — MUST resolve before Gate 5. Pooler login unproven until Gate 3 (hard stop) |
 | · pursuit context narrative (rendered) | P1 | **PREVIEW READY** | `6c5b7a9` `components/pursuit/context-narrative.tsx` | 2026-09-12 | Product sign-off on the refined surface, then GATE D/E | Titled **"What matters now"**, full-width on desktop. GATE C **N-1 fixed** (all 10 ledger rows reachable, override chronology included), **N-2/N-4/N-6 fixed**. Flag OFF verified identical panel-for-panel. Residual: R-1 "What changed" right half empty (cosmetic), R-2 283px void beside Value case. See `GATE-C-PRODUCT-REVIEW.md` § GATE C REFINEMENT |
 | · pursuit evidence (direct + supporting) | P1 | **PREVIEW READY** | `620bc12` `read-models/pursuit-evidence.ts` | 2026-09-12 | Consumed by "What matters now" since `99bd5dd` | 18 tests. **Supersedes the plan to swap `getFacts` to pursuit scope** — Globex has 1 linked fact, so the swap would have deleted the best evidence on the screen. See D-020 |
 | · fact freshness | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/facts/freshness.ts` | — | Compose at pursuit level | Exists per-fact; nothing composes per-pursuit |

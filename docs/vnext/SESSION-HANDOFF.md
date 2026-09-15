@@ -16,8 +16,10 @@
 | **Current commit** | this session's H1A commit, on top of `54ab990` |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
 | **Slice status** | Slice 1 · Slice 2A · **Slice 2B** — all **DEMO CERTIFIED / FROZEN** (2B passed hosted human review). One account may contain multiple independent pursuits; Today composes one card per PURSUIT, not per account. **No product slice before H1 completes.** |
-| **Gate status** | **H1A COMPLETE (local)** · **H1B DESIGN ONLY** · H1 NOT complete until H1B passes hosted certification. Record: `H1-PRE-PILOT-HARDENING.md` |
-| **Session completed** | **H1A — TENANT ISOLATION + CERTIFICATION INTEGRITY.** See § "H1A" below. No hosted database, Vercel, Supabase role/grant, flag, deployment or Production change; `qifatlqxfuhwrwvpbwsc` untouched. |
+| **Gate status** | **H1A COMPLETE (local)** · **baseline 76/76 green** · **H1B NOT STARTED** — readiness reviewed, nine gates defined (`H1-PRE-PILOT-HARDENING.md` § H1B execution plan). H1 NOT complete until H1B passes hosted certification |
+| **Session completed** | **H1B BASELINE + READINESS REVIEW.** `motion-intel` verifier fixture gap fixed (D-047). `certify-world --runs 2` gives 76/76 clean, 3,242 assertions, 0 failures, with digest `e98b43254f98d5ec` identical before and after both runs. Readiness review: consent flows under app_rw are MUST_RESOLVE_BEFORE_CUTOVER, proven empirically on a local clone (D-048). No hosted database, Vercel, Supabase role/grant, flag, deployment or Production change; `qifatlqxfuhwrwvpbwsc` untouched. |
+| **Exact next step** | **Either** begin **H1B Gate 1** (read-only hosted preflight, owner-approved), **or** do local work item **H1B-0** first: consent flows under `app_rw` (savepointed `audit()`, narrow definer functions / consent-scoped policies, an `app_rw` consent verifier) and the `/api/build` posture probe. **Gate 5 must not run before H1B-0 is certified.** |
+| **Before that** | **H1A — TENANT ISOLATION + CERTIFICATION INTEGRITY** (`39acb05`). See § "H1A" below. |
 | **Before that** | **SLICE 2B HOSTED-REVIEW DEFECT — FIXED** (`54ab990`), then accepted on the hosted Preview → Slice 2B DEMO CERTIFIED / FROZEN. |
 | **Before that** | **TODAY / QUEUE TENANT HARDENING — PASSED** (`c0eea5a`, the Slice 2B release blocker). See § "Today / Queue tenant hardening". |
 | **Before that** | **SLICE 2B — PURSUIT ATTENTION + TODAY / QUEUE, LOCAL** (`8261ef3`). See § "Vertical Slice 2B". |

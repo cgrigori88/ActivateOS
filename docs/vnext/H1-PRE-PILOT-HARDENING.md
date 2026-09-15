@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · H1B NOT STARTED (design only). **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B NOT STARTED — readiness reviewed, nine gates defined, one MUST-resolve item (consent flows under `app_rw`) before Gate 5. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -178,11 +178,36 @@ Not plantable in this world: a provider run, because the local `providers` regis
 
 **CERTIFICATION INTEGRITY: PASS.** The whole-world digest was `e98b43254f98d5ec` at the start, after run 1 and after run 2. **No suite moved the world in either run**; before H1A, eight did.
 
-Suite verdicts: 74 clean, and 2 with one failure each. Both are `motion-intel`, which gave 18 passed / 1 failed in both runs, on "Brief motion-context check (no linked motion)".
-- **The failure is pre-existing, not an H1A regression.** The same suite, run at `54ab990` (before any H1A change) on a clone of the same world, fails the same assertion identically.
-- **Cause.** The suite picks "whatever org is first" and expects that org to own a motion linked to a pursuit. The canonical world has none, so the assertion has nothing to check. It is a fixture gap, recorded here and not papered over.
+The first H1A pass gave 74 clean suite runs: `motion-intel` failed one assertion in both runs. That failure was pre-existing, and it is now repaired in the verifier (see "Final H1B baseline" below, and D-047).
 
-Every other suite passed with 0 failures in both runs.
+#### Final H1B baseline — completely green (2026-09-14)
+
+**The failing assertion.** `motion-intel` asserted "Brief motion-context check (no linked motion)". It needs a motion that names a pursuit (`revenue_motions.pursuit_id`), because a pursuit's Brief carries motion context ("Serving hypothesis", confidential to the sponsor) only through that deterministic P1A linkage.
+
+**Root cause: a verifier fixture gap.** It was not a canonical-seed gap and not a wrong expectation.
+- **The canonical world has no such link, and should not.**
+  - The seed (`demo-stories.ts`) inserts motions without a `pursuit_id`.
+  - The only application path that sets one is the legacy reparent/backfill service.
+  - The certified Pursuit Detail for the canonical pursuits renders no motion context.
+  - Adding the link to the seed would change a frozen, certified surface.
+- **Why it once passed.** `outcome-bridge-verify`, run immediately before it on the same shared world, committed a linked "Verify motion" into that world. That was a hidden cross-suite dependency. H1A's clone isolation gives every writing suite its own clone, which exposed it; the suite fails identically at `54ab990`, before H1A.
+
+**The fix is in the verifier.** `motion-intel` now establishes the linkage itself, the way the reparent service does: a same-org, same-account motion is linked to a pursuit.
+- It does this inside a transaction that is **always rolled back**.
+- It reads the motion context with **the exact query Pursuit Detail uses**, where the old check fabricated it.
+
+The one placeholder failure became the two real assertions (sponsor sees the motion context, and it is marked confidential), and both pass: `motion-intel` gives 20/0. The suite stays clone-isolated. No product code, seed or canonical row changed.
+
+**Result: `certify-world --runs 2` against a fresh template copy of the canonical world, 38 suites.**
+
+| | |
+|---|---|
+| Suite runs | **76 / 76 clean** — 1,621 assertions per run, 3,242 in total, **0 failures** |
+| Canonical digest | `e98b43254f98d5ec` before run 1, after run 1 and after run 2. **CERTIFICATION INTEGRITY: PASS** |
+| `pursuit_demo` after the session | fingerprint `e98b43254f98d5ec` (154 tables, 1,051 rows); manifest `be0da833990ce436`, unchanged |
+| Also green | `tsc` 0 · `npm test` 362/0 · production build 0 |
+| Named suites | Slice 1 `vnext-context` 62/0 · 2A `vnext-coordination` 116/0 · 2B `vnext-attention` 64/0 · `today-tenant` 51/0 · `tenant-isolation` 205/0 · `demo-team` 11/0 · `value-case` 126/0 |
+| Safety | No hosted write. No send activity: the send provider was unset and no send path was exercised |
 
 The canonical world `pursuit_demo` itself was never a target. Its fingerprint is `e98b43254f98d5ec` (154 tables, 1,051 rows) and its manifest digest `be0da833990ce436`, both unchanged.
 
@@ -247,15 +272,77 @@ MIGRATIONS / SEEDS / BACKFILLS / OPS       owner string, run by an operator — 
 | Background jobs | The worker keeps the owner connection (`getOwnerPool()` everywhere in `src/worker/index.ts`); its jobs are system / cross-tenant by design. H1A must confirm each per-org job keeps orgs apart by explicit predicate (it gets no RLS protection) |
 | Certify RLS actually enforces | (a) Read-only catalogue checks: `rolcanlogin`, `rolbypassrls = false`, policies on every org_id table, FORCE state. (b) As app_rw with **no** `app.org_id`: every tenant table returns 0 rows. (c) As app_rw with org A: only org A's rows; a write carrying org B is refused (42501 / WITH CHECK). (d) Run the tenant verifiers (`today-tenant`, the H1A broad verifier) with `DATABASE_URL_VERIFY` = the app_rw string. (e) A two-org blind test through the deployed app: two sessions, each sees only its own org. (f) `/api/build?probe=1` → `app_rw`, `rolbypassrls false` |
 
-### H1B sequence (for the owner to approve — none of it has been run)
+### H1B readiness review (2026-09-14 — review only; nothing executed)
 
-1. **Isolated DB only (`mejokqxriwyawfhawuxu`), never `qifatlqxfuhwrwvpbwsc`.** Read-only pre-flight (grants/policies/FORCE).
-2. `alter role app_rw with login password '<secret>'` as `postgres`. Test a direct `app_rw.<ref>` login through the transaction pooler: `select current_user` → `app_rw`; with no GUC, `select count(*) from pursuits` → 0.
-3. Vercel Preview (this branch only): add `DATABASE_URL_OWNER` (owner string) → redeploy → verify green.
-4. Change `DATABASE_URL` → app_rw string → redeploy → `/api/build?probe=1` shows `app_rw` / `rolbypassrls false`.
-5. Run the certification battery against the isolated DB (owner string for SEEDED fixtures, app_rw string for the tenant verifiers), then a crawl of every room: any empty room is a path that still depends on the owner bypass — it fails closed (empty), it does not leak.
-6. Two-org blind test; hosted human review.
-7. Rollback rehearsal: point `DATABASE_URL` back at the owner string, redeploy, confirm.
+Each recorded concern was tested against the real policies and, where possible, **empirically, as the real `app_rw` login** on a scratch clone of the canonical world (every statement rolled back, clone dropped).
+
+| # | Concern | Evidence | Classification | Why |
+|---|---|---|---|---|
+| 1 | Global `signal_sources` / `golden_examples` | No `org_id`. `app_rw` policies are `USING(true) WITH CHECK(true)`. `review.ts` updates source trust and copies claim + excerpt into `golden_examples` | **POST_CUTOVER / NON-BLOCKING** | The cutover does not change this behaviour: identical under the owner and `app_rw`, no failure and no new exposure (the review queue itself is tenant-scoped). It is a data-ownership decision: a tenant's excerpt retained in a platform-wide eval table. **Decide before real (non-synthetic) tenant data enters review**, not before cutover |
+| 2 | Inbound email subject matching across tenants | The Resend webhook and inbound matching run on `getOwnerPool()`, which the cutover does not touch. The fallback key is participants + normalised subject, over all orgs | **POST_CUTOVER / NON-BLOCKING** | Unaffected by the cutover. External sending is off, so no replies arrive to misroute. **Must be resolved before external sending is ever enabled**: triage when the key matches threads in more than one org |
+| 3 | Stored `account_digests` needing regeneration | Code fixed in H1A. The canonical world holds 0 digests, 0 routines and 0 routine runs; the seed creates none. Hosted count unknown | **SAFE_TO_VALIDATE_DURING_H1B** | Gate 1 counts digests, routines and runs, read-only. If 0: nothing to do. If >0: purge or regeneration is a **separate, approved hosted write**. It does not gate the cutover, because under `app_rw` a digest row is readable only by its own org |
+| 4 | Custom `app_rw` login through the Supabase pooler | Asserted only by an unverified session log. Local proof: `app_rw` login, `rolbypassrls=false`, 0 rows with no GUC, 36/36 rooms identical | **SAFE_TO_VALIDATE_DURING_H1B** | This is Gate 3 itself, a hard stop before any Vercel change. If the pooler refuses the login, no environment changes and H1B returns to design. The fallback options are recorded under Gate 3 |
+| 5 | Cross-tenant consent flows under `app_rw` | **Proven empirically; details below** | **MUST_RESOLVE_BEFORE_CUTOVER** | Under `app_rw` every partnership collaboration action fails, and consented shared reads silently lose the counterpart's data. Nothing leaks: it fails closed. But it breaks the certified partnership and joint features |
+
+**Concern 5 in detail.** Probe run as the `app_rw` login with `app.org_id` = Vertex, on a clone:
+- **Counterpart audit rows are refused.** `insert into audit_log (org_id = TD SYNNEX)` fails with `new row violates row-level security policy for table "audit_log"`.
+- **The refusal kills the action.** Without a savepoint it aborts the transaction ("current transaction is aborted"). `audit()` claims it "never throws … must not roll back the action it records", but in Postgres a swallowed statement error still dooms the transaction.
+- **Every handshake audits both parties**, so every one of them would roll back:
+  - joint propose / accept / close;
+  - overlap request / decide;
+  - skill offer / accept / revoke;
+  - warm intros;
+  - evidence offer / decide / revoke (`auditBoth`);
+  - partnership revoke;
+  - list-grant offer / accept / sync / decline / revoke.
+- **The counterpart's rows are invisible** (0 of each): opportunities, skills, evidence, lists. So these silently lose data:
+  - `settlementStatement` (both books);
+  - `sharedInSkills` / `skillsForContext`;
+  - `sharedInEvidence`;
+  - counterpart `joint_pursuit_events`;
+  - list-grant materialisation;
+  - overlap computation.
+- **Admin invite redemption breaks.** An invited partnership is invisible to the org redeeming it (0 rows), so `redeemPartnershipInvite` reports "invite not found". It runs through `ownerTenant()`, which is `withTenant` plus an org-OWNER *role* check, not the owner pool. The `/join` path uses `getOwnerPool()` and is unaffected.
+- **Why nothing caught it.** The rehearsal (36/36 identical) could not see this. The canonical world has no grants, shares or events, and the crawl is read-only.
+
+**Required before Gate 5 (H1B-0, local, no hosted change).** Design options for the owner — none implemented:
+- (a) `audit()` wraps its insert in a savepoint, so an audit failure truly cannot roll back the action.
+- (b) Counterpart audit rows are written through a narrow SECURITY DEFINER function, `audit_partnership_event(partnership_id, org_id, …)`. It verifies that the caller is a party and that `org_id` is the counterpart.
+- (c) Consent-scoped read policies, or definer functions, for the shared reads:
+  - skills via accepted `skill_shares`;
+  - evidence via accepted `evidence_shares`;
+  - joint events of a joint pursuit the caller can see;
+  - settlement rows of a partnership the caller can see;
+  - list-grant materialisation from a granted list.
+- (d) Invite redemption through a definer `redeem_partnership_invite(code)`, or through the owner pool with the explicit checks `/join` already uses.
+- (e) A new `app_rw` consent-flow verifier: every handshake and shared read above, run as the real `app_rw` login, rollback-safe, added to certification.
+
+(b)–(d) are a migration. Applying it to the hosted isolated database is its own approval step: Gate 1b.
+
+**Also required before Gate 6 (code, local).** The `/api/build` posture probe: parse the role from `<role>.<ref>`, plus an opt-in live `current_user` / `rolbypassrls` probe. It is designed in § H1B and not yet implemented.
+
+### H1B execution plan — nine gates, each hosted mutation its own approval, with explicit stop points
+
+Scope: **the isolated vNext database `mejokqxriwyawfhawuxu` and the Vercel Preview scope of `roadmap/pursuitos-vnext` only.** Never `qifatlqxfuhwrwvpbwsc`, never Production.
+
+Secrets are generated by the operator, stored in the Vercel / Supabase secret stores, and never printed, logged or committed. Any stop condition means: stop, report and wait. There is no improvising.
+
+| Gate | Action | Mutation? | Pass criteria | STOP if |
+|---|---|---|---|---|
+| **H1B-0** (local) | Consent-flow remediation (a)–(e) and the `/api/build` posture probe. Commit. Full local certification, including the new `app_rw` consent verifier, `certify-world --runs 2` (76+ / 76+ clean) and the app_rw rehearsal | none hosted | all green; the canonical fingerprint is unchanged | anything is red |
+| **1** | **Read-only hosted preflight** of `mejokqxriwyawfhawuxu`. Checks:<br>• environment identity (`demo`, `is_synthetic`);<br>• migration count;<br>• `app_rw` exists, NOLOGIN, `rolbypassrls=false`;<br>• `postgres` holds ADMIN on `app_rw`;<br>• `app_rw` grants on every table;<br>• a `_rw` policy on every `org_id` table; FORCE state;<br>• counts of `account_digests`, `routines`, `routine_runs` and org-less rows;<br>• canonical manifest digest | **no** (`BEGIN READ ONLY`) | identity is the synthetic isolated DB; grants and policies are complete; digest `be0da833990ce436` | wrong identity; a table without a grant or policy; unexpected org-less rows; digest mismatch |
+| **1b** | Apply the H1B-0 migration (additive policies and definer functions; inert under the owner connection) | **YES — separate approval** | migration count +1; Gate 1 checks still pass; app unchanged (still on the owner) | apply error; any Gate 1 regression |
+| **1c** | Only if Gate 1 found digests: purge or regenerate them | **YES — separate approval** | 0 stale digests | — |
+| **2** | `alter role app_rw with login password '<generated secret>'`, as `postgres`, on the isolated DB only | **YES — separate approval** | `rolcanlogin=true`; nothing else about `app_rw` changed (`rolbypassrls=false`, grants identical to Gate 1) | any other attribute changed. Rollback: `alter role app_rw nologin` |
+| **3** | **Prove the pooler login** from the operator machine: `app_rw.<ref>` on the transaction pooler :6543 | no (a rolled-back probe transaction) | `current_user=app_rw`, `rolbypassrls=false`. With no `app.org_id`: every tenant table returns 0. With `app.org_id`=Vertex: counts equal the owner's. A write carrying another org is refused | the login is refused. **Then no Vercel change**; H1B returns to design. Options: session pooler :5432 (not serverless-suitable), or Supavisor custom-role configuration. The Gate 2 rollback is available |
+| **4** | Vercel Preview (this branch only): **add** `DATABASE_URL_OWNER` = the current owner string; redeploy | **YES — separate approval** | the build is healthy; `/api/build` still reports `postgres`; the owner paths (login, join, admin members, webhook) work; a full room crawl matches the pre-change crawl | anything differs. Rollback: remove the variable and redeploy |
+| **5** | Vercel Preview: **change** `DATABASE_URL` to the `app_rw` pooler string; redeploy | **YES — separate approval** | the app boots; every room renders | a room errors or empties. Rollback: Gate 8 procedure |
+| **6** | `/api/build` role and RLS posture proof | no | `database.role=app_rw`; the live probe shows `current_user=app_rw`, `rolbypassrls=false`; the project ref is parsed; the build SHA is the approved commit | any other value |
+| **7** | **Hosted tenant/RLS certification.**<br>(i) Catalogue checks.<br>(ii) Room crawl, identical to the Gate 4 crawl.<br>(iii) READ_ONLY / ROLLBACK_SAFE suites (`today-tenant`, `vnext-attention`, `vnext-coordination`, `vnext-context`, `demo-team`, the `app_rw` consent verifier) with `DATABASE_URL_VERIFY` = the `app_rw` string. Each run is approved. **Planting / SEEDED_CLONE suites never run against a hosted DB.**<br>(iv) A two-org blind test through the deployed Preview (two sessions, each sees only its own org).<br>(v) The partnership and joint handshakes exercised end to end.<br>(vi) Hosted human review | only rolled-back verifier transactions | all green; zero foreign data; handshakes succeed; manifest unchanged | any leak, any broken room or handshake, any digest drift |
+| **8** | **Rollback rehearsal**: set Preview `DATABASE_URL` back to the owner string, redeploy, confirm (`/api/build` → `postgres`, crawl identical). Then re-apply `app_rw` | **YES — two separate approvals** | rollback and re-apply both clean | rollback does not restore service |
+| **9** | **Pilot-readiness decision** (owner) | none | Gates 1–8 evidence reviewed. Concerns 1 and 2 have an owner decision, or a plan that lands before real data or sending. H1 is marked COMPLETE only here | any open MUST item |
+
+Production is outside H1B. Promoting the same posture to a production project is a separate plan, with its own approvals.
 
 ### Local rehearsal (H1A — no hosted change)
 
