@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · Gates 4–9 not begun. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 APPLIED AND VERIFIED; ONE CRITERION NOT MET; AWAITING OWNER DECISION** (2026-09-15; `DATABASE_URL_OWNER` added to Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical. The fingerprints moved to business-data `c9623fb5abe2f9bc` / whole-world `dce27935d88743fb`, caused by the crawl's own render-time writes on the pre-change deployment) · Gates 5–9 not begun. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -949,3 +949,79 @@ The tooling (`gate3-probe.ts`, `gate3-targets.ts`, and the snapshot and assertio
 - security hash `30772757ebd4688c`.
 
 **Gate 4 was NOT begun.** Nothing in Vercel changed. H1B, and so H1, are not complete.
+
+---
+
+## Gate 4 — add `DATABASE_URL_OWNER` to the branch Preview: RESULT (2026-09-15)
+
+**Gate 4 — CHANGE APPLIED AND VERIFIED · ONE CRITERION NOT MET (database fingerprint) · AWAITING OWNER DECISION.**
+
+Every runtime, routing, owner-path and room criterion passed. The whole-world and business-data fingerprints did **not** stay at the baseline of record. The signed-in room crawl itself caused the drift: two crawled rooms write on render. The drift happened on the **pre-change** deployment, during the BEFORE crawl, before the variable existed. It is not caused by `DATABASE_URL_OWNER`, and removing the variable would not undo it. So the rollback trigger ("adding `DATABASE_URL_OWNER` causes a regression") is not met, and the variable stays. Gate 4 is **not** recorded as a clean PASS, because the specified criterion "fingerprints unchanged" did not hold. The owner decides below.
+
+**Scope.** Vercel project `pursuitos-demo`, target Preview, Git branch `roadmap/pursuitos-vnext`; database `mejokqxriwyawfhawuxu`.
+- Production and other Preview branches were not touched.
+- `qifatlqxfuhwrwvpbwsc` was not contacted.
+- No database mutation was issued by the gate tooling. Every tooling transaction was `READ ONLY` with a NULL txid. The only hosted writes were the application's own render-time writes, set out below.
+
+**Inputs.** `OPS_FINGERPRINT_TOKEN`, `GATE_DEMO_EMAIL`, `GATE_DEMO_PASSWORD` and `GATE_OWNER_DATABASE_URL` were inherited from the launching shell and checked by presence only.
+- The owner string was parsed in memory first: `postgres.mejokqxriwyawfhawuxu` on the transaction pooler `aws-0-ca-central-1.pooler.supabase.com:6543`, database `postgres`, no forbidden ref.
+- To reach the SSO-protected Preview, the tooling read the project's **existing** automation-bypass secret in process and sent it only to the deployment host. No protection setting changed.
+- A 1,246-file scan of the session scratchpad and the repository afterwards found **0 occurrences** of any of the four values, the owner password or the CLI token. The demo email is redacted in every saved crawl.
+
+**The change.**
+- `DATABASE_URL_OWNER` (id `I2giX3iM1sNwoN47`, type sensitive) was added, target `preview` only, `gitBranch` `roadmap/pursuitos-vnext`. The value went through stdin (a shell builtin into `vercel env add`) and never appeared in argv or output.
+- A metadata diff of all project env entries (38 after, 37 before) shows exactly one addition, 0 removed and 0 modified.
+- Both `DATABASE_URL` entries are byte-identical in id, target, branch, created and updated: `m6TuSKisz54kJlsD` (branch Preview) and `G7A2MUVlaDmJxPTs` (Production + Preview).
+- No other project gained the variable. The only other `DATABASE_URL_OWNER` in the team is on the separate `pursuitos` project, Production, created 2026-08-29, which is pre-existing and untouched.
+
+**Redeploy.** `vercel redeploy` of `dpl_HwygwR7FDA1QLHBDvbCVJQAHrZir` (commit `89b8c95`), with no target override:
+- the result is **`dpl_4WcVaMZ4jRwzuAppkcdqb5wDCmmn`** (`pursuitos-demo-bi5yav97t-…`): READY, target preview, branch `roadmap/pursuitos-vnext`, commit `89b8c95`;
+- the Production target is unchanged (`dpl_Bre6yKpy…`, `97e975f`).
+
+| Check | BEFORE (`dpl_Hwygw…`, `89b8c95`) | AFTER (`dpl_4WcVa…`, `89b8c95`) |
+|---|---|---|
+| `/api/build` (ops token) | branch `roadmap/pursuitos-vnext` · `preview` · ref `mejokqxriwyawfhawuxu` · host pooler · **role `postgres` · bypassRls true · tenantEnforcement false** · probe live · `externalSendingArmed` false | **identical** — the runtime role did not change; no `app_rw` |
+| Sign-in (the real `/login` form, synthetic demo owner of Vertex Systems) | lands on `/`, auth cookie set | same |
+| `/login` signed out: owner-pool `org_members` count | sign-in form, no first-run form | same |
+| `/login` signed in | "signed in" banner | same |
+| `/join/<dead code>`: owner-pool `inviteInfo` | dead-link message | same (the hosted DB has no live invite code, so none was exercised) |
+| `/admin`: owner-pool `currentRole` + members table joining `auth.users` | owner gate passes; members show the demo owner; 205 lines | same, 205 lines |
+| `/ops`: owner-pool `currentRole` | "Governance ops", owner gate passes | same |
+| `/api/webhooks/resend`, an unsigned POST (no event) | 503 "webhook secret not configured" (existing Preview config; refused before any pool use) | same |
+| `/api/research` GET | 401, closed (no trigger secret on Preview; not exercisable without adding one) | same |
+| Signed-in crawl: 37 rooms, each crawled twice BEFORE to mask volatile lines | all 200 | **37 / 37 equivalent.** 36 are line-identical. `/api/palette` is identical JSON; the compare script flagged it "empty" only because the response is a single JSON line. It covers Today (`/`, `?today=all`, drawer), Queue, Pipeline, Accounts plus detail and export, Contacts plus detail, Mapping, Pursuits, **Pursuit Detail** (Globex), Motions, Briefs, Goals plus detail, Campaigns, Upcoming, Analytics, Insights, Review, Sources, Provider health, **Partners** plus detail and review, **Joint** plus the joint room, Skills, Routines, **Admin**, Ops, Ask, Trust, Intake |
+
+**Owner-connection routing.**
+- **Normal path:** `getPool()` → `DATABASE_URL`. The AFTER `/api/build` live probe on that pool reports `postgres`, bypassRls true, tenantEnforcement false.
+- **Owner path:** `getOwnerPool()` builds its own pool from `DATABASE_URL_OWNER` whenever that is set (`src/db/client.ts`), and the AFTER deployment has it set. The value is `postgres.mejokqxriwyawfhawuxu` on the pooler, checked from the parsed user.
+- **Proof it works:** every owner-only read succeeded after the change through that separate pool, including the `/admin` members read of `auth.users`, which `app_rw` cannot perform.
+- Neither URL was exposed.
+
+**Database post-check (read-only, 38 / 41 against the BEFORE snapshot).**
+- **Unchanged:**
+  - migrations 105 (latest 0105), manifest `db1f78f7a11bbacb`, security hash `30772757ebd4688c`;
+  - `app_rw` LOGIN true, BYPASSRLS false, NOINHERIT, member of nothing;
+  - 31 protected functions, 0 unsafe; no runtime CREATE on `public`;
+  - policies, grants, triggers, functions and roles;
+  - business counts and partnership data (1 · 1 · 4 · 2, the rest 0);
+  - 0 send rows (messages, outbox, email events, identities, sent touches).
+- **Changed:** business-data fingerprint `79321d9130d1dc94` → **`c9623fb5abe2f9bc`**; whole-world `de05e204801988d1` → **`dce27935d88743fb`**. Exactly two tables differ:
+  - `routines` 0 → 2 rows: Vertex `morning_brief` and `account_digest`, `enabled=false`, empty config and state, no runs (`routine_runs` still 0). Created 16:22:11Z, during the BEFORE crawl, by `listRoutines()` (`src/lib/routines/routines.ts`), which inserts the catalog rows (`on conflict do nothing`) whenever `/routines` renders.
+  - `pipeline_snapshots` 0 → 1 row: Vertex, `taken_on` 2026-09-15, 11 open, $8,040,000 open, $3,361,500 weighted, which matches the unchanged opportunity data. `/pipeline` upserts today's row on every render ("history accrues just by looking"). It was first written during the BEFORE crawl, and later visits rewrote identical values.
+  - Both run inside `withTenant`, which uses the **normal `DATABASE_URL` pool**, not the owner pool.
+  - The BEFORE snapshot (16:21:22Z) was taken just before the BEFORE crawl began (16:21:28Z). The variable was added at 16:24:02Z and the redeploy ran at 16:24:55Z.
+
+**Why earlier gates did not see this.** Gates 1–3 did not crawl signed-in rooms, and the H1A rehearsal crawls a disposable local clone. **The certified signed-in crawl is not read-only on hosted:** `/routines` seeds catalog rows once per org, and `/pipeline` writes one snapshot row per org per calendar day. So any later crawl on a new date, including the Gate 7 crawl, will add a `pipeline_snapshots` row and move the fingerprints again. The manifest digest is not affected.
+
+**Owner decision required.**
+- **(a) Re-baseline (recommended).** Accept the three rows as ordinary application residue, as the Gate 1 precedent did, and record business-data `c9623fb5abe2f9bc` / whole-world `dce27935d88743fb` as the baseline of record. Gate 4 then becomes PASS AFTER DOCUMENTED RE-BASELINE. Before Gate 7, adopt a comparison rule for these two look-to-write tables.
+- **(b) Revert.** A separate, approved hosted write deletes exactly those 2 `routines` rows and 1 `pipeline_snapshots` row, which restores `79321d9130d1dc94` / `de05e204801988d1`. The next signed-in crawl would recreate them.
+
+**Rollback readiness.**
+- Not executed: there is no regression attributable to the variable.
+- Procedure: `vercel env rm DATABASE_URL_OWNER preview --git-branch roadmap/pursuitos-vnext`, redeploy the branch, then re-run the BEFORE checks. `DATABASE_URL` is never touched.
+- Removing the variable returns `getOwnerPool()` to its inert fallback, `getPool()`, which is the pre-Gate-4 behaviour.
+
+The tooling is kept in the session scratchpad and never committed, as for the earlier gates: `g4-crawl.mjs`, `g4-compare.mjs`, `vercel-env-snap.mjs`, and the Gate 2/3 snapshot tool re-pointed at a new output directory.
+
+**Gate 5 was NOT begun.** Preview `DATABASE_URL` is unchanged and the runtime is still `postgres`. H1B, and so H1, are not complete.
