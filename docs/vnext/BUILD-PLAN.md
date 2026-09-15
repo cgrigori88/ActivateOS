@@ -96,7 +96,7 @@ SLICE 2B Pursuit Attention + Today/Queue   (P3)        DEMO CERTIFIED / FROZEN
    │      lineage on Queue · "Current approved plan" labelling · D-034…D-042, D-046 · no
    │      migration · Today/Queue tenant-scoped explicitly (D-041) · hosted human review PASSED
    ↓
-H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 PASS · GATE 4 PASS (re-baselined) · GATE 5 PASS · GATE 6 NEXT  ← current
+H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 PASS · GATE 4 PASS (re-baselined) · GATE 5 PASS · GATE 6 PASS · D-G5-1 → GATE 7 NEXT  ← current
    │      H1B-0: partnership/consent flows work under app_rw — consent-scoped definer functions,
    │      a guard against forged consent rows, best-effort audit that cannot abort (D-049);
    │      /api/build posture proof. 0104 applied to the isolated hosted DB (Gate 1b PASS)
@@ -115,7 +115,11 @@ H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 ·
    │      Gate 5 PASS: branch Preview DATABASE_URL → app_rw (value-only; DATABASE_URL_OWNER stays
    │      owner); /api/build app_rw / bypassRls false / tenantEnforcement true; owner paths intact;
    │      37/37 rooms healthy, 4 order-only diffs from untied ORDER BYs (D-G5-1, before Gate 7);
-   │      DB 0/155 tables changed — Gate 6 (posture proof) is next
+   │      DB 0/155 tables changed
+   │      Gate 6 PASS (read-only): live /api/build on 766cb13 — app_rw, bypassRls false,
+   │      tenantEnforcement true, probe live (a real current_user/rolbypassrls/row_security query
+   │      on getPool(), fails closed); owner pool only on privileged paths; smoke 9/9; DB 0/155
+   │      — next: fix D-G5-1 (deterministic tiebreakers), then Gate 7; D-P1 before Gate 9
    │      H1A: every data path explicitly tenant-scoped (D-043); certification integrity —
    │      clone isolation + whole-world fingerprint gate (D-044); broad adversarial verifier
    │      H1B: web runtime → app_rw so RLS binds (D-045) — owner-approved hosted cutover

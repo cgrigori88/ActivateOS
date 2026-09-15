@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · Gates 6–9 not begun. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · **Gate 6 PASS** (2026-09-15; read-only; serving `766cb13` `dpl_JD8DtC8…`; live `/api/build` probe reports `app_rw`, bypassRls false, tenantEnforcement true, probe live; routing and smoke verified; DB 0/155 changed) · **D-G5-1 must be resolved before Gate 7; D-P1 blocks Gate 9 / pilot** · Gates 7–9 not begun. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -1195,4 +1195,66 @@ The rollback value is proven present and correct.
 - whole-world `dce27935d88743fb`;
 - security hash `30772757ebd4688c`.
 
-**Gate 6 was NOT begun.** Gates 6–8 and H1B are not complete, and so neither is H1.
+*(At the Gate 5 record, Gate 6 had not begun. It is recorded below.)*
+
+---
+
+## Gate 6 — `/api/build` role and RLS posture proof: RESULT (2026-09-15)
+
+**Gate 6 — PASS.** This was a read-only posture certification of the live Preview runtime after the Gate 5 cutover. Nothing was mutated: no Vercel env or deploy change, no database write by the tooling, no role, RLS, grant, policy, migration, reseed or sending change. Production and `qifatlqxfuhwrwvpbwsc` were not touched. `OPS_FINGERPRINT_TOKEN` was used by presence only, and only as the `/api/build` header.
+
+**Serving deployment.** `dpl_JD8DtC8HjgKSYtvnR2cF7AmyUwYC` (`pursuitos-demo-6hag7ei1t-…`): `pursuitos-demo`, target preview, branch `roadmap/pursuitos-vnext`, READY, commit **`766cb13`** (`766cb13c0da9bd1485b75227c3ce44fd8640ff5f`). It is the branch alias target. `766cb13` is docs-only on top of the Gate 5 state: `git diff 89b8c95..766cb13` outside `docs/` is **empty**, so the running code is exactly the code certified at Gates 4 and 5. The Production target is unchanged (`dpl_Bre6yKpy…`).
+
+**`/api/build` live posture.** The same answer comes back from the deployment URL and from the branch alias. Without the token it returns 404.
+
+| Field | Value |
+|---|---|
+| environment · environmentLabel | `demo` · `Private demo` |
+| branch · vercelEnv | `roadmap/pursuitos-vnext` · `preview` |
+| commit · deploymentId | `766cb13c0da9…` (equals the serving deployment's `githubCommitSha`) · `dpl_JD8DtC8HjgKSYtvnR2cF7AmyUwYC` |
+| database.projectRef · host | `mejokqxriwyawfhawuxu` · `aws-0-ca-central-1.pooler.supabase.com` |
+| **database.role · bypassRls · tenantEnforcement · probe** | **`app_rw` · `false` · `true` · `live`** |
+| posture.externalSendingArmed | `false` |
+
+**The live probe is real** (`src/app/api/build/route.ts` and `src/lib/env/db-posture.ts`, unchanged since Gate 4).
+- **The query:** `probeDatabasePosture(getPool())` runs `select current_user, r.rolsuper, r.rolbypassrls, current_setting('row_security') from pg_roles r where r.rolname = current_user` on the **running `DATABASE_URL` pool**.
+- **`role`, `bypassRls` and `tenantEnforcement`** are reported from that row whenever `probe = "live"`. `tenantEnforcement` is `!rolsuper && !rolbypassrls && row_security = 'on'`.
+- **Fails closed:** if the query errors or exceeds 2 s, the result is `probe: "unavailable"` with `bypassRls` and `tenantEnforcement` set to **null**, never true. Only then does `role` fall back to the name parsed from the connection string. So `probe: "live"` together with `tenantEnforcement: true` can only come from the live database.
+- **What is parsed from configuration:** only the non-secret `projectRef` and `host`.
+- **Independent corroboration:** after the smoke check, 2 `app_rw` backends were connected (Gate 5 pre-cutover: 0).
+
+**Routing** (code-path proof; no URL exposed).
+- **Normal runtime:** `getPool()` → `DATABASE_URL` → **`app_rw`**. `withTenant` checks out from `getPool()`, runs `begin`, `set_config('app.org_id', $1, true)` (transaction-local), the work, then `commit`.
+- **Owner helper:** `getOwnerPool()` → `DATABASE_URL_OWNER` → **`postgres`**. Its callers are limited to the privileged set:
+  - `login` page and actions (`org_members` count, first-owner bootstrap);
+  - `join/[code]` page and actions (pre-membership invite redemption);
+  - `admin` page (role gate and the members table reading `auth.users`) and actions (member management);
+  - `ops` page (role gate only; its data is read through `withTenant`);
+  - `api/research`;
+  - `api/webhooks/resend`.
+- **No ordinary tenant page or action uses the owner pool.** The only other direct `getPool()` use is `api/mcp`, which resolves an API key through the SECURITY DEFINER `resolve_api_key()` on the runtime (`app_rw`) pool.
+
+**Authenticated smoke check** (synthetic Vertex owner, real `/login`; read-only GETs; no write actions; `/pipeline` without `timeframe`; order not compared, per D-G5-1).
+- **Rooms, 200 on both passes:** Today (251 lines), Queue (171), Pursuit Detail (686), Pipeline (1,329), Admin (205, owner gate passes, members show the demo owner), Ops (55), Joint (82), the joint room (74), partner detail (220). There was no empty or error state.
+- **Owner paths identical to Gates 4 and 5:** `/login` signed out and in, the `/join` dead code, admin, ops, webhook 503 and research 401.
+
+**Database (read-only, straight after the smoke check).** **41/0** against the Gate 5 post record, **0 of 155 tables differ** (strict CFR-1; same UTC day; no allowance used).
+- Migrations 105; manifest `db1f78f7a11bbacb`.
+- Business-data `c9623fb5abe2f9bc`; whole-world `dce27935d88743fb`.
+- Security hash `30772757ebd4688c`.
+- `app_rw` LOGIN true, BYPASSRLS false, NOINHERIT, member of nothing; 31 protected / 0 unsafe.
+- Partnership data unchanged (1 · 1 · 4 · 2, the rest 0).
+- `routines` byte-identical (xmin 2415). The same-day `pipeline_snapshots` row was rewritten with identical values (11 · $8,040,000 · $3,361,500 · null).
+
+**Vercel env** (metadata only): **identical to the Gate 5 final record**, 38 entries.
+- `DATABASE_URL` `m6TuSKisz54kJlsD`: Preview + `roadmap/pursuitos-vnext`, semantic role `app_rw`.
+- `DATABASE_URL_OWNER` `I2giX3iM1sNwoN47`: Preview + `roadmap/pursuitos-vnext`, semantic role `postgres` owner.
+- The Production + Preview `DATABASE_URL` and all send-related entries (`RESEND_WEBHOOK_SECRET`, `EMAIL_*_DOMAIN`) are unchanged since 2026-09-01. No send secret was added; `RESEND_API_KEY` and `OUTREACH_AUTOSEND` are absent.
+
+**Send safety.** `externalSendingArmed` is false (it requires `OUTREACH_AUTOSEND === "on"`, which is not set). There are 0 messages, outbox, email-event, identity and sent-touch rows. The only webhook request was the unsigned probe, refused 503 before any work; no event was delivered.
+
+**Open defects** (unchanged; not fixed in Gate 6):
+- **D-G5-1** (untied ORDER BYs in `divergence.ts` and `projection.ts`): **must be resolved before Gate 7.**
+- **D-P1** (`/pipeline?timeframe=` overwrites today's snapshot): **a Gate 9 / real-pilot blocker.**
+
+**Gate 7 was NOT begun.** Gates 7–8, H1B and H1 are not complete.
