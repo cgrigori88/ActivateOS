@@ -96,7 +96,7 @@ SLICE 2B Pursuit Attention + Today/Queue   (P3)        DEMO CERTIFIED / FROZEN
    │      lineage on Queue · "Current approved plan" labelling · D-034…D-042, D-046 · no
    │      migration · Today/Queue tenant-scoped explicitly (D-041) · hosted human review PASSED
    ↓
-H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 PASS · GATE 4 PASS (re-baselined) · GATE 5 PASS · GATE 6 PASS · D-G5-1 CLOSED · GATE 7 PASS · GATE 8 PASS · D-G8-1 FIXED LOCALLY · D-P1 → GATE 9  ← current
+H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 PASS · GATE 4 PASS (re-baselined) · GATE 5 PASS · GATE 6 PASS · D-G5-1 CLOSED · GATE 7 PASS · GATE 8 PASS · D-G8-1 CLOSED · D-G8-2 DECISION · D-P1 → GATE 9  ← current
    │      H1B-0: partnership/consent flows work under app_rw — consent-scoped definer functions,
    │      a guard against forged consent rows, best-effort audit that cannot abort (D-049);
    │      /api/build posture proof. 0104 applied to the isolated hosted DB (Gate 1b PASS)
@@ -141,6 +141,9 @@ H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 ·
    │      ordering-determinism 23/0 (red 20/3), rehearsal 38/38, certify-world 82/82; not pushed. Audit
    │      recorded the D-G8-2 latent ordering backlog — next: hosted D-G8-1 acceptance, D-G8-2
    │      decision, D-P1 fix, then Gate 9
+   │      D-G8-1 HOSTED ACCEPTED / CLOSED: dcde3b6 on the app_rw Preview; two crawls identical; the
+   │      stakeholder rule order is derived and rendered in every pass; DB 0/155 — next: the D-G8-2
+   │      decision, then D-P1, then Gate 9
    │      H1A: every data path explicitly tenant-scoped (D-043); certification integrity —
    │      clone isolation + whole-world fingerprint gate (D-044); broad adversarial verifier
    │      H1B: web runtime → app_rw so RLS binds (D-045) — owner-approved hosted cutover
