@@ -151,7 +151,7 @@ async function consentFixture(q: Pool, sponsor: string): Promise<ConsentFixture 
  * owner-vs-app_rw comparison below proves the tie is resolved identically under both roles. (The
  * canonical world already carries a created_at tie between two lists on one renewal account for /pipeline.)
  */
-async function orderingFixture(q: Pool, sponsor: string): Promise<void> {
+async function orderingFixture(q: Pool, sponsor: string): Promise<string[]> {
   const ids = Array.from({ length: 7 }, () => crypto.randomUUID()).sort().reverse();
   for (const [i, id] of ids.entries()) {
     const co = crypto.randomUUID();
@@ -160,6 +160,21 @@ async function orderingFixture(q: Pool, sponsor: string): Promise<void> {
       `insert into opportunities (id, org_id, company_id, name, stage, amount_usd, created_at, updated_at)
        values ($1, $2, $3, $4, 'proposal', 100000, $5, $5)`, [id, sponsor, co, `DG51 tie deal ${i}`, "2026-01-01T00:00:00Z"]);
   }
+  // D-G8-1: five equally-attributed stakeholders on the sponsor's largest open deal (a /pipeline lead card),
+  // inserted so insertion, contact-id and label order all disagree; two share a label and one has only an email.
+  // Returns the labels in the documented order — (coalesce(name, email), contact_id) — computed by Postgres.
+  const opp = (await q.query<{ id: string }>(
+    `select id from opportunities where org_id = $1 and stage not in ('closed_won', 'closed_lost') order by amount_usd desc nulls last, id limit 1`, [sponsor])).rows[0]?.id;
+  if (!opp) return [];
+  const cids = Array.from({ length: 5 }, () => crypto.randomUUID()).sort().reverse();
+  const names = ["DG81 Tie Delta", "DG81 Tie Alpha", "DG81 Tie Charlie", "DG81 Tie Alpha", null];
+  for (const [i, id] of cids.entries()) {
+    await q.query(`insert into contacts (id, org_id, email, name, source) values ($1, $2, $3, $4, 'dg81-fixture')`, [id, sponsor, `dg81-tie-${i}@example.invalid`, names[i]]);
+    await q.query(`insert into stakeholders (opportunity_id, contact_id, role, sentiment) values ($1, $2, 'influencer', 'unknown')`, [opp, id]);
+  }
+  return (await q.query<{ label: string }>(
+    `select coalesce(ct.name, ct.email) label from stakeholders s join contacts ct on ct.id = s.contact_id
+      where s.opportunity_id = $1 and ct.source = 'dg81-fixture' order by coalesce(ct.name, ct.email), s.contact_id`, [opp])).rows.map((r) => r.label);
 }
 
 async function main(): Promise<void> {
@@ -187,7 +202,7 @@ async function main(): Promise<void> {
     // either role and the comparison would prove nothing about consent-scoped reads. Every artefact is
     // TD SYNNEX → sponsor, on the canonical active partnership and its active joint pursuit.
     const fx = await consentFixture(q, sponsor);
-    await orderingFixture(q, sponsor);
+    const ofx = await orderingFixture(q, sponsor);
     await q.end();
     const rooms = [
       "/", "/?today=all", `/?drawer=${account}`, "/queue", "/pipeline", "/accounts", `/accounts/${account}`, "/accounts/export",
@@ -245,9 +260,17 @@ async function main(): Promise<void> {
       console.log(`\nConsent-scoped counterpart data (TD SYNNEX → sponsor), rendered under BOTH roles:\n${markerRows.join("\n")}`);
     }
     const fxOk = !fx || rendered === fx.expect.length;
+    // D-G8-1: the planted stakeholders must render in the documented order under BOTH roles (every list the page
+    // renders them in — each occurrence must be the full expected sequence).
+    const planted = (ls: string[]) => ls.filter((l) => /^DG81 Tie |^dg81-tie-\d+@example\.invalid$/.test(l));
+    const chunksOk = (ls: string[]) => ofx.length > 0 && ls.length > 0 && ls.length % ofx.length === 0 &&
+      Array.from({ length: ls.length / ofx.length }, (_, k) => ls.slice(k * ofx.length, (k + 1) * ofx.length)).every((c) => JSON.stringify(c) === JSON.stringify(ofx));
+    const stOwner = planted(asOwner.get("/pipeline")?.lines ?? []), stRw = planted(asRw.get("/pipeline")?.lines ?? []);
+    const stOk = chunksOk(stOwner) && chunksOk(stRw) && JSON.stringify(stOwner) === JSON.stringify(stRw);
+    console.log(`\nD-G8-1 stakeholder order on /pipeline — expected ${JSON.stringify(ofx)} · owner ${JSON.stringify(stOwner)} · app_rw ${JSON.stringify(stRw)} ${stOk ? "✓" : "✗"}`);
     console.log(`\nAPP_RW REHEARSAL: ${same}/${rooms.length} rooms identical under app_rw (RLS binding) and the owner (RLS bypassed)` +
       (fx ? `; consent fixture rendered ${rendered}/${fx.expect.length} under both.` : "."));
-    process.exitCode = same === rooms.length && fxOk ? 0 : 1;
+    process.exitCode = same === rooms.length && fxOk && stOk ? 0 : 1;
   } finally {
     await admin.query(`select pg_terminate_backend(pid) from pg_stat_activity where datname = $1`, [CLONE]).catch(() => {});
     await admin.query(`drop database if exists "${CLONE}"`);

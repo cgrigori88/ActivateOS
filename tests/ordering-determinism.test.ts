@@ -49,6 +49,15 @@ test("divergence.ts: pre-existing ranking keys are preserved; only tie-breakers 
   assert.equal(orderByOf(crm!), "s.company_id, lower(s.opportunity_name), s.reported_at desc, s.id desc, o.id asc");
 });
 
+test("pipeline/page.tsx: stakeholders render in a total order ending in the stakeholder primary key (D-G8-1)", () => {
+  const pipeline = sqlBlocks(src("src/app/pipeline/page.tsx"));
+  const q = pipeline.find((s) => s.includes("from stakeholders s join contacts ct"));
+  assert.ok(q, "pipeline stakeholder query not found");
+  // stakeholders' primary key is (opportunity_id, contact_id): both must be ordered, contact_id last.
+  assert.equal(orderByOf(q!), "s.opportunity_id, coalesce(ct.name, ct.email), s.contact_id");
+  assert.doesNotMatch(q!, /\blimit\b/i, "no cap was introduced");
+});
+
 test("projection.ts: list attribution breaks created_at ties by name, then id (the D-G5-1 Pipeline defect)", () => {
   const lists = projection.filter((q) => q.includes("distinct on (pm.company_id)"));
   assert.equal(lists.length, 2, "both list-attribution queries (scoped and unscoped)");

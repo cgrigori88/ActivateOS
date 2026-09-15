@@ -141,7 +141,7 @@ export const SUITES: SuiteSpec[] = [
   {
     name: "ordering-determinism",
     cls: "SEEDED",
-    why: "D-G5-1 (H1B Gate 5): plants ordering TIES — seven equally-stale late-stage deals under a LIMIT, and same-instant lists on an attributed renewal account — then proves Today's divergences, the Today overview and the renewal projection return the exact documented key order, byte-identical across five planner configurations, two heap layouts and both roles (owner and the REAL app_rw login with withTenant's context), with eligibility unchanged and the old SQL as a negative control. It COMMITS its fixtures, so it runs on a disposable seeded clone",
+    why: "D-G5-1 (H1B Gate 5) + D-G8-1 (H1B Gate 8): plants ordering TIES — seven equally-stale late-stage deals under a LIMIT, same-instant lists on an attributed renewal account, and several equally-attributed stakeholders on one opportunity — then proves Today's divergences, the Today overview, the renewal projection and the /pipeline stakeholder query return the exact documented key order, byte-identical across five planner configurations, two heap layouts and both roles (owner and the REAL app_rw login with withTenant's context), with eligibility unchanged and the old SQL as a negative control. It COMMITS its fixtures, so it runs on a disposable seeded clone",
     isolation: "SEEDED_CLONE",
   },
 

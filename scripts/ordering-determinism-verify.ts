@@ -204,6 +204,68 @@ async function main(): Promise<void> {
   check(`renewal projection: complete ordered payload identical across ${projRuns.length} runs (5 plans × 2 heaps × owner/app_rw)`,
     projDiff.length === 0, projDiff.length ? `differs: ${projDiff.join(" | ")}` : "");
 
+  // ── 3. Pipeline / stakeholder list order (D-G8-1) ────────────────────────────────────────────────
+  // The query is read from the page itself, so this checks the text that actually renders. The rule is
+  // (opportunity, displayed label = coalesce(name, email), contact_id): stakeholders' primary key is
+  // (opportunity_id, contact_id), so the order is total. "OLD" is the same text with no ORDER BY.
+  console.log("\nPipeline — stakeholder list order (D-G8-1)");
+  const { readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const pageSrc = readFileSync(join(process.cwd(), "src", "app", "pipeline", "page.tsx"), "utf8");
+  const NEW_ST = [...pageSrc.matchAll(/`([^`]*from stakeholders s join contacts ct[^`]*)`/g)][0]?.[1];
+  if (!NEW_ST) throw new Error("the /pipeline stakeholder query was not found in page.tsx");
+  const OLD_ST = NEW_ST.replace(/\s+order by[\s\S]*$/i, "");
+  check("the rendered /pipeline stakeholder query carries an explicit ORDER BY", NEW_ST !== OLD_ST);
+  const allOpps = (await owner.query<{ id: string }>(`select id from opportunities where org_id = $1`, [V])).rows.map((r) => r.id);
+  const stOpp = (await owner.query<{ id: string }>(
+    `select id from opportunities where org_id = $1 and stage not in ('closed_won', 'closed_lost') order by amount_usd desc nulls last, id limit 1`, [V])).rows[0].id;
+  const pairs = async (sql: string) => (await read(owner, V, [], (c) => c.query<{ opportunity_id: string; contact_id: string }>(sql, [allOpps, V])))
+    .rows.map((r) => `${r.opportunity_id}:${r.contact_id}`).sort();
+  const eligibleStBefore = await pairs(OLD_ST);
+
+  // Five stakeholders on one open deal with IDENTICAL role / sentiment / assertion state. Two share a label (so
+  // contact_id must decide), one has no name (its email is the label the card shows). Inserted in DESCENDING
+  // contact-id order, with labels chosen so insertion, id and label order all disagree.
+  const cids = Array.from({ length: 5 }, () => randomUUID()).sort().reverse();
+  const stNames = ["DG81 Tie Delta", "DG81 Tie Alpha", "DG81 Tie Charlie", "DG81 Tie Alpha", null];
+  for (const [i, id] of cids.entries()) {
+    await owner.query(`insert into contacts (id, org_id, email, name, source) values ($1, $2, $3, $4, 'dg81-fixture')`, [id, V, `dg81-tie-${i}@example.invalid`, stNames[i]]);
+    await owner.query(`insert into stakeholders (opportunity_id, contact_id, role, sentiment) values ($1, $2, 'influencer', 'unknown')`, [stOpp, id]);
+  }
+  // The documented rule, applied by Postgres itself (same collation as the page query) to that deal alone.
+  const expectedSt = (await owner.query<{ contact_id: string }>(
+    `select s.contact_id from stakeholders s join contacts ct on ct.id = s.contact_id where s.opportunity_id = $1
+      order by coalesce(ct.name, ct.email), s.contact_id`, [stOpp])).rows.map((r) => r.contact_id);
+  const eligibleStAfter = await pairs(OLD_ST);
+  check("eligibility unchanged: qualifying stakeholders = canonical set + exactly the 5 fixtures",
+    JSON.stringify(eligibleStAfter) === JSON.stringify([...eligibleStBefore, ...cids.map((c) => `${stOpp}:${c}`)].sort()),
+    `${eligibleStAfter.length} qualifying`);
+  check("the new query selects exactly the rows the old one did (no filter / join / scope change)",
+    JSON.stringify(await pairs(NEW_ST)) === JSON.stringify(eligibleStAfter));
+
+  const stRuns: { label: string; json: string; deal: string[] }[] = [];
+  const oldStRuns: string[][] = [];
+  for (const heap of ["heap: insertion order", "heap: tuples relocated"]) {
+    // role and assertion_state untouched, so the governed-assertion guard allows this no-op relocation.
+    if (heap.endsWith("relocated")) await owner.query(`update stakeholders set sentiment = sentiment where opportunity_id = $1 and contact_id = any($2)`, [stOpp, cids.filter((_, i) => i % 2 === 0)]);
+    for (const [plan, off] of PLANS) {
+      oldStRuns.push((await read(owner, V, off, (c) => c.query<{ opportunity_id: string; contact_id: string }>(OLD_ST, [allOpps, V]))).rows
+        .filter((r) => r.opportunity_id === stOpp).map((r) => r.contact_id));
+      for (const [role, pool] of ROLES) {
+        const rows = (await read(pool, V, off, (c) => c.query(NEW_ST, [allOpps, V]))).rows;
+        stRuns.push({ label: `${heap} · ${plan} · ${role}`, json: JSON.stringify(rows), deal: rows.filter((r) => r.opportunity_id === stOpp).map((r) => r.contact_id) });
+      }
+    }
+  }
+  check("the deal's stakeholders render in the documented order (label, then contact_id — ties included)",
+    JSON.stringify(stRuns[0].deal) === JSON.stringify(expectedSt), `${stRuns[0].deal.length} stakeholders`);
+  const stDiff = stRuns.filter((r) => r.json !== stRuns[0].json).map((r) => r.label);
+  check(`stakeholder query: complete ordered payload identical across ${stRuns.length} runs (5 plans × 2 heaps × owner/app_rw)`,
+    stDiff.length === 0, stDiff.length ? `differs: ${stDiff.join(" | ")}` : "");
+  const oldStWrong = oldStRuns.filter((o) => JSON.stringify(o) !== JSON.stringify(expectedSt)).length;
+  check("negative control: the OLD stakeholder query (no ORDER BY) does not return the documented order",
+    oldStWrong > 0, `${oldStWrong}/${oldStRuns.length} old runs differ · ${new Set(oldStRuns.map((o) => JSON.stringify(o))).size} distinct old order(s)`);
+
   const sendAfter = (await owner.query(`select (select count(*) from messages) m, (select count(*) from action_outbox) o, (select count(*) from email_events) e`)).rows[0];
   check("no send activity (messages / outbox / email events unchanged)", JSON.stringify(sendBefore) === JSON.stringify(sendAfter));
 

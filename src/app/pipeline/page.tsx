@@ -170,7 +170,8 @@ export default async function PipelinePage({
     `select s.opportunity_id, s.contact_id, s.role, s.sentiment, s.assertion_state, ct.name, ct.email
      from stakeholders s join contacts ct on ct.id = s.contact_id
      join opportunities o on o.id = s.opportunity_id and o.org_id = $2
-     where s.opportunity_id = any($1)`,
+     where s.opportunity_id = any($1)
+     order by s.opportunity_id, coalesce(ct.name, ct.email), s.contact_id`,
     [opps.map((o) => o.id), orgId],
   );
   const stakeholdersByOpp = new Map<string, typeof stakeholderRows>();
