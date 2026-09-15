@@ -31,6 +31,27 @@ export interface TimelineEvent {
   href: string | null;
 }
 
+const cmp = (x: string | null, y: string | null) => (x === y ? 0 : x == null ? -1 : y == null ? 1 : x.localeCompare(y));
+
+/**
+ * Total order for the deal timeline: newest first, then stable tie-breakers on the fields the event
+ * already carries. Returns 0 only when every rendered field is equal, in which case the order is
+ * unobservable.
+ *
+ * The old comparator was `(a, b) => (a.at < b.at ? 1 : -1)`, which never returns 0: for two events at
+ * the same instant it claims BOTH that a follows b and that b follows a. `Array.prototype.sort` with an
+ * inconsistent comparator has implementation-defined output, and the result is cut to `limit`, so the
+ * rendered timeline could differ between runs on identical data (D-G8-2A).
+ */
+export function compareTimelineEvents(a: TimelineEvent, b: TimelineEvent): number {
+  return (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)
+    || cmp(a.kind, b.kind)
+    || cmp(a.title, b.title)
+    || cmp(a.source, b.source)
+    || cmp(a.detail, b.detail)
+    || cmp(a.href, b.href);
+}
+
 const iso = (d: Date | string) => new Date(d).toISOString();
 
 export async function dealTimeline(db: Db, orgId: string, companyId: string, limit = 80): Promise<TimelineEvent[]> {
@@ -41,7 +62,7 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
     `select claim, source_type, collected_at from evidence
      where company_id = $1 and org_id = $2 and status = 'verified'
        and source_type <> 'meeting' -- meetings render as their own event kind below
-     order by collected_at desc limit 40`,
+     order by collected_at desc, id desc limit 40`,
     [companyId, orgId],
   );
   for (const e of ev) {
@@ -62,7 +83,7 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
      join campaigns ca on ca.id = t.campaign_id
      left join revenue_motions m on m.id = ca.motion_id
      where coalesce(ca.company_id, m.company_id) = $1 and ca.org_id = $2 and t.sent_at is not null
-     order by t.sent_at desc limit 30`,
+     order by t.sent_at desc, t.id desc limit 30`,
     [companyId, orgId],
   );
   for (const s of sends) {
@@ -82,7 +103,7 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
      from messages msg
      join communication_threads th on th.id = msg.thread_id
      where th.company_id = $1 and th.org_id = $2 and msg.direction = 'inbound'
-     order by at desc limit 20`,
+     order by at desc, msg.id desc limit 20`,
     [companyId, orgId],
   );
   for (const r of replies) {
@@ -102,7 +123,7 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
     created_at: Date; approved_at: Date | null; activated_at: Date | null; closed_at: Date | null;
   }>(
     `select id, status, outcome, created_at, approved_at, activated_at, closed_at
-     from revenue_motions where company_id = $1 and org_id = $2 order by created_at desc limit 10`,
+     from revenue_motions where company_id = $1 and org_id = $2 order by created_at desc, id desc limit 10`,
     [companyId, orgId],
   );
   for (const m of motions) {
@@ -128,7 +149,7 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
   }>(
     `select name, stage, amount_usd, created_at, closed_at, updated_at
      from opportunities where company_id = $1 and ($2::uuid is null or org_id = $2)
-     order by created_at desc limit 10`,
+     order by created_at desc, id desc limit 10`,
     [companyId, orgId],
   );
   for (const o of opps) {
@@ -154,7 +175,7 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
      join joint_pursuits jp on jp.id = e.pursuit_id
      join partnerships p on p.id = jp.partnership_id
      where jp.company_id = $1 and (p.initiator_org_id = $2 or p.counterpart_org_id = $2)
-     order by e.created_at desc limit 20`,
+     order by e.created_at desc, e.id desc limit 20`,
     [companyId, orgId],
   );
   for (const j of joint) {
@@ -180,7 +201,7 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
      from warm_intro_requests w
      join partnerships p on p.id = w.partnership_id
      where w.company_id = $1 and (p.initiator_org_id = $2 or p.counterpart_org_id = $2)
-     order by w.created_at desc limit 10`,
+     order by w.created_at desc, w.id desc limit 10`,
     [companyId, orgId],
   );
   for (const w of intros) {
@@ -210,7 +231,7 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
   // 8a. Meetings (task #86): the engagement email can't see, seller-recorded.
   const { rows: meetings } = await db.query<{ met_at: string; title: string | null; attendees: string | null; body: string }>(
     `select met_at::text, title, attendees, body from meeting_notes
-     where org_id = $2 and company_id = $1 order by met_at desc limit 15`,
+     where org_id = $2 and company_id = $1 order by met_at desc, id desc limit 15`,
     [companyId, orgId],
   );
   for (const m of meetings) {
@@ -231,7 +252,7 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
   }>(
     `select opportunity_name, stage, stage_raw, amount_usd, reported_at
      from crm_snapshots where org_id = $2 and company_id = $1
-     order by reported_at desc limit 10`,
+     order by reported_at desc, id desc limit 10`,
     [companyId, orgId],
   );
   for (const s of snaps) {
@@ -286,6 +307,6 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
   }
 
 
-  events.sort((a, b) => (a.at < b.at ? 1 : -1));
+  events.sort(compareTimelineEvents);
   return events.slice(0, limit);
 }
