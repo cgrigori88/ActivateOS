@@ -22,6 +22,7 @@ import { assertSeededClone } from "./seeded-clone";
  *   D  Its assumptions hold: nobody runtime can CREATE in public; the SECURITY DEFINER EXECUTE posture.
  *
  *   npx tsx scripts/verify-run.ts --suite search-path
+ *   DATABASE_URL_VERIFY=… npx tsx scripts/search-path-verify.ts --catalogue-only   (read-only; hosted-safe)
  */
 
 const CONN = process.env.DATABASE_URL_VERIFY ?? process.env.DEMO_URL ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
@@ -196,7 +197,58 @@ async function battery(fx: Fixture): Promise<Outcome[]> {
   return out;
 }
 
+/** Section D: the CREATE-on-public assumption the hardened path relies on, and the SECURITY DEFINER posture. */
+async function assumptions(db: Pool | PoolClient, owners: string[]): Promise<void> {
+  const one = async <T,>(sql: string, p: unknown[] = []) => (await db.query(sql, p)).rows[0] as T;
+  const roles = (await db.query<{ r: string }>(`select rolname r from pg_roles where rolname in ('app_rw','anon','authenticated','service_role')`)).rows.map((x) => x.r);
+  for (const r of roles) check(`${r} cannot CREATE in public`, !(await one<{ v: boolean }>(`select has_schema_privilege($1, 'public', 'CREATE') v`, [r])).v);
+  check("PUBLIC cannot CREATE in public", !(await one<{ v: boolean }>(`select exists (select 1 from pg_namespace n, aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a where n.nspname = 'public' and a.grantee = 0 and a.privilege_type = 'CREATE') v`)).v);
+  const via = (await db.query<{ r: string }>(`with recursive up(oid) as (select m.roleid from pg_auth_members m where m.member = (select oid from pg_roles where rolname = 'app_rw')
+      union select m.roleid from pg_auth_members m join up on m.member = up.oid)
+      select r.rolname r from up join pg_roles r on r.oid = up.oid where has_schema_privilege(r.rolname, 'public', 'CREATE')`)).rows;
+  check("app_rw has no membership path to CREATE on public", via.length === 0, via.map((x) => x.r).join(","));
+  const tableOwner = (await one<{ o: string }>(`select pg_get_userbyid(relowner) o from pg_class where oid = 'public.partnerships'::regclass`)).o;
+  check(`every protected function is owned by the schema's table owner (${tableOwner})`, owners.length === 1 && owners[0] === tableOwner, owners.join(","));
+  const APP = ["audit_partnership_event", "redeem_partnership_invite", "list_grant_source_state", "sync_list_grant_members", "revoke_list_grant_copies",
+    "decide_overlap_probe", "partnership_evidence_shares", "shared_in_evidence", "partnership_skill_shares", "shared_in_skills", "skill_share_subject",
+    "record_broker_event", "partnership_settlement_rows", "h1b_skill_owner"];
+  const INTERNAL = ["h1b_consent_party", "h1b_consent_allowed", "h1b_org_book", "h1b_overlap_results", "h1b_consent_guard"];
+  const ex = (await db.query<{ name: string; pub: boolean; rw: boolean; other: boolean }>(`
+      select p.proname name,
+             exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0 and a.privilege_type = 'EXECUTE') pub,
+             has_function_privilege('app_rw', p.oid, 'EXECUTE') rw,
+             ${roles.filter((r) => r !== "app_rw").map((r) => `has_function_privilege('${r}', p.oid, 'EXECUTE')`).join(" or ") || "false"} other
+        from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname = any($1)`, [[...APP, ...INTERNAL]])).rows;
+  check("H1B-0 runtime functions: EXECUTE for app_rw only — not PUBLIC, anon, authenticated or service_role", APP.every((n) => ex.some((e) => e.name === n && e.rw && !e.pub && !e.other)));
+  check("H1B-0 internal helpers: not executable by app_rw or any runtime role", INTERNAL.every((n) => ex.some((e) => e.name === n && !e.rw && !e.pub && !e.other)));
+}
+
+/**
+ * `--catalogue-only`: the hosted-safe half. The catalogue guard (0 unsafe protected functions) and the
+ * section D assumptions, inside ONE read-only transaction on the owner connection. It never connects as
+ * app_rw, never creates a temp table, never alters a function — so it may be pointed at a real (hosted)
+ * database, e.g. after Gate 1b.1 or at Gate 7. The exploit battery and its negative control run only on
+ * disposable clones (the default mode).
+ */
+async function catalogueOnly(): Promise<void> {
+  console.log(`[search-path-verify --catalogue-only] ${CONN.replace(/:[^:@/]*@/, ":***@")} · read-only`);
+  const c = await owner.connect();
+  try {
+    await c.query("begin isolation level repeatable read read only");
+    check("the transaction is READ ONLY", (await c.query<{ ro: string }>(`select current_setting('transaction_read_only') ro`)).rows[0].ro === "on");
+    const g = await guard(c);
+    check(`the catalogue guard finds 0 unsafe functions in the protected class (${g.total} protected)`, g.violations.length === 0, g.violations.slice(0, 5).join(" · "));
+    await assumptions(c, g.owners);
+    check("nothing was written (txid_current_if_assigned() is NULL)", (await c.query<{ x: string | null }>(`select txid_current_if_assigned() x`)).rows[0].x === null);
+  } finally { await c.query("rollback").catch(() => {}); c.release(); }
+  console.log(`\n${failed === 0 ? "PASS" : "FAIL"} — ${passed} passed, ${failed} failed`);
+  if (failed) for (const f of failures) console.log(`  - ${f}`);
+  await owner.end();
+  process.exit(failed ? 1 : 0);
+}
+
 async function main(): Promise<void> {
+  if (process.argv.includes("--catalogue-only")) return catalogueOnly();
   await assertSeededClone(owner);
   console.log(`[search-path-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")} · exploits as app_rw`);
   const one = async <T,>(sql: string, p: unknown[] = []) => (await owner.query(sql, p)).rows[0] as T;
@@ -247,27 +299,7 @@ async function main(): Promise<void> {
   // ================================================================================================
   console.log("\nD  Assumptions and SECURITY DEFINER posture");
   // ================================================================================================
-  const roles = (await owner.query<{ r: string }>(`select rolname r from pg_roles where rolname in ('app_rw','anon','authenticated','service_role')`)).rows.map((x) => x.r);
-  for (const r of roles) check(`${r} cannot CREATE in public`, !(await one<{ v: boolean }>(`select has_schema_privilege($1, 'public', 'CREATE') v`, [r])).v);
-  check("PUBLIC cannot CREATE in public", !(await one<{ v: boolean }>(`select exists (select 1 from pg_namespace n, aclexplode(coalesce(n.nspacl, acldefault('n', n.nspowner))) a where n.nspname = 'public' and a.grantee = 0 and a.privilege_type = 'CREATE') v`)).v);
-  const via = (await owner.query<{ r: string }>(`with recursive up(oid) as (select m.roleid from pg_auth_members m where m.member = (select oid from pg_roles where rolname = 'app_rw')
-      union select m.roleid from pg_auth_members m join up on m.member = up.oid)
-      select r.rolname r from up join pg_roles r on r.oid = up.oid where has_schema_privilege(r.rolname, 'public', 'CREATE')`)).rows;
-  check("app_rw has no membership path to CREATE on public", via.length === 0, via.map((x) => x.r).join(","));
-  const tableOwner = (await one<{ o: string }>(`select pg_get_userbyid(relowner) o from pg_class where oid = 'public.partnerships'::regclass`)).o;
-  check(`every protected function is owned by the schema's table owner (${tableOwner})`, gB.owners.length === 1 && gB.owners[0] === tableOwner, gB.owners.join(","));
-  const APP = ["audit_partnership_event", "redeem_partnership_invite", "list_grant_source_state", "sync_list_grant_members", "revoke_list_grant_copies",
-    "decide_overlap_probe", "partnership_evidence_shares", "shared_in_evidence", "partnership_skill_shares", "shared_in_skills", "skill_share_subject",
-    "record_broker_event", "partnership_settlement_rows", "h1b_skill_owner"];
-  const INTERNAL = ["h1b_consent_party", "h1b_consent_allowed", "h1b_org_book", "h1b_overlap_results", "h1b_consent_guard"];
-  const ex = (await owner.query<{ name: string; pub: boolean; rw: boolean; other: boolean }>(`
-      select p.proname name,
-             exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0 and a.privilege_type = 'EXECUTE') pub,
-             has_function_privilege('app_rw', p.oid, 'EXECUTE') rw,
-             ${roles.filter((r) => r !== "app_rw").map((r) => `has_function_privilege('${r}', p.oid, 'EXECUTE')`).join(" or ") || "false"} other
-        from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname = any($1)`, [[...APP, ...INTERNAL]])).rows;
-  check("H1B-0 runtime functions: EXECUTE for app_rw only — not PUBLIC, anon, authenticated or service_role", APP.every((n) => ex.some((e) => e.name === n && e.rw && !e.pub && !e.other)));
-  check("H1B-0 internal helpers: not executable by app_rw or any runtime role", INTERNAL.every((n) => ex.some((e) => e.name === n && !e.rw && !e.pub && !e.other)));
+  await assumptions(owner, gB.owners);
 
   console.log(`\n${failed === 0 ? "PASS" : "FAIL"} — ${passed} passed, ${failed} failed`);
   if (failed) for (const f of failures) console.log(`  - ${f}`);

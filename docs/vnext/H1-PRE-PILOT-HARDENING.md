@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050); not yet applied to hosted (Gate 1b.1) · `app_rw` still NOLOGIN. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · `app_rw` still NOLOGIN — Gate 2 not yet re-run. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -622,7 +622,7 @@ The pre-existing 8 include the RLS helpers every `_rw` policy uses. The gap ther
 
 ## H1B-0.1 — temporary-schema hardening, migration 0105 (2026-09-15, LOCAL)
 
-**Status: COMPLETE (local).** `0105_h1b01_temp_schema_hardening.sql` is **not applied to any hosted database**. Decision D-050.
+**Status: COMPLETE (local).** Decision D-050. `0105_h1b01_temp_schema_hardening.sql` was later applied to `mejokqxriwyawfhawuxu` only, at Gate 1b.1 (PASS; see § "Gate 1b.1").
 
 ### Root cause
 
@@ -711,3 +711,73 @@ This restores the exact pre-0105 catalogue. The negative control above proves th
 ### Local rehearsal (H1A — no hosted change)
 
 The same cutover can be rehearsed locally today (app_rw has a local login): run the built app with `DATABASE_URL=app_rw` and `DATABASE_URL_OWNER=postgres`, crawl every room, and compare it with the owner-role crawl. See § "H1A results".
+
+---
+
+## Gate 1b.1 — apply 0105 to the isolated hosted database: RESULT (2026-09-15)
+
+**Gate 1b.1 — PASS.** `0105_h1b01_temp_schema_hardening.sql` (sha256 prefix `139d7ea0cfae043f`, committed `77d9bd0`) was applied to `mejokqxriwyawfhawuxu` **only**, as the one approved mutation. It ran through the standard runner `scripts/migrate.ts`, one transaction, with no hand-edited SQL. The runner reported `applying 0105_h1b01_temp_schema_hardening.sql` · `1 applied, 104 already tracked` · exit 0.
+
+What was **not** done: no `APP_RW_PASSWORD`, no `app_rw` LOGIN, no role password, no Vercel change, no deploy, no `DATABASE_URL` or `DATABASE_URL_OWNER` change, no Gate 2 or 3, no other migration, no manual grant or policy change, no reseed, no hosted write-path verifier, no sending. Production and `qifatlqxfuhwrwvpbwsc` were not contacted.
+
+**How the run was guarded.**
+- The target identity was parsed in-process from the connection user (`postgres.mejokqxriwyawfhawuxu`), and the connection string was checked not to contain `qifatlqxfuhwrwvpbwsc`. It was never printed.
+- Every other DB, `PG*`, send and `APP_RW_PASSWORD` variable was unset for the child process.
+- Output was redacted.
+- Every read ran `REPEATABLE READ READ ONLY` and was rolled back, with `txid_current_if_assigned()` NULL.
+
+### Pre-mutation checks: all 12 passed
+
+| # | Check | Hosted value |
+|---|---|---|
+| 1–2 | target | `mejokqxriwyawfhawuxu`, not `qifatlqxfuhwrwvpbwsc` |
+| 3 | environment | `demo`, `is_synthetic=true` |
+| 4–6 | migrations | 104, latest `0104_h1b0_consent_scoped_access.sql`; pending vs repo exactly `{0105}` |
+| 7 | manifest | `db1f78f7a11bbacb` |
+| 8 | business-data fingerprint (excl. `schema_migrations`) | `79321d9130d1dc94` |
+| 9 | whole-world fingerprint | `0288ae73bb385a1c` |
+| 10–11 | `app_rw` | LOGIN false, no expiry; no credential created in this gate |
+| 12 | sending | `sending_identities` 0, `touches_sent` 0; `OUTREACH_AUTOSEND` and `RESEND_API_KEY` unset |
+
+Pre-state of the protected class: 31 functions, **31 unsafe** (27 `search_path=public`, 4 unset). The hosted catalogue-only guard **failed as expected** before 0105, which also shows it can detect the problem on hosted.
+
+### Post-migration verification (read-only)
+
+| Check | Result |
+|---|---|
+| A. Migration state | **105**, latest `0105_h1b01_temp_schema_hardening.sql`; nothing pending; nothing applied that is not in the repo |
+| B. Data immutability | manifest `db1f78f7a11bbacb` **unchanged**; business-data fingerprint `79321d9130d1dc94` **unchanged**; every business row count unchanged. The only per-table hash that changed is `schema_migrations`. **New whole-world fingerprint of record: `de05e204801988d1`** |
+| C. Search path | 31 protected (catalogue-derived; the same set as before): **30** `pg_catalog, public, pg_temp`; `app_current_org()` `pg_catalog, pg_temp`; **0 unsafe** |
+| D. Only `search_path` changed | 31 functions changed, and the only field that changed is `config`. Bodies (md5), owners (`postgres`), SECURITY DEFINER / INVOKER and EXECUTE flags (PUBLIC, anon, authenticated, service_role, `app_rw`) are identical. The 14 H1B runtime functions are `app_rw`-only; the 5 internal helpers are executable by no runtime role; the 8 older helpers and `app_current_org` keep their pre-existing grants. Nothing was broadened |
+| E. CREATE on `public` | none for PUBLIC, `app_rw`, anon, authenticated or service_role; no membership path for `app_rw` |
+| F. Catalogue guard | `search-path-verify --catalogue-only` on hosted: **12 / 0**, READ ONLY, no txid, no temp tables |
+| G. Unchanged | RLS / FORCE flags, policies, table grants, column grants, triggers (the 8 consent guards included), roles, memberships, CREATE facts |
+| H. `app_rw` posture | LOGIN **false**, not superuser, no BYPASSRLS, NOINHERIT, no expiry; `postgres` still holds it ADMIN-only (inherit false, set false), granted by `supabase_admin`. **Gate 2 not performed** |
+| I. Partnership data | 1 active partnership, 1 joint pursuit, 4 active participants, 2 context grants; 0 list grants, overlap probes, evidence shares, skill shares, joint-room notes, warm intros, partnership audit rows |
+| J. Send safety | 0 sending identities, 0 touches sent; nothing armed |
+| K. Security-object delta | exactly **one tracker row** (0105) plus **`proconfig` on the 31 protected functions**. The security-catalogue hash moves `dd5412662349688c` → `4682f232e8392034`, and that change is entirely accounted for by those `proconfig` values. Nothing else |
+
+Classification of the 31 (the classes overlap):
+- 26 SECURITY DEFINER (the 8 older helpers and the 18 from 0104);
+- 5 called by RLS policies (`is_org_member`, `org_role`, `can_see_partnership`, `can_see_pursuit`, `app_current_org`);
+- 5 trigger functions (`grant_population_delete_guard`, `h1b_consent_guard`, `enforce_verified_evidence`, `economic_fact_assertion_guard`, `stakeholder_assertion_guard`).
+
+**New tooling.** `scripts/search-path-verify.ts --catalogue-only` is the hosted-safe subset of the certified suite:
+- it runs the catalogue guard and the CREATE / owner / EXECUTE assumptions in one READ ONLY transaction;
+- it creates no temp tables and needs no `app_rw` login;
+- locally, against `pursuit_demo`, it gives 12 / 0.
+
+### Rollback readiness (not executed)
+
+- The 31 `-- ROLLBACK:` lines in 0105 name exactly the hosted protected set.
+- Each line restores the recorded hosted pre-0105 value: `set search_path = public` on 27, and `reset search_path` on the 4 that were unset (`app_current_org`, `enforce_verified_evidence`, `economic_fact_assertion_guard`, `stakeholder_assertion_guard`). The `schema_migrations` row for 0105 would then be deleted.
+- It was **not** run, because it would re-open the vulnerability.
+
+**Hosted baseline of record after Gate 1b.1:**
+- migrations 105;
+- manifest `db1f78f7a11bbacb`;
+- business-data fingerprint `79321d9130d1dc94`;
+- whole-world fingerprint `de05e204801988d1`;
+- `app_rw` LOGIN false.
+
+**Gate 2 was NOT begun.** Its blocker 2 (`pg_temp` shadowing) is closed on hosted. Blocker 1 remains until the operator loads `APP_RW_PASSWORD` via hidden input (`read -rs APP_RW_PASSWORD && export APP_RW_PASSWORD`) in the launching shell and relaunches. H1B, and so H1, are not complete.

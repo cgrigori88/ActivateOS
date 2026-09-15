@@ -1,8 +1,18 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-15 (H1B-0.1 — temp-schema hardening 0105, local; Gate 2 still blocked)
+**Last updated:** 2026-09-15 (H1B Gate 1b.1 — 0105 applied to the isolated hosted DB, PASS; Gate 2 not yet re-run)
 
-**2026-09-15 (latest) — H1B-0.1 COMPLETE (local): temporary-schema shadowing closed by migration 0105 (not applied to hosted). Gate 2 remains BLOCKED / NOT EXECUTED.**
+**2026-09-15 (latest) — H1B GATE 1b.1: PASS.** Migration `0105_h1b01_temp_schema_hardening.sql` was applied to the isolated vNext database `mejokqxriwyawfhawuxu` **only**, as the one approved mutation, through `scripts/migrate.ts` in a single transaction.
+- All 12 pre-mutation checks passed: target identity; demo / synthetic; migrations 104, latest 0104, only 0105 pending; manifest `db1f78f7a11bbacb`; business-data fingerprint `79321d9130d1dc94`; whole-world fingerprint `0288ae73bb385a1c`; `app_rw` LOGIN false with no credential; sending unarmed.
+- Migrations 104 → **105** (latest 0105, nothing pending). Manifest `db1f78f7a11bbacb` and business-data fingerprint `79321d9130d1dc94` **unchanged**; business row counts unchanged. The whole-world fingerprint moves `0288ae73bb385a1c` → **`de05e204801988d1`**, and only the `schema_migrations` tracker changed.
+- **31 / 31 hardened, 0 unsafe**, derived from the hosted catalogue: 30 functions `pg_catalog, public, pg_temp`, and `app_current_org()` `pg_catalog, pg_temp`. `search-path-verify --catalogue-only` (read-only, hosted-safe) gives 12/0.
+- The security-object delta is exactly one tracker row plus `proconfig` on the 31 protected functions. Bodies, owners, EXECUTE grants, definer posture, RLS / FORCE, policies, table and column grants, triggers, roles and memberships are all identical. No CREATE on `public` for any runtime role.
+- Partnership data is unchanged, and there are 0 send rows.
+- **`app_rw` is still NOLOGIN — Gate 2 NOT performed.**
+
+Record: `H1-PRE-PILOT-HARDENING.md` § "Gate 1b.1". **Next:** the Gate 2 re-run, with `APP_RW_PASSWORD` loaded via hidden input in the launching shell.
+
+**2026-09-15 — H1B-0.1 COMPLETE (local): temporary-schema shadowing closed by migration 0105 (not applied to hosted). Gate 2 remains BLOCKED / NOT EXECUTED.**
 
 The owner decision (D-050) is that temporary-schema shadowing is **not** accepted as residual risk for the `app_rw` boundary.
 
@@ -21,7 +31,7 @@ The owner decision (D-050) is that temporary-schema shadowing is **not** accepte
 - Certification: `certify-world --runs 2` **80 / 80 suite runs clean** (40 suites incl. `search-path` 39/0 and `partnership-app-rw` 117/0; 3,554 assertions, 0 failures); canonical digest `e98b43254f98d5ec` before run 1, after run 1 and after run 2 — CERTIFICATION INTEGRITY: PASS; manifest `be0da833990ce436` unchanged; 0 send rows.
 - Canonical world unchanged: `e98b43254f98d5ec` / `be0da833990ce436`.
 
-**Next:** Gate 1b.1 (owner-approved), which applies 0105 to `mejokqxriwyawfhawuxu`. Then the Gate 2 re-run with the secret loaded.
+**Next (done — see Gate 1b.1 above):** Gate 1b.1 (owner-approved), which applies 0105 to `mejokqxriwyawfhawuxu`. Then the Gate 2 re-run with the secret loaded.
 
 **2026-09-15 — H1B GATE 2: BLOCKED AT PRECHECK, NOT EXECUTED. `app_rw` is still NOLOGIN; no hosted change.**
 
@@ -204,7 +214,7 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | **Today / Queue tenant scoping (hardening)** | P6 / #67 | **DONE (local)** — the Slice 2B security gate; subsumed by H1A | `c0eea5a` | 2026-09-14 | — | D-041. `today-tenant` verifier + source guard |
 | **Pursuit Attention + Today / Queue — Vertical Slice 2B** | P3 | **DEMO CERTIFIED / FROZEN** (hosted human review on the isolated Preview, 2026-09-14) | `roadmap/pursuitos-vnext` @ `54ab990` | 2026-09-14 | Nothing. Do not materially redesign it absent pilot feedback | One card per PURSUIT, not per account (Globex modernization → Plan needs review; Globex expansion → its own CDW route decision). Plan review outranks the stale action; the Queue preserves the action once with plan-review context; "Current approved plan / Focus when approved". D-034…D-042, D-046 |
 | **H1A — Tenant isolation + certification integrity** | P6 / #67 | **COMPLETE (local)** | `roadmap/pursuitos-vnext` (H1A commit) | 2026-09-14 | Nothing in H1A. H1 completes with H1B | 293 paths audited; 152 fixed + 1 reclassified; `tenant-isolation` 205/0; 0 UNSAFE verifiers; fingerprint gate PASS (`e98b43254f98d5ec` at start, after run 1 and after run 2; 74/76 suite runs clean, the 2 exceptions being the pre-existing `motion-intel` fixture gap); app_rw rehearsal 36/36. D-043, D-044. Reported, not fixed: global learning tables, inbound subject matching, stored digests (`H1-PRE-PILOT-HARDENING.md` § C) |
-| **H1B — Least-privilege runtime / RLS cutover** | P6 / #67 | **IN PROGRESS** — Gate 1 PASS (re-baselined) · H1B-0 COMPLETE · Gate 1b PASS · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — 0105 not yet hosted | `roadmap/pursuitos-vnext` | 2026-09-15 | Gate 1b.1 (owner-approved): apply 0105 to `mejokqxriwyawfhawuxu` → Gate 2 re-run with `APP_RW_PASSWORD` loaded via hidden input → Gates 3–9 | D-045, D-048, D-049, D-050. Hosted baseline: manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c` |
+| **H1B — Least-privilege runtime / RLS cutover** | P6 / #67 | **IN PROGRESS** — Gate 1 PASS (re-baselined) · H1B-0 COMPLETE · Gate 1b PASS · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** · **Gate 1b.1 PASS** (0105 hosted; 31/31 hardened, 0 unsafe) | `roadmap/pursuitos-vnext` | 2026-09-15 | Gate 2 re-run with `APP_RW_PASSWORD` loaded via hidden input → Gates 3–9 | D-045, D-048, D-049, D-050. Hosted baseline: migrations 105 · manifest `db1f78f7a11bbacb` · business-data fingerprint `79321d9130d1dc94` · whole-world fingerprint `de05e204801988d1` |
 | · pursuit context narrative (rendered) | P1 | **PREVIEW READY** | `6c5b7a9` `components/pursuit/context-narrative.tsx` | 2026-09-12 | Product sign-off on the refined surface, then GATE D/E | Titled **"What matters now"**, full-width on desktop. GATE C **N-1 fixed** (all 10 ledger rows reachable, override chronology included), **N-2/N-4/N-6 fixed**. Flag OFF verified identical panel-for-panel. Residual: R-1 "What changed" right half empty (cosmetic), R-2 283px void beside Value case. See `GATE-C-PRODUCT-REVIEW.md` § GATE C REFINEMENT |
 | · pursuit evidence (direct + supporting) | P1 | **PREVIEW READY** | `620bc12` `read-models/pursuit-evidence.ts` | 2026-09-12 | Consumed by "What matters now" since `99bd5dd` | 18 tests. **Supersedes the plan to swap `getFacts` to pursuit scope** — Globex has 1 linked fact, so the swap would have deleted the best evidence on the screen. See D-020 |
 | · fact freshness | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/facts/freshness.ts` | — | Compose at pursuit level | Exists per-fact; nothing composes per-pursuit |
