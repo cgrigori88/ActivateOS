@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · migration 0104 **NOT applied to hosted** · **Gate 1b not begun**. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 not begun** (`app_rw` still NOLOGIN). **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -464,6 +464,70 @@ Every function is SECURITY DEFINER with a pinned `search_path`. EXECUTE is revok
 - Org-less `evidence` (none in either world) is invisible under `app_rw` wherever it appears. That follows from the existing policy, and is not specific to partnerships.
 - `companies_rw` stays `FOR ALL USING(true)`, a writable shared catalogue. That concerns catalogue integrity (the H1A note on intake enrichment), not consent.
 - `can_see_partnership` still shows history on revoked partnerships. Every consent-scoped *content* read above requires an ACTIVE partnership for counterpart data.
+
+---
+
+## Gate 1b — apply 0104 to the isolated hosted database: RESULT (2026-09-15)
+
+**Verdict: PASS.** Exactly one approved mutation was made: migration `0104_h1b0_consent_scoped_access.sql`, committed at `22e9666` (sha256 prefix `db306e40779f9826`, not hand-edited), applied to **`mejokqxriwyawfhawuxu` only**. It went through the repo's own runner (`scripts/migrate.ts`), in one transaction together with its tracker row.
+
+What was **not** done: no `app_rw` login or password, no Vercel change, no deploy, no `DATABASE_URL` or `DATABASE_URL_OWNER` change, no Gate 2 or 3, no hosted plant-row verifier, no sending, no reseed. Production and `qifatlqxfuhwrwvpbwsc` were not contacted.
+
+**How it ran.**
+- A guarded wrapper, as for Gate 1: the target was proven from the parsed user before any connection, every other database, `PG*` and send variable was unset, and output was redacted.
+- The target string was never printed, logged or persisted.
+- Pre- and post-snapshots each ran in one `REPEATABLE READ READ ONLY` transaction; both reported `txid_current_if_assigned() = NULL`.
+- The migration command re-checked the pre-snapshot and re-proved identity immediately before running.
+
+| Check | Pre (read-only) | Post (read-only) |
+|---|---|---|
+| Identity | `postgres.mejokqxriwyawfhawuxu`; not `qifatlqxfuhwrwvpbwsc`; `demo` / `is_synthetic=true` | same |
+| Migrations | 103, latest `0103_pursuit_coordination.sql`; pending exactly `{0104}`; none applied beyond the repo | **104**, latest **`0104_h1b0_consent_scoped_access.sql`**; pending none; +1 migration exactly |
+| Manifest | `db1f78f7a11bbacb` | **`db1f78f7a11bbacb`**, unchanged |
+| Whole-world fingerprint | `2678f34d4fc7b0a2` (155 tables) | `0288ae73bb385a1c`. The **only** table whose hash changed is `schema_migrations` (103 → 104 rows, the intended tracker entry). Business data, meaning all 154 other tables, is identical: the business-data fingerprint (every table except `schema_migrations`) is **`79321d9130d1dc94` both pre and post** |
+| Snapshot times | 2026-09-15T03:52:29Z | 2026-09-15T03:53:20Z; security-catalogue hash `bac4f4a1af3ef7c9` → `b36da6987ceabfdf` (0104's objects only) |
+| Business counts | 3 · 14 · 19 · 11 open · $8,040,000 · 14 · 5 stakeholders | identical |
+| Partnership state | 1 active partnership · 1 joint pursuit · 4 ACTIVE participants · 2 context grants · 0 list grants / probes / evidence shares / skill shares / joint events / warm intros / audit rows | identical |
+| Send | 0 messages / outbox / email events / sending identities / sent touches; `OUTREACH_AUTOSEND` and `RESEND_API_KEY` unset | identical; no send operation run |
+| `app_rw` | exists; **LOGIN false**; not superuser; not BYPASSRLS; NOINHERIT; no expiry; `postgres` holds it ADMIN-only (inherit false, set false), granted by `supabase_admin` | **identical — Gate 2 NOT performed** |
+
+**Security-object delta, pre → post (hosted catalogue).** These are exactly 0104's objects and nothing else:
+
+| Object | Delta |
+|---|---|
+| Functions | **+19**: the 14 app-callable ones (`audit_partnership_event`, `redeem_partnership_invite`, `list_grant_source_state`, `sync_list_grant_members`, `revoke_list_grant_copies`, `decide_overlap_probe`, `partnership_evidence_shares`, `shared_in_evidence`, `partnership_skill_shares`, `shared_in_skills`, `skill_share_subject`, `record_broker_event`, `partnership_settlement_rows`, `h1b_skill_owner`) and the 5 internal ones (`h1b_consent_party`, `h1b_consent_allowed`, `h1b_org_book`, `h1b_overlap_results`, `h1b_consent_guard`). None removed or changed |
+| Triggers | **+8** `h1b_consent_guard` (BEFORE INSERT OR UPDATE OR DELETE, enabled) on `context_grants`, `evidence_shares`, `joint_pursuits`, `list_grants`, `overlap_probes`, `partnerships`, `skill_shares`, `warm_intro_requests` |
+| Policies | **+2** (`joint_pursuit_events_rw_insert`, `organizations_rw_update`) and **2 narrowed**: `joint_pursuit_events_rw` FOR ALL → FOR SELECT (object-scoped via the visible joint pursuit); `organizations_rw` FOR ALL → FOR SELECT. No other policy changed, and no new broad policy |
+| RLS / FORCE flags · table grants · column grants · roles · memberships | **no change** |
+
+**SECURITY DEFINER safety, read from the hosted catalogue.**
+- All 18 definer functions are **owned by `postgres`**, **SECURITY DEFINER**, with **`search_path=public` pinned**.
+- `h1b_consent_guard` is **SECURITY INVOKER** by design, so that inside the trigger `current_user` is the acting role. It is owned by `postgres` with `search_path` pinned too.
+- EXECUTE on all 19: **PUBLIC false · anon false · authenticated false · service_role false**.
+- `app_rw` has EXECUTE on **exactly the 14 runtime functions**, and **false on all 5 internal helpers**.
+
+**Hosted versus the local certified post-0104 catalogue.**
+- The 19 functions, the 8 triggers and **every public policy are identical**.
+- The remaining differences are pre-existing environment facts that 0104 did not touch (the pre → post delta shows none of them changing):
+  - Supabase installs pgcrypto in `extensions`, not `public`, and pgvector's function metadata differs;
+  - Supabase's default table grants to anon, authenticated and service_role;
+  - the hosted-only `schema_migrations`;
+  - local `app_rw` has its local demo LOGIN, while hosted is NOLOGIN with the ADMIN-only membership;
+  - the acceptance-residue stakeholder.
+
+**Rollback readiness** (not executed). The migration's rollback section expects:
+- drop `h1b_consent_guard` on the 8 tables — the hosted catalogue has exactly those 8;
+- drop the 14 app-callable plus 5 internal functions — exactly those 19 exist;
+- restore `joint_pursuit_events_rw` and `organizations_rw` as FOR ALL, and drop the two added policies — those 4 policies exist exactly as described.
+
+That is a match. The rollback is documented prose, not a script. If it is ever needed, it is a separate approved hosted change. The application works on the owner connection with or without 0104.
+
+**Hosted baseline of record after Gate 1b:**
+- manifest `db1f78f7a11bbacb`;
+- whole-world fingerprint `0288ae73bb385a1c`, including the tracker at 104;
+- business data identical to Gate 1.
+
+**Gate 2 was NOT begun.** `app_rw` remains NOLOGIN.
 
 ### Local rehearsal (H1A — no hosted change)
 
