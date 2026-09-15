@@ -336,3 +336,19 @@ Record: `H1-PRE-PILOT-HARDENING.md` § H1B-0. Decision D-049. Migration 0104 (lo
 | H1B0-7 | The partnership rooms render counterpart consent data identically under `app_rw` and the owner. | `app-rw-rehearsal` consent fixture |
 | H1B0-8 | `/api/build` proves the runtime posture live: owner → `postgres` / `bypassRls: true` / `tenantEnforcement: false`; `app_rw` → `app_rw` / `false` / `true`. | `app-rw-rehearsal`; unit tests |
 | H1B0-9 | Full certification stays green and the canonical world is unchanged. | `certify-world --runs 2` |
+
+## H1B-0.1 — No temporary-schema shadowing on the security boundary
+
+Record: `H1-PRE-PILOT-HARDENING.md` § H1B-0.1. Decision D-050. Migration 0105 (local only; hosted is its own approved step).
+
+| # | Criterion | Proven by |
+|---|---|---|
+| H1B01-1 | The protected class is derived from the catalogue: every SECURITY DEFINER function in `public`, every function an RLS policy calls, and every trigger function. All 31 carry `search_path = pg_catalog, public, pg_temp` (`app_current_org`: `pg_catalog, pg_temp`). | `search-path` §B; `tests/migration-search-path.test.ts` |
+| H1B01-2 | As the real `app_rw` login, none of these moves any result or authorizes any write: temp `partnerships`, `org_members` (with a chosen JWT subject), `pursuits`, `context_grants`, `api_keys`, `evidence`, or a temp table named `uuid`. | `search-path` §B (11 exploits refused) |
+| H1B01-3 | **Negative control.** 0105's own documented rollback restores the vulnerable posture. The guard then flags every protected function, and every one of the 11 exploits succeeds. The suite would fail without 0105. | `search-path` §A |
+| H1B01-4 | The guard catches a reintroduction: a helper re-pinned to `public`, or a new SECURITY DEFINER function with no path. | `search-path` §C; the migration lint |
+| H1B01-5 | No runtime role can CREATE in `public` (PUBLIC, `app_rw`, anon, authenticated, service_role), directly or through membership. | `search-path` §D |
+| H1B01-6 | SECURITY DEFINER posture holds: every protected function is owned by the table owner; H1B-0 runtime functions are EXECUTE-able by `app_rw` only; internal helpers by no runtime role; no grant broadened. | `search-path` §D |
+| H1B01-7 | Every partnership flow still works as `app_rw`, and every forgery is still refused. | `partnership-app-rw` |
+| H1B01-8 | Rooms, Slice 1 / 2A / 2B and the `/api/build` posture are unchanged under `app_rw`. | `app-rw-rehearsal` |
+| H1B01-9 | Full certification is green, twice, and the canonical world is unchanged. | `certify-world --runs 2` |

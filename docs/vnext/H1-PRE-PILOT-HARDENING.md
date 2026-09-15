@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED at precheck, NOT executed** (2026-09-15: operator secret not loaded; SECURITY DEFINER name resolution shadowable via `pg_temp` — follow-up hardening migration 0105 recommended) · `app_rw` still NOLOGIN. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050); not yet applied to hosted (Gate 1b.1) · `app_rw` still NOLOGIN. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -615,6 +615,98 @@ The pre-existing 8 include the RLS helpers every `_rw` policy uses. The gap ther
 - **The Gate 2 command will read it from the process environment** and send it only as a bound query parameter over the database connection. It never appears on a command line, in output, or in a file.
 
 **Next:** the owner decides on 0105. The Gate 2 re-run requires 0105 applied, or an explicit, documented owner acceptance of the residual risk, *and* the secret loaded.
+
+**Owner decision (2026-09-15):** the risk is **not accepted** (D-050). 0105 is built and certified locally as H1B-0.1, below. Gate 2 stays **BLOCKED / NOT EXECUTED** until 0105 is applied to the hosted target (Gate 1b.1) and the secret is loaded.
+
+---
+
+## H1B-0.1 — temporary-schema hardening, migration 0105 (2026-09-15, LOCAL)
+
+**Status: COMPLETE (local).** `0105_h1b01_temp_schema_hardening.sql` is **not applied to any hosted database**. Decision D-050.
+
+### Root cause
+
+PostgreSQL resolves unqualified relation and type names in a function body at run time, using the effective `search_path`. When `pg_temp` is not named in that path, the session's temporary schema is searched **first**, and PUBLIC holds TEMPORARY. So any caller, `app_rw` included, could create a temp table named like a real one and rewrite what an authorization function reads.
+
+Policy expressions, views and triggers' `WHEN` clauses are **not** affected: their relation references are bound to object IDs at creation. Function bodies are.
+
+### Complete inventory (derived from the catalogue, not the earlier list)
+
+Every plpgsql / SQL function in `public` was classified:
+
+| Class | Functions | Before 0105 | Reads relations or types? | Hardened |
+|---|---|---|---|---|
+| SECURITY DEFINER — older RLS / tenant / grant / API-key helpers (8) | `is_org_member`, `org_role`, `can_see_partnership`, `can_see_pursuit`, `grant_is_live`, `grant_population_delete_guard` (trigger), `resolve_api_key`, `resolve_user_org` | `search_path=public` | yes; the first four are called by RLS policies | yes |
+| SECURITY DEFINER — H1B-0 (0104) (18) | the 14 runtime functions + `h1b_consent_party`, `h1b_consent_allowed`, `h1b_org_book`, `h1b_overlap_results` | `search_path=public` | yes (except `h1b_consent_allowed`, which only calls `h1b_consent_party`; hardened for a uniform rule) | yes |
+| INVOKER, called directly by RLS policies (1) | `app_current_org()` | none | its `::uuid` cast is type-resolved (a temp table named `uuid` shadows it) | yes → `pg_catalog, pg_temp` |
+| INVOKER guard triggers (4) | `h1b_consent_guard` (8 consent tables) | `search_path=public` | yes | yes |
+| | `enforce_verified_evidence` (signals) | **none** | yes (`evidence`) | yes |
+| | `economic_fact_assertion_guard` (facts) | **none** | yes (`fact_predicates`) | yes |
+| | `stakeholder_assertion_guard` (stakeholders) | **none** | no; it reads only a setting, so it is not exploitable. Hardened for a uniform rule | yes |
+| **Total** | **31** — 27 previously known + `app_current_org` and 3 guard triggers not on the list | | | **31** |
+
+- **Owners.** Every function is owned by `postgres`, the owner of the `public` tables.
+- **No other plpgsql / SQL function exists in `public`.** The rest are C functions from extensions.
+- **Callers.** All the H1B-0 functions derive the caller's org from `app_current_org()` (trusted server context). The older helpers take the org or user being *tested* as an argument, not as authority.
+
+### Migration 0105
+
+- **30 functions** get `ALTER FUNCTION … SET search_path = pg_catalog, public, pg_temp`. **`app_current_org()`** gets `pg_catalog, pg_temp`. That is **31** in total.
+- **Nothing else changes:** no function body, owner, EXECUTE grant, policy, table or row. It is idempotent.
+- **Documented rollback:** 31 machine-readable `-- ROLLBACK:` lines, restoring `search_path=public` on 27 and `RESET` on 4.
+- **Why not schema-qualify:** qualifying the function bodies was considered and not done. With `pg_temp` last and `public` non-writable it adds no protection, and re-creating 31 certified bodies would risk drift.
+- **The assumption it relies on:** no runtime role can CREATE in `public`. Verified on the hosted target at the Gate 2 precheck; asserted on every certification run.
+
+### Exploit battery — `search-path` (new; SEEDED, seeded clone, as the REAL `app_rw` login)
+
+| # | Exploit | Before 0105 (negative control) | After 0105 |
+|---|---|---|---|
+| 1 | Temp `partnerships`: a non-party reads another org's settlement rows | **succeeds** (0 → 2 rows) | 0 rows |
+| 2 | Temp `partnerships`: a non-party writes a broker line into another partnership | **succeeds** | refused |
+| 3 | Temp `partnerships`: a non-party injects a list grant through `can_see_partnership` (RLS) | **succeeds** | refused by RLS |
+| 4 | Temp `org_members` + a chosen JWT subject: `is_org_member` admits another org (the other org's pursuits become visible) | **succeeds** | 0 visible |
+| 5 | Temp `org_members`: `org_role` → `owner` of another org | **succeeds** | none |
+| 6 | Temp `org_members`: `resolve_user_org` resolves into another org | **succeeds** | no |
+| 7 | Temp `pursuits`: `can_see_pursuit` on another org's pursuit | **succeeds** | false |
+| 8 | Temp `context_grants`: `grant_is_live` flips a real grant | **succeeds** | unchanged |
+| 9 | Temp `api_keys`: `resolve_api_key` resolves a forged key to another org | **succeeds** | 0 keys |
+| 10 | Temp table named `uuid`: bends or breaks RLS evaluation | **succeeds** | own pursuits unchanged |
+| 11 | Temp `evidence`: a signal cites unverified evidence (`enforce_verified_evidence`) | **succeeds** | refused by the guard |
+
+Further checks:
+- **The negative control** executes 0105's documented rollback lines on the clone. The guard then flags **31 / 31**, and every exploit succeeds, so the suite demonstrably fails without 0105. That also certifies the rollback text itself.
+- **After 0105** the guard finds **0 / 31** unsafe.
+- **Guard self-test:** a helper re-pinned to `public`, and a new SECURITY DEFINER function with no path, are both flagged.
+- **Assumptions:**
+  - no CREATE on `public` for PUBLIC, `app_rw`, anon, authenticated or service_role, and no membership path;
+  - every protected function owned by `postgres`;
+  - H1B-0 runtime functions EXECUTE-able by `app_rw` only;
+  - internal helpers by no runtime role.
+- **Result: 39 / 0.**
+
+The static twin, `tests/migration-search-path.test.ts` (in `npm test`), replays the whole migration chain. It finds the 31 protected functions and fails if any ends the chain unsafe.
+
+**EXECUTE review of the older helpers (pre-existing, not changed, not broadened).** On hosted (from the Gate 1b snapshot), the 8 older helpers and `app_current_org` are EXECUTE-able by PUBLIC, and so by anon, authenticated and service_role. That is the PostgreSQL default, never revoked.
+- **authenticated needs it:** 206 `authenticated`-role policies call `is_org_member`, `org_role` or `can_see_*`.
+- **anon has no policies.** Its EXECUTE is unnecessary, but it grants nothing without a JWT, an `app.org_id` or an API-key secret.
+
+A least-privilege narrowing of anon / PUBLIC EXECUTE is **recommended as a separate item**, outside H1B-0.1.
+
+### Proof after 0105
+
+- `partnership-app-rw`: **117 / 0** on the 0105-hardened world. Every authorised flow works, and every forgery is refused.
+- Rehearsal: `app-rw-rehearsal` after 0105: **38 / 38 rooms identical** under `app_rw` and the owner (Today, Queue, Pursuit Detail — Slice 1 / 2A / 2B — every partnership room); consent fixture **6 / 6** rendered under both; `/api/build` posture truthful — owner `postgres` / `bypassRls: true` / `tenantEnforcement: false`, app_rw `app_rw` / `false` / `true`.
+- Certification: `certify-world --runs 2` **80 / 80 suite runs clean** (40 suites incl. `search-path` 39/0 and `partnership-app-rw` 117/0; 3,554 assertions, 0 failures); canonical digest `e98b43254f98d5ec` before run 1, after run 1 and after run 2 — CERTIFICATION INTEGRITY: PASS; manifest `be0da833990ce436` unchanged; 0 send rows.
+- The canonical world with 0105 applied locally has fingerprint `e98b43254f98d5ec` and manifest `be0da833990ce436`, unchanged. 0105 changes function settings only.
+
+### If hosted Gate 1b.1 must be rolled back
+
+Execute the 31 `-- ROLLBACK:` lines at the end of `0105_h1b01_temp_schema_hardening.sql`:
+- `alter function … set search_path = public` on the 26 definers and `h1b_consent_guard`;
+- `alter function … reset search_path` on `app_current_org`, `enforce_verified_evidence`, `economic_fact_assertion_guard` and `stakeholder_assertion_guard`;
+- then delete the `schema_migrations` row for 0105.
+
+This restores the exact pre-0105 catalogue. The negative control above proves these lines do exactly that. It also re-opens the vulnerability, so it is an emergency measure only.
 
 ### Local rehearsal (H1A — no hosted change)
 

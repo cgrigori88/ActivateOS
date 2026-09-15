@@ -106,6 +106,12 @@ export const SUITES: SuiteSpec[] = [
     why: "Today/Queue tenant isolation (2026-09-14 hardening): reads every canonical org's Today (flag OFF and ON) and Queue inside READ ONLY transactions, then plants guest-org clones of real rows inside a transaction that is ROLLED BACK and proves the sponsor's surfaces do not move",
   },
   {
+    name: "search-path",
+    cls: "SEEDED",
+    why: "H1B-0.1: temporary-schema shadowing of authorization-sensitive functions — negative control (0105's own rollback lines → the catalogue guard flags and EVERY exploit succeeds), forward (0105 → 0 unsafe functions, EVERY exploit fails), guard self-test, CREATE-on-public and SECURITY DEFINER EXECUTE assumptions. Exploits run as the REAL app_rw login; it ALTERs functions on the clone, so it runs on a disposable seeded clone",
+    isolation: "SEEDED_CLONE",
+  },
+  {
     name: "partnership-app-rw",
     cls: "SEEDED",
     why: "H1B-0: every partnership / consent flow as the REAL app_rw login (RLS binding) — invite→redeem, context and list grants, the overlap ladder, evidence and skill shares, warm intros, joint pursuits, settlement, revoke — plus third-party, forged-row, self-approval, post-revoke and no-context refusals. One transaction, ROLLED BACK, on a disposable seeded clone",

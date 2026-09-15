@@ -1235,3 +1235,52 @@ access.
 - Full certification.
 
 The migration is **NOT applied to any hosted database**. Applying it is Gate 1b, a separate approval.
+
+## D-050 · Temporary-schema shadowing is NOT accepted as residual risk for the `app_rw` runtime security boundary
+
+**Context (H1B Gate 2 precheck, 2026-09-15).** Every authorization-sensitive function pinned
+`search_path = public`, or pinned nothing. PostgreSQL searches the session's temporary schema FIRST for
+relations and types unless `pg_temp` is named in the path, and PUBLIC holds TEMPORARY on the database.
+
+A caller could therefore create a temp table named like a real one and change what a SECURITY DEFINER
+function, an RLS helper or a guard trigger reads. This was proven as the real `app_rw` login:
+- a non-party's temp `partnerships` table exposed another org's settlement rows;
+- the same shadow allowed a write into another partnership's joint room;
+- a temp `org_members` admitted another org through `is_org_member`;
+- a temp `api_keys` resolved a forged key.
+
+**Decision.** The risk is not accepted, even though an arbitrary-SQL `app_rw` session could already
+choose `app.org_id`. RLS and the consent functions are the boundary H1B certifies, and a boundary that
+the caller's own session can rewrite is not one. So:
+
+1. **Pin the path.** Every function in the protected class carries
+   `search_path = pg_catalog, public, pg_temp` (migration `0105_h1b01_temp_schema_hardening.sql`):
+   - built-ins first;
+   - the trusted application schema next;
+   - `pg_temp` explicitly last.
+
+   `app_current_org()` reads nothing from `public` and gets the narrower `pg_catalog, pg_temp`.
+2. **The protected class** is every SECURITY DEFINER function in `public`, every function an RLS policy
+   calls, and every trigger function on a `public` table. It is derived from the catalogue, so a future
+   function is covered automatically. Today that is **31 functions**:
+   - the 26 definers: 0104's 18 plus the 8 older RLS / tenant / grant / API-key helpers;
+   - `app_current_org()`;
+   - the 0104 consent guard;
+   - three older guard triggers that pinned nothing: `enforce_verified_evidence`,
+     `economic_fact_assertion_guard`, `stakeholder_assertion_guard`.
+3. **The assumption `public` must keep.** It is trusted only because no runtime role can CREATE in it:
+   not PUBLIC, `app_rw`, anon, authenticated or service_role, directly or through membership. This was
+   verified on the hosted target and is asserted on every certification run.
+4. **Durable guards:**
+   - `scripts/search-path-verify.ts`, in certification: live catalogue guard, exploit battery,
+     negative control, and CREATE-on-public and SECURITY DEFINER EXECUTE checks;
+   - `tests/migration-search-path.test.ts`, in `npm test`: replays the migration chain and fails if any
+     protected function ends it with an unsafe `search_path`.
+
+   Either catches a future `search_path = public`.
+5. **Scope.** No function body is rewritten. With `pg_temp` last and `public` non-writable, schema
+   qualification adds no protection, and rewriting would only add drift risk.
+
+   EXECUTE grants are unchanged. The older helpers' PUBLIC EXECUTE is the PostgreSQL default, and the
+   `authenticated` role needs it for the 206 policies that call `is_org_member`, `org_role` and
+   `can_see_*`. Narrowing anon's EXECUTE is a separate least-privilege item and is not done here.
