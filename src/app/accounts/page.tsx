@@ -119,14 +119,14 @@ export default async function AccountsPage({
        join companies c2 on c2.id = p.company_id
        join taxonomy_nodes n on n.id = p.taxonomy_node_id
        where p.org_id = $3 and ($2::boolean is false or p.company_id = any($1))
-       order by p.company_id, p.computed_at desc
+       order by p.company_id, p.computed_at desc, p.id desc
      ) latest
      join companies c on c.id = latest.company_id
      left join lateral (
        select pa.name as partner_name, t.status as team_status
        from pursuit_teams t join partners pa on pa.id = t.partner_id
        where t.company_id = latest.company_id and t.org_id = $3 and t.status in ('recommended','accepted')
-       order by t.created_at desc limit 1) pt on true`,
+       order by t.created_at desc, t.id desc limit 1) pt on true`,
       [scopeIds ?? [], scopeIds != null, orgId],
     );
 
@@ -222,7 +222,9 @@ export default async function AccountsPage({
       : String(r.legal_name).toLowerCase();
     const va = val(a);
     const vb = val(b);
-    return va < vb ? -dir : va > vb ? dir : 0;
+    // A tie must not fall back to arrival order: this is the visible /accounts row order (D-G8-2A).
+    return va < vb ? -dir : va > vb ? dir
+      : String(a.legal_name).localeCompare(String(b.legal_name)) || a.company_id.localeCompare(b.company_id);
   });
 
   const makeSortHref = (s: string) => `/accounts${buildQS(params, { sort: s })}`;

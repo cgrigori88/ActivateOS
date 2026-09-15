@@ -137,7 +137,7 @@ export default async function MotionsPage({
      left join partners pa on pa.id = m.partner_id
      left join goals g on g.id = m.goal_id
      where m.org_id = $1
-     order by m.created_at desc limit 500`,
+     order by m.created_at desc, m.id desc limit 500`,
       [orgId],
     )).rows,
     goals: await goalOptions(db, orgId),
@@ -154,7 +154,7 @@ export default async function MotionsPage({
          from account_populations ap
          left join partners p on p.id = ap.partner_id
          where ap.org_id = $1 and ap.status = 'approved'
-         order by ap.name`,
+         order by ap.name, ap.id`,
       [orgId],
     )).rows,
     draftCandidates: (await db.query<{ company_id: string; legal_name: string; score: string }>(
@@ -172,8 +172,8 @@ export default async function MotionsPage({
              (sl.kind = 'domain' and c.primary_domain is not null
                and (c.primary_domain = sl.value or c.primary_domain like '%.' || sl.value))
              or (sl.kind = 'name' and c.normalized_name = sl.value))))
-       order by p.company_id, p.computed_at desc
-     ) x order by x.score desc limit 18`,
+       order by p.company_id, p.computed_at desc, p.id desc
+     ) x order by x.score desc, x.legal_name, x.company_id limit 18`,
       [orgId],
     )).rows,
   }));
@@ -215,7 +215,7 @@ export default async function MotionsPage({
       hit.motions++;
       by.set(m.goal_id, hit);
     }
-    return [...by.values()].sort((a, b) => b.motions - a.motions);
+    return [...by.values()].sort((a, b) => b.motions - a.motions || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   })();
 
   // Group + chart
@@ -225,13 +225,15 @@ export default async function MotionsPage({
     (groups.get(k) ?? groups.set(k, []).get(k)!).push(m);
   }
   const orderKeys = (keys: string[]) =>
-    groupKey === "status" ? STATUS_ORDER.filter((s) => keys.includes(s)) : keys.sort((a, b) => (groups.get(b)!.length - groups.get(a)!.length));
+    groupKey === "status" ? STATUS_ORDER.filter((s) => keys.includes(s))
+      : keys.sort((a, b) => (groups.get(b)!.length - groups.get(a)!.length) || a.localeCompare(b));
   // Status grouping shows the full lifecycle, empty statuses included, so the
   // shape of the funnel is always visible; other groupings show their top 10.
   const chartRows =
     groupKey === "status"
       ? STATUS_ORDER.map((s) => ({ label: s, value: groups.get(s)?.length ?? 0 }))
-      : [...groups.entries()].map(([label, ms]) => ({ label, value: ms.length })).sort((a, b) => b.value - a.value).slice(0, 10);
+      : [...groups.entries()].map(([label, ms]) => ({ label, value: ms.length }))
+          .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label)).slice(0, 10);
 
   const drawerFunnel = sp.mdrawer ? funnels.find((f) => f.hypothesis.taxonomyNodeId === sp.mdrawer) : undefined;
 

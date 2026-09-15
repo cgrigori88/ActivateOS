@@ -72,7 +72,7 @@ export default async function OpsPage() {
 }
 
 function HealthCard({ title, counts }: { title: string; counts: GovernanceHealth["invocations"] }) {
-  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const total = entries.reduce((s, [, n]) => s + n, 0);
   return (
     <Card>

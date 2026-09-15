@@ -107,7 +107,7 @@ export default async function PipelinePage({
      left join taxonomy_nodes mn on mn.id = m.taxonomy_node_id
      left join partners pa on pa.id = m.partner_id and pa.org_id = o.org_id
      where o.org_id = $3 and ($2::boolean is false or o.company_id = any($1))
-     order by o.updated_at desc`,
+     order by o.updated_at desc, o.id`,
     [scopeIds ?? [], scopeIds != null, orgId],
   );
 
@@ -118,7 +118,7 @@ export default async function PipelinePage({
        from seller_account_relationships r
        join sellers s on s.id = r.seller_id and s.org_id = $1
        left join vendors v on v.id = s.vendor_id
-      order by r.company_id, r.strength desc nulls last`,
+      order by r.company_id, r.strength desc nulls last, s.name, r.seller_id`,
     [orgId],
   );
   const ecoByCompany = new Map(ecoRows.map((r) => [r.company_id, { seller: r.seller, vendor: r.vendor, territory: r.territory }]));
@@ -184,7 +184,7 @@ export default async function PipelinePage({
   const { rows: regRows } = await db.query<DealReg>(
     `select id, opportunity_id, vendor, product, status, protected_until
      from deal_registrations where opportunity_id = any($1) and org_id = $2
-     order by created_at desc`,
+     order by created_at desc, id desc`,
     [opps.map((o) => o.id), orgId],
   );
   const regByOpp = new Map<string, DealReg>();
@@ -330,10 +330,11 @@ export default async function PipelinePage({
       `select s.company_id, c.legal_name, sum(s.amount_usd) as crm
        from (select distinct on (company_id, lower(opportunity_name)) company_id, opportunity_name, amount_usd, stage
              from crm_snapshots where org_id = $1
-             order by company_id, lower(opportunity_name), reported_at desc) s
+             order by company_id, lower(opportunity_name), reported_at desc, id desc) s
        join companies c on c.id = s.company_id
        where s.stage not in ('closed_won', 'closed_lost') and s.amount_usd is not null
-       group by s.company_id, c.legal_name`,
+       group by s.company_id, c.legal_name
+       order by c.legal_name, s.company_id`,
       [tieOrgId],
     );
     if (crmByCompany.length > 0) {
@@ -352,7 +353,7 @@ export default async function PipelinePage({
           live: liveByCompany.get(r.company_id) ?? 0,
         }))
         .filter((d) => Math.abs(d.crm - d.live) >= 1)
-        .sort((a, b) => Math.abs(b.crm - b.live) - Math.abs(a.crm - a.live))
+        .sort((a, b) => Math.abs(b.crm - b.live) - Math.abs(a.crm - a.live) || a.account.localeCompare(b.account))
         .slice(0, 5);
       const { rows: weekAgoRows } = await db.query<{ open_usd: string; taken_on: string }>(
         `select open_usd, taken_on::text from pipeline_snapshots

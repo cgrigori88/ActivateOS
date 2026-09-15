@@ -136,7 +136,7 @@ export default async function InsightsPage({
           db.query(
             `select raw_output->>'response_type' as response_type, count(*) as n
              from agent_runs where workflow = 'conversation' and org_id = $1
-             group by 1 order by 2 desc`,
+             group by 1 order by 2 desc, 1`,
             [orgId],
           ),
         ]);
@@ -182,16 +182,17 @@ export default async function InsightsPage({
   const byClass = (() => {
     const m = new Map<string, number>();
     for (const o of canonicalWon) m.set(o.cls, (m.get(o.cls) ?? 0) + Number(o.n));
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   })();
 
   // Readings that depend on the data are computed here so the JSX stays a layout.
   const unknownWins = byClass.find(([cls]) => cls === "UNKNOWN")?.[1] ?? 0;
   const funnelTotal = funnel.reduce((t, s) => t + s.count, 0);
   const biggestDrop = funnel
-    .map((s, i) => ({ s, prev: funnel[i - 1], drop: i > 0 ? funnel[i - 1].count - s.count : 0 }))
+    .map((s, i) => ({ s, prev: funnel[i - 1], drop: i > 0 ? funnel[i - 1].count - s.count : 0, i }))
     .filter((x) => x.prev && x.drop > 0)
-    .sort((a, b) => b.drop - a.drop)[0];
+    // Equal drops pick a single winner, so keep funnel order on a tie rather than sort order (D-G8-2A).
+    .sort((a, b) => b.drop - a.drop || a.i - b.i)[0];
   const divergent = calibration.filter((c) => c.divergent);
   const readable = calibration.filter((c) => c.observed != null);
   const attributionSpread = attribution.filter((a) => a.wonDeals + a.lostDeals > 0);

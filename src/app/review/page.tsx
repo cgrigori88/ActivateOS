@@ -59,13 +59,13 @@ export default async function ReviewPage({
      join evidence e on e.id = rq.evidence_id
      left join companies c on c.id = e.company_id
      where rq.status = 'pending' and rq.org_id = $1
-     order by (rq.reason = 'contradiction') desc, (rq.reason = 'checker_disagreement') desc, rq.created_at
+     order by (rq.reason = 'contradiction') desc, (rq.reason = 'checker_disagreement') desc, rq.created_at, rq.id
      limit 300`,
       [orgId],
     );
     const { rows: sources } = await db.query<{ name: string; trust: string; rate: string }>(
       `select name, round(trust_score, 2) as trust, round(audit_sample_rate * 100) as rate
-     from signal_sources order by trust_score desc`,
+     from signal_sources order by trust_score desc, name`,
     );
 
     // Which partners map each affected account (an account can be on several).
@@ -118,7 +118,8 @@ export default async function ReviewPage({
       groups.set(key, g);
     }
   }
-  const grouped = [...groups.values()].sort((a, b) => b.items.length - a.items.length);
+  const grouped = [...groups.values()].sort((a, b) =>
+    b.items.length - a.items.length || a.name.localeCompare(b.name) || (a.companyId ?? "").localeCompare(b.companyId ?? ""));
 
   return (
     <main>

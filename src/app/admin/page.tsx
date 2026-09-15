@@ -152,18 +152,18 @@ export default async function AdminPage({
         `select workflow, count(*) as n, round(sum(cost_usd)::numeric, 3) as cost,
                 round(avg(latency_ms))::int as ms,
                 count(*) filter (where human_decision in ('edited','rejected')) as overridden
-         from agent_runs where org_id = $1 group by workflow order by n desc`,
+         from agent_runs where org_id = $1 group by workflow order by n desc, workflow`,
         [orgId],
       ),
       db.query<{ workflow: string; model: string; cost_usd: string | null; latency_ms: number | null; human_decision: string | null; created_at: Date }>(
         `select workflow, model, cost_usd, latency_ms, human_decision, created_at
-         from agent_runs where org_id = $1 order by created_at desc limit 10`,
+         from agent_runs where org_id = $1 order by created_at desc, id desc limit 10`,
         [orgId],
       ),
       db.query<{ provider_id: string; error: string | null; status: string; finished_at: Date | null }>(
         `select provider_id, error, status, finished_at from provider_runs
          where org_id = $1 and (status = 'failed' or error is not null)
-         order by finished_at desc nulls last limit 8`,
+         order by finished_at desc nulls last, id desc limit 8`,
         [orgId],
       ),
       db.query<{ research_pending: string; research_running: string; review_pending: string; touches_scheduled: string }>(
@@ -612,7 +612,7 @@ export default async function AdminPage({
                         const mine = r.categories[orgId] ?? {};
                         const theirs = Object.entries(r.categories).find(([k]) => k !== orgId)?.[1] ?? {};
                         const fmt = (m: Record<string, number>) =>
-                          Object.entries(m).sort((x, y) => y[1] - x[1]).map(([c, n]) => `${n} ${c.replace(/_/g, " ")}`).join(" · ") || "—";
+                          Object.entries(m).sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).map(([c, n]) => `${n} ${c.replace(/_/g, " ")}`).join(" · ") || "—";
                         return (
                           <div className="mt-2 space-y-1 pl-6 text-body">
                             <p><span className="font-medium text-neutral-700 dark:text-neutral-300">In your book:</span> <span className="text-neutral-500">{fmt(mine)}</span></p>

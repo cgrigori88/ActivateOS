@@ -33,7 +33,7 @@ export async function loadQueueWorklist(
    left join sellers s on s.id = m.partner_seller_id
    where a.status = 'pending' and m.status = 'active' and m.org_id = $3
      and ($2::boolean is false or m.company_id = any($1))
-   order by a.due_at, a.step`,
+   order by a.due_at, a.step, a.id`,
       [ids, scoped, orgId],
     )
   ).rows;
@@ -47,7 +47,7 @@ export async function loadQueueWorklist(
    left join sellers s on s.id = ca.owner_seller_id
    where ca.status = 'pending' and t.org_id = $3 and ca.org_id = $3
      and ($2::boolean is false or t.company_id = any($1))
-   order by ca.due_at nulls last`,
+   order by ca.due_at nulls last, ca.id`,
       [ids, scoped, orgId],
     )
   ).rows;
@@ -59,7 +59,7 @@ export async function loadQueueWorklist(
    join companies c on c.id = m.company_id
    where a.status in ('done','skipped') and m.org_id = $3
      and ($2::boolean is false or m.company_id = any($1))
-   order by a.completed_at desc limit 8`,
+   order by a.completed_at desc, a.id desc limit 8`,
       [ids, scoped, orgId],
     )
   ).rows;

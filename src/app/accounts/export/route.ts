@@ -33,15 +33,15 @@ export async function GET(req: Request): Promise<NextResponse> {
        join companies c2 on c2.id = p.company_id
        join taxonomy_nodes n on n.id = p.taxonomy_node_id
        where p.org_id = $1 and ($3::boolean is false or p.company_id = any($2))
-       order by p.company_id, p.computed_at desc
+       order by p.company_id, p.computed_at desc, p.id desc
      ) latest
      join companies c on c.id = latest.company_id
      left join lateral (
        select pa.name as partner_name from pursuit_teams t
        join partners pa on pa.id = t.partner_id
        where t.company_id = latest.company_id and t.org_id = $1 and t.status in ('recommended','accepted')
-       order by t.created_at desc limit 1) pt on true
-     order by latest.score desc`,
+       order by t.created_at desc, t.id desc limit 1) pt on true
+     order by latest.score desc, latest.legal_name, latest.company_id`,
       [orgId, scopeIds ?? [], scopeIds != null],
     ),
   );

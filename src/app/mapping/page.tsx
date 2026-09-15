@@ -191,7 +191,7 @@ export default async function MappingPage({
         const { rows: sc } = await db.query<{ company_id: string; score_id: string; node_id: string; solution: string; changes: { delta?: number } | null }>(
           `select distinct on (p.company_id) p.company_id, p.id as score_id, n.id as node_id, n.name as solution, p.changes
            from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
-           where p.company_id = any($1) and p.org_id = $2 order by p.company_id, p.computed_at desc`,
+           where p.company_id = any($1) and p.org_id = $2 order by p.company_id, p.computed_at desc, p.id desc`,
           [companyIds, orgId],
         );
         for (const s of sc) scoreInfo.set(s.company_id, { scoreId: s.score_id, nodeId: s.node_id, solution: s.solution, delta: s.changes?.delta ?? null });
@@ -200,7 +200,7 @@ export default async function MappingPage({
       const scoreIds = [...scoreInfo.values()].map((s) => s.scoreId);
       if (scoreIds.length) {
         const { rows: dims } = await db.query<{ score_id: string; dimension: string; value: string }>(
-          `select score_id, dimension, value from propensity_dimensions where score_id = any($1) order by value desc`,
+          `select score_id, dimension, value from propensity_dimensions where score_id = any($1) order by value desc, dimension`,
           [scoreIds],
         );
         for (const d of dims) {
@@ -227,7 +227,7 @@ export default async function MappingPage({
         const { rows: ev } = await db.query<{ company_id: string; claim: string }>(
           `select distinct on (company_id) company_id, claim from evidence
            where company_id = any($1) and status = 'verified' and (org_id = $2 or org_id is null)
-           order by company_id, computed_confidence desc nulls last, observed_at desc`,
+           order by company_id, computed_confidence desc nulls last, observed_at desc, id desc`,
           [companyIds, orgId],
         );
         for (const e of ev) signalByCompany.set(e.company_id, e.claim);
@@ -264,7 +264,7 @@ export default async function MappingPage({
 
       const pmap = new Map<string, { id: string; name: string; type: string | null }>();
       for (const a of coverage) for (const p of a.partners) pmap.set(p.id, p);
-      partnerList = [...pmap.values()].sort((a, b) => a.name.localeCompare(b.name));
+      partnerList = [...pmap.values()].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
     }
     return { rows, partnerList };
   });
@@ -325,7 +325,7 @@ async function ReviewSection({ openId }: { openId?: string }) {
               (select count(*) from population_members m where m.population_id = ap.id)::int as members, ap.created_at
        from account_populations ap left join partners p on p.id = ap.partner_id
        where ap.org_id = $1 and ap.status = 'pending'
-       order by ap.created_at desc`,
+       order by ap.created_at desc, ap.id desc`,
       [orgId],
     );
 

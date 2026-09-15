@@ -38,7 +38,7 @@ export async function draftWritebacks(db: Db, orgId: string): Promise<number> {
      from (select distinct on (company_id, lower(opportunity_name))
                   company_id, opportunity_name, amount_usd, stage
            from crm_snapshots where org_id = $1
-           order by company_id, lower(opportunity_name), reported_at desc) s
+           order by company_id, lower(opportunity_name), reported_at desc, id desc) s
      join companies c on c.id = s.company_id
      where s.stage not in ('closed_won', 'closed_lost')`,
     [orgId],
@@ -90,7 +90,7 @@ export async function listWritebacks(db: Db, orgId: string): Promise<WritebackRo
             w.crm_value, w.live_value, w.rationale, w.status, w.created_at
      from crm_writebacks w join companies c on c.id = w.company_id
      where w.org_id = $1 and w.status in ('proposed', 'approved')
-     order by w.created_at desc limit 30`,
+     order by w.created_at desc, w.id desc limit 30`,
     [orgId],
   );
   return rows.map((r) => ({
@@ -129,7 +129,7 @@ export async function exportApprovedWritebacks(db: Db, orgId: string): Promise<s
   }>(
     `select w.id, c.legal_name, w.opportunity_name, w.field, w.crm_value, w.live_value, w.rationale
      from crm_writebacks w join companies c on c.id = w.company_id
-     where w.org_id = $1 and w.status = 'approved' order by w.created_at`,
+     where w.org_id = $1 and w.status = 'approved' order by w.created_at, w.id`,
     [orgId],
   );
   // Formula-injection guard: spreadsheet apps execute cells starting with

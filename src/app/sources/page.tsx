@@ -24,7 +24,7 @@ export default async function SourcesPage() {
             max(e.collected_at) as last_seen
      from signal_sources s
      left join evidence e on e.source_type = s.name and (e.org_id = $1 or e.org_id is null)
-     group by s.id order by s.trust_score desc`,
+     group by s.id order by s.trust_score desc, s.name`,
       [orgId],
     ),
   );

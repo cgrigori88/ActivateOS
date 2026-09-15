@@ -130,7 +130,8 @@ export async function partnerCoverage(db: pg.PoolClient, orgId: string): Promise
        and ap.partner_id is not null and ap.status = 'approved' and ap.org_id = $1
      join org_cos oc on oc.company_id = pm.company_id
      join partners p on p.id = ap.partner_id
-     join companies c on c.id = pm.company_id`,
+     join companies c on c.id = pm.company_id
+     order by c.legal_name, pm.company_id, p.name, p.id, ap.category`,
     [orgId],
   );
 
@@ -139,7 +140,7 @@ export async function partnerCoverage(db: pg.PoolClient, orgId: string): Promise
   if (companyIds.length) {
     const { rows: sc } = await db.query<{ company_id: string; score: string; band: string | null }>(
       `select distinct on (company_id) company_id, score, band
-       from propensity_scores where company_id = any($1) and org_id = $2 order by company_id, computed_at desc`,
+       from propensity_scores where company_id = any($1) and org_id = $2 order by company_id, computed_at desc, id desc`,
       [companyIds, orgId],
     );
     for (const s of sc) scoreMap.set(s.company_id, { score: Number(s.score), band: s.band });

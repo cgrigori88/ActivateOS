@@ -26,7 +26,7 @@ export default async function TrustPage() {
       [orgId],
     )).rows,
     models: (await db.query<{ model: string; n: string }>(
-      `select model, count(*) as n from agent_runs where org_id = $1 group by model order by count(*) desc limit 5`,
+      `select model, count(*) as n from agent_runs where org_id = $1 group by model order by count(*) desc, model limit 5`,
       [orgId],
     )).rows,
     ownKey: await hasOrgAnthropicKey(db, orgId),
