@@ -319,7 +319,7 @@ async function main(): Promise<void> {
     const r0 = await loadPlanRecords(db, caller, hero.id);
     const rec0 = resolvePlanStanding(r0.revisions).pending!;
     await dispatchSkill(db, "decide_pursuit_plan", operator, { pursuitId: hero.id, args: { planId: r0.plan!.id, recommendationId: rec0.id, decision: "APPROVED" }, dataEnvironment: hero.env });
-    await transitionMotion(db, rec0.content.motion.motionId!, "abandoned");
+    await transitionMotion(db, hero.org_id, rec0.content.motion.motionId!, "abandoned");
     const r1 = await loadPlanRecords(db, caller, hero.id);
     const v = await loadPursuitPlanView(db, caller, hero.id);
     check("motion change: the SAME goal row and objective", r1.goal?.id === r0.goal?.id && r1.goal?.objective === r0.goal?.objective);

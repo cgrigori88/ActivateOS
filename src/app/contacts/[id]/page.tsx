@@ -52,7 +52,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   if (!UUID.test(id)) notFound();
 
-  const data = await withTenant(async (db) => {
+  const data = await withTenant(async (db, orgId) => {
     const { rows } = await db.query<{
       id: string;
       name: string | null;
@@ -79,9 +79,9 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
          left join companies co on co.id = c.company_id
          left join partners p on p.id = c.partner_id
          left join lateral (select engagement_score, computed_at from engagement_scores
-                             where contact_id = c.id order by computed_at desc limit 1) es on true
-        where c.id = $1`,
-      [id],
+                             where contact_id = c.id and org_id = $2 order by computed_at desc limit 1) es on true
+        where c.id = $1 and c.org_id = $2`,
+      [id, orgId],
     );
     if (rows.length === 0) return null;
 
@@ -111,13 +111,13 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
               pu.id as pursuit_id, pu.pursuit_type, pu.status as pursuit_status, pc.legal_name as pursuit_account,
               o.id as opportunity_id, o.name as opportunity_name, o.stage as opportunity_stage
          from stakeholders s
-         left join pursuits pu on pu.id = s.pursuit_id
+         left join pursuits pu on pu.id = s.pursuit_id and pu.org_id = $2
          left join companies pc on pc.id = pu.account_id
-         left join opportunities o on o.id = s.opportunity_id
-        where s.contact_id = $1
+         left join opportunities o on o.id = s.opportunity_id and o.org_id = $2
+        where s.contact_id = $1 and (pu.id is not null or o.id is not null)
         order by case s.assertion_state when 'verified' then 3 when 'inferred' then 2 else 1 end desc,
                  s.asserted_at desc nulls last`,
-      [id],
+      [id, orgId],
     );
 
     const { rows: history } = await db.query<{
@@ -128,9 +128,9 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
       company_id: string | null;
     }>(
       `select type, channel, actor, occurred_at, company_id
-         from interaction_events where contact_id = $1
+         from interaction_events where contact_id = $1 and org_id = $2
         order by occurred_at desc limit 12`,
-      [id],
+      [id, orgId],
     );
 
     return { c: rows[0], stakeholders, history };

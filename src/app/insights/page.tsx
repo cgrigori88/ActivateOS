@@ -115,20 +115,29 @@ export default async function InsightsPage({
 
       const [{ rows: events }, { rows: closed }, { rows: edits }, { rows: replies }] =
         await Promise.all([
-          db.query(`select event_type, motion_id from outcome_events`),
+          db.query(`select event_type, motion_id from outcome_events where org_id = $1`, [orgId]),
           db.query(
             `select o.id, o.stage = 'closed_won' as won,
                     coalesce(array_agg(t.to_stage) filter (where t.to_stage not in ('closed_won','closed_lost')), '{}') as stages
              from opportunities o
              left join opportunity_stage_transitions t on t.opportunity_id = o.id
-             where o.stage in ('closed_won','closed_lost')
+             where o.stage in ('closed_won','closed_lost') and o.org_id = $1
              group by o.id`,
+            [orgId],
           ),
-          db.query(`select edit_distance, length(ai_original) as draft_length from message_edits`),
+          // message_edits has no org_id — scope via message → communication thread.
+          db.query(
+            `select me.edit_distance, length(me.ai_original) as draft_length
+             from message_edits me
+             join messages m on m.id = me.message_id
+             join communication_threads t on t.id = m.thread_id and t.org_id = $1`,
+            [orgId],
+          ),
           db.query(
             `select raw_output->>'response_type' as response_type, count(*) as n
-             from agent_runs where workflow = 'conversation'
+             from agent_runs where workflow = 'conversation' and org_id = $1
              group by 1 order by 2 desc`,
+            [orgId],
           ),
         ]);
 

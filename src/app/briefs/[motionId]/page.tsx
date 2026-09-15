@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { withTenant } from "@/lib/db/tenant";
 import { commsConfig } from "@/lib/comms/provider";
 import { resendConfigured } from "@/lib/comms/resend";
@@ -37,8 +38,8 @@ export default async function BriefPage({
      left join partners pa on pa.id = m.partner_id
      left join sellers s on s.id = m.partner_seller_id
      left join propensity_scores p on p.id = m.propensity_score_id
-     where m.id = $1`,
-      [motionId],
+     where m.id = $1 and m.org_id = $2`,
+      [motionId, orgId],
     );
     if (motions.length === 0) return null;
     const m = motions[0];
@@ -99,7 +100,7 @@ export default async function BriefPage({
 
     return { m, cited, assets, steps, thread, threadMessages, confidence };
   });
-  if (!data) return <main>Unknown motion.</main>;
+  if (!data) notFound();
   const { m, cited, assets, steps, thread, threadMessages, confidence } = data;
 
   const draft = threadMessages.find(

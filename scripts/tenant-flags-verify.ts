@@ -10,9 +10,10 @@
  *   npx tsx scripts/tenant-flags-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { setOrgFeature, tenantFeatures, experienceEnabledFor, federationEnabledFor, governedActionEnabledFor, outcomeLearningEnabledFor } from "../src/lib/pursuits/tenant-flags";
 
-const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
+const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/verify_disposable";
 const pool = new Pool({ connectionString: CONN });
 let passed = 0, failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail = "") { if (cond) { passed++; console.log(`  ✓ ${name}`); } else { failed++; failures.push(name + (detail ? ` — ${detail}` : "")); console.log(`  ✗ ${name}${detail ? " — " + detail : ""}`); } }
@@ -23,6 +24,7 @@ const ENV_KEYS = ["PURSUITS_ENABLED", "FACTS_ENABLED", "ROUTING_ENABLED", "PURSU
 function setEnvAll(on: boolean) { for (const k of ENV_KEYS) { if (on) process.env[k] = "1"; else delete process.env[k]; } }
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[tenant-flags-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   const saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   const RID = Math.random().toString(36).slice(2, 8);

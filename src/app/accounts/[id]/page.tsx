@@ -55,9 +55,9 @@ export default async function AccountPage({
   // one exists the button becomes the road to it instead of a duplicate.
   const { rows: openMotions } = await db.query<{ id: string; status: string }>(
     `select id, status from revenue_motions
-     where company_id = $1 and status in ('draft', 'approved', 'active')
+     where company_id = $1 and org_id = $2 and status in ('draft', 'approved', 'active')
      order by created_at desc limit 1`,
-    [id],
+    [id, orgId],
   );
   const openMotion = openMotions[0] ?? null;
 
@@ -71,8 +71,8 @@ export default async function AccountPage({
     `select p.id, p.score, p.band, n.slug, p.computed_at,
             p.prev_score, p.positive_points, p.negative_points, p.changes
      from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
-     where p.company_id = $1 order by p.computed_at desc limit 1`,
-    [id],
+     where p.company_id = $1 and p.org_id = $2 order by p.computed_at desc limit 1`,
+    [id, orgId],
   );
 
   let dimensions: { dimension: string; value: string }[] = [];
@@ -97,8 +97,9 @@ export default async function AccountPage({
     const allIds = [...new Set(features.flatMap((f) => f.evidence_ids))];
     if (allIds.length > 0) {
       const ev = await db.query(
-        `select id, claim, source_type, computed_confidence from evidence where id = any($1)`,
-        [allIds],
+        `select id, claim, source_type, computed_confidence from evidence
+         where id = any($1) and (org_id = $2 or org_id is null)`,
+        [allIds, orgId],
       );
       evidence = new Map(ev.rows.map((e) => [e.id, e]));
     }
@@ -116,9 +117,9 @@ export default async function AccountPage({
       `select t.id, t.partner_id, s.name as seller, t.status, t.reason
        from pursuit_teams t
        left join sellers s on s.id = t.seller_id
-       where t.company_id = $1 and t.status in ('recommended','accepted')
+       where t.company_id = $1 and t.org_id = $2 and t.status in ('recommended','accepted')
        order by t.created_at desc limit 1`,
-      [id],
+      [id, orgId],
     );
     team = result.rows[0] ?? null;
   }
@@ -144,12 +145,12 @@ export default async function AccountPage({
        left join lateral (
          select s.name, sar.strength
          from seller_account_relationships sar
-         join sellers s on s.id = sar.seller_id
+         join sellers s on s.id = sar.seller_id and s.org_id = $2
          where sar.company_id = f.company_id and s.partner_id = f.partner_id
          order by sar.strength desc limit 1) as best on true
-       where f.company_id = $1
+       where f.company_id = $1 and f.org_id = $2
        order by f.partner_id, f.computed_at desc`,
-      [id],
+      [id, orgId],
     );
     partnerFits = result.rows.sort((a, b) => Number(b.score) - Number(a.score));
     if (partnerFits.length > 0) {
@@ -170,8 +171,8 @@ export default async function AccountPage({
   const { rows: motions } = await db.query(
     `select m.id, m.status, m.thesis, m.trigger_summary, m.primary_persona, m.secondary_persona,
             m.cta, m.confidence
-     from revenue_motions m where m.company_id = $1 order by m.created_at desc limit 1`,
-    [id],
+     from revenue_motions m where m.company_id = $1 and m.org_id = $2 order by m.created_at desc limit 1`,
+    [id, orgId],
   );
 
   let assets: { asset_type: string; title: string; content: string }[] = [];
@@ -179,21 +180,21 @@ export default async function AccountPage({
     const result = await db.query(
       `select a.asset_type, a.title, a.content
        from campaign_assets a join campaigns cp on cp.id = a.campaign_id
-       where cp.motion_id = $1 order by a.created_at`,
-      [motions[0].id],
+       where cp.motion_id = $1 and cp.org_id = $2 order by a.created_at`,
+      [motions[0].id, orgId],
     );
     assets = result.rows;
   }
 
   const { rows: events } = await db.query(
-    `select event_type, occurred_at from outcome_events where company_id = $1
+    `select event_type, occurred_at from outcome_events where company_id = $1 and org_id = $2
      order by occurred_at desc limit 10`,
-    [id],
+    [id, orgId],
   );
 
   // Intelligence surface (§43): evidence provenance, data completeness, and
   // provider coverage — what we actually know and how well we know it.
-  const intel = await loadCompanyIntel(db, id);
+  const intel = await loadCompanyIntel(db, orgId, id);
 
   // Context confidence (meets/beats batch): how much of this record is TRUE,
   // current, and broadly sourced — formula shown verbatim in the title.

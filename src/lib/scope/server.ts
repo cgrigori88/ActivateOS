@@ -76,9 +76,10 @@ export async function deriveScopeOptions(db: PoolClient, orgId: string): Promise
   // Personal ("my active book") is offered whenever there's an active book to scope to.
   const hasBook = await db.query<{ n: string }>(
     `select (
-       (select count(*) from pursuits where account_id is not null and status not in ('WON','LOST','DISQUALIFIED'))
-       + (select count(*) from revenue_motions where ${ACTIVE_MOTION})
+       (select count(*) from pursuits where org_id = $1 and account_id is not null and status not in ('WON','LOST','DISQUALIFIED'))
+       + (select count(*) from revenue_motions where org_id = $1 and ${ACTIVE_MOTION})
      )::text n`,
+    [orgId],
   );
   if (Number(hasBook.rows[0]?.n ?? 0) > 0) opts.push({ kind: "PERSONAL", id: null, label: "My active book", group: "Personal" });
 

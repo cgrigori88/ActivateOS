@@ -97,7 +97,7 @@ export function renderTouch(
 
 export async function createBlankCampaign(
   db: pg.PoolClient,
-  args: { orgId: string | null; companyId: string; name: string; senderName?: string | null; objective?: string | null },
+  args: { orgId: string; companyId: string; name: string; senderName?: string | null; objective?: string | null },
 ): Promise<{ campaignId: string }> {
   const { brandId } = await resolveBrand(db, args.orgId);
   const { rows } = await db.query<{ id: string }>(
@@ -108,39 +108,43 @@ export async function createBlankCampaign(
   return { campaignId: rows[0].id };
 }
 
+/** The campaign as seen by the CALLER's org — a foreign campaign id reads as not found. */
 async function campaignContext(
   db: pg.PoolClient,
+  orgId: string,
   campaignId: string,
-): Promise<{ orgId: string | null; companyId: string; senderName: string | null }> {
-  const { rows } = await db.query<{ org_id: string | null; company_id: string | null; sender_name: string | null; m_company: string | null; seller_name: string | null }>(
-    `select ca.org_id, ca.company_id, ca.sender_name, m.company_id as m_company, s.name as seller_name
+): Promise<{ orgId: string; companyId: string; senderName: string | null }> {
+  const { rows } = await db.query<{ company_id: string | null; sender_name: string | null; m_company: string | null; seller_name: string | null }>(
+    `select ca.company_id, ca.sender_name, m.company_id as m_company, s.name as seller_name
      from campaigns ca
      left join revenue_motions m on m.id = ca.motion_id
      left join sellers s on s.id = m.partner_seller_id
-     where ca.id = $1`,
-    [campaignId],
+     where ca.id = $1 and ca.org_id = $2`,
+    [campaignId, orgId],
   );
   if (rows.length === 0) throw new Error("campaign not found");
   const r = rows[0];
   const companyId = r.company_id ?? r.m_company;
   if (!companyId) throw new Error("campaign has no account");
-  return { orgId: r.org_id, companyId, senderName: r.sender_name ?? r.seller_name };
+  return { orgId, companyId, senderName: r.sender_name ?? r.seller_name };
 }
 
 /** Add a new touch (auto touch_no) or edit an existing one; re-renders HTML. */
 export async function upsertTouch(
   db: pg.PoolClient,
-  args: { campaignId: string; touchId?: string; fields: TouchFields },
+  args: { orgId: string; campaignId: string; touchId?: string; fields: TouchFields },
 ): Promise<{ touchId: string }> {
-  const ctx = await campaignContext(db, args.campaignId);
+  const ctx = await campaignContext(db, args.orgId, args.campaignId);
   const { brand } = await resolveBrand(db, ctx.orgId);
   const f = args.fields;
 
   let touchNo: number;
   if (args.touchId) {
     const { rows } = await db.query<{ touch_no: number; status: string }>(
-      `select touch_no, status from campaign_touches where id = $1 and campaign_id = $2`,
-      [args.touchId, args.campaignId],
+      `select t.touch_no, t.status from campaign_touches t
+       join campaigns c on c.id = t.campaign_id and c.org_id = $3
+       where t.id = $1 and t.campaign_id = $2`,
+      [args.touchId, args.campaignId, args.orgId],
     );
     if (rows.length === 0) throw new Error("touch not found");
     if (rows[0].status === "sent") throw new Error("a sent touch cannot be edited");
@@ -159,13 +163,14 @@ export async function upsertTouch(
 
   if (args.touchId) {
     await db.query(
-      `update campaign_touches set name=$2, subject=$3, preheader=$4, headline=$5, body=$6,
+      `update campaign_touches t set name=$2, subject=$3, preheader=$4, headline=$5, body=$6,
          highlights=$7, cta_label=$8, cta_url=$9, html_body=$10, text_body=$11, send_offset_days=$12,
-         custom_html=$13, account_angle=$14, cc_emails=$15, status = case when status = 'rejected' then 'draft' else status end
-       where id = $1`,
+         custom_html=$13, account_angle=$14, cc_emails=$15, status = case when t.status = 'rejected' then 'draft' else t.status end
+       from campaigns c
+       where t.id = $1 and t.campaign_id = $16 and c.id = t.campaign_id and c.org_id = $17`,
       [args.touchId, f.name, f.subject, f.preheader ?? null, f.headline ?? null, f.body ?? "",
        f.highlights ?? [], f.ctaLabel ?? null, f.ctaUrl ?? null, html, text, offset, f.customHtml ?? null, f.accountAngle ?? null,
-       f.ccEmails ?? []],
+       f.ccEmails ?? [], args.campaignId, args.orgId],
     );
     return { touchId: args.touchId };
   }
@@ -181,6 +186,11 @@ export async function upsertTouch(
   return { touchId: rows[0].id };
 }
 
-export async function deleteTouch(db: pg.PoolClient, touchId: string): Promise<void> {
-  await db.query(`delete from campaign_touches where id = $1 and status <> 'sent'`, [touchId]);
+export async function deleteTouch(db: pg.PoolClient, orgId: string, touchId: string): Promise<void> {
+  // campaign_touches has no org_id — scope through the parent campaign.
+  await db.query(
+    `delete from campaign_touches t using campaigns c
+     where t.id = $1 and t.status <> 'sent' and c.id = t.campaign_id and c.org_id = $2`,
+    [touchId, orgId],
+  );
 }

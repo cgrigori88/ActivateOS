@@ -41,14 +41,17 @@ export async function proposeGrant(db: PoolClient, i: ProposeGrantInput): Promis
   return rows[0].id;
 }
 
-async function decide(db: PoolClient, grantId: string, status: "accepted" | "declined" | "revoked"): Promise<void> {
+async function decide(db: PoolClient, orgId: string, grantId: string, status: "accepted" | "declined" | "revoked"): Promise<void> {
   const stamp = status === "revoked" ? "revoked_at" : "decided_at";
-  await db.query(`update context_grants set status = $2, ${stamp} = now() where id = $1`, [grantId, status]);
+  // The receiving org accepts/declines; the granting org revokes. A grant the caller is not party to is refused.
+  const party = status === "revoked" ? "from_org_id" : "to_org_id";
+  const { rowCount } = await db.query(`update context_grants set status = $2, ${stamp} = now() where id = $1 and ${party} = $3`, [grantId, status, orgId]);
+  if (!rowCount) throw new Error(`grant not found: ${grantId}`);
 }
-export const acceptGrant = (db: PoolClient, id: string) => decide(db, id, "accepted");
-export const declineGrant = (db: PoolClient, id: string) => decide(db, id, "declined");
+export const acceptGrant = (db: PoolClient, orgId: string, id: string) => decide(db, orgId, id, "accepted");
+export const declineGrant = (db: PoolClient, orgId: string, id: string) => decide(db, orgId, id, "declined");
 /** Revoke — future reads blocked immediately; audit/history preserved (R28). */
-export const revokeGrant = (db: PoolClient, id: string) => decide(db, id, "revoked");
+export const revokeGrant = (db: PoolClient, orgId: string, id: string) => decide(db, orgId, id, "revoked");
 
 /** Sweeper: flip accepted-but-past-expiry grants to expired (R8/R28). Worker-driven in E3-E. */
 export async function expireDueGrants(db: PoolClient): Promise<number> {

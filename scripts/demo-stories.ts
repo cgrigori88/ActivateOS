@@ -258,7 +258,7 @@ async function main() {
       });
       if (a.override && a.override !== a.route) await tx(async (db) => {
         await db.query("select set_config('app.org_id',$1,true)", [base.vendor]);
-        await selectPartnerRoute(db, b.pursuitId, { partnerId: pid(a.override)!, actorId: crypto.randomUUID(), reason: "executive relationship", category: "EXECUTIVE_DIRECTION" });
+        await selectPartnerRoute(db, base.vendor, b.pursuitId, { partnerId: pid(a.override)!, actorId: crypto.randomUUID(), reason: "executive relationship", category: "EXECUTIVE_DIRECTION" });
       });
     }
   });
@@ -271,10 +271,10 @@ async function main() {
     const partId = await tx(async (db) => { await db.query("select set_config('app.org_id',$1,true)", [base.vendor]);
       await addParticipant(db, { pursuitId: b.pursuitId, orgId: base.vendor, roleKey: "VENDOR", sponsorOrgId: base.vendor, state: "ACTIVE" });
       return addParticipant(db, { pursuitId: b.pursuitId, orgId: base.distributor!, roleKey: "DISTRIBUTOR", sponsorOrgId: base.vendor }); });
-    await tx(async (db) => { await db.query("select set_config('app.org_id',$1,true)", [base.distributor!]); await acceptParticipation(db, partId); });
+    await tx(async (db) => { await db.query("select set_config('app.org_id',$1,true)", [base.distributor!]); await acceptParticipation(db, base.distributor!, partId); });
     const g = await tx(async (db) => { await db.query("select set_config('app.org_id',$1,true)", [base.distributor!]);
       return proposeGrant(db, { pursuitId: b.pursuitId, fromOrgId: base.distributor!, toOrgId: base.vendor, grantKind: "DATA", purpose: "co-sell context", informationClasses: ["transaction_adjacency"] }); });
-    await tx(async (db) => { await db.query("select set_config('app.org_id',$1,true)", [base.vendor]); await acceptGrant(db, g); });
+    await tx(async (db) => { await db.query("select set_config('app.org_id',$1,true)", [base.vendor]); await acceptGrant(db, base.vendor, g); });
     await tx(async (db) => { await db.query("select set_config('app.org_id',$1,true)", [base.distributor!]);
       await recordContribution(db, { pursuitId: b.pursuitId, sourceOrgId: base.distributor!, mode: "FEDERATED", dataCategory: "transaction_adjacency", semanticMeaning: "Distributor adjacency favors the CDW path over WWT", disclosureClass: "PARTICIPANT_SHARED", sensitivityClass: "CONFIDENTIAL", purpose: "co-sell", consentGrantId: g, isSimulated: true }); });
   });

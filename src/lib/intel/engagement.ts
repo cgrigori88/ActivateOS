@@ -38,20 +38,30 @@ export interface ContactEngagement {
  * Recompute engagement for one company from its communication threads and
  * upsert engagement_scores (one row per contact + one company-level row with a
  * null contact). Returns the per-contact breakdown.
+ *
+ * Tenant-scoped: every read and the rewrite are limited to `orgId` (companies
+ * are shared across tenants, so company_id alone is not a boundary). With no
+ * org there is nothing to scope to, so it is a no-op.
  */
 export async function deriveEngagement(
   db: pg.PoolClient,
   args: { orgId: string | null; companyId: string },
 ): Promise<{ company: ContactEngagement; contacts: ContactEngagement[] }> {
+  if (!args.orgId) {
+    return {
+      company: { contactId: null, email: "", touchesSent: 0, opens: 0, clicks: 0, replies: 0, positiveReplies: 0, score: 0, lastEngagedAt: null },
+      contacts: [],
+    };
+  }
   // Outbound touches (what we sent) per recipient.
   const { rows: sent } = await db.query<{ email: string; n: string }>(
     `select lower(recip) as email, count(*)::text as n
      from messages m
      join communication_threads t on t.id = m.thread_id
      cross join lateral unnest(m.to_emails) as recip
-     where t.company_id = $1 and m.direction = 'outbound' and m.status = 'sent'
+     where t.company_id = $1 and t.org_id = $2 and m.direction = 'outbound' and m.status = 'sent'
      group by lower(recip)`,
-    [args.companyId],
+    [args.companyId, args.orgId],
   );
 
   // Engagement events keyed to the recipient of the message they belong to.
@@ -66,19 +76,19 @@ export async function deriveEngagement(
      join messages m on m.id = e.message_id
      join communication_threads t on t.id = m.thread_id
      cross join lateral unnest(m.to_emails) as recip
-     where t.company_id = $1 and e.event_type in ('OPENED','CLICKED','REPLIED')
+     where t.company_id = $1 and t.org_id = $2 and e.event_type in ('OPENED','CLICKED','REPLIED')
      group by lower(recip), e.event_type`,
-    [args.companyId],
+    [args.companyId, args.orgId],
   );
 
   // Positive replies come from the conversation classifier (interaction_events).
   const { rows: pos } = await db.query<{ email: string; n: string }>(
     `select lower(coalesce(c.email, '')) as email, count(*)::text as n
      from interaction_events ie
-     left join contacts c on c.id = ie.contact_id
-     where ie.company_id = $1 and ie.type = 'POSITIVE_RESPONSE'
+     left join contacts c on c.id = ie.contact_id and c.org_id = $2
+     where ie.company_id = $1 and ie.org_id = $2 and ie.type = 'POSITIVE_RESPONSE'
      group by lower(coalesce(c.email, ''))`,
-    [args.companyId],
+    [args.companyId, args.orgId],
   );
 
   const byEmail = new Map<string, ContactEngagement>();
@@ -104,8 +114,8 @@ export async function deriveEngagement(
   const emails = [...byEmail.keys()].filter(Boolean);
   if (emails.length > 0) {
     const { rows: cs } = await db.query<{ id: string; email: string }>(
-      `select id, lower(email) as email from contacts where company_id = $1 and lower(email) = any($2)`,
-      [args.companyId, emails],
+      `select id, lower(email) as email from contacts where company_id = $1 and org_id = $3 and lower(email) = any($2)`,
+      [args.companyId, emails, args.orgId],
     );
     for (const c of cs) {
       const e = byEmail.get(c.email);
@@ -133,15 +143,26 @@ export async function deriveEngagement(
 
   // Upsert rows. Company row uses a fixed sentinel via unique (company_id, contact_id);
   // contact_id null is allowed by the unique index (nulls distinct) so we clear + rewrite.
-  await db.query(`delete from engagement_scores where company_id = $1`, [args.companyId]);
+  // Only THIS org's rows are cleared — another tenant's rollup on the same company stays.
+  await db.query(
+    `delete from engagement_scores where company_id = $1 and org_id is not distinct from $2`,
+    [args.companyId, args.orgId],
+  );
   for (const c of contacts) {
     // Per-recipient row only when it resolves to a known contact — an
     // unresolved email would collide with the null-contact company rollup.
     if (!c.contactId) continue;
+    // unique (company_id, contact_id) is global; the contact is this org's own, so
+    // a surviving legacy (null-org) row for it is rewritten rather than colliding.
     await db.query(
       `insert into engagement_scores
         (org_id, company_id, contact_id, touches_sent, opens, clicks, replies, positive_replies, engagement_score, velocity, last_engaged_at)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       on conflict (company_id, contact_id) do update set
+         org_id = excluded.org_id, touches_sent = excluded.touches_sent, opens = excluded.opens,
+         clicks = excluded.clicks, replies = excluded.replies, positive_replies = excluded.positive_replies,
+         engagement_score = excluded.engagement_score, velocity = excluded.velocity,
+         last_engaged_at = excluded.last_engaged_at, computed_at = now()`,
       [args.orgId, args.companyId, c.contactId, c.touchesSent, c.opens, c.clicks, c.replies, c.positiveReplies, c.score, engagementVelocity(c), c.lastEngagedAt],
     );
   }
@@ -168,12 +189,14 @@ export async function emitEngagementSignals(
   db: pg.PoolClient,
   args: { orgId: string | null; companyId: string },
 ): Promise<{ emitted: boolean; signalType: string | null; surge: boolean }> {
+  // No org → nothing to scope the evidence rewrite to; never touch another tenant's signal.
+  if (!args.orgId) return { emitted: false, signalType: null, surge: false };
   const { company } = await deriveEngagement(db, args);
 
-  // Always clear the prior engagement signal so this stays a single current one.
+  // Always clear the prior engagement signal so this stays a single current one (this org's only).
   await db.query(
-    `delete from evidence where company_id = $1 and source_type = 'campaign_engagement'`,
-    [args.companyId],
+    `delete from evidence where company_id = $1 and source_type = 'campaign_engagement' and org_id = $2`,
+    [args.companyId, args.orgId],
   );
 
   const meaningful = company.clicks + company.replies + company.positiveReplies;
@@ -212,7 +235,7 @@ export async function emitEngagementSignals(
        select $1, $2, 'customer', 'ENGAGEMENT_SURGE', 'EMAIL', $3
        where not exists (
          select 1 from interaction_events
-         where company_id = $2 and type = 'ENGAGEMENT_SURGE' and occurred_at > now() - interval '7 days')`,
+         where company_id = $2 and org_id = $1 and type = 'ENGAGEMENT_SURGE' and occurred_at > now() - interval '7 days')`,
       [args.orgId, args.companyId, JSON.stringify({ clicks: company.clicks, replies: company.replies, positive: company.positiveReplies })],
     );
   }

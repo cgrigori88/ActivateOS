@@ -25,6 +25,10 @@ export async function createPopulationAction(formData: FormData): Promise<void> 
   await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     const partnerId = side === "org" ? null : side;
+    if (partnerId) {
+      const { rows } = await db.query(`select 1 from partners where id = $1 and org_id = $2`, [partnerId, orgId]);
+      if (rows.length === 0) throw new Error("partner not found");
+    }
     await db.query(
       `insert into account_populations (org_id, partner_id, name, category, status, created_by)
        values ($1, $2, $3, $4, 'pending', 'web')`,

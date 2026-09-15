@@ -286,4 +286,37 @@ named only the account.
 | S2B-R8 | "Decisions to make" counts underlying reasons; View all counts cards. | unit test · `vnext-attention` D |
 | S2B-R9 | Queue, Pursuit Detail, the drawers and flag-OFF Today are unchanged against the accepted build (`c0eea5a`). | render comparison |
 
-**Not certified.** Slice 2B stays PREVIEW READY until this fix is deployed and human reviewed.
+### Slice 2B hosted human review — PASSED → DEMO CERTIFIED / FROZEN (2026-09-14)
+
+Accepted on the isolated hosted Preview:
+- one primary card per pursuit;
+- different pursuits on the same account remain separate:
+  - Globex modernization, "Exit legacy virtualization before renewal" → Plan needs review;
+  - Globex expansion, "AI platform expansion" → its own, separate CDW route decision;
+- plan review outranks the stale action;
+- the Queue preserves the action once, with plan-review context;
+- Pursuit Detail distinguishes "Current approved plan / Focus when approved";
+- external sending remains off.
+
+> **One account may contain multiple independent pursuits. Today composes one card per PURSUIT,
+> not per account.** (D-046)
+
+Slice 2B is frozen: no material redesign of Today, Queue or the Pursuit Detail labelling absent
+pilot feedback.
+
+---
+
+## H1A — Tenant isolation + certification integrity (pre-pilot hardening gate)
+
+Full record, audit matrix and results: `H1-PRE-PILOT-HARDENING.md`. Decisions D-043, D-044.
+
+| # | Criterion | Proven by |
+|---|---|---|
+| H1A-1 | Every application data path (rooms, server actions, API routes, MCP tools, search / Ask, routines, worker entry points) is inventoried and classified. | audit matrix |
+| H1A-2 | No reachable path is RLS_ONLY or UNSCOPED. The org comes only from authenticated server context, and filtering precedes limits, aggregates, ranking and counts. | fixes + `tenant-isolation` |
+| H1A-3 | Foreign tenant rows change no record, count, total, pipeline, ranking, recommendation, Today card, Queue row, badge, search hit, drawer, hidden count or analytic of another org. | `tenant-isolation` §2 (stable-line identity + marker scan, every room) |
+| H1A-4 | No write accepts another org's id. | `tenant-isolation` §3 |
+| H1A-5 | The detector is proven sensitive. The same rows planted into the sponsor appear, and every room moves. | `tenant-isolation` §4 (negative control) |
+| H1A-6 | Every verifier is READ_ONLY, ROLLBACK_SAFE or DISPOSABLE_DB_ONLY. None is UNSAFE. | harness audit |
+| H1A-7 | The full battery run twice leaves the canonical world byte-identical. | `certify-world --runs 2` |
+| H1A-8 | Slice 1, 2A and 2B stay green and frozen. | their verifiers + unit tests |

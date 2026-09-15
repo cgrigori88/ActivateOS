@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { BandBadge, Bento, Card, Disclosure, PageHeader, fieldClass, BlockLabel } from "@/components/ui";
 import {
   CATEGORIES,
@@ -85,7 +86,7 @@ export default async function MappingPage({
   const view: View = (["matrix", "recommend", "review", "overlap"].includes(rawView ?? "") ? rawView : "matrix") as View;
 
   const pendingCount = Number(
-    (await withTenant((db) => db.query<{ n: string }>(`select count(*)::text n from account_populations where status = 'pending'`))).rows[0]?.n ?? 0,
+    (await withTenant((db, orgId) => db.query<{ n: string }>(`select count(*)::text n from account_populations where status = 'pending' and org_id = $1`, [orgId]))).rows[0]?.n ?? 0,
   );
 
   // ── Pending review — vet a pushed partner list before it maps ────────────
@@ -190,8 +191,8 @@ export default async function MappingPage({
         const { rows: sc } = await db.query<{ company_id: string; score_id: string; node_id: string; solution: string; changes: { delta?: number } | null }>(
           `select distinct on (p.company_id) p.company_id, p.id as score_id, n.id as node_id, n.name as solution, p.changes
            from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
-           where p.company_id = any($1) order by p.company_id, p.computed_at desc`,
-          [companyIds],
+           where p.company_id = any($1) and p.org_id = $2 order by p.company_id, p.computed_at desc`,
+          [companyIds, orgId],
         );
         for (const s of sc) scoreInfo.set(s.company_id, { scoreId: s.score_id, nodeId: s.node_id, solution: s.solution, delta: s.changes?.delta ?? null });
       }
@@ -225,14 +226,14 @@ export default async function MappingPage({
       if (companyIds.length) {
         const { rows: ev } = await db.query<{ company_id: string; claim: string }>(
           `select distinct on (company_id) company_id, claim from evidence
-           where company_id = any($1) and status = 'verified'
+           where company_id = any($1) and status = 'verified' and (org_id = $2 or org_id is null)
            order by company_id, computed_confidence desc nulls last, observed_at desc`,
-          [companyIds],
+          [companyIds, orgId],
         );
         for (const e of ev) signalByCompany.set(e.company_id, e.claim);
         const { rows: ms } = await db.query<{ company_id: string }>(
-          `select distinct company_id from revenue_motions where company_id = any($1) and status in ('draft','approved','active')`,
-          [companyIds],
+          `select distinct company_id from revenue_motions where company_id = any($1) and org_id = $2 and status in ('draft','approved','active')`,
+          [companyIds, orgId],
         );
         for (const m of ms) hasMotion.add(m.company_id);
       }
@@ -830,14 +831,17 @@ async function MatrixSection({ partnerId, hideEmpty, mr, mc }: { partnerId?: str
 const BASE_COLS = ["industry", "employees", "propensity"];
 
 async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colId: string; cols?: string; partnerId?: string }) {
-  return withTenant(async (db) => {
-    const { row, col, accounts } = await intersection(db, { rowPopId: rowId, colPopId: colId });
-    const fields = await availableFields(db, { rowPopId: rowId, colPopId: colId });
+  return withTenant(async (db, orgId) => {
+    // A list id from the URL that is not this org's is a not-found, not a server error.
+    const own = await db.query(`select 1 from account_populations where id = any($1::uuid[]) and org_id = $2`, [[rowId, colId], orgId]).catch(() => ({ rowCount: 0 }));
+    if ((own.rowCount ?? 0) < new Set([rowId, colId]).size) notFound();
+    const { row, col, accounts } = await intersection(db, { orgId, rowPopId: rowId, colPopId: colId });
+    const fields = await availableFields(db, { orgId, rowPopId: rowId, colPopId: colId });
     // Honor the fields chosen at review time (selected_fields); if none set on
     // either population, default to every detected field (Crossbeam-style).
     const { rows: chosen } = await db.query<{ selected_fields: string[] | null }>(
-      `select selected_fields from account_populations where id = any($1)`,
-      [[rowId, colId]],
+      `select selected_fields from account_populations where id = any($1) and org_id = $2`,
+      [[rowId, colId], orgId],
     );
     const chosenUnion = [...new Set(chosen.flatMap((c) => c.selected_fields ?? []))].filter((k) => fields.includes(k));
     const defaultFields = chosenUnion.length ? chosenUnion : fields;

@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import { transitionPursuit, IllegalPursuitTransition } from "../src/lib/pursuits/lifecycle";
 import { writeScoreSnapshot } from "../src/lib/pursuits/scoring";
@@ -114,6 +115,7 @@ async function seed(): Promise<Seed> {
 }
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[verify] connecting: ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   const s = await seed();
   console.log(`[verify] seeded orgA=${s.orgA.slice(0, 8)} orgB=${s.orgB.slice(0, 8)}\n`);

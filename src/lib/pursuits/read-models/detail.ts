@@ -29,15 +29,15 @@ export async function getPursuitDetail(db: PoolClient, caller: Caller, pursuitId
             pu.current_timing_score, pu.data_environment, pu.updated_at
        from pursuits pu join companies c on c.id = pu.account_id
        left join taxonomy_nodes tn on tn.id = pu.product_category_id
-      where pu.id = $1`, [pursuitId]);
+      where pu.id = $1 and pu.org_id = $2`, [pursuitId, caller.orgId]);
   if (!p.rows[0]) return null;
   const r = p.rows[0];
 
   const route = await getRouteComparison(db, caller, pursuitId);
-  const whyNow = await getPursuitWhyNow(db, pursuitId);
+  const whyNow = await getPursuitWhyNow(db, caller.orgId, pursuitId);
   const team = await getPursuitTeam(db, caller, pursuitId);
-  const timeline = await getPursuitTimeline(db, pursuitId);
-  const facts = await getFacts(db, r.account_id);
+  const timeline = await getPursuitTimeline(db, caller.orgId, pursuitId);
+  const facts = await getFacts(db, caller.orgId, r.account_id);
   const pending = await buildPendingDecisions(db, caller, pursuitId);
   // Stakeholder Intelligence (P1C) — coverage over the linked opportunities; a pre-opportunity
   // pursuit comes back NOT ESTABLISHED (honest UNKNOWN), never synthesized.
@@ -67,14 +67,14 @@ export async function getPursuitDetail(db: PoolClient, caller: Caller, pursuitId
   };
 }
 
-export async function getPursuitWhyNow(db: PoolClient, pursuitId: string): Promise<WhyNowView> {
-  const { rows } = await db.query<{ why_now: Record<string, unknown> | null; org_id: string; account_id: string }>(
-    `select why_now, org_id, account_id from pursuits where id = $1`, [pursuitId]);
+export async function getPursuitWhyNow(db: PoolClient, orgId: string, pursuitId: string): Promise<WhyNowView> {
+  const { rows } = await db.query<{ why_now: Record<string, unknown> | null; account_id: string }>(
+    `select why_now, account_id from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId]);
   const wn = rows[0]?.why_now as WhyNowRaw | null;
   // Lifecycle Intelligence (P2A): derived from canonical facts, independent of whether a structured
   // Why Now has been assembled — an account can have a renewal on the clock and no Why Now yet.
   const lifecycle = rows[0]
-    ? eventsForAccount((await loadLifecycleFacts(db, rows[0].org_id, [rows[0].account_id])).get(rows[0].account_id) ?? [])
+    ? eventsForAccount((await loadLifecycleFacts(db, orgId, [rows[0].account_id])).get(rows[0].account_id) ?? [])
     : [];
   if (!wn || typeof wn !== "object") {
     return { present: false, businessTrigger: null, technologyCondition: null, timingAnchor: null, signalConvergence: null, routeRelevance: null, contradictions: [], unknowns: ["No structured Why Now assembled yet."], renderedSummary: null, asOf: null, lifecycle };
@@ -103,12 +103,12 @@ export async function getPursuitWhyNow(db: PoolClient, pursuitId: string): Promi
 }
 
 export async function getPursuitTeam(db: PoolClient, caller: Caller, pursuitId: string): Promise<PursuitTeamView> {
-  const p = await db.query<{ org_id: string; pursuit_type: string | null; account_id: string }>(`select org_id, pursuit_type, account_id from pursuits where id = $1`, [pursuitId]);
-  const orgId = p.rows[0]?.org_id;
+  const orgId = caller.orgId;
+  const p = await db.query<{ pursuit_type: string | null; account_id: string }>(`select pursuit_type, account_id from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId]);
   const members = await db.query<{ id: string; role: string; side: string; status: string; person_ref: string | null; fit_score: string | null; partner_name: string | null }>(
     `select tm.id, tm.role, tm.side, tm.status, tm.person_ref, tm.fit_score, pn.name partner_name
        from pursuit_team_members tm left join partners pn on pn.id = tm.partner_id
-      where tm.pursuit_id = $1 and tm.status <> 'SUPERSEDED' order by tm.side, tm.role`, [pursuitId]);
+      where tm.pursuit_id = $1 and tm.org_id = $2 and tm.status <> 'SUPERSEDED' order by tm.side, tm.role`, [pursuitId, orgId]);
   const reqRoles = new Set((await db.query<{ role: string }>(`select role from pursuit_team_requirements where required = true and (org_id is null or org_id = $1) and (pursuit_type is null or pursuit_type = $2)`, [orgId, p.rows[0]?.pursuit_type])).rows.map((r) => r.role));
   const memberViews: TeamMemberView[] = members.rows.map((m) => ({
     id: m.id, role: m.role, side: m.side, personLabel: m.person_ref, partnerLabel: m.partner_name,
@@ -125,7 +125,7 @@ export async function getPursuitTeam(db: PoolClient, caller: Caller, pursuitId: 
 
   // Readiness from the current route snapshot's recommended candidate.
   const rd = await db.query<{ activation_readiness_score: string | null }>(
-    `select rc.activation_readiness_score from route_candidates rc join pursuit_route_snapshots sn on sn.id = rc.route_snapshot_id where sn.pursuit_id = $1 and sn.is_current and rc.is_recommended`, [pursuitId]);
+    `select rc.activation_readiness_score from route_candidates rc join pursuit_route_snapshots sn on sn.id = rc.route_snapshot_id where sn.pursuit_id = $1 and sn.org_id = $2 and sn.is_current and rc.is_recommended`, [pursuitId, orgId]);
   const gapActions: DecisionItem[] = missing.map((role) => ({
     id: `gap:${pursuitId}:${role}`, type: role.includes("SELLER") ? "SELLER_SELECTION" : "TEAM_REPLACEMENT", decisionClass: "ACTION_REQUIRED",
     operationalUrgency: "high", commercialPriority: "high", pursuitId, companyId: null, accountLabel: "", title: `Assign ${role.replace(/_/g, " ").toLowerCase()}`,
@@ -134,8 +134,7 @@ export async function getPursuitTeam(db: PoolClient, caller: Caller, pursuitId: 
   }));
 
   const sellerAlts = await db.query<{ seller_id: string; total_score: string | null; name: string | null }>(
-    `select rsc.seller_id, rsc.total_score, s.name from route_seller_candidates rsc join sellers s on s.id = rsc.seller_id where rsc.pursuit_id = $1 order by rsc.rank limit 3`, [pursuitId]);
-  void caller;
+    `select rsc.seller_id, rsc.total_score, s.name from route_seller_candidates rsc join sellers s on s.id = rsc.seller_id where rsc.pursuit_id = $1 and rsc.org_id = $2 order by rsc.rank limit 3`, [pursuitId, orgId]);
   return {
     members: memberViews,
     activationReadiness: scoreView("activation_readiness", rd.rows[0]?.activation_readiness_score != null ? Number(rd.rows[0].activation_readiness_score) : null),
@@ -144,10 +143,10 @@ export async function getPursuitTeam(db: PoolClient, caller: Caller, pursuitId: 
   };
 }
 
-export async function getPursuitTimeline(db: PoolClient, pursuitId: string): Promise<PursuitTimelineView> {
+export async function getPursuitTimeline(db: PoolClient, orgId: string, pursuitId: string): Promise<PursuitTimelineView> {
   const { rows } = await db.query<{ recorded_at: Date; change_type: string; reason: string | null; before_state: Record<string, unknown> | null; after_state: Record<string, unknown> | null; materiality: string; data_environment: string }>(
     `select recorded_at, change_type, reason, before_state, after_state, materiality, data_environment
-       from change_ledger where pursuit_id = $1 order by recorded_at desc limit 100`, [pursuitId]);
+       from change_ledger where pursuit_id = $1 and org_id = $2 order by recorded_at desc limit 100`, [pursuitId, orgId]);
   const events: TimelineEvent[] = [];
   for (const e of rows) {
     if (!isTimelineWorthy(e.materiality)) continue;   // only material events (§23)
@@ -156,9 +155,9 @@ export async function getPursuitTimeline(db: PoolClient, pursuitId: string): Pro
   return { events };
 }
 
-async function getFacts(db: PoolClient, companyId: string): Promise<FactItem[]> {
+async function getFacts(db: PoolClient, orgId: string, companyId: string): Promise<FactItem[]> {
   const { rows } = await db.query<{ id: string; predicate_key: string; subject_label: string; status: string; confidence: string; provenance_class: string }>(
-    `select id, predicate_key, subject_label, status, confidence, provenance_class from facts where company_id = $1 and status <> 'REJECTED' order by confidence desc limit 20`, [companyId]);
+    `select id, predicate_key, subject_label, status, confidence, provenance_class from facts where company_id = $1 and org_id = $2 and status <> 'REJECTED' order by confidence desc limit 20`, [companyId, orgId]);
   return rows.map((f) => {
     const trust = [] as FactItem["trust"];
     if (f.status === "CURRENT") trust.push("VERIFIED"); else if (f.status === "DISPUTED") trust.push("DISPUTED"); else if (f.status === "STALE") trust.push("STALE"); else if (f.status === "SUPERSEDED") trust.push("SUPERSEDED");

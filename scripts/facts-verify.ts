@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import { writeScoreSnapshot } from "../src/lib/pursuits/scoring";
 import { promoteFromSignal, promoteCandidate } from "../src/lib/facts/promotion";
@@ -81,6 +82,7 @@ async function seed(): Promise<Seed> {
 }
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[facts-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   _resetPredicateCache();
   const s = await seed();

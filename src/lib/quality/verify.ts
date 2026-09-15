@@ -93,8 +93,8 @@ export async function verifyEvidence(
        count(distinct source_type) filter (where stance = $5) as contradictions
      from evidence
      where claim_fingerprint = $1 and id <> $2 and source_type <> $3
-       and status <> 'rejected'`,
-    [fingerprint, evidence.id, evidence.sourceName, stance, opposite],
+       and status <> 'rejected' and (org_id = $6 or org_id is null)`,
+    [fingerprint, evidence.id, evidence.sourceName, stance, opposite, evidence.orgId],
   );
   const corroborations = Number(counts[0]?.corroborations ?? 0);
   const contradictions = Number(counts[0]?.contradictions ?? 0);

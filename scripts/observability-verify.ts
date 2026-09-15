@@ -9,13 +9,14 @@
  *   npx tsx scripts/observability-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { setReporter, getReporter, TestSinkReporter, NullReporter, type TelemetryEvent } from "../src/lib/obs/reporter";
 import { seedGovernedSkills, dispatchSkill, type Actor } from "../src/lib/pursuits/federation/skills";
 import { drainOutbox } from "../src/lib/pursuits/federation/executor";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import { randomUUID } from "node:crypto";
 
-const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
+const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/verify_disposable";
 const pool = new Pool({ connectionString: CONN });
 let passed = 0, failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail = "") { if (cond) { passed++; console.log(`  ✓ ${name}`); } else { failed++; failures.push(name + (detail ? ` — ${detail}` : "")); console.log(`  ✗ ${name}${detail ? " — " + detail : ""}`); } }
@@ -26,6 +27,7 @@ const SECRET = "CONFIDENTIAL-1840000-DONOTLEAK";
 function serialize(events: TelemetryEvent[]): string { return JSON.stringify(events); }
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[observability-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   const RID = Math.random().toString(36).slice(2, 8);
   const sink = new TestSinkReporter();

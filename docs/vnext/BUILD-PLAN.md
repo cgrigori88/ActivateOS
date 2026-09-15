@@ -91,12 +91,16 @@ SLICE 2A Pursuit Coordination              (P3)        DEMO CERTIFIED / FROZEN
    │      (was "Next Move" — superseded by the P3 amendment, D-025). Human product
    │      acceptance passed on the isolated hosted Preview (ACCEPTANCE.md § Slice 2A)
    ↓
-SLICE 2B Pursuit Attention + Today/Queue   (P3)        PREVIEW READY (local)  ← current
-   │      derived pursuit attention on Today (one card per pursuit) · plan lineage on
-   │      Queue · "Current approved plan" labelling · D-034…D-040 · no migration
-   │      security gate PASSED: Today/Queue tenant-scoped explicitly (D-041)
-   │      hosted review: one card per PURSUIT, named when an account has several (D-042);
-   │      awaiting redeploy + final hosted human review
+SLICE 2B Pursuit Attention + Today/Queue   (P3)        DEMO CERTIFIED / FROZEN
+   │      derived pursuit attention on Today (one card per PURSUIT, not per account) · plan
+   │      lineage on Queue · "Current approved plan" labelling · D-034…D-042, D-046 · no
+   │      migration · Today/Queue tenant-scoped explicitly (D-041) · hosted human review PASSED
+   ↓
+H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A LOCAL COMPLETE · H1B DESIGN ONLY  ← current
+   │      H1A: every data path explicitly tenant-scoped (D-043); certification integrity —
+   │      clone isolation + whole-world fingerprint gate (D-044); broad adversarial verifier
+   │      H1B: web runtime → app_rw so RLS binds (D-045) — owner-approved hosted cutover
+   │      H1 is NOT complete until H1B passes hosted certification. No product slice before it.
    ↓
 SLICE 2C Coordination breadth              (P3)        NOT STARTED
    │      goal editing · plan closure · multi-pursuit plans · review recording on events
@@ -169,8 +173,9 @@ acceptance".
 
 ### VERTICAL SLICE 2B — "Pursuit Attention + Today / Queue coordination" (P3)
 
-**PREVIEW READY on the local synthetic path (2026-09-14).** Acceptance: `ACCEPTANCE.md`
-§ Slice 2B. Decisions: D-034…D-040.
+**DEMO CERTIFIED / FROZEN (2026-09-14)** after hosted human review on the isolated Preview.
+Acceptance: `ACCEPTANCE.md` § Slice 2B. Decisions: D-034…D-042, D-046. One account may contain
+multiple independent pursuits; Today composes one card per PURSUIT, not per account.
 
 ```
 TODAY  = decision / attention layer          QUEUE = execution layer

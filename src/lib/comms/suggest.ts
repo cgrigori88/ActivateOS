@@ -15,8 +15,8 @@ export async function suggestCampaigns(
   args: { orgId?: string | null; limit?: number; senderName?: string; touchCount?: number },
 ): Promise<{ suggested: number; campaignIds: string[] }> {
   const limit = Math.min(Math.max(args.limit ?? 3, 1), 10);
-  const { rows: motions } = await db.query<{ id: string }>(
-    `select m.id
+  const { rows: motions } = await db.query<{ id: string; org_id: string | null }>(
+    `select m.id, m.org_id
      from revenue_motions m
      where m.status in ('approved', 'active')
        and ($1::uuid is null or m.org_id = $1)
@@ -31,8 +31,11 @@ export async function suggestCampaigns(
 
   const campaignIds: string[] = [];
   for (const m of motions) {
+    // Generation writes under the motion's own org; an org-less motion has none to write under.
+    if (!m.org_id) continue;
     try {
       const { campaignId } = await generateCampaignSequence(db, {
+        orgId: m.org_id,
         motionId: m.id,
         senderName: args.senderName ?? "The PursuitOS Team",
         touchCount: args.touchCount ?? 3,

@@ -109,7 +109,8 @@ export default async function AccountsPage({
       `select latest.*, pt.partner_name, pt.team_status,
             c.refresh_tier, c.next_refresh_at, c.country, c.state,
             (select count(*) from evidence e
-              where e.company_id = latest.company_id and e.status = 'verified') as evidence_count
+              where e.company_id = latest.company_id and e.status = 'verified'
+                and (e.org_id = $3 or e.org_id is null)) as evidence_count
      from (
        select distinct on (p.company_id)
          p.id as score_id, p.company_id, p.score, p.band, p.changes,
@@ -117,16 +118,16 @@ export default async function AccountsPage({
        from propensity_scores p
        join companies c2 on c2.id = p.company_id
        join taxonomy_nodes n on n.id = p.taxonomy_node_id
-       where ($2::boolean is false or p.company_id = any($1))
+       where p.org_id = $3 and ($2::boolean is false or p.company_id = any($1))
        order by p.company_id, p.computed_at desc
      ) latest
      join companies c on c.id = latest.company_id
      left join lateral (
        select pa.name as partner_name, t.status as team_status
        from pursuit_teams t join partners pa on pa.id = t.partner_id
-       where t.company_id = latest.company_id and t.status in ('recommended','accepted')
+       where t.company_id = latest.company_id and t.org_id = $3 and t.status in ('recommended','accepted')
        order by t.created_at desc limit 1) pt on true`,
-      [scopeIds ?? [], scopeIds != null],
+      [scopeIds ?? [], scopeIds != null, orgId],
     );
 
     const companyIds = all.map((r) => r.company_id);
@@ -139,15 +140,15 @@ export default async function AccountsPage({
           `select company_id, array_agg(distinct name order by name) as partners from (
          select pm.company_id, p.name
          from population_members pm
-         join account_populations ap on ap.id = pm.population_id and ap.partner_id is not null and ap.status = 'approved'
+         join account_populations ap on ap.id = pm.population_id and ap.org_id = $2 and ap.partner_id is not null and ap.status = 'approved'
          join partners p on p.id = ap.partner_id
          where pm.company_id = any($1)
          union
          select t.company_id, pa.name
          from pursuit_teams t join partners pa on pa.id = t.partner_id
-         where t.company_id = any($1) and t.status in ('recommended','accepted')
+         where t.company_id = any($1) and t.org_id = $2 and t.status in ('recommended','accepted')
        ) x group by company_id`,
-          [companyIds],
+          [companyIds, orgId],
         )).rows
       : [];
 
@@ -157,8 +158,8 @@ export default async function AccountsPage({
           `select company_id,
               count(*) filter (where stage not like 'closed%') as open,
               coalesce(sum(amount_usd) filter (where stage not like 'closed%'), 0) as pipeline
-       from opportunities where company_id = any($1) group by company_id`,
-          [companyIds],
+       from opportunities where company_id = any($1) and org_id = $2 group by company_id`,
+          [companyIds, orgId],
         )).rows
       : [];
 

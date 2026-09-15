@@ -65,10 +65,14 @@ export async function addParticipant(db: PoolClient, input: AddParticipantInput)
   return rows[0].id;
 }
 
-async function transition(db: PoolClient, participantId: string, to: ParticipationState, stamp?: "joined_at" | "left_at"): Promise<void> {
+// Explicit mirror of the 0080 write policy (RLS is bypassed by the owner connection): only the
+// participating org itself, or the org that owns the pursuit (sponsor), may move a participation row.
+const PARTY_SQL = `(pp.org_id = $2 or exists (select 1 from pursuits p where p.id = pp.pursuit_id and p.org_id = $2))`;
+
+async function transition(db: PoolClient, orgId: string, participantId: string, to: ParticipationState, stamp?: "joined_at" | "left_at"): Promise<void> {
   const { rows } = await db.query<{ participation_state: ParticipationState }>(
-    `select participation_state from pursuit_participants where id = $1 for update`,
-    [participantId],
+    `select participation_state from pursuit_participants pp where pp.id = $1 and ${PARTY_SQL} for update`,
+    [participantId, orgId],
   );
   const from = rows[0]?.participation_state;
   if (!from) throw new Error("Participation not found or not visible.");
@@ -76,19 +80,19 @@ async function transition(db: PoolClient, participantId: string, to: Participati
   if (!canTransition(from, to)) throw new Error(`Illegal participation transition ${from} → ${to}.`);
   const stampSql = stamp ? `, ${stamp} = now()` : "";
   await db.query(
-    `update pursuit_participants set participation_state = $2, updated_at = now()${stampSql} where id = $1`,
-    [participantId, to],
+    `update pursuit_participants pp set participation_state = $3, updated_at = now()${stampSql} where pp.id = $1 and ${PARTY_SQL}`,
+    [participantId, orgId, to],
   );
 }
 
 /** INVITED → ACTIVE. The invited org accepts; it now legitimately participates. */
-export const acceptParticipation = (db: PoolClient, id: string) => transition(db, id, "ACTIVE", "joined_at");
+export const acceptParticipation = (db: PoolClient, orgId: string, id: string) => transition(db, orgId, id, "ACTIVE", "joined_at");
 /** INVITED → DECLINED. */
-export const declineParticipation = (db: PoolClient, id: string) => transition(db, id, "DECLINED");
+export const declineParticipation = (db: PoolClient, orgId: string, id: string) => transition(db, orgId, id, "DECLINED");
 /** ACTIVE → LEFT (the participant withdraws). */
-export const leaveParticipation = (db: PoolClient, id: string) => transition(db, id, "LEFT", "left_at");
+export const leaveParticipation = (db: PoolClient, orgId: string, id: string) => transition(db, orgId, id, "LEFT", "left_at");
 /** any active/invited → REVOKED (sponsor or the org itself revokes). Future access stops; audit preserved (R28). */
-export const revokeParticipation = (db: PoolClient, id: string) => transition(db, id, "REVOKED");
+export const revokeParticipation = (db: PoolClient, orgId: string, id: string) => transition(db, orgId, id, "REVOKED");
 
 export interface ParticipantView {
   id: string; orgId: string; orgName: string | null; roleKey: string; roleLabel: string;
@@ -101,7 +105,7 @@ export interface ParticipantView {
  * the participation EDGE (org, role, state) — never another participant's
  * confidential Pursuit data, which the E3-B disclosure engine governs separately.
  */
-export async function getParticipants(db: PoolClient, pursuitId: string): Promise<ParticipantView[]> {
+export async function getParticipants(db: PoolClient, orgId: string, pursuitId: string): Promise<ParticipantView[]> {
   const { rows } = await db.query<{
     id: string; org_id: string; org_name: string | null; role_key: string; label: string;
     side: string | null; is_route_capable: boolean; participation_state: ParticipationState;
@@ -113,8 +117,12 @@ export async function getParticipants(db: PoolClient, pursuitId: string): Promis
        join pursuit_role_types rt on rt.role_key = pp.role_key
        left join organizations o on o.id = pp.org_id
       where pp.pursuit_id = $1
+        -- explicit mirror of the 0080 read policy: can_see_pursuit (sponsor or ACTIVE participant) or the row's own org
+        and (pp.org_id = $2
+             or exists (select 1 from pursuits p where p.id = $1 and p.org_id = $2)
+             or exists (select 1 from pursuit_participants me where me.pursuit_id = $1 and me.org_id = $2 and me.participation_state = 'ACTIVE'))
       order by rt.sort, o.name`,
-    [pursuitId],
+    [pursuitId, orgId],
   );
   return rows.map((r) => ({
     id: r.id, orgId: r.org_id, orgName: r.org_name, roleKey: r.role_key, roleLabel: r.label,

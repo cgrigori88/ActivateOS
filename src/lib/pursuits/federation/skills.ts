@@ -62,12 +62,12 @@ export const SKILL_REGISTRY: SkillDef[] = [
   // computed there from recommended-vs-chosen, so the skill id is the operator's intent and the
   // ledger records the reality (PARTNER_SELECTED / PARTNER_OVERRIDE). Recommendation is preserved.
   { skillId: "select_partner_route", version: 1, description: "Approve (select) a recommended partner route", effectClass: "INTERNAL_WRITE",
-    eligibleActors: ["USER"], requiredPermission: "operator",
-    handler: async (db, actor, ctx) => selectRouteByCandidate(db, String(ctx.pursuitId), String(ctx.args?.candidateKey), {
+    eligibleActors: ["USER"], requiredPermission: "operator", precheck: pursuitInOrg,
+    handler: async (db, actor, ctx) => selectRouteByCandidate(db, actor.orgId, String(ctx.pursuitId), String(ctx.args?.candidateKey), {
       actorId: actor.id ?? null, env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null }) },
   { skillId: "override_partner_route", version: 1, description: "Override the recommended partner route (human decision)", effectClass: "INTERNAL_WRITE",
-    eligibleActors: ["USER"], requiredPermission: "operator",
-    handler: async (db, actor, ctx) => selectRouteByCandidate(db, String(ctx.pursuitId), String(ctx.args?.candidateKey), {
+    eligibleActors: ["USER"], requiredPermission: "operator", precheck: pursuitInOrg,
+    handler: async (db, actor, ctx) => selectRouteByCandidate(db, actor.orgId, String(ctx.pursuitId), String(ctx.args?.candidateKey), {
       actorId: actor.id ?? null, reason: ctx.args?.reason ? String(ctx.args.reason) : undefined,
       category: (ctx.args?.category as OverrideCategory) ?? "OTHER", env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION",
       correlationId: ctx.correlationId ?? null }) },
@@ -76,14 +76,16 @@ export const SKILL_REGISTRY: SkillDef[] = [
     handler: async () => ({ explained: true }) },
   { skillId: "accept_participation", version: 1, description: "Accept a Pursuit participation invitation", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER"], requiredPermission: "operator",
-    handler: async (db, _a, ctx) => { await acceptParticipation(db, String(ctx.args?.participantId)); return { accepted: true }; } },
+    // Org-scoped in the handler (acceptParticipation refuses a row the actor's org is not party to):
+    // the pursuit here is the SPONSOR's, so pursuitInOrg would wrongly reject the invited org.
+    handler: async (db, actor, ctx) => { await acceptParticipation(db, actor.orgId, String(ctx.args?.participantId)); return { accepted: true }; } },
   // Pursuit Team — governed confirmation lifecycle (Phase C1). A recommended team is a
   // proposal; only these governed decisions move a member off RECOMMENDED. Recompute may
   // change the recommendation (assembleTeam is idempotent and skips confirmed roles), but it
   // may never silently remove a confirmed human assignment. All reuse `transitionMember`
   // (the one team-status mutation), which records the append-only TEAM_MEMBER_* event.
   { skillId: "assemble_pursuit_team", version: 1, description: "Assemble the recommended pursuit team from the selected route", effectClass: "INTERNAL_WRITE",
-    eligibleActors: ["USER", "SYSTEM"], requiredPermission: "operator",
+    eligibleActors: ["USER", "SYSTEM"], requiredPermission: "operator", precheck: pursuitInOrg,
     handler: async (db, _a, ctx) => assembleTeam(db, String(ctx.pursuitId), (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION") },
   { skillId: "confirm_team_member", version: 1, description: "Confirm (invite) a recommended team member — the human team decision", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER"], requiredPermission: "operator", precheck: teamMemberInOrg,
@@ -115,11 +117,11 @@ export const SKILL_REGISTRY: SkillDef[] = [
   // wrap the canonical `approveMotion`/`rejectMotion` (which capture the human edit diff for the
   // learning loop). Motion completion → commercial outcome is Phase B's bridge, not this path.
   { skillId: "approve_motion", version: 1, description: "Approve a draft revenue motion (human gate, with edits)", effectClass: "INTERNAL_WRITE",
-    eligibleActors: ["USER"], requiredPermission: "operator",
-    handler: async (db, _a, ctx) => approveMotion(db, String(ctx.args?.motionId), (ctx.args?.edits as Partial<Record<EditableField, string>>) ?? {}) },
+    eligibleActors: ["USER"], requiredPermission: "operator", precheck: motionInOrg,
+    handler: async (db, actor, ctx) => approveMotion(db, actor.orgId, String(ctx.args?.motionId), (ctx.args?.edits as Partial<Record<EditableField, string>>) ?? {}) },
   { skillId: "reject_motion", version: 1, description: "Reject a draft revenue motion (human gate)", effectClass: "INTERNAL_WRITE",
-    eligibleActors: ["USER"], requiredPermission: "operator",
-    handler: async (db, _a, ctx) => { await rejectMotion(db, String(ctx.args?.motionId), ctx.args?.note ? String(ctx.args.note) : undefined); return { rejected: true }; } },
+    eligibleActors: ["USER"], requiredPermission: "operator", precheck: motionInOrg,
+    handler: async (db, actor, ctx) => { await rejectMotion(db, actor.orgId, String(ctx.args?.motionId), ctx.args?.note ? String(ctx.args.note) : undefined); return { rejected: true }; } },
   { skillId: "send_partner_intro", version: 1, description: "Send a warm introduction to a partner (external)", effectClass: "EXTERNAL_ACTION",
     eligibleActors: ["USER"], requiredPermission: "operator", actionFamily: "intro.email", provider: "email" },
   // R1-G4 — an APPROVED outreach send is a governed EXTERNAL_ACTION: enqueued to the
@@ -218,6 +220,14 @@ async function teamMemberInOrg(db: PoolClient, actor: Actor, ctx: DispatchCtx): 
   if (!rows[0]) return { ok: false, reason: "team member not found in this org" };
   if (ctx.pursuitId && rows[0].pursuit_id !== ctx.pursuitId) return { ok: false, reason: "team member does not belong to this pursuit" };
   return { ok: true };
+}
+
+/** Tenant guard for motion-scoped skills: the motion id in the request must belong to the actor's org. */
+async function motionInOrg(db: PoolClient, actor: Actor, ctx: DispatchCtx): Promise<{ ok: boolean; reason?: string }> {
+  const motionId = ctx.args?.motionId ? String(ctx.args.motionId) : null;
+  if (!motionId) return { ok: false, reason: "missing motionId" };
+  const { rows } = await db.query(`select 1 from revenue_motions where id = $1 and org_id = $2`, [motionId, actor.orgId]);
+  return rows[0] ? { ok: true } : { ok: false, reason: "motion not found in this org" };
 }
 
 function defFor(skillId: string, version?: number): SkillDef | undefined {

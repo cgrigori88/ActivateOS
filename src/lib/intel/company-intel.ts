@@ -46,13 +46,13 @@ export function familiesFromSignalTypes(types: string[]): Set<string> {
   return out;
 }
 
-export async function loadCompanyIntel(pool: pg.Pool | pg.PoolClient, companyId: string): Promise<CompanyIntel> {
+export async function loadCompanyIntel(pool: pg.Pool | pg.PoolClient, orgId: string, companyId: string): Promise<CompanyIntel> {
   const [evidenceRes, coverageRes, signalRes] = await Promise.all([
     pool.query(
       `select claim, source_type, provider_id, status, stance, computed_confidence, first_party, collected_at
-       from evidence where company_id = $1
+       from evidence where company_id = $1 and (org_id = $2 or org_id is null)
        order by collected_at desc limit 40`,
-      [companyId],
+      [companyId, orgId],
     ),
     pool.query(
       `select provider_id,
@@ -61,12 +61,12 @@ export async function loadCompanyIntel(pool: pg.Pool | pg.PoolClient, companyId:
               coalesce(sum(evidence_created), 0) as evidence,
               max(finished_at) as last_run_at,
               (array_agg(status order by started_at desc))[1] as latest_status
-       from provider_runs where company_id = $1
+       from provider_runs where company_id = $1 and org_id = $2
        group by provider_id
        order by max(finished_at) desc nulls last`,
-      [companyId],
+      [companyId, orgId],
     ),
-    pool.query(`select distinct signal_type from signals where company_id = $1`, [companyId]),
+    pool.query(`select distinct signal_type from signals where company_id = $1 and org_id = $2`, [companyId, orgId]),
   ]);
 
   const evidence: EvidenceRow[] = evidenceRes.rows.map((r) => ({

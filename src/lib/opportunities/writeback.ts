@@ -47,8 +47,8 @@ export async function draftWritebacks(db: Db, orgId: string): Promise<number> {
   for (const r of crmRows) {
     const { rows: live } = await db.query<{ total: string | null; n: string }>(
       `select sum(amount_usd) as total, count(*) as n from opportunities
-       where company_id = $1 and stage not in ('closed_won', 'closed_lost')`,
-      [r.company_id],
+       where company_id = $1 and org_id = $2 and stage not in ('closed_won', 'closed_lost')`,
+      [r.company_id, orgId],
     );
     const liveTotal = Number(live[0].total ?? 0);
     const liveN = Number(live[0].n);

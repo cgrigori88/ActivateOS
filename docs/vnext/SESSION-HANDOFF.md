@@ -10,13 +10,15 @@
 
 | | |
 |---|---|
-| **Date/time** | 2026-09-14 (Slice 2B local implementation + verification session, on the owner's Mac) |
+| **Date/time** | 2026-09-14 (H1A — Pre-Pilot Hardening Gate session, on the owner's Mac) |
 | **Repository** | `cgrigori88/ActivateOS` — run **locally on the owner's Mac** at `/Users/cgrigori/Documents/ActivateOS/pursuitos-vnext` |
 | **Current branch** | `roadmap/pursuitos-vnext` |
-| **Current commit** | this session's Slice 2B commit, on top of `b677acf` |
+| **Current commit** | this session's H1A commit, on top of `54ab990` |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
-| **Slice status** | Slice 1 **DEMO CERTIFIED / FROZEN** · Slice 2A **DEMO CERTIFIED / FROZEN** (human product acceptance on the isolated hosted Preview) · Slice 2B **PREVIEW READY (local)** — its tenant security gate passed; not certified; no hosted work done |
-| **Session completed** | **SLICE 2B HOSTED-REVIEW DEFECT — FIXED LOCALLY.** See § "Slice 2B hosted review" below. No hosted write, Vercel, flag, deployment or Production change. One guarded **read-only** query of `mejokqxriwyawfhawuxu` confirmed the root cause. |
+| **Slice status** | Slice 1 · Slice 2A · **Slice 2B** — all **DEMO CERTIFIED / FROZEN** (2B passed hosted human review). One account may contain multiple independent pursuits; Today composes one card per PURSUIT, not per account. **No product slice before H1 completes.** |
+| **Gate status** | **H1A COMPLETE (local)** · **H1B DESIGN ONLY** · H1 NOT complete until H1B passes hosted certification. Record: `H1-PRE-PILOT-HARDENING.md` |
+| **Session completed** | **H1A — TENANT ISOLATION + CERTIFICATION INTEGRITY.** See § "H1A" below. No hosted database, Vercel, Supabase role/grant, flag, deployment or Production change; `qifatlqxfuhwrwvpbwsc` untouched. |
+| **Before that** | **SLICE 2B HOSTED-REVIEW DEFECT — FIXED** (`54ab990`), then accepted on the hosted Preview → Slice 2B DEMO CERTIFIED / FROZEN. |
 | **Before that** | **TODAY / QUEUE TENANT HARDENING — PASSED** (`c0eea5a`, the Slice 2B release blocker). See § "Today / Queue tenant hardening". |
 | **Before that** | **SLICE 2B — PURSUIT ATTENTION + TODAY / QUEUE, LOCAL** (`8261ef3`). See § "Vertical Slice 2B". |
 | **Previous session** | **HOSTED TEAM-LAYER REPAIR — FIXED.** Root cause (in-place reseed clears the 0075-only team requirements) reproduced locally and fixed in code (`6ab3599`); `mejokqxriwyawfhawuxu` reseeded in place. Hosted coordination **112 pass / 0 fail / 4 environmentally not run** (as-`app_rw` only; equivalents pass), Slice 1 62/0, demo-team 11/0, manifest unchanged, 0 send rows. Slice 2A stays **PREVIEW READY**, not DEMO CERTIFIED. No Vercel, flag, deploy, auth or Production change; Monday demo never addressed. See § "Hosted team-layer repair" below. |
@@ -32,6 +34,60 @@
 - Also the head of `ui-wave-6d`, and tagged `backup/2026-09-04/tds-live-demo`
   (annotated, already on origin — the durable immutable reference).
 - Working tree clean at session start and at session end.
+
+---
+
+## H1A (2026-09-14) — tenant isolation + certification integrity: COMPLETE (local)
+
+Full record: `H1-PRE-PILOT-HARDENING.md`. Decisions D-043 (explicit tenant scoping everywhere), D-044 (certification must not change the world), D-045 (H1B design) and D-046 (Slice 2B certified; many pursuits per account).
+
+**Audit.** 293 application data paths were inventoried. 153 were reachable RLS_ONLY or UNSCOPED:
+- 152 are fixed;
+- 1 is reclassified as system-by-design;
+- 0 remain.
+
+The worst were cross-tenant writes and sends:
+- another tenant's approved email could be sent to an attacker recipient;
+- deals advanced or closed by foreign id;
+- a pursuit route overridden by foreign id;
+- motions approved by foreign id;
+- evidence-share and broker injection;
+- another tenant's engagement scores deleted.
+
+Whole other-tenant books (Pipeline, Contacts, Campaigns, pursuit detail) and every aggregate on Analytics and Insights also leaked.
+
+**Proof:**
+
+| Check | Result |
+|---|---|
+| `tenant-isolation` (new, SEEDED_CLONE) | **205/0** — foreign tenant planted (33 kinds), 38 rooms and APIs of the real build crawled, 27 writes with foreign ids refused, negative control moves every room |
+| `certify-world --runs 2` | **PASS**: digest `e98b43254f98d5ec` at start, after run 1 and after run 2. 74/76 suite runs clean; `motion-intel` 18/1 in both runs is pre-existing, as `54ab990` fails the same assertion identically |
+| Verifier harness | 0 UNSAFE. 8 SEEDED suites that committed into the canonical world now run on seeded clones. All 19 FRESH/EITHER suites are guarded. `--either-on-seeded` is refused |
+| `app-rw-rehearsal` | **36/36** rooms identical as `app_rw` (RLS binding, `rolbypassrls=false`, 0 rows with no GUC) and as the owner |
+| `tsc`, `npm test`, `build` | 0 · 362/0 · 0 |
+| Slice 1 / 2A / 2B / today-tenant / team | 62/0 · 116/0 · 64/0 · 51/0 · 11/0 |
+| Canonical world | manifest `be0da833990ce436`; fingerprint `e98b43254f98d5ec`, unchanged |
+
+**Reported, not fixed** (ambiguous ownership or product semantics; `H1-PRE-PILOT-HARDENING.md` § C):
+- global `signal_sources` / `golden_examples` written by tenant verdicts;
+- inbound email subject matching across tenants;
+- stored `account_digests` needing regeneration;
+- cross-tenant consent flows that may need policies under app_rw (H1B).
+
+**Local environment notes:**
+- Postgres 17 on :5433, socket `/tmp/pgv5433`. `pursuit_demo` is pristine; `pursuit_cert` is the certification copy.
+- `verify-run.ts` now defaults to :5433.
+- `scripts/motion.ts approve|reject` now needs `--org <id>`.
+
+**Exact next step: H1B, owner-approved, in `H1-PRE-PILOT-HARDENING.md` § "H1B sequence".**
+1. Read-only pre-flight on `mejokqxriwyawfhawuxu`.
+2. `alter role app_rw with login password …` there, never on `qifatlqxfuhwrwvpbwsc`.
+3. A direct `app_rw.<ref>` pooler login test.
+4. Vercel Preview for this branch only: add `DATABASE_URL_OWNER`, then switch `DATABASE_URL` to app_rw.
+5. `/api/build` posture probe (to be implemented in H1B).
+6. Hosted certification: tenant verifiers as app_rw, a two-org blind test, the rollback rehearsal.
+
+**No product slice before H1 completes.**
 
 ---
 

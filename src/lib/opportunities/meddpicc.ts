@@ -73,14 +73,16 @@ export function meddpiccGaps(m: Meddpicc): Element[] {
 }
 
 /** Load MEDDPICC for many opportunities at once (blanks fill missing elements). */
-export async function meddpiccFor(db: Db, opportunityIds: string[]): Promise<Map<string, Meddpicc>> {
+export async function meddpiccFor(db: Db, orgId: string, opportunityIds: string[]): Promise<Map<string, Meddpicc>> {
   const out = new Map<string, Meddpicc>();
   if (opportunityIds.length === 0) return out;
   for (const id of opportunityIds) out.set(id, blank());
   const { rows } = await db.query<{ opportunity_id: string; element: ElementKey; status: Status; notes: string | null; source: string }>(
-    `select opportunity_id, element, status, notes, source
-     from opportunity_meddpicc where opportunity_id = any($1)`,
-    [opportunityIds],
+    `select om.opportunity_id, om.element, om.status, om.notes, om.source
+     from opportunity_meddpicc om
+     join opportunities o on o.id = om.opportunity_id and o.org_id = $2
+     where om.opportunity_id = any($1)`,
+    [opportunityIds, orgId],
   );
   for (const r of rows) {
     const m = out.get(r.opportunity_id);
@@ -91,16 +93,20 @@ export async function meddpiccFor(db: Db, opportunityIds: string[]): Promise<Map
 
 export async function upsertElement(
   db: Db,
+  orgId: string,
   args: { opportunityId: string; element: ElementKey; status: Status; notes: string | null; source?: string; updatedBy?: string },
 ): Promise<void> {
-  await db.query(
+  // opportunity_meddpicc has no org_id: the write only lands on an opportunity the caller's org owns.
+  const res = await db.query(
     `insert into opportunity_meddpicc (opportunity_id, element, status, notes, source, updated_by, updated_at)
-     values ($1, $2, $3, $4, $5, $6, now())
+     select $1, $2, $3, $4, $5, $6, now()
+     where exists (select 1 from opportunities where id = $1 and org_id = $7)
      on conflict (opportunity_id, element)
        do update set status = excluded.status, notes = excluded.notes,
                      source = excluded.source, updated_by = excluded.updated_by, updated_at = now()`,
-    [args.opportunityId, args.element, args.status, args.notes, args.source ?? "human", args.updatedBy ?? "web"],
+    [args.opportunityId, args.element, args.status, args.notes, args.source ?? "human", args.updatedBy ?? "web", orgId],
   );
+  if ((res.rowCount ?? 0) === 0) throw new Error("opportunity not found");
 }
 
 /**
@@ -109,10 +115,10 @@ export async function upsertElement(
  * on real signals we hold (no external model needed), so it works in every
  * environment; every proposal is a draft (source='ai_assist') the human tunes.
  */
-export async function assessMeddpicc(db: Db, opportunityId: string): Promise<{ updated: number }> {
+export async function assessMeddpicc(db: Db, orgId: string, opportunityId: string): Promise<{ updated: number }> {
   const { rows: oppRows } = await db.query<{ company_id: string; amount_usd: string | null; motion_id: string | null }>(
-    `select company_id, amount_usd, motion_id from opportunities where id = $1`,
-    [opportunityId],
+    `select company_id, amount_usd, motion_id from opportunities where id = $1 and org_id = $2`,
+    [opportunityId, orgId],
   );
   if (oppRows.length === 0) throw new Error("opportunity not found");
   const opp = oppRows[0];
@@ -125,8 +131,9 @@ export async function assessMeddpicc(db: Db, opportunityId: string): Promise<{ u
   // carries. No migration, no dual write, no separate role record.
   const { rows: sh } = await db.query<{ role: string; sentiment: string; name: string | null; assertion_state: string | null }>(
     `select s.role, s.sentiment, ct.name, s.assertion_state from stakeholders s join contacts ct on ct.id = s.contact_id
+     join opportunities o on o.id = s.opportunity_id and o.org_id = $2
      where s.opportunity_id = $1`,
-    [opportunityId],
+    [opportunityId, orgId],
   );
   const roles = new Set(sh.map((s) => s.role));
   const eb = sh.find((s) => s.role === "economic_buyer");
@@ -139,9 +146,9 @@ export async function assessMeddpicc(db: Db, opportunityId: string): Promise<{ u
 
   const { rows: ev } = await db.query<{ claim: string; source_type: string }>(
     `select claim, source_type from evidence
-     where company_id = $1 and status = 'verified'
+     where company_id = $1 and status = 'verified' and (org_id = $2 or org_id is null)
      order by computed_confidence desc nulls last, observed_at desc limit 6`,
-    [opp.company_id],
+    [opp.company_id, orgId],
   );
   const painEv = ev.find((e) => /migrat|end.of.life|eol|outage|risk|cost|scal|deadline|compliance|breach|expir/i.test(e.claim));
   const compEv = ev.find((e) => /competitor|incumbent|vmware|veeam|broadcom|replace|rip.and.replace|alternative/i.test(e.claim));
@@ -151,9 +158,7 @@ export async function assessMeddpicc(db: Db, opportunityId: string): Promise<{ u
   // BUYER tracks, which is exactly what the Value Case models.
   const { loadDrivers } = await import("../value/drivers");
   const { assembleCase, bounds: fmtBounds } = await import("../value/case");
-  const orgRow = (await db.query<{ org_id: string | null }>(
-    `select org_id from opportunities where id = $1`, [opportunityId])).rows[0];
-  const drivers = orgRow?.org_id ? await loadDrivers(db, orgRow.org_id, opp.company_id) : [];
+  const drivers = await loadDrivers(db, orgId, opp.company_id);
   const vc = assembleCase("", opp.company_id, "", opp.amount_usd ? Number(opp.amount_usd) : null, null, drivers);
 
   const has = (n: number) => ev.length >= n;
@@ -198,7 +203,7 @@ export async function assessMeddpicc(db: Db, opportunityId: string): Promise<{ u
     );
     if (existing.length > 0 && existing[0].source === "human") continue;
     const p = proposals[e.key];
-    await upsertElement(db, { opportunityId, element: e.key, status: p.status, notes: p.notes, source: "ai_assist", updatedBy: "ai" });
+    await upsertElement(db, orgId, { opportunityId, element: e.key, status: p.status, notes: p.notes, source: "ai_assist", updatedBy: "ai" });
     updated += 1;
   }
   return { updated };

@@ -23,11 +23,11 @@ export async function getPursuitPortfolio(db: PoolClient, caller: Caller): Promi
        from pursuits pu
        join companies c on c.id = pu.account_id
        left join taxonomy_nodes tn on tn.id = pu.product_category_id
-       left join pursuit_route_snapshots sn on sn.pursuit_id = pu.id and sn.is_current
+       left join pursuit_route_snapshots sn on sn.pursuit_id = pu.id and sn.is_current and sn.org_id = pu.org_id
        left join partners pr on pr.id = sn.recommended_partner_id
-       left join route_candidates rc on rc.route_snapshot_id = sn.id and rc.is_recommended
-      where pu.status not in ('WON','LOST','DISQUALIFIED') and pu.merged_into_pursuit_id is null
-      order by pu.current_priority_score desc nulls last`, []);
+       left join route_candidates rc on rc.route_snapshot_id = sn.id and rc.is_recommended and rc.org_id = pu.org_id
+      where pu.org_id = $1 and pu.status not in ('WON','LOST','DISQUALIFIED') and pu.merged_into_pursuit_id is null
+      order by pu.current_priority_score desc nulls last`, [caller.orgId]);
 
   const viewRows: PortfolioRow[] = rows.map((r) => ({
     pursuitId: r.id, accountLabel: r.account_label, thesis: r.thesis ?? r.use_case ?? "Untitled pursuit", solution: r.solution,

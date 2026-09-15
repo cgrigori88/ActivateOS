@@ -12,6 +12,7 @@
  *   npx tsx scripts/recompute-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import {
   DEPENDENCY_MAP, targetsFor, enqueueRecompute, drainRecomputeQueue, recordAndEnqueue,
 } from "../src/lib/pursuits/federation/events";
@@ -19,7 +20,7 @@ import { recordChange } from "../src/lib/pursuits/ledger";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import { randomUUID } from "node:crypto";
 
-const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
+const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/verify_disposable";
 const pool = new Pool({ connectionString: CONN });
 let passed = 0, failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail = "") { if (cond) { passed++; console.log(`  ✓ ${name}`); } else { failed++; failures.push(name + (detail ? ` — ${detail}` : "")); console.log(`  ✗ ${name}${detail ? " — " + detail : ""}`); } }
@@ -27,6 +28,7 @@ async function asOwner<T>(fn: (db: PoolClient) => Promise<T>): Promise<T> { cons
 async function asOrg<T>(orgId: string, fn: (db: PoolClient) => Promise<T>): Promise<T> { const c = await pool.connect(); try { await c.query("begin"); await c.query("set local role app_rw"); await c.query("select set_config('app.org_id',$1,true)", [orgId]); const r = await fn(c); await c.query("commit"); return r; } catch (e) { await c.query("rollback").catch(() => {}); throw e; } finally { c.release(); } }
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[recompute-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   const RID = Math.random().toString(36).slice(2, 8);
   const s = await asOwner(async (db) => {

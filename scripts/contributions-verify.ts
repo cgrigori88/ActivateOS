@@ -9,13 +9,14 @@
  *   npx tsx scripts/contributions-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { recordContribution, revokeContribution, contributionsForPursuit, liveContributionsForPursuit, linkFactToContribution, impliesRawCustody } from "../src/lib/pursuits/federation/contributions";
 import { addParticipant, acceptParticipation } from "../src/lib/pursuits/federation/participation";
 import { buildFederationViewer, allowlistKeysFor } from "../src/lib/pursuits/federation/grants";
 import { resolveDisclosure, type Disclosable } from "../src/lib/pursuits/federation/disclosure";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 
-const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
+const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/verify_disposable";
 const pool = new Pool({ connectionString: CONN });
 let passed = 0, failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail = "") { if (cond) { passed++; console.log(`  ✓ ${name}`); } else { failed++; failures.push(name + (detail ? ` — ${detail}` : "")); console.log(`  ✗ ${name}${detail ? " — " + detail : ""}`); } }
@@ -24,6 +25,7 @@ async function asOrg<T>(orgId: string, fn: (db: PoolClient) => Promise<T>): Prom
 async function expectThrows(fn: () => Promise<unknown>): Promise<boolean> { try { await fn(); return false; } catch { return true; } }
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[contributions-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   const RID = Math.random().toString(36).slice(2, 8);
   const s = await asOwner(async (db) => {
@@ -39,7 +41,7 @@ async function main() {
     await addParticipant(db, { pursuitId: s.hero, orgId: s.vendor, roleKey: "VENDOR", sponsorOrgId: s.vendor, state: "ACTIVE" });
     await addParticipant(db, { pursuitId: s.hero, orgId: s.dist, roleKey: "DISTRIBUTOR", sponsorOrgId: s.vendor });
   });
-  await asOrg(s.dist, async (db) => { const { rows } = await db.query<{ id: string }>(`select id from pursuit_participants where pursuit_id=$1 and org_id=$2`, [s.hero, s.dist]); await acceptParticipation(db, rows[0].id); });
+  await asOrg(s.dist, async (db) => { const { rows } = await db.query<{ id: string }>(`select id from pursuit_participants where pursuit_id=$1 and org_id=$2`, [s.hero, s.dist]); await acceptParticipation(db, s.dist, rows[0].id); });
 
   // ---- No-central-custody defaults per mode (R5) ----
   console.log("E3-C.1  Contribution modes + no-central-custody (R5)");

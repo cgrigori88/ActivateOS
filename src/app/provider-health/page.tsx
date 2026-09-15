@@ -1,4 +1,4 @@
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import { Card, PageHeader, Disclosure, BlockLabel } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { EvidenceModel } from "@/components/evidence-model";
@@ -32,8 +32,7 @@ export const dynamic = "force-dynamic";
  * called, no run behaviour changes.
  */
 export default async function ProviderHealthPage() {
-  const pool = getPool();
-  const rows = await loadProviderHealth(pool);
+  const rows = await withTenant((db, orgId) => loadProviderHealth(db, orgId));
   const now = Date.now();
   const summary = healthSummary(rows, now);
 

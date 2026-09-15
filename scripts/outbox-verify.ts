@@ -9,6 +9,7 @@
  *   npx tsx scripts/outbox-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { seedGovernedSkills, dispatchSkill, type Actor } from "../src/lib/pursuits/federation/skills";
 import { drainOutbox } from "../src/lib/pursuits/federation/executor";
 import { MCP_TOOLS } from "../src/lib/agents/mcp-tools";
@@ -17,7 +18,7 @@ import { upsertPursuit } from "../src/lib/pursuits/model";
 import { addParticipant, acceptParticipation } from "../src/lib/pursuits/federation/participation";
 import { randomUUID } from "node:crypto";
 
-const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
+const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/verify_disposable";
 const pool = new Pool({ connectionString: CONN });
 let passed = 0, failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail = "") { if (cond) { passed++; console.log(`  ✓ ${name}`); } else { failed++; failures.push(name + (detail ? ` — ${detail}` : "")); console.log(`  ✗ ${name}${detail ? " — " + detail : ""}`); } }
@@ -44,6 +45,7 @@ const invStatus = (orgId: string, id: string) => asOrg(orgId, async (db) => (awa
 const receiptCount = (orgId: string, invId: string) => asOrg(orgId, async (db) => Number((await db.query<{ n: string }>(`select count(*)::text n from action_receipts where invocation_id=$1`, [invId])).rows[0].n));
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[outbox-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   const RID = Math.random().toString(36).slice(2, 8);
   const s = await asOwner(async (db) => {
@@ -122,11 +124,11 @@ async function main() {
   // ---- 7: revoked authority BEFORE execution → compensated, not executed ----
   console.log("R1-G4.9  Revocation before execution → compensated");
   const part = await asOrg(s.vendor, (db) => addParticipant(db, { pursuitId: s.hero, orgId: s.dist, roleKey: "DISTRIBUTOR", sponsorOrgId: s.vendor }));
-  await asOrg(s.dist, (db) => acceptParticipation(db, part));
+  await asOrg(s.dist, (db) => acceptParticipation(db, s.dist, part));
   const grant = await asOrg(s.dist, (db) => proposeGrant(db, { pursuitId: s.hero, fromOrgId: s.dist, toOrgId: s.vendor, grantKind: "ACTION", actionFamily: "test", purpose: "x" }));
-  await asOrg(s.vendor, (db) => acceptGrant(db, grant));
+  await asOrg(s.vendor, (db) => acceptGrant(db, s.vendor, grant));
   const t7 = await seedTestAction(s.vendor, { failUntilAttempt: 0 }, { grantId: grant });   // would succeed if executed
-  await asOrg(s.dist, (db) => revokeGrant(db, grant));   // authority revoked while queued
+  await asOrg(s.dist, (db) => revokeGrant(db, s.dist, grant));   // authority revoked while queued
   await asOrg(s.vendor, (db) => drainOutbox(db, { allowRealProvider: true }));
   check("a queued action whose grant was revoked is COMPENSATED, not executed", (await obStatus(s.vendor, t7.ob)) === "COMPENSATED" && (await invStatus(s.vendor, t7.inv)) === "COMPENSATED");
   check("no SUCCEEDED receipt exists for the compensated action", (await asOrg(s.vendor, async (db) => Number((await db.query<{ n: string }>(`select count(*)::text n from action_receipts where invocation_id=$1 and status='accepted'`, [t7.inv])).rows[0].n))) === 0);

@@ -35,16 +35,17 @@ export async function listTargets(db: Db, orgId: string): Promise<TargetRow[]> {
      from (
        select extract(year from coalesce(o.expected_close_date, o.created_at))::int as yr,
               m.partner_id, coalesce(o.amount_usd, 0) as pipeline, 0 as revenue
-       from opportunities o left join revenue_motions m on m.id = o.motion_id
-       where o.stage not like 'closed%'
+       from opportunities o left join revenue_motions m on m.id = o.motion_id and m.org_id = o.org_id
+       where o.org_id = $1 and o.stage not like 'closed%'
        union all
        select extract(year from coalesce(o.closed_at, o.updated_at))::int,
               m.partner_id, 0, coalesce(o.amount_usd, 0)
-       from opportunities o left join revenue_motions m on m.id = o.motion_id
-       where o.stage = 'closed_won'
+       from opportunities o left join revenue_motions m on m.id = o.motion_id and m.org_id = o.org_id
+       where o.org_id = $1 and o.stage = 'closed_won'
      ) x
      left join partners p on p.id = x.partner_id
      group by x.yr, x.partner_id, p.name`,
+    [orgId],
   );
 
   const { rows: targets } = await db.query<{ id: string; partner_id: string | null; partner_name: string | null; period_year: number; metric: TargetMetric; target_usd: string }>(
@@ -124,6 +125,10 @@ export async function upsertTarget(
   db: Db,
   args: { orgId: string; partnerId: string | null; periodYear: number; metric: TargetMetric; targetUsd: number },
 ): Promise<void> {
+  if (args.partnerId) {
+    const { rows } = await db.query(`select 1 from partners where id = $1 and org_id = $2`, [args.partnerId, args.orgId]);
+    if (!rows[0]) throw new Error("partner not found");
+  }
   // Partial unique indexes can't be targeted by ON CONFLICT with a nullable
   // column — do a manual upsert.
   const { rowCount } = await db.query(

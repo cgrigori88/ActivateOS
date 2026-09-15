@@ -38,7 +38,7 @@ export default async function GoalDetail({ params }: { params: Promise<{ id: str
   const loaded = await withTenant(async (db, orgId) => {
     const goal = (await listGoals(db, orgId)).find((g) => g.id === id);
     if (!goal) return null;
-    return { goal, chain: await goalChain(db, goal.id) };
+    return { goal, chain: await goalChain(db, orgId, goal.id) };
   });
   if (!loaded) notFound();
 

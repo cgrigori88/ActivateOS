@@ -29,7 +29,7 @@ export default async function AnalyticsPage({
   const evWhere = windowDays ? `where occurred_at >= now() - interval '${windowDays} days'` : "";
 
   const { teamRows, companyRows, outcomeRows, drRows, valueRows, touchRows, dailyRows, segments, surges } =
-    await withTenant(async (db) => {
+    await withTenant(async (db, orgId) => {
       // Team view (slice C/D): per-seller rollup from pursuit assignments and the
       // pipeline on those accounts — the leader lens over the same record.
       const { rows: teamRows } = await db.query<{
@@ -42,11 +42,13 @@ export default async function AnalyticsPage({
                 sum(o.amount_usd) filter (where o.stage not in ('closed_won','closed_lost')) as open_usd,
                 sum(o.amount_usd) filter (where o.stage = 'closed_won') as won_usd
          from sellers s
-         join pursuit_teams pt on pt.seller_id = s.id
+         join pursuit_teams pt on pt.seller_id = s.id and pt.org_id = $1
          join companies c on c.id = pt.company_id
-         left join opportunities o on o.company_id = pt.company_id
+         left join opportunities o on o.company_id = pt.company_id and o.org_id = $1
+         where s.org_id = $1
          group by s.id, s.name, s.territory
          order by s.name`,
+        [orgId],
       );
 
       const [{ rows: companyRows }, { rows: outcomeRows }, { rows: drRows }, { rows: valueRows }, { rows: touchRows }, { rows: dailyRows }, { rows: segments }, { rows: surges }] =
@@ -60,8 +62,10 @@ export default async function AnalyticsPage({
              from email_events e
              join messages m on m.id = e.message_id
              join communication_threads t on t.id = m.thread_id
-             ${windowDays ? `where e.occurred_at >= now() - interval '${windowDays} days'` : ""}
+             where t.org_id = $1
+             ${windowDays ? `and e.occurred_at >= now() - interval '${windowDays} days'` : ""}
              group by t.company_id`,
+            [orgId],
           ),
           // Response/meeting classification lives in interaction_events (the conversation classifier
           // in comms/inbound + the engagement deriver write POSITIVE_RESPONSE / NEGATIVE_RESPONSE /
@@ -69,18 +73,21 @@ export default async function AnalyticsPage({
           // superseded slice — so this reads the real canonical source (Phase B4 reconciliation).
           db.query<{ company_id: string; event_type: string }>(
             `select distinct company_id, type as event_type from interaction_events
-             where type in ('POSITIVE_RESPONSE','NEGATIVE_RESPONSE','MEETING_BOOKED')
+             where type in ('POSITIVE_RESPONSE','NEGATIVE_RESPONSE','MEETING_BOOKED') and org_id = $1
              ${windowDays ? `and occurred_at >= now() - interval '${windowDays} days'` : ""}`,
+            [orgId],
           ),
           db.query<{ company_id: string }>(
             `select distinct company_id from deal_registrations
-             where status in ('submitted','approved')
+             where status in ('submitted','approved') and org_id = $1
              ${windowDays ? `and created_at >= now() - interval '${windowDays} days'` : ""}`,
+            [orgId],
           ),
           // Associated pipeline per account (open + won — what the cohort is worth).
           db.query<{ company_id: string; v: string }>(
             `select company_id, sum(amount_usd) as v from opportunities
-             where stage <> 'closed_lost' and amount_usd is not null group by company_id`,
+             where stage <> 'closed_lost' and amount_usd is not null and org_id = $1 group by company_id`,
+            [orgId],
           ),
           // Sent vs responded, by touch — a touch "responded" if its message got a reply.
           db.query<{ touch_no: number; sent: string; responded: string }>(
@@ -88,23 +95,28 @@ export default async function AnalyticsPage({
                     count(distinct t.id) filter (where t.status = 'sent') as sent,
                     count(distinct t.id) filter (where e.id is not null) as responded
              from campaign_touches t
+             join campaigns ca on ca.id = t.campaign_id and ca.org_id = $1
              left join email_events e on e.message_id = t.message_id and e.event_type = 'REPLIED'
              group by t.touch_no order by t.touch_no`,
+            [orgId],
           ),
           // Daily activity, fixed 28-day window.
           db.query<{ d: string; sent: string; opened: string; replied: string }>(
-            `select date_trunc('day', occurred_at)::date::text as d,
-                    count(*) filter (where event_type = 'SENT') as sent,
-                    count(*) filter (where event_type = 'OPENED') as opened,
-                    count(*) filter (where event_type = 'REPLIED') as replied
-             from email_events
-             where occurred_at >= now() - interval '28 days'
+            `select date_trunc('day', e.occurred_at)::date::text as d,
+                    count(*) filter (where e.event_type = 'SENT') as sent,
+                    count(*) filter (where e.event_type = 'OPENED') as opened,
+                    count(*) filter (where e.event_type = 'REPLIED') as replied
+             from email_events e
+             join messages m on m.id = e.message_id
+             join communication_threads t on t.id = m.thread_id and t.org_id = $1
+             where e.occurred_at >= now() - interval '28 days'
              group by 1 order by 1`,
+            [orgId],
           ),
           db.query<{ band: string; sent: string; opened: string; replied: string }>(
             `with latest as (
                select distinct on (company_id) company_id, band
-               from propensity_scores order by company_id, computed_at desc
+               from propensity_scores where org_id = $1 order by company_id, computed_at desc
              )
              select coalesce(l.band, 'unscored') as band,
                     count(*) filter (where e.event_type = 'SENT') as sent,
@@ -114,15 +126,18 @@ export default async function AnalyticsPage({
              join messages m on m.id = e.message_id
              join communication_threads t on t.id = m.thread_id
              left join latest l on l.company_id = t.company_id
-             ${windowDays ? `where e.occurred_at >= now() - interval '${windowDays} days'` : ""}
+             where t.org_id = $1
+             ${windowDays ? `and e.occurred_at >= now() - interval '${windowDays} days'` : ""}
              group by 1`,
+            [orgId],
           ),
           db.query<{ company_id: string; legal_name: string; payload: { clicks?: number; replies?: number; positive?: number } | null; occurred_at: Date }>(
             `select ie.company_id, c.legal_name, ie.payload, ie.occurred_at
              from interaction_events ie
              join companies c on c.id = ie.company_id
-             where ie.type = 'ENGAGEMENT_SURGE'
+             where ie.type = 'ENGAGEMENT_SURGE' and ie.org_id = $1
              order by ie.occurred_at desc limit 12`,
+            [orgId],
           ),
         ]);
 

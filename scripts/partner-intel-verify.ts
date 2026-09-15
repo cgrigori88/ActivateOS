@@ -17,6 +17,7 @@
  *   DEMO_URL=… npx tsx scripts/partner-intel-verify.ts
  */
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { assertSeededClone } from "./seeded-clone";
 import { getPartnerActivationProfile, partnerActivationHeadlines, getSellerPaths, getExecutionEvidence } from "../src/lib/partners/intelligence";
 import { getRouteComparison } from "../src/lib/pursuits/read-models/route";
 import { callerFor } from "../src/lib/pursuits/read-models/caller";
@@ -27,6 +28,9 @@ function ok(n: string, c: boolean, d = "") { if (c) { pass++; console.log(`  ✓
 
 async function main() {
   const pool = new Pool({ connectionString: URL });
+  // H1A: this suite commits through real application paths — refuse the canonical world;
+  // verify-run.ts gives it a disposable seeded clone (scripts/seeded-clone.ts).
+  await assertSeededClone(pool);
   const db = (await pool.connect()) as PoolClient;
   const one = async <T extends QueryResultRow>(sql: string, p: unknown[] = []): Promise<T> => (await db.query<T>(sql, p)).rows[0] as T;
   try {

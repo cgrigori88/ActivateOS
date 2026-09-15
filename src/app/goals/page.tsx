@@ -44,7 +44,7 @@ export default async function GoalsPage({
     // existing foreign keys by one shared read model so Goals, Motions and
     // Pipeline cannot disagree about the spine.
     const chains = new Map<string, GoalChain>();
-    for (const g of all) chains.set(g.id, await goalChain(db, g.id));
+    for (const g of all) chains.set(g.id, await goalChain(db, orgId, g.id));
     return {
       all,
       targets: await listTargets(db, orgId),

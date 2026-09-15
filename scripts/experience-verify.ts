@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import { promoteFromSignal } from "../src/lib/facts/promotion";
 import { linkFactToPursuits } from "../src/lib/facts/pursuit-link";
@@ -59,6 +60,7 @@ const internalCaller = (orgId: string): Caller => ({ orgId, canSeeInternal: true
 const limitedCaller = (orgId: string): Caller => ({ orgId, canSeeInternal: false, canSeeTransactionDetail: false });
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[experience-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   // taxonomy_nodes.slug has been `not null unique` since 0001_core_schema.sql.
   // These fixtures COMMIT, so a fixed slug would also collide on the second run
@@ -198,7 +200,7 @@ async function main() {
     const txCell = wwtCand?.dimensions["transaction_adjacency"];
     check("missing dimension renders unknown, not zero", !!txCell && txCell.known === false && txCell.band === "unknown");
     // Override: WWT selected over recommended CDW.
-    await selectPartnerRoute(db, hero, { partnerId: s.wwt, actorId: crypto.randomUUID(), reason: "exec relationship", category: "EXECUTIVE_DIRECTION" });
+    await selectPartnerRoute(db, s.orgA, hero, { partnerId: s.wwt, actorId: crypto.randomUUID(), reason: "exec relationship", category: "EXECUTIVE_DIRECTION" });
     const afterOverride = await getRouteComparison(db, internalCaller(s.orgA), hero);
     check("selection distinct from recommendation after override", afterOverride.selectionMatchesRecommendation === false && !!afterOverride.selected);
     check("override reason + category surfaced", afterOverride.overrideCategory === "EXECUTIVE_DIRECTION");

@@ -16,6 +16,7 @@
  *   DEMO_URL=… npx tsx scripts/motion-intel-verify.ts
  */
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { assertSeededClone } from "./seeded-clone";
 import { getMotionFunnels, getMotionConstraints, accountsAtStage, motionAcceptanceBlockage, ACCEPTANCE_BLOCK_FLOOR_USD } from "../src/lib/motions/funnel";
 import { resolveExplain, parseMotionShowMe, resolveMotionShowMe } from "../src/lib/search/query";
 import { dispatchSkill, type Actor } from "../src/lib/pursuits/federation/skills";
@@ -26,6 +27,9 @@ function ok(n: string, c: boolean, d = "") { if (c) { pass++; console.log(`  ✓
 
 async function main() {
   const pool = new Pool({ connectionString: URL });
+  // H1A: this suite commits through real application paths — refuse the canonical world;
+  // verify-run.ts gives it a disposable seeded clone (scripts/seeded-clone.ts).
+  await assertSeededClone(pool);
   const db = (await pool.connect()) as PoolClient;
   const one = async <T extends QueryResultRow>(sql: string, p: unknown[] = []): Promise<T> => (await db.query<T>(sql, p)).rows[0] as T;
   const num = async (sql: string, p: unknown[] = []) => Number((await db.query<{ n: string }>(sql, p)).rows[0].n);

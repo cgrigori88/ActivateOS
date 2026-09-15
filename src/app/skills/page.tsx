@@ -41,7 +41,12 @@ export default async function SkillsPage({
     // been told about.
     edits: (
       await db.query<{ edit_distance: string; draft_length: string }>(
-        `select edit_distance, length(ai_original) as draft_length from message_edits`,
+        `select e.edit_distance, length(e.ai_original) as draft_length
+           from message_edits e
+           join messages m on m.id = e.message_id
+           join communication_threads t on t.id = m.thread_id
+          where t.org_id = $1`,
+        [orgId],
       )
     ).rows,
     partners: (

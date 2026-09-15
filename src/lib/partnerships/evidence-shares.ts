@@ -57,6 +57,13 @@ export async function offerableEvidence(
 }
 
 export async function offerEvidenceShare(db: Db, orgId: string, partnershipId: string, evidenceId: string): Promise<void> {
+  // The caller must be a party to an ACTIVE partnership before anything is read or written on it.
+  const { rows: ship } = await db.query(
+    `select 1 from partnerships
+     where id = $1 and status = 'active' and (initiator_org_id = $2 or counterpart_org_id = $2)`,
+    [partnershipId, orgId],
+  );
+  if (!ship[0]) throw new Error("Not a partnership you are part of.");
   const named = await namedOverlapCompanyIds(db, partnershipId);
   const { rows } = await db.query<{ company_id: string }>(
     `select company_id from evidence where id = $1 and status = 'verified' and (org_id = $2 or org_id is null)`,
@@ -108,11 +115,12 @@ export async function listEvidenceShares(db: Db, orgId: string, partnershipId: s
     `select s.id, s.status, s.offered_by_org, e.claim, e.source_type, e.observed_at,
             c.legal_name, e.company_id, s.offered_at
      from evidence_shares s
+     join partnerships ps on ps.id = s.partnership_id and (ps.initiator_org_id = $2 or ps.counterpart_org_id = $2)
      join evidence e on e.id = s.evidence_id
      join companies c on c.id = e.company_id
      where s.partnership_id = $1 and s.status <> 'revoked'
      order by s.offered_at desc limit 40`,
-    [partnershipId],
+    [partnershipId, orgId],
   );
   return rows.map((r) => ({
     id: r.id,

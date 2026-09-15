@@ -14,6 +14,7 @@
  *   npx tsx scripts/lifecycle-acceptance-verify.ts
  */
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { assertSeededClone } from "./seeded-clone";
 import { dispatchSkill, type Actor } from "../src/lib/pursuits/federation/skills";
 import { drainRecomputeQueue } from "../src/lib/pursuits/federation/events";
 import { advanceOpportunity } from "../src/lib/opportunities/lifecycle";
@@ -30,8 +31,19 @@ async function tx<T>(pool: Pool, orgId: string, fn: (db: PoolClient) => Promise<
   catch (e) { await c.query("rollback").catch(() => {}); throw e; } finally { c.release(); }
 }
 
+// A probe, never a write: same as tx but ROLLS BACK even on success, so a regressed denial (a
+// foreign mutation or a ledger tamper that should have been refused) cannot commit (H1A).
+async function probe<T>(pool: Pool, orgId: string, fn: (db: PoolClient) => Promise<T>): Promise<T> {
+  const c = await pool.connect();
+  try { await c.query("begin"); await c.query("select set_config('app.org_id',$1,true)", [orgId]); return await fn(c); }
+  finally { await c.query("rollback").catch(() => {}); c.release(); }
+}
+
 async function main() {
   const pool = new Pool({ connectionString: URL });
+  // H1A: this suite commits through real application paths — refuse the canonical world;
+  // verify-run.ts gives it a disposable seeded clone (scripts/seeded-clone.ts).
+  await assertSeededClone(pool);
   const one = async <T extends QueryResultRow>(sql: string, p: unknown[]): Promise<T> => (await pool.query<T>(sql, p)).rows[0] as T;
   const num = async (sql: string, p: unknown[]) => Number((await pool.query<{ n: string }>(sql, p)).rows[0].n);
   try {
@@ -120,7 +132,7 @@ async function main() {
       `insert into opportunities (org_id, company_id, taxonomy_node_id, name, stage, amount_usd, pursuit_id)
        values ($1,$2,$3,'Globex · acceptance','negotiation',480000,$4) returning id`, [org, G.account_id, node, P]));
     const oppId = opp.rows[0].id;
-    await tx(pool, org, (db) => advanceOpportunity(db, oppId, "closed_won", "acceptance"));
+    await tx(pool, org, (db) => advanceOpportunity(db, org, oppId, "closed_won", "acceptance"));
     const oc = await one<{ id: string; outcome_label: string; is_terminal: boolean; attribution_id: string | null }>(`select id, outcome_label, is_terminal, attribution_id from pursuit_outcomes where source_ref=$1`, [`opp:${oppId}:CLOSED_WON`]);
     ok("commercial outcome recorded (CLOSED_WON, terminal)", !!oc && oc.outcome_label === "CLOSED_WON" && oc.is_terminal);
     /* Wave 6B §7 — a missing row must FAIL, not CRASH.
@@ -158,19 +170,19 @@ async function main() {
     // Read denial is an RLS property enforced under the non-owner app_rw role (the app never runs as
     // the table owner in production); the owning org reads the same row under the same enforced role.
     const other = (await one<{ id: string }>(`select id from organizations where id<>$1 order by created_at asc limit 1`, [org])).id;
-    const foreignRead = await tx(pool, other, async (db) => { await db.query(`set local role app_rw`); return (await db.query(`select id from pursuits where id=$1`, [P])).rowCount; });
+    const foreignRead = await probe(pool, other, async (db) => { await db.query(`set local role app_rw`); return (await db.query(`select id from pursuits where id=$1`, [P])).rowCount; });
     ok("a foreign tenant cannot read this pursuit under enforced RLS (app_rw)", foreignRead === 0, `rowCount ${foreignRead}`);
-    const ownRead = await tx(pool, org, async (db) => { await db.query(`set local role app_rw`); return (await db.query(`select id from pursuits where id=$1`, [P])).rowCount; });
+    const ownRead = await probe(pool, org, async (db) => { await db.query(`set local role app_rw`); return (await db.query(`select id from pursuits where id=$1`, [P])).rowCount; });
     ok("the owning tenant CAN read it under the same enforced RLS (isolation, not an outage)", ownRead === 1);
     const foreignActor: Actor = { type: "USER", id: null, orgId: other, role: "operator" };
     const m = await one<{ id: string }>(`select id from pursuit_team_members where pursuit_id=$1 and status='ACCEPTED' limit 1`, [P]);
-    const crossMutate = await tx(pool, other, (db) => dispatchSkill(db, "confirm_team_member", foreignActor, { pursuitId: P, args: { memberId: m.id }, dataEnvironment: "DEMO" }));
+    const crossMutate = await probe(pool, other, (db) => dispatchSkill(db, "confirm_team_member", foreignActor, { pursuitId: P, args: { memberId: m.id }, dataEnvironment: "DEMO" }));
     ok("a foreign tenant cannot mutate this pursuit's team (governed REJECTION)", crossMutate.status === "REJECTED");
 
     // 8) Append-only — the ledger row for this decision is immutable to the app role.
     let appendOnly = false;
     try {
-      await tx(pool, org, (db) => db.query(`set local role app_rw; update change_ledger set reason='tampered' where pursuit_id=$1 and change_type='PARTNER_OVERRIDE'`, [P]));
+      await probe(pool, org, (db) => db.query(`set local role app_rw; update change_ledger set reason='tampered' where pursuit_id=$1 and change_type='PARTNER_OVERRIDE'`, [P]));
     } catch { appendOnly = true; }
     ok("the decision's ledger entry is append-only (UPDATE denied to app_rw)", appendOnly);
 

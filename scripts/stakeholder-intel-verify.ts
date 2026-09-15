@@ -35,9 +35,11 @@ const pool = new Pool({ connectionString: URL });
 let pass = 0, fail = 0;
 function ok(n: string, c: boolean, d = "") { if (c) { pass++; console.log(`  ✓ ${n}`); } else { fail++; console.log(`  ✗ ${n}${d ? ` — ${d}` : ""}`); } }
 
+// A probe, never a write: it ROLLS BACK even on success, so a regressed denial cannot commit into the
+// world it reads (H1A certification integrity).
 async function asOrg<T>(orgId: string, fn: (db: PoolClient) => Promise<T>): Promise<T> {
   const c = await pool.connect();
-  try { await c.query("begin"); await c.query("set local role app_rw"); await c.query("select set_config('app.org_id',$1,true)", [orgId]); const r = await fn(c); await c.query("commit"); return r; }
+  try { await c.query("begin"); await c.query("set local role app_rw"); await c.query("select set_config('app.org_id',$1,true)", [orgId]); const r = await fn(c); await c.query("rollback"); return r; }
   catch (e) { await c.query("rollback").catch(() => {}); throw e; }
   finally { c.release(); }
 }

@@ -84,19 +84,20 @@ export function stakeholderGaps(stakeholders: StakeholderRow[]): string[] {
 
 export async function advanceOpportunity(
   db: pg.PoolClient,
+  orgId: string,
   opportunityId: string,
   to: Stage,
   note?: string,
 ): Promise<void> {
   const { rows } = await db.query<{
-    org_id: string | null;
     company_id: string;
     motion_id: string | null;
     stage: Stage;
     pursuit_id: string | null;
     amount_usd: string | null;
-  }>(`select org_id, company_id, motion_id, stage, pursuit_id, amount_usd from opportunities where id = $1`, [
+  }>(`select company_id, motion_id, stage, pursuit_id, amount_usd from opportunities where id = $1 and org_id = $2`, [
     opportunityId,
+    orgId,
   ]);
   if (rows.length === 0) throw new Error(`opportunity not found: ${opportunityId}`);
   const opp = rows[0];
@@ -105,11 +106,12 @@ export async function advanceOpportunity(
   }
 
   const closing = to === "closed_won" || to === "closed_lost";
-  await db.query(
+  const upd = await db.query(
     `update opportunities set stage = $2, updated_at = now()
-       ${closing ? ", closed_at = now()" : ""} where id = $1`,
-    [opportunityId, to],
+       ${closing ? ", closed_at = now()" : ""} where id = $1 and org_id = $3`,
+    [opportunityId, to, orgId],
   );
+  if ((upd.rowCount ?? 0) === 0) throw new Error(`opportunity not found: ${opportunityId}`);
   await db.query(
     `insert into opportunity_stage_transitions (opportunity_id, from_stage, to_stage, note)
      values ($1, $2, $3, $4)`,
@@ -122,7 +124,7 @@ export async function advanceOpportunity(
   let meddpicc: Record<string, string> | undefined;
   let meddpiccScoreAtClose: number | undefined;
   if (closing) {
-    const m = (await meddpiccFor(db, [opportunityId])).get(opportunityId);
+    const m = (await meddpiccFor(db, orgId, [opportunityId])).get(opportunityId);
     if (m) {
       meddpicc = Object.fromEntries(ELEMENTS.map((e) => [e.key, m[e.key].status]));
       meddpiccScoreAtClose = meddpiccScore(m);
@@ -132,7 +134,7 @@ export async function advanceOpportunity(
     `insert into outcome_events (org_id, motion_id, company_id, event_type, payload)
      values ($1, $2, $3, $4, $5)`,
     [
-      opp.org_id,
+      orgId,
       opp.motion_id,
       opp.company_id,
       closing ? (to === "closed_won" ? "CLOSED_WON" : "CLOSED_LOST") : "OPPORTUNITY_ADVANCED",
@@ -145,7 +147,7 @@ export async function advanceOpportunity(
   // legacy outcome_events write above is untouched (strangler dual-write).
   const label = closing ? (to === "closed_won" ? "CLOSED_WON" : "CLOSED_LOST") : "OPPORTUNITY_PROGRESSED";
   await bridgePursuitOutcome(db, {
-    orgId: opp.org_id, pursuitId: opp.pursuit_id, companyId: opp.company_id, label,
+    orgId, pursuitId: opp.pursuit_id, companyId: opp.company_id, label,
     valueAmount: to === "closed_won" && opp.amount_usd != null ? Number(opp.amount_usd) : null,
     sourceRef: closing ? `opp:${opportunityId}:${label}` : `opp:${opportunityId}:progressed:${to}`,
   });
@@ -159,16 +161,17 @@ export async function advanceOpportunity(
  */
 export async function createOpportunityFromMotion(
   db: pg.PoolClient,
+  orgId: string,
   motionId: string,
 ): Promise<{ opportunityId: string }> {
   const { rows: motions } = await db.query(
-    `select m.org_id, m.company_id, m.taxonomy_node_id, m.status, m.estimated_value_usd, m.pursuit_id,
+    `select m.company_id, m.taxonomy_node_id, m.status, m.estimated_value_usd, m.pursuit_id,
             c.legal_name, n.slug
      from revenue_motions m
      join companies c on c.id = m.company_id
      left join taxonomy_nodes n on n.id = m.taxonomy_node_id
-     where m.id = $1`,
-    [motionId],
+     where m.id = $1 and m.org_id = $2`,
+    [motionId, orgId],
   );
   if (motions.length === 0) throw new Error(`motion not found: ${motionId}`);
   const m = motions[0];
@@ -189,9 +192,9 @@ export async function createOpportunityFromMotion(
   };
 
   const { rows: existing } = await db.query<{ id: string }>(
-    `select id from opportunities where motion_id = $1
+    `select id from opportunities where motion_id = $1 and org_id = $2
        and stage not in ('closed_won','closed_lost')`,
-    [motionId],
+    [motionId, orgId],
   );
   if (existing.length > 0) {
     // Idempotent re-promotion still refreshes the stakeholder seed — new
@@ -206,7 +209,7 @@ export async function createOpportunityFromMotion(
     `insert into opportunities (org_id, company_id, motion_id, taxonomy_node_id, name, amount_usd, pursuit_id)
      values ($1, $2, $3, $4, $5, $6, $7) returning id`,
     [
-      m.org_id,
+      orgId,
       m.company_id,
       motionId,
       m.taxonomy_node_id,
@@ -235,12 +238,12 @@ export async function createOpportunityFromMotion(
   await db.query(
     `insert into outcome_events (org_id, motion_id, company_id, event_type, payload)
      values ($1, $2, $3, 'OPPORTUNITY_CREATED', $4)`,
-    [m.org_id, motionId, m.company_id, JSON.stringify({ opportunityId })],
+    [orgId, motionId, m.company_id, JSON.stringify({ opportunityId })],
   );
 
   // Canonical bridge (Phase B): OPPORTUNITY_CREATED against the pursuit the motion carries.
   await bridgePursuitOutcome(db, {
-    orgId: m.org_id, pursuitId: m.pursuit_id, companyId: m.company_id,
+    orgId, pursuitId: m.pursuit_id, companyId: m.company_id,
     label: "OPPORTUNITY_CREATED", sourceRef: `opp:${opportunityId}:created`,
   });
 

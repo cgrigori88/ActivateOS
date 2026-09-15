@@ -61,7 +61,7 @@ export const DEFAULT_ANGLE =
 const short = (s: string | null, n = 120): string =>
   !s ? "" : s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s;
 
-export async function mergeAccountData(db: Db, companyId: string): Promise<MergeVars> {
+export async function mergeAccountData(db: Db, orgId: string, companyId: string): Promise<MergeVars> {
   const { rows } = await db.query<{
     legal_name: string;
     primary_domain: string | null;
@@ -71,12 +71,13 @@ export async function mergeAccountData(db: Db, companyId: string): Promise<Merge
   }>(
     `select c.legal_name, c.primary_domain, c.industry,
             (select n.name from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
-              where p.company_id = c.id order by p.score desc nulls last, p.computed_at desc limit 1) as solution,
+              where p.company_id = c.id and p.org_id = $2
+              order by p.score desc nulls last, p.computed_at desc limit 1) as solution,
             (select e.claim from evidence e
-              where e.company_id = c.id and e.status = 'verified'
+              where e.company_id = c.id and e.status = 'verified' and (e.org_id = $2 or e.org_id is null)
               order by e.computed_confidence desc nulls last, e.observed_at desc limit 1) as trigger
      from companies c where c.id = $1`,
-    [companyId],
+    [companyId, orgId],
   );
   const r = rows[0];
   return {
@@ -102,8 +103,12 @@ export function renderAngle(template: string | null, vars: MergeVars): string {
     .trim();
 }
 
-/** Accounts that roll into a campaign: union of linked lists' members + seed. */
-export async function campaignAccounts(db: Db, campaignId: string): Promise<CampaignAccount[]> {
+/**
+ * Accounts that roll into a campaign: union of linked lists' members + seed.
+ * campaign_populations has no org_id — every row is scoped through its
+ * org-owned parent campaign (and the list's own org).
+ */
+export async function campaignAccounts(db: Db, campaignId: string, orgId: string): Promise<CampaignAccount[]> {
   const { rows } = await db.query<{
     id: string;
     legal_name: string;
@@ -118,28 +123,31 @@ export async function campaignAccounts(db: Db, campaignId: string): Promise<Camp
     `with rows as (
        select pm.company_id, ap.name as src
        from campaign_populations cp
+       join campaigns ca on ca.id = cp.campaign_id and ca.org_id = $2
        join population_members pm on pm.population_id = cp.population_id
-       join account_populations ap on ap.id = cp.population_id
+       join account_populations ap on ap.id = cp.population_id and ap.org_id = $2
        where cp.campaign_id = $1
        union all
-       select company_id, 'campaign seed' from campaigns where id = $1 and company_id is not null
+       select company_id, 'campaign seed' from campaigns where id = $1 and org_id = $2 and company_id is not null
      )
      select c.id, c.legal_name, c.primary_domain, c.industry,
             string_agg(distinct r.src, ' · ') as sources,
             (select n.name from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
-              where p.company_id = c.id order by p.score desc nulls last, p.computed_at desc limit 1) as solution,
+              where p.company_id = c.id and p.org_id = $2
+              order by p.score desc nulls last, p.computed_at desc limit 1) as solution,
             (select round(p.score) from propensity_scores p
-              where p.company_id = c.id order by p.score desc nulls last, p.computed_at desc limit 1) as score,
+              where p.company_id = c.id and p.org_id = $2
+              order by p.score desc nulls last, p.computed_at desc limit 1) as score,
             (select e.claim from evidence e
-              where e.company_id = c.id and e.status = 'verified'
+              where e.company_id = c.id and e.status = 'verified' and (e.org_id = $2 or e.org_id is null)
               order by e.computed_confidence desc nulls last, e.observed_at desc limit 1) as trigger,
             (select round(es.engagement_score) from engagement_scores es
-              where es.company_id = c.id and es.contact_id is null
+              where es.company_id = c.id and es.contact_id is null and es.org_id = $2
               order by es.computed_at desc limit 1) as engagement
      from rows r join companies c on c.id = r.company_id
      group by c.id, c.legal_name, c.primary_domain, c.industry
      order by score desc nulls last, c.legal_name`,
-    [campaignId],
+    [campaignId, orgId],
   );
   return rows.map((r) => ({
     companyId: r.id,
@@ -154,7 +162,7 @@ export async function campaignAccounts(db: Db, campaignId: string): Promise<Camp
   }));
 }
 
-export async function linkedLists(db: Db, campaignId: string): Promise<LinkedList[]> {
+export async function linkedLists(db: Db, campaignId: string, orgId: string): Promise<LinkedList[]> {
   const { rows } = await db.query<{
     population_id: string;
     name: string;
@@ -165,11 +173,12 @@ export async function linkedLists(db: Db, campaignId: string): Promise<LinkedLis
     `select ap.id as population_id, ap.name, ap.category, p.name as partner_name,
             (select count(*)::int from population_members m where m.population_id = ap.id) as members
      from campaign_populations cp
-     join account_populations ap on ap.id = cp.population_id
+     join campaigns ca on ca.id = cp.campaign_id and ca.org_id = $2
+     join account_populations ap on ap.id = cp.population_id and ap.org_id = $2
      left join partners p on p.id = ap.partner_id
      where cp.campaign_id = $1
      order by ap.name`,
-    [campaignId],
+    [campaignId, orgId],
   );
   return rows.map((r) => ({
     populationId: r.population_id,
@@ -198,16 +207,18 @@ export async function attachableLists(db: Db, campaignId: string, orgId: string)
   }>(
     `with reach as (
        select pm.company_id from campaign_populations cp
+         join campaigns ca on ca.id = cp.campaign_id and ca.org_id = $2
          join population_members pm on pm.population_id = cp.population_id
          where cp.campaign_id = $1
        union
-       select company_id from campaigns where id = $1 and company_id is not null
+       select company_id from campaigns where id = $1 and org_id = $2 and company_id is not null
      )
      select ap.id as population_id, ap.name, ap.category, p.name as partner_name,
             (select count(*)::int from population_members m where m.population_id = ap.id) as members,
             (select round(avg(best.s)) from population_members m
                cross join lateral (
-                 select max(ps.score) as s from propensity_scores ps where ps.company_id = m.company_id
+                 select max(ps.score) as s from propensity_scores ps
+                  where ps.company_id = m.company_id and ps.org_id = $2
                ) best
              where m.population_id = ap.id and best.s is not null) as avg_score,
             (select count(*)::int from population_members m
@@ -246,14 +257,42 @@ export async function attachableLists(db: Db, campaignId: string, orgId: string)
   return mapped;
 }
 
-export async function linkPopulation(db: Db, campaignId: string, populationId: string, addedBy: string): Promise<void> {
+/** Both the campaign and the list must belong to the caller's org, or nothing links. */
+export async function linkPopulation(
+  db: Db,
+  orgId: string,
+  campaignId: string,
+  populationId: string,
+  addedBy: string,
+): Promise<void> {
+  const { rows } = await db.query(
+    `select 1 from campaigns ca, account_populations ap
+     where ca.id = $1 and ca.org_id = $3 and ap.id = $2 and ap.org_id = $3`,
+    [campaignId, populationId, orgId],
+  );
+  if (rows.length === 0) throw new Error("campaign or list not found");
   await db.query(
     `insert into campaign_populations (campaign_id, population_id, added_by)
-     values ($1, $2, $3) on conflict do nothing`,
-    [campaignId, populationId, addedBy],
+     select ca.id, ap.id, $4 from campaigns ca, account_populations ap
+     where ca.id = $1 and ca.org_id = $3 and ap.id = $2 and ap.org_id = $3
+     on conflict do nothing`,
+    [campaignId, populationId, orgId, addedBy],
   );
 }
 
-export async function unlinkPopulation(db: Db, campaignId: string, populationId: string): Promise<void> {
-  await db.query(`delete from campaign_populations where campaign_id = $1 and population_id = $2`, [campaignId, populationId]);
+export async function unlinkPopulation(db: Db, orgId: string, campaignId: string, populationId: string): Promise<void> {
+  const { rows } = await db.query(
+    `select 1 from campaigns ca, account_populations ap
+     where ca.id = $1 and ca.org_id = $3 and ap.id = $2 and ap.org_id = $3`,
+    [campaignId, populationId, orgId],
+  );
+  if (rows.length === 0) throw new Error("campaign or list not found");
+  await db.query(
+    `delete from campaign_populations cp
+     using campaigns ca, account_populations ap
+     where cp.campaign_id = $1 and cp.population_id = $2
+       and ca.id = cp.campaign_id and ca.org_id = $3
+       and ap.id = cp.population_id and ap.org_id = $3`,
+    [campaignId, populationId, orgId],
+  );
 }

@@ -130,8 +130,8 @@ export async function resolveLifecycleExplain(ctx: ResolveContext, accountName: 
   const co = (await ctx.db.query<{ id: string; legal_name: string }>(
     `select id, legal_name from companies c
       where c.legal_name ilike $1
-      order by (exists (select 1 from pursuits p where p.account_id = c.id)) desc, length(c.legal_name) asc
-      limit 1`, [`%${accountName}%`])).rows[0];
+      order by (exists (select 1 from pursuits p where p.account_id = c.id and p.org_id = $2)) desc, length(c.legal_name) asc
+      limit 1`, [`%${accountName}%`, ctx.orgId])).rows[0];
   if (!co) return { note: "No matching records." };
   // Scope narrowing applies to EXPLAIN too — an out-of-scope account is not answerable.
   if (ctx.companyIds != null && !ctx.companyIds.includes(co.id)) return { note: "That account is outside the current ecosystem scope." };

@@ -6,14 +6,23 @@ import { approveMotion, rejectMotion, EDITABLE_FIELDS, type EditableField } from
  *
  * Usage:
  *   npm run motion -- list
- *   npm run motion -- approve <motion-id> [--thesis "..."] [--cta "..."] ...
- *   npm run motion -- reject <motion-id> [note]
+ *   npm run motion -- approve <motion-id> --org <org-id> [--thesis "..."] [--cta "..."] ...
+ *   npm run motion -- reject <motion-id> --org <org-id> [note]
  *
  * Field overrides on approve are recorded as human-edit diffs on the agent
- * run — they feed the learning loop.
+ * run — they feed the learning loop. The operator names the org they act for
+ * (--org, or MOTION_ORG_ID); approve/reject refuse a motion outside that org.
  */
 async function main() {
-  const [command, ...rest] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  const orgAt = argv.indexOf("--org");
+  const orgId = orgAt !== -1 ? argv[orgAt + 1] : process.env.MOTION_ORG_ID;
+  if (orgAt !== -1) argv.splice(orgAt, 2);
+  const [command, ...rest] = argv;
+  const requireOrg = (): string => {
+    if (!orgId) throw new Error("approve/reject need the acting org: --org <org-id> (or MOTION_ORG_ID)");
+    return orgId;
+  };
   const pool = getPool();
   const db = await pool.connect();
   try {
@@ -37,12 +46,12 @@ async function main() {
         const i = rest.indexOf(`--${field}`);
         if (i !== -1 && rest[i + 1]) edits[field] = rest[i + 1];
       }
-      const { edited } = await approveMotion(db, id, edits);
+      const { edited } = await approveMotion(db, requireOrg(), id, edits);
       console.log(`motion ${id} APPROVED${edited ? " (with edits — diff recorded for learning)" : ""}`);
     } else if (command === "reject") {
       const [id, ...noteParts] = rest;
       if (!id) throw new Error("usage: motion reject <id> [note]");
-      await rejectMotion(db, id, noteParts.join(" ") || undefined);
+      await rejectMotion(db, requireOrg(), id, noteParts.join(" ") || undefined);
       console.log(`motion ${id} rejected`);
     } else {
       console.error("usage: npm run motion -- list | approve <id> [--field value] | reject <id> [note]");

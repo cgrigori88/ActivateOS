@@ -24,7 +24,8 @@ export function registerOutreachExecutor(): void {
     if (!touchId) return { outcome: "FAILED_FINAL", failureClass: "PERMANENT", detail: { reason: "no touchId" } };
     // sendTouchNow flips the touch to 'sent' only AFTER the provider returns a message id,
     // so the commercial record never says "sent" before the provider confirms.
-    const { messageId } = await sendTouchNow(db, { touchId });
+    // The outbox row's org is the org that was authorized to enqueue this send.
+    const { messageId } = await sendTouchNow(db, { orgId: job.orgId, touchId });
     return { outcome: "SUCCEEDED", providerActionId: messageId, detail: { touchId } };
   });
 }

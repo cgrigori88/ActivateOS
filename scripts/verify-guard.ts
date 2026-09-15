@@ -1,4 +1,4 @@
-import type { PoolClient } from "pg";
+import type { Pool, PoolClient } from "pg";
 
 /**
  * Fail-fast identity guard for FRESH verifiers (Wave 6B §8).
@@ -36,7 +36,7 @@ export class NotADisposableDatabase extends Error {
  * Throws unless `db` points at something safe for a destructive fixture run.
  * Call once, as the owner, before seeding.
  */
-export async function assertDisposableDatabase(db: PoolClient): Promise<void> {
+export async function assertDisposableDatabase(db: Pool | PoolClient): Promise<void> {
   if ((process.env.FRESH_DB_GUARD ?? "").toLowerCase() === "off") return;
 
   // The demo world is DEMO-labelled by construction (scripts/demo-db.ts) and is

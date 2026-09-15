@@ -11,6 +11,7 @@
  *   OUTCOME_LEARNING_ENABLED=on npx tsx scripts/outcome-bridge-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertSeededClone } from "./seeded-clone";
 import { advanceOpportunity } from "../src/lib/opportunities/lifecycle";
 import { transitionMotion } from "../src/lib/motions/lifecycle";
 import { bridgePursuitOutcome } from "../src/lib/pursuits/bridge/outcome-bridge";
@@ -27,6 +28,9 @@ const num = async (pool: Pool, sql: string, p: unknown[]) => Number((await pool.
 
 async function main() {
   const pool = new Pool({ connectionString: URL });
+  // H1A: this suite commits through real application paths — refuse the canonical world;
+  // verify-run.ts gives it a disposable seeded clone (scripts/seeded-clone.ts).
+  await assertSeededClone(pool);
   try {
     const org = (await pool.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`)).rows[0].id;
     /* Wave 6B §7 — UPSERT, not UPDATE.
@@ -70,7 +74,7 @@ async function main() {
       `insert into opportunities (org_id, company_id, taxonomy_node_id, name, stage, amount_usd, pursuit_id)
        values ($1,$2,$3,'Verify · won','negotiation',250000,$4) returning id`, [org, company, node, P]))).rows[0];
     const beforeLegacy = await num(pool, `select count(*)::text n from outcome_events where org_id=$1 and event_type='CLOSED_WON'`, [org]);
-    await tx(pool, org, (db) => advanceOpportunity(db, wonOpp.id, "closed_won", "verify"));
+    await tx(pool, org, (db) => advanceOpportunity(db, org, wonOpp.id, "closed_won", "verify"));
     ok("WON: legacy outcome_events still written (strangler dual-write)", await num(pool, `select count(*)::text n from outcome_events where org_id=$1 and event_type='CLOSED_WON'`, [org]) === beforeLegacy + 1);
     const oc = (await pool.query<{ id: string; outcome_label: string; is_terminal: boolean; value_amount: string | null; data_environment: string; is_simulated: boolean }>(
       `select id, outcome_label, is_terminal, value_amount, data_environment, is_simulated from pursuit_outcomes where source_ref=$1`, [`opp:${wonOpp.id}:CLOSED_WON`])).rows[0];
@@ -97,7 +101,7 @@ async function main() {
     const lostOpp = (await tx(pool, org, (db) => db.query<{ id: string }>(
       `insert into opportunities (org_id, company_id, taxonomy_node_id, name, stage, amount_usd, pursuit_id)
        values ($1,$2,$3,'Verify · lost','discovery',120000,$4) returning id`, [org, company, node, P]))).rows[0];
-    await tx(pool, org, (db) => advanceOpportunity(db, lostOpp.id, "closed_lost", "verify"));
+    await tx(pool, org, (db) => advanceOpportunity(db, org, lostOpp.id, "closed_lost", "verify"));
     ok("LOST: canonical CLOSED_LOST outcome recorded", await num(pool, `select count(*)::text n from pursuit_outcomes where source_ref=$1 and outcome_label='CLOSED_LOST'`, [`opp:${lostOpp.id}:CLOSED_LOST`]) === 1);
 
     // ---- UNKNOWN attribution: a pursuit WITHOUT a selected partner route. ----
@@ -113,7 +117,7 @@ async function main() {
     const ndMotion = (await tx(pool, org, (db) => db.query<{ id: string }>(
       `insert into revenue_motions (org_id, company_id, taxonomy_node_id, thesis, status, pursuit_id, activated_at)
        values ($1,$2,$3,'Verify motion','active',$4, now()) returning id`, [org, company, node, P]))).rows[0];
-    await tx(pool, org, (db) => transitionMotion(db, ndMotion.id, "completed", { outcome: "no_decision" }));
+    await tx(pool, org, (db) => transitionMotion(db, org, ndMotion.id, "completed", { outcome: "no_decision" }));
     ok("NO_DECISION: motion completion bridged to a canonical NO_DECISION outcome", await num(pool, `select count(*)::text n from pursuit_outcomes where source_ref=$1 and outcome_label='NO_DECISION'`, [`motion:${ndMotion.id}:completed:no_decision`]) === 1);
 
     // ---- Recompute (B3 preview): OUTCOME_RECORDED enqueued a recompute request. ----

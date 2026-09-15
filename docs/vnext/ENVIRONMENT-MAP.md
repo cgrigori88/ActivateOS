@@ -71,7 +71,7 @@ If a reseed produces different numbers, the reseed is wrong — not the numbers.
 
 | Actor | Against | Permission |
 |---|---|---|
-| The deployed app | `pursuitos-demo` Supabase | **Full read/write as `postgres`.** `postgres` is *not* a superuser on Supabase but carries **`BYPASSRLS`**, which also overrides `FORCE ROW LEVEL SECURITY`. All 375 RLS policies are therefore **inert on the application path**; tenant isolation currently rests on application-layer `where org_id` scoping alone. This is open task #67 — see `audit/TASK-67-RLS-RUNTIME-CUTOVER-PLAN.md`. |
+| The deployed app | `pursuitos-demo` Supabase | **Full read/write as `postgres`.** `postgres` is *not* a superuser on Supabase but carries **`BYPASSRLS`**, which also overrides `FORCE ROW LEVEL SECURITY`. All 375 RLS policies are therefore **inert on the application path**; tenant isolation currently rests on application-layer `where org_id` scoping alone. This is open task #67. H1A (2026-09-14) made that application-layer scoping explicit on every audited path; the cutover itself is H1B — design in `H1-PRE-PILOT-HARDENING.md` § H1B (runbook history: migration 0058 footer, `audit/RISK-1-CUTOVER-STATE.md`, `audit/PRODUCTION-RLS-STATUS.md`; the previously cited `audit/TASK-67-RLS-RUNTIME-CUTOVER-PLAN.md` does not exist). |
 | `app_rw` (the intended least-privilege runtime role) | `pursuitos-demo` Supabase | Exists, fully granted (152/152 SELECT+INSERT, 149/152 UPDATE/DELETE — the 3 exclusions are the append-only ledgers), **but `NOLOGIN`.** Not in use. |
 | Local demo boot | Local `pursuit_demo` | `app_rw` **is** given a login locally by `scripts/demo-db.ts`, for the local boot only. |
 

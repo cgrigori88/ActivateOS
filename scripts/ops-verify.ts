@@ -9,11 +9,12 @@
  *   npx tsx scripts/ops-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { drainOutbox } from "../src/lib/pursuits/federation/executor";
 import { governanceHealth, deadLetters, traceCorrelation } from "../src/lib/pursuits/federation/ops";
 import { randomUUID } from "node:crypto";
 
-const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
+const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/verify_disposable";
 const pool = new Pool({ connectionString: CONN });
 let passed = 0, failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail = "") { if (cond) { passed++; console.log(`  ✓ ${name}`); } else { failed++; failures.push(name + (detail ? ` — ${detail}` : "")); console.log(`  ✗ ${name}${detail ? " — " + detail : ""}`); } }
@@ -34,6 +35,7 @@ async function seedExternal(orgId: string, corr: string, payload: Record<string,
 }
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[ops-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   const RID = Math.random().toString(36).slice(2, 8);
   const org = await asOwner(async (db) => (await db.query<{ id: string }>(`insert into organizations (name, kind, created_at) values ($1,'full',now()) returning id`, [`G6 Org ${RID}`])).rows[0].id);

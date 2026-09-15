@@ -92,11 +92,12 @@ async function gatherBrief(db: Db, orgId: string): Promise<BriefData> {
   const one = async (sql: string, params: unknown[] = [orgId]) =>
     Number((await db.query<{ n: string }>(sql, params)).rows[0]?.n ?? 0);
 
-  const pendingMotions = await one(`select count(*) as n from revenue_motions where status = 'proposed'`, []);
+  const pendingMotions = await one(`select count(*) as n from revenue_motions where status = 'proposed' and org_id = $1`);
   const evidenceToReview = await one(`select count(*) as n from review_queue where status = 'pending' and org_id = $1`);
+  // campaign_touches has no org_id — scoped through its org-owned parent campaign.
   const dueSends = await one(
-    `select count(*) as n from campaign_touches where status = 'scheduled' and scheduled_at <= now()`,
-    [],
+    `select count(*) as n from campaign_touches t join campaigns ca on ca.id = t.campaign_id
+     where ca.org_id = $1 and t.status = 'scheduled' and t.scheduled_at <= now()`,
   );
   const pendingLists = await one(`select count(*) as n from account_populations where status = 'pending' and org_id = $1`);
   const incoming =
@@ -111,7 +112,8 @@ async function gatherBrief(db: Db, orgId: string): Promise<BriefData> {
 
   const { rows: topOpps } = await db.query<{ name: string; stage: string; amount: string | null }>(
     `select o.name, o.stage, o.amount_usd as amount from opportunities o
-     where o.stage not in ('closed_won','closed_lost') order by o.amount_usd desc nulls last limit 3`,
+     where o.org_id = $1 and o.stage not in ('closed_won','closed_lost') order by o.amount_usd desc nulls last limit 3`,
+    [orgId],
   );
 
   const { rows: digestRows } = await db.query<{ account: string; items: string }>(
@@ -235,9 +237,10 @@ export async function runAccountDigests(
   const { rows: strategic } = await db.query<{ company_id: string; name: string }>(
     `select distinct c.id as company_id, c.legal_name as name
      from companies c
-     where exists (select 1 from opportunities o where o.company_id = c.id and o.stage not in ('closed_won','closed_lost'))
-        or exists (select 1 from propensity_scores p where p.company_id = c.id and p.band = 'very_high')
+     where exists (select 1 from opportunities o where o.company_id = c.id and o.org_id = $1 and o.stage not in ('closed_won','closed_lost'))
+        or exists (select 1 from propensity_scores p where p.company_id = c.id and p.org_id = $1 and p.band = 'very_high')
      limit ${STRATEGIC_CAP}`,
+    [orgId],
   );
 
   const lines: string[] = [];
@@ -247,17 +250,17 @@ export async function runAccountDigests(
 
     const { rows: ev } = await db.query<{ claim: string; observed_at: Date }>(
       `select claim, observed_at from evidence
-       where company_id = $1 and status = 'verified' and collected_at > $2
+       where company_id = $1 and (org_id = $3 or org_id is null) and status = 'verified' and collected_at > $2
        order by observed_at desc limit 5`,
-      [acct.company_id, since],
+      [acct.company_id, since, orgId],
     );
     for (const e of ev) items.push({ type: "evidence", text: e.claim.slice(0, 160), at: new Date(e.observed_at).toISOString().slice(0, 10) });
 
     const { rows: eng } = await db.query<{ engagement_score: string; last_engaged_at: Date | null }>(
       `select es.engagement_score, es.last_engaged_at
        from engagement_scores es
-       where es.company_id = $1 and es.last_engaged_at > $2 limit 3`,
-      [acct.company_id, since],
+       where es.company_id = $1 and es.org_id = $3 and es.last_engaged_at > $2 limit 3`,
+      [acct.company_id, since, orgId],
     );
     for (const e of eng) {
       items.push({
@@ -291,8 +294,8 @@ export async function runAccountDigests(
 
     const { rows: sends } = await db.query<{ subject: string; sent_at: Date }>(
       `select t.subject, t.sent_at from campaign_touches t join campaigns ca on ca.id = t.campaign_id
-       where ca.company_id = $1 and t.status = 'sent' and t.sent_at > $2 order by t.sent_at desc limit 3`,
-      [acct.company_id, since],
+       where ca.company_id = $1 and ca.org_id = $3 and t.status = 'sent' and t.sent_at > $2 order by t.sent_at desc limit 3`,
+      [acct.company_id, since, orgId],
     );
     for (const s of sends) items.push({ type: "send", text: `Sent: "${s.subject}"`, at: new Date(s.sent_at).toISOString().slice(0, 10) });
 

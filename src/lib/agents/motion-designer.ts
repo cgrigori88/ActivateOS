@@ -66,8 +66,9 @@ export async function designMotion(
   const { rows: scores } = await db.query<{ id: string; score: string; band: string; node_id: string }>(
     `select p.id, p.score, p.band, p.taxonomy_node_id as node_id
      from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
-     where p.company_id = $1 and n.slug = $2 order by p.computed_at desc limit 1`,
-    [args.companyId, args.targetSlug],
+     where p.company_id = $1 and n.slug = $2 and p.org_id = $3
+     order by p.computed_at desc limit 1`,
+    [args.companyId, args.targetSlug, args.orgId],
   );
   if (scores.length === 0) throw new Error(`no score for ${args.targetSlug} — run scoring first`);
   const score = scores[0];
@@ -105,10 +106,10 @@ export async function designMotion(
      from pursuit_teams t
      join partners pa on pa.id = t.partner_id
      left join sellers s on s.id = t.seller_id
-     where t.company_id = $1 and t.taxonomy_node_id = $2
+     where t.company_id = $1 and t.taxonomy_node_id = $2 and t.org_id = $3
        and t.status in ('recommended','accepted')
      order by t.created_at desc limit 1`,
-    [args.companyId, score.node_id],
+    [args.companyId, score.node_id, args.orgId],
   );
   const team = teams[0] ?? null;
 
@@ -128,8 +129,9 @@ export async function designMotion(
   // Evidence-gated context: verified rows only.
   const { rows: evidence } = await db.query<{ id: string; claim: string; source_type: string; observed_at: Date }>(
     `select id, claim, source_type, observed_at from evidence
-     where company_id = $1 and status = 'verified' order by observed_at desc limit 40`,
-    [args.companyId],
+     where company_id = $1 and status = 'verified' and (org_id = $2 or org_id is null)
+     order by observed_at desc limit 40`,
+    [args.companyId, args.orgId],
   );
   if (evidence.length < 2) throw new Error("not enough verified evidence to design a motion");
   const availableIds = new Set(evidence.map((e) => e.id));

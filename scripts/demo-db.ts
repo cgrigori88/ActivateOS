@@ -140,7 +140,7 @@ async function seed(pool: Pool) {
     if (rc.rows[0]) await db.query(`insert into route_candidate_reasons (candidate_id, org_id, reason_code, polarity, detail, disclosure_class) values ($1,$2,'RAW_SPEND',1,'TD spend $1,840,000 in category',$3)`, [rc.rows[0].id, s.vendor, "RESTRICTED"]);
   });
   // Human override: select WWT over recommended CDW (records the override + change event).
-  await asOrg(s.vendor, (db) => selectPartnerRoute(db, hero, { partnerId: s.wwt, actorId: crypto.randomUUID(), reason: "exec relationship", category: "EXECUTIVE_DIRECTION" }));
+  await asOrg(s.vendor, (db) => selectPartnerRoute(db, s.vendor, hero, { partnerId: s.wwt, actorId: crypto.randomUUID(), reason: "exec relationship", category: "EXECUTIVE_DIRECTION" }));
 
   // Federation fixture (E3-H, §2.14) — the ONE canonical hero pursuit gains a distributor
   // participant, a purpose-limited DATA grant, a FEDERATED context contribution, and a
@@ -151,9 +151,9 @@ async function seed(pool: Pool) {
   await asOrg(s.vendor, (db) => seedGovernedSkills(db));
   const partId = await asOrg(s.vendor, (db) => addParticipant(db, { pursuitId: hero, orgId: s.vendor, roleKey: "VENDOR", sponsorOrgId: s.vendor, state: "ACTIVE" }).then(() =>
     addParticipant(db, { pursuitId: hero, orgId: distributor, roleKey: "DISTRIBUTOR", sponsorOrgId: s.vendor })));
-  await asOrg(distributor, (db) => acceptParticipation(db, partId));
+  await asOrg(distributor, (db) => acceptParticipation(db, distributor, partId));
   const grant = await asOrg(distributor, (db) => proposeGrant(db, { pursuitId: hero, fromOrgId: distributor, toOrgId: s.vendor, grantKind: "DATA", purpose: "co-sell context sharing", informationClasses: ["transaction_adjacency"] }));
-  await asOrg(s.vendor, (db) => acceptGrant(db, grant));
+  await asOrg(s.vendor, (db) => acceptGrant(db, s.vendor, grant));
   await asOrg(distributor, (db) => recordContribution(db, { pursuitId: hero, sourceOrgId: distributor, mode: "FEDERATED", dataCategory: "transaction_adjacency", semanticMeaning: "Distributor transaction adjacency strongly supports the recommended route", disclosureClass: "PARTICIPANT_SHARED", sensitivityClass: "CONFIDENTIAL", purpose: "co-sell", consentGrantId: grant, isSimulated: true }));
   await asOrg(s.vendor, (db) => recordOutcome(db, { orgId: s.vendor, pursuitId: hero, label: "MEETING_BOOKED", occurredAt: new Date(), dataEnvironment: "DEMO", isSimulated: true }));
 

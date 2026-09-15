@@ -1023,3 +1023,104 @@ everything folded beneath it). That reproduces the certified meaning. With one r
 it equals the old total exactly. "View all N" keeps counting the cards it opens; under the flag
 its words drop "decisions" so it no longer claims a number of decisions. Both numbers are
 computed after the tenant filter.
+
+---
+
+## D-043 · H1A — every application data path is tenant-scoped explicitly, independent of RLS
+
+**Context.** The application connects as the table owner (`postgres`, BYPASSRLS on Supabase), so
+every RLS policy is inert on the app path (task #67). D-041 fixed Today and Queue. The H1A audit
+(`H1-PRE-PILOT-HARDENING.md`) inventoried every other route, server action, API route, MCP tool,
+routine and worker path. It found reachable leaks and cross-tenant **writes** in almost every room:
+Pipeline, Contacts, account room, Mapping, Pursuits, Motions, Briefs, Goals, Campaigns and the send
+chain, Upcoming, Analytics, Insights, Review, Sources, Provider health, the palette/Ask resolvers,
+the MCP tools and both routines.
+
+**Decision.** Explicit org scoping is the control; RLS (H1B) is defence in depth, never the reason a
+query is safe.
+
+1. **Org source.** The org comes only from trusted server context: `withTenant` / `withTenantOrg` /
+   `currentOrgId`, the API-key-resolved org for MCP, or `routine.org_id` for a system-loaded routine.
+   It never comes from a URL, form or `.bind()` argument, and never from a row looked up by a
+   client-supplied id. Writes use the caller's org, not the target row's.
+2. **Tables with `org_id`.** `org_id = $org` goes into SQL before any `LIMIT`, aggregate, `DISTINCT ON`,
+   window, `EXISTS`-driven ranking or count.
+3. **Child tables with no `org_id`.** These are scoped through the org-owned parent in the same
+   statement: campaign touches via campaigns; messages, email events and message edits via
+   communication threads; population members via account populations; stakeholders and MEDDPICC via
+   opportunities or pursuits.
+4. **Writes refuse foreign ids.** The lookup and the write both carry the predicate. Zero rows means
+   the file's existing not-found error, or `notFound()` on a page.
+5. **Nullable-org conventions.** These are recorded, not invented:
+   - **evidence:** `(org_id = $org or org_id is null)`. Null-org evidence is shared catalog evidence.
+   - **propensity_scores:** strict `org_id = $org`.
+   - **raw_observations:** strict.
+   - **provider_runs** on Provider health: strict. Null-org platform runs are no longer shown to a
+     tenant.
+6. **Security correctness supersedes byte-identical output** (as D-041). Several authorized
+   surfaces now show less, because they had been counting other tenants. The known behaviour
+   changes are listed in the H1A record.
+
+## D-044 · Certifying the canonical world must not change it
+
+**Context.** The certification battery proved each suite passed, never that the world it passed
+against was still the certified one. H1A fingerprinted the whole world (every table, row count and
+content hash) around every suite. Eight SEEDED suites changed it on every run:
+- lifecycle-query
+- lifecycle-acceptance
+- partner-intel
+- outcome-bridge
+- motion-intel
+- canonical-microloop
+- route-persistence
+- team-motion
+
+Each wrote through real application paths that commit on their own connections. Slice 2A/2B
+verifiers then failed against a world that was no longer the certified one.
+
+**Decision.**
+
+1. **Clone isolation.** A suite that needs the canonical content but writes runs on a disposable
+   clone: `SEEDED_CLONE` isolation, `CREATE DATABASE … TEMPLATE`, marked and dropped by
+   `verify-run.ts`. The suite refuses any unmarked database (`scripts/seeded-clone.ts`).
+2. **Guarded FRESH / EITHER suites.** Every one now calls `assertDisposableDatabase` (dead code
+   until now), and none defaults to `pursuit_demo`. `--either-on-seeded` is refused.
+3. **Probes never commit.** Every probe helper that asserts a denial rolls back unconditionally,
+   so a regressed denial cannot commit.
+4. **The whole-world fingerprint gate** (`scripts/certify-world.ts`) is part of certification. The
+   world after the full battery, run twice, must equal the world before.
+
+## D-045 · H1B — the web runtime connects as `app_rw`; owner paths keep an explicit owner string (DESIGN, not executed)
+
+1. **Role.** The runtime role is `app_rw`, which already has every grant and every `_rw` policy (0058).
+   - It is given its own LOGIN; it is not assumed through `SET ROLE`. Supabase's `postgres` holds
+     `app_rw` with ADMIN but not SET.
+   - Connection is `app_rw.<ref>` through the transaction pooler.
+2. **Connection strings.**
+   - `DATABASE_URL` becomes the `app_rw` string.
+   - `DATABASE_URL_OWNER` carries the owner string for the paths that need it: login bootstrap,
+     join, admin member management, the Resend webhook, `/api/research` and the worker.
+3. **Posture proof.** `/api/build` reports role and BYPASSRLS from a live probe.
+4. **Rollback.** Point `DATABASE_URL` back at the owner string.
+5. **Status.** This needs one hosted role change (`alter role app_rw login password …`), which is
+   owner-approved H1B work.
+   - Nothing here has been run against any hosted database.
+   - The full design and its answers are in `H1-PRE-PILOT-HARDENING.md` § H1B.
+
+## D-046 · Slice 2B is DEMO CERTIFIED / FROZEN; an account may hold many pursuits
+
+**Slice 2B** (Pursuit Attention + Today / Queue coordination) passed hosted human review on the
+isolated Preview and is **DEMO CERTIFIED / FROZEN**, alongside Slice 1 and Slice 2A. No material
+redesign of these surfaces absent pilot feedback.
+
+> **One account may contain multiple independent pursuits. Today composes one card per PURSUIT,
+> not per account.**
+
+On Globex:
+- the modernization pursuit ("Exit legacy virtualization before renewal") shows Plan needs review;
+- the expansion pursuit ("AI platform expansion") keeps its own CDW route decision, as a separate
+  card.
+
+Plan review outranks the stale action. The Queue preserves that action once, with plan-review
+context. Pursuit Detail distinguishes "Current approved plan / Focus when approved". External
+sending remains off.

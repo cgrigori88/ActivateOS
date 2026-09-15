@@ -47,6 +47,16 @@ export interface Cell {
   highCount: number;
 }
 
+/** Refuse population ids (from a URL or form) that the caller's org does not own. */
+async function assertOrgPopulations(db: pg.PoolClient, orgId: string, ids: string[]): Promise<void> {
+  const wanted = [...new Set(ids)];
+  const { rows } = await db.query<{ id: string }>(
+    `select id from account_populations where id = any($1) and org_id = $2`,
+    [wanted, orgId],
+  );
+  if (rows.length !== wanted.length) throw new Error("population not found");
+}
+
 /** Partners that have at least one population (for the matrix's partner picker). */
 export async function partnersWithPopulations(
   db: pg.PoolClient,
@@ -129,8 +139,8 @@ export async function partnerCoverage(db: pg.PoolClient, orgId: string): Promise
   if (companyIds.length) {
     const { rows: sc } = await db.query<{ company_id: string; score: string; band: string | null }>(
       `select distinct on (company_id) company_id, score, band
-       from propensity_scores where company_id = any($1) order by company_id, computed_at desc`,
-      [companyIds],
+       from propensity_scores where company_id = any($1) and org_id = $2 order by company_id, computed_at desc`,
+      [companyIds, orgId],
     );
     for (const s of sc) scoreMap.set(s.company_id, { score: Number(s.score), band: s.band });
   }
@@ -214,10 +224,10 @@ export async function matrix(
      from population_members rm
      join population_members cm on cm.company_id = rm.company_id
      join account_populations rp on rp.id = rm.population_id and rp.partner_id is null and rp.org_id = $1 and rp.status = 'approved'
-     join account_populations cp on cp.id = cm.population_id and cp.partner_id is not null and cp.status = 'approved' and ($2::uuid is null or cp.partner_id = $2)
+     join account_populations cp on cp.id = cm.population_id and cp.org_id = $1 and cp.partner_id is not null and cp.status = 'approved' and ($2::uuid is null or cp.partner_id = $2)
      left join lateral (
        select score, band from propensity_scores p
-       where p.company_id = rm.company_id order by computed_at desc limit 1
+       where p.company_id = rm.company_id and p.org_id = $1 order by computed_at desc limit 1
      ) ps on true
      group by grouping sets ((rm.population_id, cm.population_id), (rm.population_id), (cm.population_id))`,
     [args.orgId, args.partnerId],
@@ -246,14 +256,14 @@ export async function matrix(
        from population_members rm
        join population_members cm on cm.company_id = rm.company_id
        join account_populations rp on rp.id = rm.population_id and rp.partner_id is null and rp.org_id = $1 and rp.status = 'approved'
-       join account_populations cp on cp.id = cm.population_id and cp.partner_id is not null and cp.status = 'approved' and ($2::uuid is null or cp.partner_id = $2)
+       join account_populations cp on cp.id = cm.population_id and cp.org_id = $1 and cp.partner_id is not null and cp.status = 'approved' and ($2::uuid is null or cp.partner_id = $2)
      )
      select count(*) as accounts,
             count(*) filter (where ps.band in ('high','very_high')) as hot,
             round(avg(ps.score)) as avg
      from overlap o
      left join lateral (
-       select score, band from propensity_scores p where p.company_id = o.company_id order by computed_at desc limit 1
+       select score, band from propensity_scores p where p.company_id = o.company_id and p.org_id = $1 order by computed_at desc limit 1
      ) ps on true`,
     [args.orgId, args.partnerId],
   );
@@ -270,8 +280,9 @@ export async function matrix(
 /** Create an org-side 'target' population from a cell's shared accounts (mapping → targeting). */
 export async function targetFromCell(
   db: pg.PoolClient,
-  args: { orgId: string | null; rowPopId: string; colPopId: string; name: string },
+  args: { orgId: string; rowPopId: string; colPopId: string; name: string },
 ): Promise<{ populationId: string; added: number }> {
+  await assertOrgPopulations(db, args.orgId, [args.rowPopId, args.colPopId]);
   const { rows } = await db.query<{ id: string }>(
     `insert into account_populations (org_id, partner_id, name, category, status, created_by)
      values ($1, null, $2, 'target', 'approved', 'web') returning id`,
@@ -309,12 +320,13 @@ export interface IntersectionRow {
  */
 export async function intersection(
   db: pg.PoolClient,
-  args: { rowPopId: string; colPopId: string },
+  args: { orgId: string; rowPopId: string; colPopId: string },
 ): Promise<{ row: Population | null; col: Population | null; accounts: IntersectionRow[] }> {
+  await assertOrgPopulations(db, args.orgId, [args.rowPopId, args.colPopId]);
   const { rows: pops } = await db.query<Population & { selected_fields: string[] | null }>(
     `select ap.id, ap.name, ap.category, ap.status, ap.partner_id, ap.selected_fields, 0 as members
-     from account_populations ap where ap.id = any($1)`,
-    [[args.rowPopId, args.colPopId]],
+     from account_populations ap where ap.id = any($1) and ap.org_id = $2`,
+    [[args.rowPopId, args.colPopId], args.orgId],
   );
   const row = pops.find((p) => p.id === args.rowPopId) ?? null;
   const col = pops.find((p) => p.id === args.colPopId) ?? null;
@@ -331,15 +343,17 @@ export async function intersection(
             ps.score, ps.band,
             rm.attributes as row_attrs, cm.attributes as col_attrs
      from population_members rm
+     join account_populations rp on rp.id = rm.population_id and rp.org_id = $3
      join population_members cm on cm.company_id = rm.company_id and cm.population_id = $2
+     join account_populations cp on cp.id = cm.population_id and cp.org_id = $3
      join companies c on c.id = rm.company_id
      left join lateral (
        select score, band from propensity_scores p
-       where p.company_id = c.id order by computed_at desc limit 1
+       where p.company_id = c.id and p.org_id = $3 order by computed_at desc limit 1
      ) ps on true
      where rm.population_id = $1
      order by ps.score desc nulls last, c.legal_name`,
-    [args.rowPopId, args.colPopId],
+    [args.rowPopId, args.colPopId, args.orgId],
   );
   // pg returns numeric/int as strings — coerce so the UI can format them.
   const coerced = accounts.map(({ row_attrs, col_attrs, ...a }) => ({
@@ -420,17 +434,18 @@ export async function populationFields(
  */
 export async function availableFields(
   db: pg.PoolClient,
-  args: { rowPopId: string; colPopId: string },
+  args: { orgId: string; rowPopId: string; colPopId: string },
 ): Promise<string[]> {
+  await assertOrgPopulations(db, args.orgId, [args.rowPopId, args.colPopId]);
   const { rows } = await db.query<{ key: string }>(
     `select distinct k.key
      from population_members m
-     join account_populations ap on ap.id = m.population_id
+     join account_populations ap on ap.id = m.population_id and ap.org_id = $3
      cross join lateral jsonb_object_keys(m.attributes) as k(key)
      where m.population_id in ($1, $2)
        and (ap.selected_fields is null or k.key = any(ap.selected_fields))
      order by k.key`,
-    [args.rowPopId, args.colPopId],
+    [args.rowPopId, args.colPopId, args.orgId],
   );
   return rows.map((r) => r.key);
 }

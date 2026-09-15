@@ -54,8 +54,8 @@ export async function draftMotionsAction(formData: FormData): Promise<void> {
       if (candidates.length > 0) {
         const { rows: open } = await db.query<{ company_id: string }>(
           `select distinct company_id from revenue_motions
-           where company_id = any($1) and status in ('draft', 'approved', 'active')`,
-          [candidates],
+           where company_id = any($1) and org_id = $2 and status in ('draft', 'approved', 'active')`,
+          [candidates, orgId],
         );
         const openSet = new Set(open.map((r) => r.company_id));
         skipped = candidates.filter((c) => openSet.has(c)).length;
@@ -71,8 +71,8 @@ export async function draftMotionsAction(formData: FormData): Promise<void> {
         // the designer's score gate anyway, so the batch spends itself well).
         const { rows: scores } = await db.query<{ company_id: string; score: string }>(
           `select distinct on (company_id) company_id, score from propensity_scores
-           where company_id = any($1) order by company_id, computed_at desc`,
-          [ready],
+           where company_id = any($1) and org_id = $2 order by company_id, computed_at desc`,
+          [ready, orgId],
         );
         const scoreOf = new Map(scores.map((r) => [r.company_id, Number(r.score)]));
         ready.sort((a, b) => (scoreOf.get(b) ?? -1) - (scoreOf.get(a) ?? -1));
@@ -131,8 +131,12 @@ export async function setMotionGoalAction(motionId: string, formData: FormData):
   const goalId = String(formData.get("goalId") ?? "").trim() || null;
   await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    // FLOW-1 fix: org-scoped so a foreign motion id can't be retargeted.
-    await db.query(`update revenue_motions set goal_id = $2 where id = $1 and org_id = $3`, [motionId, goalId, orgId]);
+    // FLOW-1 fix: org-scoped so a foreign motion id can't be retargeted — nor pointed at a foreign goal.
+    await db.query(
+      `update revenue_motions set goal_id = $2 where id = $1 and org_id = $3
+         and ($2::uuid is null or exists (select 1 from goals g where g.id = $2 and g.org_id = $3))`,
+      [motionId, goalId, orgId],
+    );
   });
   revalidatePath("/motions");
   revalidatePath("/goals");
@@ -150,9 +154,9 @@ export async function setMotionInitiativeAction(motionId: string, formData: Form
 }
 
 export async function approveMotionAction(motionId: string): Promise<void> {
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await approveMotion(db, motionId);
+    await approveMotion(db, orgId, motionId);
   });
   revalidatePath("/motions");
   // Next-step pull (#79): an approved play's natural next room is the composer.
@@ -160,17 +164,17 @@ export async function approveMotionAction(motionId: string): Promise<void> {
 }
 
 export async function rejectMotionAction(motionId: string): Promise<void> {
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await rejectMotion(db, motionId);
+    await rejectMotion(db, orgId, motionId);
   });
   revalidatePath("/motions");
 }
 
 export async function activateMotionAction(motionId: string): Promise<void> {
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await transitionMotion(db, motionId, "active");
+    await transitionMotion(db, orgId, motionId, "active");
   });
   revalidatePath("/motions");
 }
@@ -179,17 +183,17 @@ export async function completeMotionAction(
   motionId: string,
   outcome: MotionOutcome,
 ): Promise<void> {
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await transitionMotion(db, motionId, "completed", { outcome });
+    await transitionMotion(db, orgId, motionId, "completed", { outcome });
   });
   revalidatePath("/motions");
 }
 
 export async function abandonMotionAction(motionId: string): Promise<void> {
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await transitionMotion(db, motionId, "abandoned");
+    await transitionMotion(db, orgId, motionId, "abandoned");
   });
   revalidatePath("/motions");
 }
@@ -204,13 +208,13 @@ export async function editMotionAction(motionId: string, formData: FormData): Pr
   const trigger = String(formData.get("trigger") ?? "").trim() || null;
   const cta = String(formData.get("cta") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await db.query(
       `update revenue_motions set thesis = coalesce($2, thesis), trigger_summary = coalesce($3, trigger_summary),
          cta = coalesce($4, cta), operator_notes = $5
-       where id = $1`,
-      [motionId, thesis, trigger, cta, notes],
+       where id = $1 and org_id = $6`,
+      [motionId, thesis, trigger, cta, notes, orgId],
     );
   });
   revalidatePath("/motions");

@@ -24,7 +24,8 @@ export async function GET(req: Request): Promise<NextResponse> {
       `select latest.legal_name, latest.industry, latest.slug, latest.score, latest.band,
             pt.partner_name, c.refresh_tier, c.next_refresh_at,
             (select count(*) from evidence e
-              where e.company_id = latest.company_id and e.status = 'verified') as verified_evidence
+              where e.company_id = latest.company_id and e.status = 'verified'
+                and (e.org_id = $1 or e.org_id is null)) as verified_evidence
      from (
        select distinct on (p.company_id)
          p.company_id, p.score, p.band, c2.legal_name, c2.industry, n.slug
@@ -38,7 +39,7 @@ export async function GET(req: Request): Promise<NextResponse> {
      left join lateral (
        select pa.name as partner_name from pursuit_teams t
        join partners pa on pa.id = t.partner_id
-       where t.company_id = latest.company_id and t.status in ('recommended','accepted')
+       where t.company_id = latest.company_id and t.org_id = $1 and t.status in ('recommended','accepted')
        order by t.created_at desc limit 1) pt on true
      order by latest.score desc`,
       [orgId, scopeIds ?? [], scopeIds != null],

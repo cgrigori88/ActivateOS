@@ -21,7 +21,7 @@ export interface ProviderHealthRow {
   stages: string[];
   disabledReason?: string;
   allowedForScreening: boolean;
-  // run stats (all-time, across companies)
+  // run stats (all-time, across companies — this org's runs only)
   runs: number;
   succeeded: number;
   failed: number;
@@ -44,10 +44,11 @@ const TIER_ORDER: Record<string, number> = {
   UNSCOPED: 4,
 };
 
-export async function loadProviderHealth(pool: pg.Pool): Promise<ProviderHealthRow[]> {
+/** Run stats are the caller's org only; platform runs with a null org are not shown. */
+export async function loadProviderHealth(db: pg.Pool | pg.PoolClient, orgId: string): Promise<ProviderHealthRow[]> {
   registerBuiltinProviders();
 
-  const { rows: stats } = await pool.query(
+  const { rows: stats } = await db.query(
     `select provider_id,
             count(*) as runs,
             count(*) filter (where status = 'succeeded') as succeeded,
@@ -60,7 +61,8 @@ export async function loadProviderHealth(pool: pg.Pool): Promise<ProviderHealthR
             (array_agg(status order by started_at desc))[1:12] as recent_runs,
             (array_agg(error order by started_at desc)
                filter (where status = 'failed' and error is not null))[1] as last_error
-     from provider_runs group by provider_id`,
+     from provider_runs where org_id = $1 group by provider_id`,
+    [orgId],
   );
   const byId = new Map(stats.map((r) => [r.provider_id, r]));
 

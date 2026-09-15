@@ -74,7 +74,7 @@ export async function suggestMultiVendorPlays(db: Db, orgId: string): Promise<Mu
          and ap.partner_id is not null and ap.status = 'approved' and ap.org_id = $1
      )
      select cv.company_id, c.legal_name, p.id as partner_id, p.name as partner_name, p.partner_type,
-            (select max(ps.score) from propensity_scores ps where ps.company_id = cv.company_id) as score
+            (select max(ps.score) from propensity_scores ps where ps.company_id = cv.company_id and ps.org_id = $1) as score
      from covered cv
      join companies c on c.id = cv.company_id
      join partners p on p.id = cv.partner_id`,
@@ -107,8 +107,9 @@ export async function suggestMultiVendorPlays(db: Db, orgId: string): Promise<Mu
      from play_templates pt where pt.status = 'active'`,
   );
   const { rows: topNode } = await db.query<{ node_id: string }>(
-    `select taxonomy_node_id as node_id from propensity_scores
+    `select taxonomy_node_id as node_id from propensity_scores where org_id = $1
      group by taxonomy_node_id order by avg(score) desc nulls last limit 1`,
+    [orgId],
   );
   const play = playRows.find((p) => p.node_id === topNode[0]?.node_id) ?? playRows[0] ?? null;
 
@@ -149,7 +150,7 @@ export async function coverageWinRates(db: Db, orgId: string): Promise<{ bucket:
             count(*) filter (where o.stage = 'closed_won') as won
      from opportunities o
      left join coverage cv on cv.company_id = o.company_id
-     where o.stage in ('closed_won','closed_lost')
+     where o.org_id = $1 and o.stage in ('closed_won','closed_lost')
      group by 1`,
     [orgId],
   );
@@ -174,6 +175,14 @@ export async function createMultiVendorCampaign(
     partners: { id: string; role: PartnerRole }[];
   },
 ): Promise<{ campaignId: string }> {
+  // Partner ids arrive from the form: every one must be a partner of the caller's org.
+  const partnerIds = [...new Set(args.partners.map((p) => p.id))];
+  const { rows: owned } = await db.query<{ id: string }>(
+    `select id from partners where id = any($1) and org_id = $2`,
+    [partnerIds, args.orgId],
+  );
+  if (owned.length !== partnerIds.length) throw new Error("partner not found");
+
   const { rows: pop } = await db.query<{ id: string }>(
     `insert into account_populations (org_id, name, category, status, created_by)
      values ($1, $2, 'target', 'approved', 'multi_vendor_play') returning id`,
@@ -188,9 +197,9 @@ export async function createMultiVendorCampaign(
   // Seed account = the list's best-scoring member (reach comes from the list).
   const { rows: seed } = await db.query<{ company_id: string }>(
     `select pm.company_id from population_members pm
-     left join lateral (select max(score) as s from propensity_scores ps where ps.company_id = pm.company_id) sc on true
+     left join lateral (select max(score) as s from propensity_scores ps where ps.company_id = pm.company_id and ps.org_id = $2) sc on true
      where pm.population_id = $1 order by sc.s desc nulls last limit 1`,
-    [pop[0].id],
+    [pop[0].id, args.orgId],
   );
 
   const { rows: ca } = await db.query<{ id: string }>(

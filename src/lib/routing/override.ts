@@ -28,28 +28,32 @@ export interface SelectResult { isOverride: boolean; selectedPartnerId: string |
  * commit the decision through the single mutation path. Used by the governed route-decision skills.
  */
 export async function selectRouteByCandidate(
-  db: PoolClient, pursuitId: string, candidateId: string,
+  db: PoolClient, orgId: string, pursuitId: string, candidateId: string,
   opts: { actorId?: string | null; reason?: string; category?: OverrideCategory; env?: DataEnvironment; correlationId?: string | null },
 ): Promise<SelectResult> {
   const cand = (await db.query<{ partner_id: string | null; distributor_id: string | null }>(
     `select rc.partner_id, rc.distributor_id
        from route_candidates rc
        join pursuit_route_snapshots s on s.id = rc.route_snapshot_id
-      where rc.id = $1 and s.pursuit_id = $2 and s.is_current`, [candidateId, pursuitId])).rows[0];
+       join pursuits pu on pu.id = s.pursuit_id
+      where rc.id = $1 and s.pursuit_id = $2 and s.is_current and pu.org_id = $3`, [candidateId, pursuitId, orgId])).rows[0];
   if (!cand) throw new Error(`route candidate ${candidateId} not found on the current snapshot for pursuit ${pursuitId}`);
-  return selectPartnerRoute(db, pursuitId, { partnerId: cand.partner_id, distributorId: cand.distributor_id, ...opts });
+  return selectPartnerRoute(db, orgId, pursuitId, { partnerId: cand.partner_id, distributorId: cand.distributor_id, ...opts });
 }
 
 export async function selectPartnerRoute(
-  db: PoolClient, pursuitId: string,
+  db: PoolClient, orgId: string, pursuitId: string,
   opts: { partnerId: string | null; distributorId?: string | null; actorId?: string | null; reason?: string; category?: OverrideCategory; env?: DataEnvironment; correlationId?: string | null },
 ): Promise<SelectResult> {
   const env = opts.env ?? "PRODUCTION";
-  const snap = await db.query<{ id: string; org_id: string; recommended_partner_id: string | null }>(
-    `select id, org_id, recommended_partner_id from pursuit_route_snapshots where pursuit_id = $1 and is_current for update`, [pursuitId],
+  // The pursuit must belong to the acting org; the snapshot's own org_id is not trusted.
+  const snap = await db.query<{ id: string; recommended_partner_id: string | null }>(
+    `select s.id, s.recommended_partner_id from pursuit_route_snapshots s
+       join pursuits pu on pu.id = s.pursuit_id
+      where s.pursuit_id = $1 and s.is_current and pu.org_id = $2 for update of s`, [pursuitId, orgId],
   );
   if (!snap.rows[0]) throw new Error(`no current route snapshot for pursuit ${pursuitId}`);
-  const { id: snapshotId, org_id: orgId, recommended_partner_id: recommended } = snap.rows[0];
+  const { id: snapshotId, recommended_partner_id: recommended } = snap.rows[0];
   const isOverride = (opts.partnerId ?? null) !== (recommended ?? null);
 
   await db.query(`update route_candidates set is_selected = false where route_snapshot_id = $1`, [snapshotId]);
@@ -61,7 +65,7 @@ export async function selectPartnerRoute(
     `update pursuit_route_snapshots set selected_partner_id = $2, selected_distributor_id = $3, route_status = 'SELECTED' where id = $1`,
     [snapshotId, opts.partnerId, opts.distributorId ?? null],
   );
-  await db.query(`update pursuits set selected_partner_id = $2, updated_at = now() where id = $1`, [pursuitId, opts.partnerId]);
+  await db.query(`update pursuits set selected_partner_id = $2, updated_at = now() where id = $1 and org_id = $3`, [pursuitId, opts.partnerId, orgId]);
 
   if (isOverride) {
     // Preserve the original recommendation + ranking snapshot for learning.

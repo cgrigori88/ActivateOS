@@ -51,9 +51,9 @@ export async function listPartnerRooms(db: Pool | PoolClient, orgId: string): Pr
             coalesce(ps.open_pursuits, '0') as open_pursuits,
             coalesce(ps.settled_usd, '0') as settled_usd,
             (select count(*) from revenue_motions m
-             where m.partner_id = pa.id and m.status in ('approved', 'active')) as motions_active,
+             where m.partner_id = pa.id and m.org_id = $1 and m.status in ('approved', 'active')) as motions_active,
             (select count(*) from revenue_motions m
-             where m.partner_id = pa.id and m.outcome = 'won') as motions_won
+             where m.partner_id = pa.id and m.org_id = $1 and m.outcome = 'won') as motions_won
      from partners pa
      left join lateral (
        select p.status,
@@ -280,8 +280,8 @@ export async function partnerRoom(db: Pool | PoolClient, orgId: string, partnerI
   const { rows: mo } = await db.query<{ won: string; lost: string }>(
     `select count(*) filter (where outcome = 'won') as won,
             count(*) filter (where outcome = 'lost') as lost
-     from revenue_motions where partner_id = $1`,
-    [partnerId],
+     from revenue_motions where partner_id = $1 and org_id = $2`,
+    [partnerId, orgId],
   );
   const motionsWon = Number(mo[0]?.won ?? 0);
   const motionsLost = Number(mo[0]?.lost ?? 0);

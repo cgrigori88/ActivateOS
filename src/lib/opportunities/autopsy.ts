@@ -28,8 +28,8 @@ export async function opportunityAutopsy(db: Db, orgId: string, opportunityId: s
      join companies c on c.id = o.company_id
      left join revenue_motions m on m.id = o.motion_id
      left join partners pa on pa.id = m.partner_id
-     where o.id = $1`,
-    [opportunityId],
+     where o.id = $1 and o.org_id = $2`,
+    [opportunityId, orgId],
   );
   const o = opp[0];
   if (!o || !o.stage.startsWith("closed")) return null;
@@ -60,8 +60,8 @@ export async function opportunityAutopsy(db: Db, orgId: string, opportunityId: s
      join campaigns ca on ca.id = t.campaign_id
      left join revenue_motions m on m.id = ca.motion_id
      left join email_events ee on ee.message_id = t.message_id and ee.event_type = 'REPLIED'
-     where coalesce(ca.company_id, m.company_id) = $1`,
-    [o.company_id],
+     where coalesce(ca.company_id, m.company_id) = $1 and ca.org_id = $2`,
+    [o.company_id, orgId],
   );
   const sends = Number(comms[0]?.sends ?? 0);
   const replies = Number(comms[0]?.replies ?? 0);
@@ -107,7 +107,7 @@ export async function sourceOutcomeAttribution(
      from opportunities o
      join evidence e on e.company_id = o.company_id and e.status = 'verified'
        and (e.org_id = $1 or e.org_id is null)
-     where o.stage in ('closed_won', 'closed_lost')
+     where o.org_id = $1 and o.stage in ('closed_won', 'closed_lost')
      group by e.source_type
      having count(distinct o.id) > 0
      order by count(distinct o.id) filter (where o.stage = 'closed_won') desc`,

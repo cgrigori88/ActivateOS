@@ -97,18 +97,22 @@ interface MotionRow {
   primary_domain: string | null;
 }
 
-/** Shared AI core: draft a grounded sequence from a motion (no campaign writes). */
+/**
+ * Shared AI core: draft a grounded sequence from a motion (no campaign writes).
+ * `orgId` is the caller's org (trusted context); a motion of any other org reads
+ * as not found.
+ */
 async function draftSequenceForMotion(
   db: pg.PoolClient,
-  args: { motionId: string; senderName: string; touchCount?: number },
+  args: { orgId: string; motionId: string; senderName: string; touchCount?: number },
 ): Promise<{ sequence: CampaignSequence; motion: MotionRow; brand: Awaited<ReturnType<typeof resolveBrand>>; brandId: string | null }> {
   const { rows: motions } = await db.query<MotionRow>(
     `select m.id, m.org_id, m.company_id, m.thesis, m.trigger_summary,
             m.primary_persona, m.secondary_persona, m.cta, m.status, m.operator_notes,
             c.legal_name, c.industry, c.employee_count, c.primary_domain
      from revenue_motions m join companies c on c.id = m.company_id
-     where m.id = $1`,
-    [args.motionId],
+     where m.id = $1 and m.org_id = $2`,
+    [args.motionId, args.orgId],
   );
   if (motions.length === 0) throw new Error(`motion not found: ${args.motionId}`);
   const m = motions[0];
@@ -120,15 +124,16 @@ async function draftSequenceForMotion(
     `select distinct e.claim from agent_runs r
      cross join lateral unnest(r.input_evidence_ids) as ev(id)
      join evidence e on e.id = ev.id
-     where r.motion_id = $1 and e.status = 'verified' limit 12`,
-    [args.motionId],
+     where r.motion_id = $1 and e.status = 'verified'
+       and (e.org_id = $2 or e.org_id is null) limit 12`,
+    [args.motionId, args.orgId],
   );
 
   const touchCount = Math.min(Math.max(args.touchCount ?? 3, 1), 5);
-  const brand = await resolveBrand(db, m.org_id);
+  const brand = await resolveBrand(db, args.orgId);
   const { rows: brandRows } = await db.query<{ id: string }>(
     `select id from brand_profiles where org_id is not distinct from $1 order by is_default desc, created_at asc limit 1`,
-    [m.org_id],
+    [args.orgId],
   );
   const brandId = brandRows[0]?.id ?? null;
 
@@ -164,7 +169,7 @@ Design the ${touchCount}-touch sequence.`,
         raw_output, validated, motion_id, prompt_version, input_tokens, output_tokens, cost_usd, latency_ms)
      values ($1, 'campaign_email_sequence', 'v1', $2, $3, $4, true, $5, 'v1', $6, $7, $8, $9)`,
     [
-      m.org_id,
+      args.orgId,
       meta.model,
       JSON.stringify({ motionId: args.motionId, touchCount }),
       JSON.stringify(sequence),
@@ -182,6 +187,8 @@ Design the ${touchCount}-touch sequence.`,
 export async function generateCampaignSequence(
   db: pg.PoolClient,
   args: {
+    /** The caller's org (trusted context) — the motion must belong to it; every write lands under it. */
+    orgId: string;
     motionId: string;
     senderName: string;
     touchCount?: number;
@@ -194,7 +201,7 @@ export async function generateCampaignSequence(
   const { rows: campaigns } = await db.query<{ id: string }>(
     `insert into campaigns (org_id, company_id, motion_id, name, status, brand_id, objective, audience, source)
      values ($1, $2, $3, $4, 'draft', $5, $6, $7, $8) returning id`,
-    [m.org_id, m.company_id, args.motionId, sequence.campaign_name, brandId, sequence.objective, sequence.audience, args.source ?? "user"],
+    [args.orgId, m.company_id, args.motionId, sequence.campaign_name, brandId, sequence.objective, sequence.audience, args.source ?? "user"],
   );
   const campaignId = campaigns[0].id;
 
@@ -239,7 +246,7 @@ export async function generateCampaignSequence(
   await db.query(
     `insert into outcome_events (org_id, motion_id, company_id, event_type, payload)
      values ($1, $2, $3, 'CAMPAIGN_CREATED', $4)`,
-    [m.org_id, args.motionId, m.company_id, JSON.stringify({ campaignId, touches: sequence.touches.length })],
+    [args.orgId, args.motionId, m.company_id, JSON.stringify({ campaignId, touches: sequence.touches.length })],
   );
 
   return { campaignId, sequence };
@@ -252,12 +259,12 @@ export async function generateCampaignSequence(
  */
 export async function appendAiTouches(
   db: pg.PoolClient,
-  args: { campaignId: string; senderName?: string; touchCount?: number },
+  args: { orgId: string; campaignId: string; senderName?: string; touchCount?: number },
 ): Promise<{ added: number }> {
   const senderName = args.senderName ?? "The PursuitOS Team";
   const { rows: caRows } = await db.query<{ motion_id: string | null }>(
-    `select motion_id from campaigns where id = $1`,
-    [args.campaignId],
+    `select motion_id from campaigns where id = $1 and org_id = $2`,
+    [args.campaignId, args.orgId],
   );
   if (caRows.length === 0) throw new Error("campaign not found");
   const motionId = caRows[0].motion_id;
@@ -266,6 +273,7 @@ export async function appendAiTouches(
   }
 
   const { sequence, motion: m, brand } = await draftSequenceForMotion(db, {
+    orgId: args.orgId,
     motionId,
     senderName,
     touchCount: args.touchCount,

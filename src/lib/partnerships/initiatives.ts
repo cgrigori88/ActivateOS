@@ -82,6 +82,10 @@ export async function createInitiative(
 ): Promise<{ id: string } | { error: string }> {
   const name = args.name.trim();
   if (!name) return { error: "Give the initiative a name." };
+  if (args.partnerId) {
+    const ok = await db.query(`select 1 from partners where id = $1 and org_id = $2`, [args.partnerId, orgId]);
+    if (!ok.rowCount) throw new Error("Unknown partner.");
+  }
   const dup = await db.query(`select 1 from initiatives where org_id = $1 and lower(name) = lower($2)`, [orgId, name]);
   if (dup.rowCount) return { error: `An initiative named "${name}" already exists — attach work to it instead.` };
   const { rows } = await db.query(

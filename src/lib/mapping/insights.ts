@@ -63,12 +63,12 @@ export async function crossPartnerOpportunities(db: pg.PoolClient, orgId: string
      select c.id as company_id, c.legal_name, c.industry,
             op.is_customer, pc.partner_count, pc.partner_names, pc.partner_cats,
             ps.score, ps.band,
-            exists (select 1 from revenue_motions m where m.company_id = c.id) as has_motion
+            exists (select 1 from revenue_motions m where m.company_id = c.id and m.org_id = $1) as has_motion
      from partner_cov pc
      join org_pop op on op.company_id = pc.company_id
      join companies c on c.id = pc.company_id
      left join lateral (
-       select score, band from propensity_scores p where p.company_id = c.id order by computed_at desc limit 1
+       select score, band from propensity_scores p where p.company_id = c.id and p.org_id = $1 order by computed_at desc limit 1
      ) ps on true`,
     [orgId],
   );

@@ -10,6 +10,7 @@
  *   npx tsx scripts/federation-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import {
   listRoleTypes, addParticipant, acceptParticipation, declineParticipation,
@@ -17,7 +18,7 @@ import {
 } from "../src/lib/pursuits/federation/participation";
 import { federationEnabled, federationReadiness } from "../src/lib/pursuits/federation/flags";
 
-const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
+const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/verify_disposable";
 const pool = new Pool({ connectionString: CONN });
 let passed = 0, failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail = "") { if (cond) { passed++; console.log(`  ✓ ${name}`); } else { failed++; failures.push(name + (detail ? ` — ${detail}` : "")); console.log(`  ✗ ${name}${detail ? " — " + detail : ""}`); } }
@@ -40,6 +41,7 @@ async function expectThrows(fn: () => Promise<unknown>): Promise<boolean> {
 }
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[federation-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   const RID = Math.random().toString(36).slice(2, 8);
   const s = await asOwner(async (db) => {
@@ -69,11 +71,11 @@ async function main() {
     const resId = await addParticipant(db, { pursuitId: s.hero, orgId: s.reseller, roleKey: "RESELLER", sponsorOrgId: s.vendor, inviterOrgId: s.vendor, source: "sponsor" });
     return { distId, resId };
   });
-  await asOrg(s.distributor, (db) => acceptParticipation(db, distId));
+  await asOrg(s.distributor, (db) => acceptParticipation(db, s.distributor, distId));
   check("legal transition table: INVITED→ACTIVE ok, ACTIVE→INVITED illegal", canTransition("INVITED", "ACTIVE") && !canTransition("ACTIVE", "INVITED"));
   // decline then try to accept the declined row → illegal transition rejected
-  await asOrg(s.reseller, (db) => declineParticipation(db, resId));
-  check("illegal transition (accept a DECLINED participation) is rejected", await expectThrows(() => asOrg(s.reseller, (db) => acceptParticipation(db, resId))));
+  await asOrg(s.reseller, (db) => declineParticipation(db, s.reseller, resId));
+  check("illegal transition (accept a DECLINED participation) is rejected", await expectThrows(() => asOrg(s.reseller, (db) => acceptParticipation(db, s.reseller, resId))));
 
   // ---- can_see_pursuit isolation (R2 / T1-T3) ----
   console.log("E3-A.3  can_see_pursuit isolation");
@@ -82,9 +84,9 @@ async function main() {
   check("non-participant (outsider) does NOT see the pursuit", !(await seesPursuit(s.outsider, s.hero)));
   check("INVITED-only never became ACTIVE: declined reseller does NOT see the pursuit", !(await seesPursuit(s.reseller, s.hero)));
   // Edge visibility: an org sees its OWN participation row but not others'
-  const outsiderRows = await asOrg(s.outsider, (db) => getParticipants(db, s.hero));
+  const outsiderRows = await asOrg(s.outsider, (db) => getParticipants(db, s.outsider, s.hero));
   check("outsider sees zero participation rows", outsiderRows.length === 0);
-  const vendorRows = await asOrg(s.vendor, (db) => getParticipants(db, s.hero));
+  const vendorRows = await asOrg(s.vendor, (db) => getParticipants(db, s.vendor, s.hero));
   check("sponsor sees all participation edges", vendorRows.length === 3);
   check("active participant org ids = sponsor + distributor", (await asOrg(s.vendor, (db) => activeParticipantOrgIds(db, s.hero))).sort().join() === [s.vendor, s.distributor].sort().join());
 
@@ -96,11 +98,11 @@ async function main() {
   // ---- Multi-party topology (R3) ----
   console.log("E3-A.5  Multi-party topology + graceful partial participation");
   await asOrg(s.vendor, (db) => addParticipant(db, { pursuitId: s.hero, orgId: s.customer, roleKey: "CUSTOMER_GUEST", sponsorOrgId: s.vendor, source: "sponsor", state: "ACTIVE" }));
-  const all = await asOrg(s.vendor, (db) => getParticipants(db, s.hero));
+  const all = await asOrg(s.vendor, (db) => getParticipants(db, s.vendor, s.hero));
   check("N-party (>2) participation supported with varied roles", all.length >= 4 && new Set(all.map((p) => p.roleKey)).size >= 3);
   check("sponsor flagged correctly on the vendor edge", all.find((p) => p.orgId === s.vendor)?.isSponsor === true);
   // graceful partial: a pursuit with no explicit participants still resolves for its sponsor
-  check("graceful partial participation: solo pursuit visible to sponsor, empty participant set", (await seesPursuit(s.vendor, s.solo)) && (await asOrg(s.vendor, (db) => getParticipants(db, s.solo))).length === 0);
+  check("graceful partial participation: solo pursuit visible to sponsor, empty participant set", (await seesPursuit(s.vendor, s.solo)) && (await asOrg(s.vendor, (db) => getParticipants(db, s.vendor, s.solo))).length === 0);
 
   // ---- Room → Pursuit projection binding (R1/§5) ----
   console.log("E3-A.6  Room projection binding");

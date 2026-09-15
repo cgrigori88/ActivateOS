@@ -28,7 +28,7 @@ interface Row {
 
 export default async function UpcomingPage() {
   const { rows } = await withTenant(
-    async (db) =>
+    async (db, orgId) =>
       await db.query<Row>(
         `select t.id, t.touch_no, t.name, t.subject, t.scheduled_at,
             ca.recipient_email, ca.id as campaign_id, ca.name as campaign_name,
@@ -37,8 +37,9 @@ export default async function UpcomingPage() {
      join campaigns ca on ca.id = t.campaign_id
      left join revenue_motions m on m.id = ca.motion_id
      join companies c on c.id = coalesce(ca.company_id, m.company_id)
-     where t.status = 'scheduled'
+     where t.status = 'scheduled' and ca.org_id = $1
      order by t.scheduled_at asc nulls last`,
+        [orgId],
       ),
   );
 

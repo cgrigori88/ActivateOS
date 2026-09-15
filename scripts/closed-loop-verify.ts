@@ -19,6 +19,7 @@
  *   npx tsx scripts/closed-loop-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import { addParticipant, acceptParticipation } from "../src/lib/pursuits/federation/participation";
 import { proposeGrant, acceptGrant, buildFederationViewer } from "../src/lib/pursuits/federation/grants";
@@ -31,7 +32,7 @@ import { recordOutcome, recordAttribution } from "../src/lib/pursuits/federation
 import { getPursuitFederation, getGovernedActions, getPursuitOutcomes } from "../src/lib/pursuits/federation/read-models";
 import { randomUUID } from "node:crypto";
 
-const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
+const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/verify_disposable";
 const pool = new Pool({ connectionString: CONN });
 let passed = 0, failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail = "") { if (cond) { passed++; console.log(`  ✓ ${name}`); } else { failed++; failures.push(name + (detail ? ` — ${detail}` : "")); console.log(`  ✗ ${name}${detail ? " — " + detail : ""}`); } }
@@ -40,6 +41,7 @@ async function asOrg<T>(orgId: string, fn: (db: PoolClient) => Promise<T>): Prom
 const actor = (orgId: string, role: Actor["role"], type: Actor["type"] = "USER"): Actor => ({ type, id: randomUUID(), orgId, role });
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[closed-loop-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   const RID = Math.random().toString(36).slice(2, 8);
   const s = await asOwner(async (db) => {
@@ -62,9 +64,9 @@ async function main() {
   // Federation: sponsor (vendor) + distributor are both on the ONE canonical pursuit.
   await asOrg(s.vendor, (db) => addParticipant(db, { pursuitId: s.hero, orgId: s.vendor, roleKey: "VENDOR", sponsorOrgId: s.vendor, state: "ACTIVE" }));
   const partId = await asOrg(s.vendor, (db) => addParticipant(db, { pursuitId: s.hero, orgId: s.distributor, roleKey: "DISTRIBUTOR", sponsorOrgId: s.vendor }));
-  await asOrg(s.distributor, (db) => acceptParticipation(db, partId));
+  await asOrg(s.distributor, (db) => acceptParticipation(db, s.distributor, partId));
   const g = await asOrg(s.distributor, (db) => proposeGrant(db, { pursuitId: s.hero, fromOrgId: s.distributor, toOrgId: s.vendor, grantKind: "DATA", purpose: "co-sell context" }));
-  await asOrg(s.vendor, (db) => acceptGrant(db, g));
+  await asOrg(s.vendor, (db) => acceptGrant(db, s.vendor, g));
   await asOrg(s.distributor, (db) => recordContribution(db, { pursuitId: s.hero, sourceOrgId: s.distributor, mode: "FEDERATED", dataCategory: "transaction_adjacency", semanticMeaning: "Distributor transaction adjacency supports CDW", disclosureClass: "PARTICIPANT_SHARED", sensitivityClass: "CONFIDENTIAL", purpose: "co-sell", consentGrantId: g, isSimulated: true }));
 
   // ===================== R38 — HAPPY PATH =====================

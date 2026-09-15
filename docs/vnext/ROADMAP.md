@@ -86,7 +86,16 @@ First vertical cut: Slice 2A (`BUILD-PLAN.md`), decisions D-024…D-033 — DEMO
 Second: Slice 2B, the ATTENTION portion of the loop (WHAT MATTERS NOW → GOAL → PLAN → MOTION →
 ACTION → **ATTENTION** → EXECUTION → NEW EVIDENCE → PLAN REVIEW). Today becomes the decision /
 attention layer over the same plan primitives the Queue executes. Attention is derived, never
-stored (D-034…D-040).
+stored (D-034…D-042) — **DEMO CERTIFIED / FROZEN** after hosted human review (D-046).
+
+> **One account may contain multiple independent pursuits. Today composes one card per PURSUIT,
+> not per account.**
+
+**Pre-pilot hardening gate (H1) — before any further product slice.** H1A: every data path
+explicitly tenant-scoped, and certification can no longer change the world it certifies (D-043,
+D-044). H1B: the web runtime moves to the least-privilege `app_rw` role so RLS binds (D-045,
+design only). H1 is complete only when H1B passes hosted certification.
+`H1-PRE-PILOT-HARDENING.md`.
 
 ### P4 — AI Control Plane
 Agent/Skill Registry, identities, versions, model routing, scopes, capabilities,

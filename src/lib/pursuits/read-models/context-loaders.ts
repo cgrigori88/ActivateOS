@@ -326,7 +326,7 @@ export async function loadMissingContextInput(
     loadContextHealth(db, caller, pursuitId, now),
     getStakeholderCoverage(db, caller.orgId, pursuitId),
     getValueCase(db, caller.orgId, pursuitId),
-    getPursuitWhyNow(db, pursuitId),
+    getPursuitWhyNow(db, caller.orgId, pursuitId),
   ]);
 
   // MEDDPICC hangs off opportunities, and the pursuit→opportunity link is the
@@ -336,7 +336,7 @@ export async function loadMissingContextInput(
   let meddpicc: Meddpicc | null = null;
   const opportunityId = stakeholderCoverage?.opportunityIds[0];
   if (opportunityId) {
-    meddpicc = (await meddpiccFor(db, [opportunityId])).get(opportunityId) ?? null;
+    meddpicc = (await meddpiccFor(db, caller.orgId, [opportunityId])).get(opportunityId) ?? null;
   }
 
   return {

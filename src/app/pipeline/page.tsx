@@ -103,12 +103,12 @@ export default async function PipelinePage({
      from opportunities o
      join companies c on c.id = o.company_id
      left join taxonomy_nodes n on n.id = o.taxonomy_node_id
-     left join revenue_motions m on m.id = o.motion_id
+     left join revenue_motions m on m.id = o.motion_id and m.org_id = o.org_id
      left join taxonomy_nodes mn on mn.id = m.taxonomy_node_id
-     left join partners pa on pa.id = m.partner_id
-     where ($2::boolean is false or o.company_id = any($1))
+     left join partners pa on pa.id = m.partner_id and pa.org_id = o.org_id
+     where o.org_id = $3 and ($2::boolean is false or o.company_id = any($1))
      order by o.updated_at desc`,
-    [scopeIds ?? [], scopeIds != null],
+    [scopeIds ?? [], scopeIds != null, orgId],
   );
 
   // Ecosystem map (§3.2 / R4): each in-scope company's primary seller and, through it, vendor and
@@ -136,8 +136,8 @@ export default async function PipelinePage({
   if (renewalIds.length) {
     const { rows: eng } = await db.query<{ company_id: string; score: string }>(
       `select company_id, max(engagement_score) as score
-       from engagement_scores where company_id = any($1) group by company_id`,
-      [renewalIds],
+       from engagement_scores where company_id = any($1) and org_id = $2 group by company_id`,
+      [renewalIds, orgId],
     );
     for (const e of eng) engagementByCompany.set(e.company_id, Number(e.score));
     const { rows: pns } = await db.query<{ company_id: string; partners: string[] }>(
@@ -169,8 +169,9 @@ export default async function PipelinePage({
   const { rows: stakeholderRows } = await db.query(
     `select s.opportunity_id, s.contact_id, s.role, s.sentiment, s.assertion_state, ct.name, ct.email
      from stakeholders s join contacts ct on ct.id = s.contact_id
+     join opportunities o on o.id = s.opportunity_id and o.org_id = $2
      where s.opportunity_id = any($1)`,
-    [opps.map((o) => o.id)],
+    [opps.map((o) => o.id), orgId],
   );
   const stakeholdersByOpp = new Map<string, typeof stakeholderRows>();
   for (const s of stakeholderRows) {
@@ -181,14 +182,14 @@ export default async function PipelinePage({
 
   const { rows: regRows } = await db.query<DealReg>(
     `select id, opportunity_id, vendor, product, status, protected_until
-     from deal_registrations where opportunity_id = any($1)
+     from deal_registrations where opportunity_id = any($1) and org_id = $2
      order by created_at desc`,
-    [opps.map((o) => o.id)],
+    [opps.map((o) => o.id), orgId],
   );
   const regByOpp = new Map<string, DealReg>();
   for (const r of regRows) if (r.opportunity_id && !regByOpp.has(r.opportunity_id)) regByOpp.set(r.opportunity_id, r);
 
-  const meddpicc = await meddpiccFor(db, opps.map((o) => o.id));
+  const meddpicc = await meddpiccFor(db, orgId, opps.map((o) => o.id));
   const scoreOf = (id: string) => {
     const m = meddpicc.get(id);
     return m ? meddpiccScore(m) : 0;
@@ -210,7 +211,7 @@ export default async function PipelinePage({
   }
 
   // Quote-delivered signal, read from each opportunity's email conversation.
-  const quotes = await quoteSignals(db, opps.map((o) => o.id));
+  const quotes = await quoteSignals(db, orgId, opps.map((o) => o.id));
   const quoteOf = (id: string) => quotes.get(id) ?? { delivered: false, note: null, at: null };
 
   // Deal momentum (task #88): observed behavior beside the declared stage —

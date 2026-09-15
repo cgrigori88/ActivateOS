@@ -145,7 +145,7 @@ export async function decideJointPursuit(db: Db, orgId: string, pursuitId: strin
   for (const org of memberOrgs(p)) {
     await audit(db, org, accept ? "joint.accepted" : "joint.declined", { pursuit: pursuit.name }, p.id);
   }
-  if (accept) await brokerPropose(db, pursuitId);
+  if (accept) await brokerPropose(db, orgId, pursuitId);
 }
 
 export async function closeJointPursuit(db: Db, orgId: string, pursuitId: string): Promise<void> {
@@ -188,10 +188,18 @@ export async function addPursuitNote(db: Db, orgId: string, pursuitId: string, b
 
 // ── The broker (v1: deterministic, consented data only) ─────────────────────
 
-export async function brokerPropose(db: Db, pursuitId: string): Promise<void> {
+export async function brokerPropose(db: Db, orgId: string, pursuitId: string): Promise<void> {
+  // Only a party to the pursuit's partnership may run its broker.
   const { rows } = await db.query<{
     id: string; partnership_id: string; company_id: string; name: string; status: string;
-  }>(`select id, partnership_id, company_id, name, status from joint_pursuits where id = $1`, [pursuitId]);
+  }>(
+    `select jp.id, jp.partnership_id, jp.company_id, jp.name, jp.status
+     from joint_pursuits jp
+     join partnerships p on p.id = jp.partnership_id
+       and (p.initiator_org_id = $2 or p.counterpart_org_id = $2)
+     where jp.id = $1`,
+    [pursuitId, orgId],
+  );
   const pursuit = rows[0];
   if (!pursuit) throw new Error("Pursuit not found.");
   if (pursuit.status !== "active") throw new Error("The broker only works open rooms.");

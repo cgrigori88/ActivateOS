@@ -37,6 +37,7 @@ const EVENT_BY_TARGET: Record<string, string> = {
  */
 export async function transitionMotion(
   db: pg.PoolClient,
+  orgId: string,
   motionId: string,
   to: Exclude<MotionStatus, "draft" | "approved">,
   opts: { outcome?: MotionOutcome } = {},
@@ -50,7 +51,7 @@ export async function transitionMotion(
     company_id: string;
     status: MotionStatus;
     pursuit_id: string | null;
-  }>(`select org_id, company_id, status, pursuit_id from revenue_motions where id = $1`, [motionId]);
+  }>(`select org_id, company_id, status, pursuit_id from revenue_motions where id = $1 and org_id = $2`, [motionId, orgId]);
   if (rows.length === 0) throw new Error(`motion not found: ${motionId}`);
   const motion = rows[0];
   if (!canTransition(motion.status, to)) {
@@ -60,12 +61,12 @@ export async function transitionMotion(
   const sets = [`status = $2`];
   if (to === "active") sets.push(`activated_at = now()`);
   if (to === "completed" || to === "abandoned") sets.push(`closed_at = now()`);
-  const params: unknown[] = [motionId, to];
+  const params: unknown[] = [motionId, to, orgId];
   if (opts.outcome) {
     params.push(opts.outcome);
     sets.push(`outcome = $${params.length}`);
   }
-  await db.query(`update revenue_motions set ${sets.join(", ")} where id = $1`, params);
+  await db.query(`update revenue_motions set ${sets.join(", ")} where id = $1 and org_id = $3`, params);
 
   await db.query(
     `insert into outcome_events (org_id, motion_id, company_id, event_type, payload)

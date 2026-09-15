@@ -3,6 +3,7 @@ import { Pool } from "pg";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SUITES, suitesFor, specFor, type VerifyClass } from "./verify-classes";
+import { markSeededClone } from "./seeded-clone";
 
 /**
  * The verifier runner (Wave 6B §8).
@@ -27,8 +28,9 @@ import { SUITES, suitesFor, specFor, type VerifyClass } from "./verify-classes";
  * only way those suites can be idempotent, since their fixtures commit.
  */
 
-const ADMIN_URL = process.env.ADMIN_URL ?? "postgres://postgres@127.0.0.1:5432/postgres";
-const SEEDED_URL = process.env.SEEDED_URL ?? "postgres://postgres@127.0.0.1:5432/pursuit_demo";
+// Port 5433 — the local demo cluster every other script defaults to (H1A: this runner alone said 5432).
+const ADMIN_URL = process.env.ADMIN_URL ?? "postgres://postgres:postgres@127.0.0.1:5433/postgres";
+const SEEDED_URL = process.env.SEEDED_URL ?? "postgres://postgres:postgres@127.0.0.1:5433/pursuit_demo";
 const KEEP = process.argv.includes("--keep");
 
 /**
@@ -47,7 +49,15 @@ const KEEP = process.argv.includes("--keep");
  * is the other half of the "either" claim, and it is worth being able to prove
  * on demand rather than assuming.
  */
-const EITHER_ON_SEEDED = process.argv.includes("--either-on-seeded");
+//
+// H1A: that flag is now REFUSED. Every EITHER suite commits run-scoped fixtures, so running them on
+// the canonical world was the accretion itself; and each suite now calls assertDisposableDatabase,
+// which would refuse the canonical world anyway. Proving "either" means a clone, not the world.
+if (process.argv.includes("--either-on-seeded")) {
+  console.error("--either-on-seeded is refused (H1A): EITHER suites commit fixtures and must not run on the canonical world.");
+  process.exit(2);
+}
+const EITHER_ON_SEEDED = false;
 
 /** Supabase-shaped preamble the migrations assume. Mirrors scripts/demo-db.ts. */
 const BOOTSTRAP = `
@@ -91,6 +101,24 @@ async function createFreshDatabase(name: string): Promise<string> {
       }
     }
   } finally { await mp.end(); }
+  return url;
+}
+
+/**
+ * A disposable CLONE of the canonical world for SEEDED suites that write (H1A). `CREATE DATABASE …
+ * TEMPLATE` copies the world byte for byte; the clone is marked (scripts/seeded-clone.ts) so the
+ * suite's own guard accepts it, and it is dropped afterwards. The canonical world is only ever the
+ * template — nothing is written to it. Postgres refuses the copy while any other session is
+ * connected to the template; that is reported, never worked around by terminating those sessions.
+ */
+async function createSeededClone(name: string): Promise<string> {
+  const source = new URL(SEEDED_URL).pathname.replace(/^\//, "");
+  await withAdmin(async (p) => {
+    await p.query(`drop database if exists "${name}"`);
+    await p.query(`create database "${name}" template "${source}"`);
+  });
+  const url = SEEDED_URL.replace(/\/[^/?]*(\?|$)/, `/${name}$1`);
+  await markSeededClone(url, source);
   return url;
 }
 
@@ -183,6 +211,14 @@ async function main() {
         const r = runSuite(s.name, url);
         results.push(r);
         console.log(`${s.name.padEnd(22)} ${s.cls.padEnd(7)} ${r.fatal ? `FATAL ${r.fatal}` : `${r.passed} passed, ${r.failed} failed`} (disposable db)`);
+      } finally { if (!KEEP) await dropDatabase(db); }
+    } else if (s.isolation === "SEEDED_CLONE") {
+      const db = `v_${s.name.replace(/-/g, "_")}_clone_${Date.now().toString(36)}`;
+      const url = await createSeededClone(db);
+      try {
+        const r = runSuite(s.name, url);
+        results.push(r);
+        console.log(`${s.name.padEnd(22)} ${s.cls.padEnd(7)} ${r.fatal ? `FATAL ${r.fatal}` : `${r.passed} passed, ${r.failed} failed`} (seeded clone)`);
       } finally { if (!KEEP) await dropDatabase(db); }
     } else {
       const r = runSuite(s.name, SEEDED_URL);

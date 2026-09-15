@@ -9,12 +9,13 @@
  *   npx tsx scripts/disclosure-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { resolveDisclosure, applyDisclosure, type Disclosable, type FederationViewer } from "../src/lib/pursuits/federation/disclosure";
 import { proposeGrant, acceptGrant, revokeGrant, expireDueGrants, hasLiveDataGrant, hasActionAuthority, buildFederationViewer } from "../src/lib/pursuits/federation/grants";
 import { addParticipant, acceptParticipation } from "../src/lib/pursuits/federation/participation";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 
-const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
+const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/verify_disposable";
 const pool = new Pool({ connectionString: CONN });
 let passed = 0, failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail = "") { if (cond) { passed++; console.log(`  ✓ ${name}`); } else { failed++; failures.push(name + (detail ? ` — ${detail}` : "")); console.log(`  ✗ ${name}${detail ? " — " + detail : ""}`); } }
@@ -25,6 +26,7 @@ async function asOrg<T>(orgId: string, fn: (db: PoolClient) => Promise<T>): Prom
 const V = (orgId: string, o: Partial<FederationViewer> = {}): FederationViewer => ({ orgId, isSponsor: false, isParticipant: false, allowlistGrantedFor: new Set(), ...o });
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[disclosure-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
 
   // ---- Disclosure resolution matrix (pure engine, R6/R7) ----
@@ -83,14 +85,14 @@ async function main() {
   // vendor grants DATA to distributor for this pursuit
   const grantId = await asOrg(s.vendor, (db) => proposeGrant(db, { pursuitId: s.hero, fromOrgId: s.vendor, toOrgId: s.dist, grantKind: "DATA", informationClasses: ["PARTICIPANT_SHARED"], purpose: "Globex virtualization co-sell" }));
   check("no access before the grant is accepted", !(await asOrg(s.vendor, (db) => hasLiveDataGrant(db, s.dist, s.hero))));
-  await asOrg(s.dist, (db) => acceptGrant(db, grantId));
+  await asOrg(s.dist, (db) => acceptGrant(db, s.dist, grantId));
   check("grant → access after accept", await asOrg(s.vendor, (db) => hasLiveDataGrant(db, s.dist, s.hero)));
   check("data consent does NOT confer action authority (R24)", !(await asOrg(s.vendor, (db) => hasActionAuthority(db, s.dist, s.hero, "route.request_acceptance"))));
-  await asOrg(s.vendor, (db) => revokeGrant(db, grantId));
+  await asOrg(s.vendor, (db) => revokeGrant(db, s.vendor, grantId));
   check("revoke → future access blocked immediately (R28)", !(await asOrg(s.vendor, (db) => hasLiveDataGrant(db, s.dist, s.hero))));
   // expiry: a fresh grant with a past expiry, accepted, then swept
   const expId = await asOrg(s.vendor, (db) => proposeGrant(db, { pursuitId: s.hero, fromOrgId: s.vendor, toOrgId: s.dist, purpose: "temp", expiresAt: new Date(Date.now() - 1000) }));
-  await asOrg(s.dist, (db) => acceptGrant(db, expId));
+  await asOrg(s.dist, (db) => acceptGrant(db, s.dist, expId));
   check("expired grant does not confer access (grant_is_live checks expiry)", !(await asOrg(s.vendor, (db) => hasLiveDataGrant(db, s.dist, s.hero))));
   check("sweeper flips accepted-past-expiry to expired", (await asOrg(s.vendor, (db) => expireDueGrants(db))) >= 1);
 
@@ -102,7 +104,7 @@ async function main() {
   });
   await asOrg(s.dist, async (db) => {
     const { rows } = await db.query<{ id: string }>(`select id from pursuit_participants where pursuit_id=$1 and org_id=$2`, [s.hero, s.dist]);
-    await acceptParticipation(db, rows[0].id);
+    await acceptParticipation(db, s.dist, rows[0].id);
   });
   const vv = await asOrg(s.vendor, (db) => buildFederationViewer(db, s.vendor, s.hero));
   const dv = await asOrg(s.dist, (db) => buildFederationViewer(db, s.dist, s.hero));

@@ -72,7 +72,9 @@ export const MCP_TOOLS: McpToolDef[] = [
          from opportunities o
          left join revenue_motions m on m.id = o.motion_id
          left join partners pa on pa.id = m.partner_id
+         where o.org_id = $1
          order by o.updated_at desc`,
+        [orgId],
       );
       const weights = await loadStageWeights(pool, orgId);
       const open = rows.filter((r) => !r.stage.startsWith("closed"));
@@ -118,12 +120,12 @@ export const MCP_TOOLS: McpToolDef[] = [
       if (!c) return { found: false, message: `No account matching "${q}".` };
       const [{ rows: scores }, { rows: opps }, { rows: digests }, { rows: evidence }] = [
         await pool.query(
-          `select p.score, p.band from propensity_scores p where p.company_id = $1 order by p.computed_at desc limit 1`,
-          [c.id],
+          `select p.score, p.band from propensity_scores p where p.company_id = $1 and p.org_id = $2 order by p.computed_at desc limit 1`,
+          [c.id, orgId],
         ),
         await pool.query(
-          `select name, stage, amount_usd from opportunities where company_id = $1 and stage not in ('closed_won','closed_lost')`,
-          [c.id],
+          `select name, stage, amount_usd from opportunities where company_id = $1 and org_id = $2 and stage not in ('closed_won','closed_lost')`,
+          [c.id, orgId],
         ),
         await pool.query(
           `select items, period_end from account_digests where company_id = $1 and org_id = $2 order by created_at desc limit 1`,
@@ -131,8 +133,8 @@ export const MCP_TOOLS: McpToolDef[] = [
         ),
         await pool.query(
           `select claim, source_type, observed_at from evidence
-           where company_id = $1 and status = 'verified' order by observed_at desc limit 5`,
-          [c.id],
+           where company_id = $1 and (org_id = $2 or org_id is null) and status = 'verified' order by observed_at desc limit 5`,
+          [c.id, orgId],
         ),
       ];
       return {

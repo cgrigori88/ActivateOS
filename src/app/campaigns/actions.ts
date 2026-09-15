@@ -22,9 +22,10 @@ export async function generateSequenceAction(formData: FormData): Promise<void> 
   let campaignId: string | null = null;
   let notice: string | null = null;
   try {
-    campaignId = await withTenant(async (db) => {
+    campaignId = await withTenant(async (db, orgId) => {
       await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
       const res = await generateCampaignSequence(db, {
+        orgId,
         motionId,
         senderName,
         touchCount: Number.isFinite(touchCount) ? touchCount : 3,
@@ -79,6 +80,10 @@ export async function setCampaignGoalAction(campaignId: string, formData: FormDa
   const goalId = String(formData.get("goalId") ?? "").trim() || null;
   await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    if (goalId) {
+      const { rows } = await db.query(`select 1 from goals where id = $1 and org_id = $2`, [goalId, orgId]);
+      if (rows.length === 0) throw new Error("goal not found");
+    }
     // FLOW-1 fix: org-scoped so a foreign campaign id can't be retargeted.
     await db.query(`update campaigns set goal_id = $2 where id = $1 and org_id = $3`, [campaignId, goalId, orgId]);
   });
@@ -109,18 +114,8 @@ export async function createBlankCampaignAction(formData: FormData): Promise<voi
 
   const campaignId = await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    // Companies aren't org-scoped by a column — resolve the org from any related
-    // row, falling back to the caller's org.
-    const { rows } = await db.query<{ org_id: string | null }>(
-      `select coalesce(
-         (select org_id from revenue_motions where company_id = $1 and org_id is not null limit 1),
-         (select org_id from propensity_scores where company_id = $1 and org_id is not null limit 1),
-         (select org_id from partner_accounts where company_id = $1 and org_id is not null limit 1),
-         $2::uuid
-       ) as org_id`,
-      [companyId, orgId],
-    );
-    const res = await createBlankCampaign(db, { orgId: rows[0]?.org_id ?? null, companyId, name, senderName });
+    // The campaign belongs to the caller's org — never one derived from another tenant's rows.
+    const res = await createBlankCampaign(db, { orgId, companyId, name, senderName });
     return res.campaignId;
   });
   revalidatePath("/campaigns");

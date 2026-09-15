@@ -93,13 +93,13 @@ export async function listGoals(db: Db, orgId: string): Promise<Goal[]> {
     contributors: GoalContributor[];
   }>(
     `select g.*,
-       (select coalesce(sum(m.estimated_value_usd),0) from revenue_motions m where m.goal_id = g.id) as motions_pipeline,
-       (select coalesce(sum(m.estimated_value_usd),0) from revenue_motions m where m.goal_id = g.id and m.outcome = 'won') as motions_won_usd,
-       (select count(*) from revenue_motions m where m.goal_id = g.id and m.outcome = 'won') as motions_won,
-       (select count(*) from campaign_touches t join campaigns ca on ca.id = t.campaign_id where ca.goal_id = g.id and t.status = 'sent') as touches_sent,
-       (select count(*) from opportunities o join revenue_motions m on m.id = o.motion_id where m.goal_id = g.id and o.stage = 'closed_won') as opps_won,
-       (select count(*) from revenue_motions m where m.goal_id = g.id) as motions_linked,
-       (select count(*) from campaigns ca where ca.goal_id = g.id) as campaigns_linked,
+       (select coalesce(sum(m.estimated_value_usd),0) from revenue_motions m where m.goal_id = g.id and m.org_id = g.org_id) as motions_pipeline,
+       (select coalesce(sum(m.estimated_value_usd),0) from revenue_motions m where m.goal_id = g.id and m.org_id = g.org_id and m.outcome = 'won') as motions_won_usd,
+       (select count(*) from revenue_motions m where m.goal_id = g.id and m.org_id = g.org_id and m.outcome = 'won') as motions_won,
+       (select count(*) from campaign_touches t join campaigns ca on ca.id = t.campaign_id where ca.goal_id = g.id and ca.org_id = g.org_id and t.status = 'sent') as touches_sent,
+       (select count(*) from opportunities o join revenue_motions m on m.id = o.motion_id where m.goal_id = g.id and m.org_id = g.org_id and o.org_id = g.org_id and o.stage = 'closed_won') as opps_won,
+       (select count(*) from revenue_motions m where m.goal_id = g.id and m.org_id = g.org_id) as motions_linked,
+       (select count(*) from campaigns ca where ca.goal_id = g.id and ca.org_id = g.org_id) as campaigns_linked,
        -- Who is actually carrying this goal. A target that rolls up from linked
        -- commercial objects can also say WHICH ones, and for a co-sell goal that
        -- is the partner split — the difference between a number on a slide and a

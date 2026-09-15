@@ -62,7 +62,7 @@ export interface GoalChain {
 
 type Db = Pool | PoolClient;
 
-export async function goalChain(db: Db, goalId: string): Promise<GoalChain> {
+export async function goalChain(db: Db, orgId: string, goalId: string): Promise<GoalChain> {
   const { rows } = await db.query<{
     id: string;
     account: string;
@@ -80,19 +80,19 @@ export async function goalChain(db: Db, goalId: string): Promise<GoalChain> {
             m.status,
             m.outcome,
             m.estimated_value_usd as value_usd,
-            (select count(*) from opportunities o where o.motion_id = m.id) as opp_count,
+            (select count(*) from opportunities o where o.motion_id = m.id and o.org_id = m.org_id) as opp_count,
             (select coalesce(sum(o.amount_usd), 0) from opportunities o
-              where o.motion_id = m.id and o.stage not like 'closed%') as open_pipeline,
+              where o.motion_id = m.id and o.org_id = m.org_id and o.stage not like 'closed%') as open_pipeline,
             -- the real edge when it exists, else the account-level one, which the
             -- caller must present as "on this account" and never as provenance
             coalesce(m.pursuit_id,
-                     (select p.id from pursuits p where p.account_id = m.company_id
+                     (select p.id from pursuits p where p.account_id = m.company_id and p.org_id = m.org_id
                        order by p.current_priority_score desc nulls last limit 1)) as pursuit_id
        from revenue_motions m
        join companies c on c.id = m.company_id
-      where m.goal_id = $1
+      where m.goal_id = $1 and m.org_id = $2
       order by m.estimated_value_usd desc nulls last, c.legal_name`,
-    [goalId],
+    [goalId, orgId],
   );
 
   const motions: ChainMotion[] = rows.map((r) => ({

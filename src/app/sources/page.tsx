@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getPool } from "@/db/client";
+import { withTenant } from "@/lib/db/tenant";
 import { Card, PageHeader } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { EvidenceModel } from "@/components/evidence-model";
@@ -11,9 +11,11 @@ export const dynamic = "force-dynamic";
  * verification outcomes and earned trust per source (docs/DESIGN.md §2).
  */
 export default async function SourcesPage() {
-  const pool = getPool();
-  const { rows: sources } = await pool.query(
-    `select s.name, s.kind, s.trust_score, s.audit_sample_rate, s.audited_count, s.accurate_count,
+  // signal_sources is a global registry; the evidence counted against it is this org's
+  // (plus null-org shared evidence).
+  const { rows: sources } = await withTenant(async (db, orgId) =>
+    db.query(
+      `select s.name, s.kind, s.trust_score, s.audit_sample_rate, s.audited_count, s.accurate_count,
             s.predictive_value, s.scored_evidence, s.high_band_evidence,
             count(e.id) as total,
             count(e.id) filter (where e.status = 'verified') as verified,
@@ -21,8 +23,10 @@ export default async function SourcesPage() {
             count(e.id) filter (where e.status = 'rejected') as rejected,
             max(e.collected_at) as last_seen
      from signal_sources s
-     left join evidence e on e.source_type = s.name
+     left join evidence e on e.source_type = s.name and (e.org_id = $1 or e.org_id is null)
      group by s.id order by s.trust_score desc`,
+      [orgId],
+    ),
   );
 
   return (

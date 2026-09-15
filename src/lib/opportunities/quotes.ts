@@ -19,7 +19,7 @@ export interface QuoteSignal {
 
 const QUOTE_RX = "(quote|quotation|pricing|price list|proposal|estimate|sow|statement of work|order form|quotation attached)";
 
-export async function quoteSignals(db: Db, opportunityIds: string[]): Promise<Map<string, QuoteSignal>> {
+export async function quoteSignals(db: Db, orgId: string, opportunityIds: string[]): Promise<Map<string, QuoteSignal>> {
   const out = new Map<string, QuoteSignal>();
   if (opportunityIds.length === 0) return out;
   for (const id of opportunityIds) out.set(id, { delivered: false, note: null, at: null });
@@ -47,9 +47,9 @@ export async function quoteSignals(db: Db, opportunityIds: string[]): Promise<Ma
               ) as is_quote
        from messages m where m.thread_id = t.id
      ) hit on true
-     where t.opportunity_id = any($1)
+     where t.opportunity_id = any($1) and t.org_id = $2
      group by t.opportunity_id`,
-    [opportunityIds],
+    [opportunityIds, orgId],
   );
   for (const r of rows) {
     out.set(r.opportunity_id, {

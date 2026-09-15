@@ -57,12 +57,16 @@ export default async function TrustPage() {
           row-level security both ENABLED and FORCED (relrowsecurity and
           relforcerowsecurity), and no table carrying an org_id is exempt. FORCE is
           the load-bearing half: without it the table owner silently bypasses the
-          predicate. If that ever stops being true, this wording has to change. */}
+          predicate. If that ever stops being true, this wording has to change.
+          H1A (2026-09-14): the runtime still connects as a BYPASSRLS owner until the H1B
+          cutover, so RLS does not yet bind the app path. "No query path can opt out" was
+          therefore not true and is withdrawn; what IS true is that every tenant query now
+          carries an explicit org predicate (docs/vnext/H1-PRE-PILOT-HARDENING.md). */}
       <div className="mb-7 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
         <Assurance
           label="Tenant isolation"
           mechanism="Postgres row-level security, forced on every table"
-          note="No query path can opt out of the tenant predicate"
+          note="Every tenant query also carries an explicit org predicate"
         />
         <Assurance
           label="Governed sharing"

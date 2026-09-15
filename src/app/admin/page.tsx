@@ -143,29 +143,37 @@ export default async function AdminPage({
       [orgId],
     );
 
-    // ── AI operations (now org-scoped by RLS) ────────────────────────────────
+    // ── AI operations (explicit org predicates) ──────────────────────────────
+    // The app connects as the table owner (BYPASSRLS), so RLS does NOT scope these
+    // reads — each query carries its own `org_id = $1`. campaign_touches has no
+    // org_id and is scoped through its org-owned parent campaign.
     const [{ rows: agents }, { rows: recentRuns }, { rows: providerErrors }, { rows: queues }] = await Promise.all([
       db.query<{ workflow: string; n: string; cost: string | null; ms: string | null; overridden: string }>(
         `select workflow, count(*) as n, round(sum(cost_usd)::numeric, 3) as cost,
                 round(avg(latency_ms))::int as ms,
                 count(*) filter (where human_decision in ('edited','rejected')) as overridden
-         from agent_runs group by workflow order by n desc`,
+         from agent_runs where org_id = $1 group by workflow order by n desc`,
+        [orgId],
       ),
       db.query<{ workflow: string; model: string; cost_usd: string | null; latency_ms: number | null; human_decision: string | null; created_at: Date }>(
         `select workflow, model, cost_usd, latency_ms, human_decision, created_at
-         from agent_runs order by created_at desc limit 10`,
+         from agent_runs where org_id = $1 order by created_at desc limit 10`,
+        [orgId],
       ),
       db.query<{ provider_id: string; error: string | null; status: string; finished_at: Date | null }>(
         `select provider_id, error, status, finished_at from provider_runs
-         where status = 'failed' or error is not null
+         where org_id = $1 and (status = 'failed' or error is not null)
          order by finished_at desc nulls last limit 8`,
+        [orgId],
       ),
       db.query<{ research_pending: string; research_running: string; review_pending: string; touches_scheduled: string }>(
         `select
-           (select count(*) from research_jobs where status = 'pending') as research_pending,
-           (select count(*) from research_jobs where status = 'running') as research_running,
-           (select count(*) from review_queue where status = 'pending') as review_pending,
-           (select count(*) from campaign_touches where status = 'scheduled') as touches_scheduled`,
+           (select count(*) from research_jobs where org_id = $1 and status = 'pending') as research_pending,
+           (select count(*) from research_jobs where org_id = $1 and status = 'running') as research_running,
+           (select count(*) from review_queue where org_id = $1 and status = 'pending') as review_pending,
+           (select count(*) from campaign_touches t join campaigns ca on ca.id = t.campaign_id
+             where ca.org_id = $1 and t.status = 'scheduled') as touches_scheduled`,
+        [orgId],
       ),
     ]);
 

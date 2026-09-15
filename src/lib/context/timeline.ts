@@ -102,8 +102,8 @@ export async function dealTimeline(db: Db, orgId: string, companyId: string, lim
     created_at: Date; approved_at: Date | null; activated_at: Date | null; closed_at: Date | null;
   }>(
     `select id, status, outcome, created_at, approved_at, activated_at, closed_at
-     from revenue_motions where company_id = $1 order by created_at desc limit 10`,
-    [companyId],
+     from revenue_motions where company_id = $1 and org_id = $2 order by created_at desc limit 10`,
+    [companyId, orgId],
   );
   for (const m of motions) {
     const href = `/briefs/${m.id}`;

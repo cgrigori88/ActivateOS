@@ -136,7 +136,9 @@ export default async function MotionsPage({
      left join propensity_scores p on p.id = m.propensity_score_id
      left join partners pa on pa.id = m.partner_id
      left join goals g on g.id = m.goal_id
+     where m.org_id = $1
      order by m.created_at desc limit 500`,
+      [orgId],
     )).rows,
     goals: await goalOptions(db, orgId),
     initiativeOpts: await initiativeOptions(db, orgId),
@@ -147,7 +149,7 @@ export default async function MotionsPage({
                 (select count(*) from population_members pm where pm.population_id = ap.id) as members,
                 (select count(*) from population_members pm where pm.population_id = ap.id
                    and not exists (select 1 from revenue_motions m
-                                   where m.company_id = pm.company_id
+                                   where m.company_id = pm.company_id and m.org_id = ap.org_id
                                      and m.status in ('draft', 'approved', 'active'))) as ready
          from account_populations ap
          left join partners p on p.id = ap.partner_id
@@ -159,8 +161,9 @@ export default async function MotionsPage({
       `select company_id, legal_name, score from (
        select distinct on (p.company_id) p.company_id, c.legal_name, p.score
        from propensity_scores p join companies c on c.id = p.company_id
-       where not exists (select 1 from revenue_motions m
-                         where m.company_id = p.company_id
+       where p.org_id = $1
+         and not exists (select 1 from revenue_motions m
+                         where m.company_id = p.company_id and m.org_id = $1
                            and m.status in ('draft', 'approved', 'active'))
          -- Suppression is a hard guardrail: blocked accounts never even appear.
          and ($1::uuid is null or not exists (

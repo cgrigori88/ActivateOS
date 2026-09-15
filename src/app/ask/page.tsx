@@ -265,9 +265,9 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
    * or counting them would disclose the existence of a record whose existence
    * is itself outside this reader's authorized view.
    */
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     for (const ex of exchanges) {
-      if (ex.record_hrefs?.length) ex.record_hrefs = await filterReadableRecordHrefs(db, ex.record_hrefs);
+      if (ex.record_hrefs?.length) ex.record_hrefs = await filterReadableRecordHrefs(db, orgId, ex.record_hrefs);
     }
   });
 

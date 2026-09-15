@@ -9,6 +9,7 @@
  *   npx tsx scripts/isolation-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import { addParticipant, acceptParticipation, revokeParticipation } from "../src/lib/pursuits/federation/participation";
 import { proposeGrant, acceptGrant, revokeGrant, buildFederationViewer, hasActionAuthority } from "../src/lib/pursuits/federation/grants";
@@ -19,7 +20,7 @@ import { enqueueRecompute, drainRecomputeQueue } from "../src/lib/pursuits/feder
 import { setOrgFeature } from "../src/lib/pursuits/tenant-flags";
 import { randomUUID } from "node:crypto";
 
-const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
+const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/verify_disposable";
 const pool = new Pool({ connectionString: CONN });
 let passed = 0, failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail = "") { if (cond) { passed++; console.log(`  ✓ ${name}`); } else { failed++; failures.push(name + (detail ? ` — ${detail}` : "")); console.log(`  ✗ ${name}${detail ? " — " + detail : ""}`); } }
@@ -29,6 +30,7 @@ async function expectThrows(fn: () => Promise<unknown>): Promise<boolean> { try 
 const actor = (orgId: string, role: Actor["role"]): Actor => ({ type: "USER", id: randomUUID(), orgId, role });
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[isolation-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   const RID = Math.random().toString(36).slice(2, 8);
   const s = await asOwner(async (db) => {
@@ -73,14 +75,14 @@ async function main() {
   console.log("R1-G3.5  Consent + participant withdrawal");
   // B legitimately brings A onto B's pursuit + grants A action authority.
   const aOnB = await asOrg(s.b, (db) => addParticipant(db, { pursuitId: s.pB, orgId: s.a, roleKey: "DISTRIBUTOR", sponsorOrgId: s.b }));
-  await asOrg(s.a, (db) => acceptParticipation(db, aOnB));
+  await asOrg(s.a, (db) => acceptParticipation(db, s.a, aOnB));
   check("as an ACTIVE participant, A can now see B's pursuit", (await asOrg(s.a, (db) => getPursuitFederation(db, s.a, s.pB))) !== null);
   const grant = await asOrg(s.b, (db) => proposeGrant(db, { pursuitId: s.pB, fromOrgId: s.b, toOrgId: s.a, grantKind: "ACTION", actionFamily: "team.request_acceptance", purpose: "authorize" }));
-  await asOrg(s.a, (db) => acceptGrant(db, grant));
+  await asOrg(s.a, (db) => acceptGrant(db, s.a, grant));
   check("A has action authority while the grant is live", await asOrg(s.a, (db) => hasActionAuthority(db, s.a, s.pB, "team.request_acceptance")));
-  await asOrg(s.b, (db) => revokeGrant(db, grant));
+  await asOrg(s.b, (db) => revokeGrant(db, s.b, grant));
   check("revoking the grant removes A's action authority (consent withdrawal)", !(await asOrg(s.a, (db) => hasActionAuthority(db, s.a, s.pB, "team.request_acceptance"))));
-  await asOrg(s.b, (db) => revokeParticipation(db, aOnB));
+  await asOrg(s.b, (db) => revokeParticipation(db, s.b, aOnB));
   check("revoking participation removes A's visibility of B's pursuit", (await asOrg(s.a, (db) => getPursuitFederation(db, s.a, s.pB))) === null);
 
   /* ── Ask readability integrity (Wave 6C §8) ────────────────────────────────
@@ -100,7 +102,7 @@ async function main() {
   check("a pursuit deep link parses as a record reference",
     parseRecordRef(readableHref)?.table === "pursuits");
 
-  const asA = await asOrg(s.a, (db) => filterReadableRecordHrefs(db, [readableHref, unreadableHref, roomHref]));
+  const asA = await asOrg(s.a, (db) => filterReadableRecordHrefs(db, s.a, [readableHref, unreadableHref, roomHref]));
   check("readable same-tenant record → link emitted", asA.includes(readableHref));
   check("unreadable cross-tenant record → link absent", !asA.includes(unreadableHref));
   check("a non-record room link passes through untouched", asA.includes(roomHref));
@@ -108,7 +110,7 @@ async function main() {
 
   /* The owner's own context still resolves its own record — the filter withholds
      what this reader cannot resolve, it does not withhold from everyone. */
-  const asB = await asOrg(s.b, (db) => filterReadableRecordHrefs(db, [unreadableHref]));
+  const asB = await asOrg(s.b, (db) => filterReadableRecordHrefs(db, s.b, [unreadableHref]));
   check("the owning tenant still receives its own record link", asB.includes(unreadableHref));
 
   console.log(`\n[isolation-verify] ${passed} passed, ${failed} failed`);

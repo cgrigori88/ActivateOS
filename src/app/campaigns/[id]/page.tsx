@@ -108,7 +108,6 @@ export default async function CampaignDetailPage({
         status: string;
         objective: string | null;
         audience: string | null;
-        org_id: string | null;
         company_id: string;
         legal_name: string;
         primary_domain: string | null;
@@ -120,7 +119,6 @@ export default async function CampaignDetailPage({
         send_tz: string | null;
       }>(
         `select ca.id, ca.name, ca.status, ca.objective, ca.audience,
-            coalesce(ca.org_id, $2::uuid) as org_id,
             c.id as company_id, c.legal_name, c.primary_domain, m.id as motion_id,
             ca.initiative_id,
             bp.wordmark, ca.recipient_email, ca.launched_at, ca.send_tz
@@ -128,32 +126,33 @@ export default async function CampaignDetailPage({
      left join revenue_motions m on m.id = ca.motion_id
      join companies c on c.id = coalesce(ca.company_id, m.company_id)
      left join brand_profiles bp on bp.id = ca.brand_id
-     where ca.id = $1`,
+     where ca.id = $1 and ca.org_id = $2`,
         [id, orgId],
       );
       if (caRows.length === 0) notFound();
       const ca = caRows[0];
-      const initiativeOpts = ca.org_id ? await initiativeOptions(db, ca.org_id) : [];
+      const initiativeOpts = await initiativeOptions(db, orgId);
 
       // Multi-vendor: the partners running this play, each in a role.
       const { rows: playPartners } = await db.query<{ name: string; partner_type: string | null; role: string }>(
         `select p.name, p.partner_type, cp.role
      from campaign_partners cp join partners p on p.id = cp.partner_id
+     join campaigns ca on ca.id = cp.campaign_id and ca.org_id = $2
      where cp.campaign_id = $1 order by (cp.role = 'lead') desc, p.name`,
-        [id],
+        [id, orgId],
       );
 
       // Reach: the accounts that roll into this campaign, its linked lists, and
       // lists it could attach (top-fit ones surfaced as suggestions).
-      const accounts = await campaignAccounts(db, id);
-      const lists = await linkedLists(db, id);
-      const attachable = ca.org_id ? await attachableLists(db, id, ca.org_id) : [];
+      const accounts = await campaignAccounts(db, id, orgId);
+      const lists = await linkedLists(db, id, orgId);
+      const attachable = await attachableLists(db, id, orgId);
 
       // Per-recipient preview: resolve the account-angle layer against one account's
       // real data so the two layers (shared paragraphs + account angle) are visible.
       const previewId = sp.preview && accounts.some((a) => a.companyId === sp.preview) ? sp.preview : accounts[0]?.companyId;
       const previewAccount = accounts.find((a) => a.companyId === previewId) ?? null;
-      const previewVars = previewId ? await mergeAccountData(db, previewId) : null;
+      const previewVars = previewId ? await mergeAccountData(db, orgId, previewId) : null;
 
       // Motions on this account that could ground AI drafting (link-a-motion flow).
       const { rows: linkableMotions } = ca.motion_id || !ca.company_id
@@ -162,21 +161,24 @@ export default async function CampaignDetailPage({
             `select m.id, coalesce(n.slug, 'motion') || ' — ' || coalesce(m.cta, m.thesis, 'no CTA') as label
          from revenue_motions m
          left join taxonomy_nodes n on n.id = m.taxonomy_node_id
-         where m.company_id = $1 and m.status in ('approved', 'active')
+         where m.company_id = $1 and m.org_id = $2 and m.status in ('approved', 'active')
          order by m.created_at desc`,
-            [ca.company_id],
+            [ca.company_id, orgId],
           );
 
       const { rows: touches } = await db.query<Touch>(
         `select id, touch_no, name, subject, preheader, headline, status, html_body,
             body, custom_html, account_angle, highlights, cta_label, cta_url, send_offset_days, scheduled_at, rejected_reason, sent_at, cc_emails
-     from campaign_touches where campaign_id = $1 order by touch_no`,
-        [id],
+     from campaign_touches
+     where campaign_id = $1
+       and exists (select 1 from campaigns c where c.id = campaign_touches.campaign_id and c.org_id = $2)
+     order by touch_no`,
+        [id, orgId],
       );
 
       const { rows: contacts } = await db.query<{ email: string; name: string | null; title: string | null }>(
-        `select email, name, title from contacts where company_id = $1 order by name nulls last limit 25`,
-        [ca.company_id],
+        `select email, name, title from contacts where company_id = $1 and org_id = $2 order by name nulls last limit 25`,
+        [ca.company_id, orgId],
       );
 
       const { rows: eng } = await db.query<{
@@ -189,9 +191,9 @@ export default async function CampaignDetailPage({
         last_engaged_at: Date | null;
       }>(
         `select engagement_score, touches_sent, opens, clicks, replies, positive_replies, last_engaged_at
-     from engagement_scores where company_id = $1 and contact_id is null
+     from engagement_scores where company_id = $1 and contact_id is null and org_id = $2
      order by computed_at desc limit 1`,
-        [ca.company_id],
+        [ca.company_id, orgId],
       );
 
       return { ca, initiativeOpts, playPartners, accounts, lists, attachable, previewId, previewAccount, previewVars, linkableMotions, touches, contacts, eng };

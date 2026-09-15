@@ -11,6 +11,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
+import { assertSeededClone } from "./seeded-clone";
 import { dispatchSkill } from "../src/lib/pursuits/federation/skills";
 import { getRouteComparison } from "../src/lib/pursuits/read-models/route";
 import { getTodayQueue } from "../src/lib/pursuits/read-models/today";
@@ -33,14 +34,18 @@ async function tx<T>(pool: Pool, orgId: string, fn: (db: PoolClient) => Promise<
   catch (e) { await c.query("rollback").catch(() => {}); throw e; } finally { c.release(); }
 }
 /** Non-owner app_rw connection with a (possibly foreign) org GUC — RLS actually enforces. */
+// A probe, never a write: it ROLLS BACK even on success, so a regressed denial cannot commit (H1A).
 async function rls<T>(pool: Pool, orgId: string, fn: (db: PoolClient) => Promise<T>): Promise<T> {
   const c = await pool.connect();
-  try { await c.query("begin"); await c.query("set local role app_rw"); await c.query("select set_config('app.org_id',$1,true)", [orgId]); const r = await fn(c); await c.query("commit"); return r; }
+  try { await c.query("begin"); await c.query("set local role app_rw"); await c.query("select set_config('app.org_id',$1,true)", [orgId]); const r = await fn(c); await c.query("rollback"); return r; }
   catch (e) { await c.query("rollback").catch(() => {}); throw e; } finally { c.release(); }
 }
 
 async function main() {
   const pool = new Pool({ connectionString: URL });
+  // H1A: this suite commits through real application paths — refuse the canonical world;
+  // verify-run.ts gives it a disposable seeded clone (scripts/seeded-clone.ts).
+  await assertSeededClone(pool);
   try {
     // ---- Pick a pursuit whose recommended route is CDW with a distinct alternative (ideally WWT). ----
     const pick = await pool.query<{ pursuit_id: string; org_id: string }>(

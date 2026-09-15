@@ -71,9 +71,9 @@ export async function saveJointPlaybookAction(pursuitId: string, partnershipId: 
 }
 
 export async function refreshBrokerAction(pursuitId: string): Promise<void> {
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);
-    await brokerPropose(db, pursuitId);
+    await brokerPropose(db, orgId, pursuitId);
   });
   revalidatePath(`/joint/${pursuitId}`);
 }

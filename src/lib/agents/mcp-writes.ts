@@ -14,12 +14,15 @@ import { requestWarmIntro } from "../partnerships/warm-intros";
 
 export interface DraftTouchArgs { campaign?: string; name?: string; subject?: string; body?: string }
 
-export async function draftTouchImpl(db: PoolClient, _orgId: string, args: DraftTouchArgs): Promise<unknown> {
+export async function draftTouchImpl(db: PoolClient, orgId: string, args: DraftTouchArgs): Promise<unknown> {
   const q = String(args.campaign ?? "").trim();
+  // Tenant isolation: the campaign is resolved ONLY within the caller's org (the
+  // API-key-resolved org), so the touch below can never land in a foreign campaign.
   const { rows } = await db.query<{ id: string; name: string }>(
-    `select id, name from campaigns where name ilike $1 order by created_at desc limit 1`, [`%${q}%`]);
+    `select id, name from campaigns where org_id = $2 and name ilike $1 order by created_at desc limit 1`, [`%${q}%`, orgId]);
   if (!rows[0]) return { created: false, message: `No campaign matching "${q}".` };
   await upsertTouch(db, {
+    orgId,
     campaignId: rows[0].id,
     fields: {
       name: String(args.name ?? "Agent draft"), subject: String(args.subject ?? ""), body: String(args.body ?? ""),

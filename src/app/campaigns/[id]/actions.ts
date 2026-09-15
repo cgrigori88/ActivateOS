@@ -14,9 +14,9 @@ import { linkPopulation, unlinkPopulation } from "@/lib/campaigns/lists";
 export async function linkListAction(campaignId: string, formData: FormData): Promise<void> {
   const ids = formData.getAll("populationId").map((v) => String(v).trim()).filter(Boolean);
   if (ids.length === 0) return;
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    for (const populationId of ids) await linkPopulation(db, campaignId, populationId, "web");
+    for (const populationId of ids) await linkPopulation(db, orgId, campaignId, populationId, "web");
   });
   revalidatePath(`/campaigns/${campaignId}`);
   revalidatePath("/campaigns");
@@ -28,6 +28,9 @@ export async function linkMotionAction(campaignId: string, formData: FormData): 
   if (!motionId) return;
   await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    // The motion must be the caller's too — AI drafting grounds in it.
+    const { rows } = await db.query(`select 1 from revenue_motions where id = $1 and org_id = $2`, [motionId, orgId]);
+    if (rows.length === 0) throw new Error("motion not found");
     // FLOW-1 fix: scope the write to the caller's org so a foreign campaign id can't be retargeted.
     await db.query(`update campaigns set motion_id = $2 where id = $1 and org_id = $3`, [campaignId, motionId, orgId]);
   });
@@ -51,9 +54,9 @@ export async function deleteCampaignAction(campaignId: string): Promise<void> {
 
 /** Remove a target list from the campaign (accounts stop rolling in). */
 export async function unlinkListAction(campaignId: string, populationId: string): Promise<void> {
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await unlinkPopulation(db, campaignId, populationId);
+    await unlinkPopulation(db, orgId, campaignId, populationId);
   });
   revalidatePath(`/campaigns/${campaignId}`);
   revalidatePath("/campaigns");
@@ -96,9 +99,9 @@ export async function aiDraftTouchesAction(campaignId: string, formData: FormDat
   const senderName = String(formData.get("senderName") ?? "").trim() || undefined;
   let notice: string | null = null;
   try {
-    await withTenant(async (db) => {
+    await withTenant(async (db, orgId) => {
       await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-      await appendAiTouches(db, { campaignId, touchCount, senderName });
+      await appendAiTouches(db, { orgId, campaignId, touchCount, senderName });
     });
   } catch (err) {
     notice = err instanceof Error ? err.message : String(err);
@@ -114,10 +117,13 @@ export async function aiDraftTouchesAction(campaignId: string, formData: FormDat
  */
 
 async function touchCampaign(touchId: string): Promise<string> {
-  return withTenant(async (db) => {
+  return withTenant(async (db, orgId) => {
+    // campaign_touches has no org_id — scope via its parent campaign's org.
     const { rows } = await db.query<{ campaign_id: string }>(
-      `select campaign_id from campaign_touches where id = $1`,
-      [touchId],
+      `select t.campaign_id from campaign_touches t
+       join campaigns c on c.id = t.campaign_id and c.org_id = $2
+       where t.id = $1`,
+      [touchId, orgId],
     );
     if (rows.length === 0) throw new Error("touch not found");
     return rows[0].campaign_id;
@@ -125,13 +131,14 @@ async function touchCampaign(touchId: string): Promise<string> {
 }
 
 export async function approveTouchAction(touchId: string): Promise<void> {
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await db.query(
-      `update campaign_touches
+      `update campaign_touches t
          set status = 'approved', approved_by = 'web', approved_at = now(), rejected_reason = null
-       where id = $1 and status in ('draft','rejected')`,
-      [touchId],
+       from campaigns c
+       where t.id = $1 and t.status in ('draft','rejected') and c.id = t.campaign_id and c.org_id = $2`,
+      [touchId, orgId],
     );
   });
   revalidatePath(`/campaigns/${await touchCampaign(touchId)}`);
@@ -157,9 +164,9 @@ export async function addTouchAction(campaignId: string, formData: FormData): Pr
   if (!fields.subject || (!fields.body && !fields.customHtml)) {
     throw new Error("a subject and either a body or custom HTML are required");
   }
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await upsertTouch(db, { campaignId, fields });
+    await upsertTouch(db, { orgId, campaignId, fields });
   });
   revalidatePath(`/campaigns/${campaignId}`);
   // Keep the composer open (and in view) so the next touch can be written
@@ -174,18 +181,18 @@ export async function editTouchAction(touchId: string, formData: FormData): Prom
     throw new Error("a subject and either a body or custom HTML are required");
   }
   const campaignId = await touchCampaign(touchId);
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await upsertTouch(db, { campaignId, touchId, fields });
+    await upsertTouch(db, { orgId, campaignId, touchId, fields });
   });
   revalidatePath(`/campaigns/${campaignId}`);
 }
 
 export async function deleteTouchAction(touchId: string): Promise<void> {
   const campaignId = await touchCampaign(touchId);
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await deleteTouch(db, touchId);
+    await deleteTouch(db, orgId, touchId);
   });
   revalidatePath(`/campaigns/${campaignId}`);
 }
@@ -208,14 +215,15 @@ export async function scheduleSequenceAction(campaignId: string, formData: FormD
   const args = scheduleArgsFrom(formData);
   if (!args.recipientEmail) throw new Error("a recipient is required to schedule");
 
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     await db.query(
-      `update campaign_touches set status = 'approved', approved_by = 'web', approved_at = now()
-       where campaign_id = $1 and status = 'draft'`,
-      [campaignId],
+      `update campaign_touches t set status = 'approved', approved_by = 'web', approved_at = now()
+       from campaigns c
+       where t.campaign_id = $1 and t.status = 'draft' and c.id = t.campaign_id and c.org_id = $2`,
+      [campaignId, orgId],
     );
-    await launchCampaign(db, { campaignId, ...args });
+    await launchCampaign(db, { orgId, campaignId, ...args });
   });
   revalidatePath(`/campaigns/${campaignId}`);
   // Next-step pull (#79): a launched sequence lives on the dated send plan now.
@@ -226,9 +234,9 @@ export async function scheduleSequenceAction(campaignId: string, formData: FormD
 export async function launchCampaignAction(campaignId: string, formData: FormData): Promise<void> {
   const args = scheduleArgsFrom(formData);
   if (!args.recipientEmail) throw new Error("a recipient is required to launch");
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await launchCampaign(db, { campaignId, ...args });
+    await launchCampaign(db, { orgId, campaignId, ...args });
   });
   revalidatePath(`/campaigns/${campaignId}`);
   // Next-step pull (#79): a launched sequence lives on the dated send plan now.
@@ -238,9 +246,9 @@ export async function launchCampaignAction(campaignId: string, formData: FormDat
 /** Send a single touch now (pre-launch to a chosen recipient, or a due scheduled touch). */
 export async function sendTouchAction(touchId: string, formData: FormData): Promise<void> {
   const override = String(formData.get("to") ?? "").trim().toLowerCase() || null;
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await sendTouchNow(db, { touchId, overrideTo: override });
+    await sendTouchNow(db, { orgId, touchId, overrideTo: override });
   });
   revalidatePath(`/campaigns/${await touchCampaign(touchId)}`);
 }

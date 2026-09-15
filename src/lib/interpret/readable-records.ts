@@ -59,13 +59,35 @@ export function parseRecordRef(href: string): RecordRef | null {
 }
 
 /**
+ * The explicit tenant predicate for each record table ($1 = record id, $2 = the
+ * caller's org). The app connects as the table owner (BYPASSRLS), so RLS alone
+ * does not isolate — every readability check carries its own org route.
+ *  - org-owned tables: `org_id = $2`;
+ *  - joint_pursuits: readable to either party of its partnership;
+ *  - companies: the shared catalog — existence-only by design.
+ */
+const READABLE_SQL: Record<string, string> = {
+  // A pursuit is readable to its owning org, and to an org that ACTIVELY participates in it (the
+  // participant view Pursuit Detail already renders) — the same route RLS's participant policy grants.
+  pursuits: `select exists (select 1 from pursuits where id = $1 and org_id = $2)
+                 or exists (select 1 from pursuit_participants pp
+                             where pp.pursuit_id = $1 and pp.org_id = $2 and pp.participation_state = 'ACTIVE') as ok`,
+  partners: `select exists (select 1 from partners where id = $1 and org_id = $2) as ok`,
+  goals: `select exists (select 1 from goals where id = $1 and org_id = $2) as ok`,
+  campaigns: `select exists (select 1 from campaigns where id = $1 and org_id = $2) as ok`,
+  joint_pursuits: `select exists (
+      select 1 from joint_pursuits jp join partnerships p on p.id = jp.partnership_id
+       where jp.id = $1 and (p.initiator_org_id = $2 or p.counterpart_org_id = $2)) as ok`,
+  companies: `select exists (select 1 from companies where id = $1) as ok`,
+};
+
+/**
  * Keep only the hrefs this caller can actually resolve.
  *
  * `db` MUST be the caller's own scoped connection (the one `withTenant` hands
- * out): the whole guarantee rests on the query running under the same role and
- * `app.org_id` the page itself reads with.
+ * out) and `orgId` the org that scope resolved — never a client-supplied value.
  */
-export async function filterReadableRecordHrefs(db: PoolClient, hrefs: string[]): Promise<string[]> {
+export async function filterReadableRecordHrefs(db: PoolClient, orgId: string, hrefs: string[]): Promise<string[]> {
   if (hrefs.length === 0) return [];
   const kept: string[] = [];
   // Small n by construction — an answer stands on a handful of records, and the
@@ -73,10 +95,10 @@ export async function filterReadableRecordHrefs(db: PoolClient, hrefs: string[])
   for (const href of hrefs) {
     const ref = parseRecordRef(href);
     if (!ref) { kept.push(href); continue; }   // a room link, not a record reference
+    const sql = READABLE_SQL[ref.table];
+    if (!sql) continue;                          // no known org route → fail closed
     try {
-      const { rows } = await db.query<{ ok: boolean }>(
-        `select exists (select 1 from ${ref.table} where id = $1) as ok`, [ref.id],
-      );
+      const { rows } = await db.query<{ ok: boolean }>(sql, sql.includes("$2") ? [ref.id, orgId] : [ref.id]);
       if (rows[0]?.ok) kept.push(href);
     } catch {
       // An unreadable table is not a licence to emit the link. Fail closed.

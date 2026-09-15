@@ -9,6 +9,7 @@
  *   npx tsx scripts/governance-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { seedGovernedSkills, dispatchSkill, drainActionOutbox, type Actor } from "../src/lib/pursuits/federation/skills";
 import { addParticipant } from "../src/lib/pursuits/federation/participation";
 import { proposeGrant, acceptGrant } from "../src/lib/pursuits/federation/grants";
@@ -16,7 +17,7 @@ import { governedActionEnabled } from "../src/lib/pursuits/federation/flags";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import { randomUUID } from "node:crypto";
 
-const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
+const CONN = process.env.DATABASE_URL_VERIFY ?? "postgresql://postgres:postgres@127.0.0.1:5433/verify_disposable";
 const pool = new Pool({ connectionString: CONN });
 let passed = 0, failed = 0; const failures: string[] = [];
 function check(name: string, cond: boolean, detail = "") { if (cond) { passed++; console.log(`  ✓ ${name}`); } else { failed++; failures.push(name + (detail ? ` — ${detail}` : "")); console.log(`  ✗ ${name}${detail ? " — " + detail : ""}`); } }
@@ -25,6 +26,7 @@ async function asOrg<T>(orgId: string, fn: (db: PoolClient) => Promise<T>): Prom
 const actor = (orgId: string, role: Actor["role"], type: Actor["type"] = "USER"): Actor => ({ type, id: randomUUID(), orgId, role });
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[governance-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   const RID = Math.random().toString(36).slice(2, 8);
   const s = await asOwner(async (db) => {
@@ -82,11 +84,11 @@ async function main() {
     (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero, args: { memberId } }))).status === "REJECTED");
   // distributor grants vendor DATA (must NOT authorize) then ACTION (authorizes)
   const dataG = await asOrg(s.dist, (db) => proposeGrant(db, { pursuitId: s.hero, fromOrgId: s.dist, toOrgId: s.vendor, grantKind: "DATA", purpose: "share" }));
-  await asOrg(s.vendor, (db) => acceptGrant(db, dataG));
+  await asOrg(s.vendor, (db) => acceptGrant(db, s.vendor, dataG));
   check("a DATA grant does NOT authorize a CROSS_TENANT_ACTION (R24)",
     (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero, args: { memberId } }))).status === "REJECTED");
   const actG = await asOrg(s.dist, (db) => proposeGrant(db, { pursuitId: s.hero, fromOrgId: s.dist, toOrgId: s.vendor, grantKind: "ACTION", actionFamily: "team.request_acceptance", purpose: "authorize team ask" }));
-  await asOrg(s.vendor, (db) => acceptGrant(db, actG));
+  await asOrg(s.vendor, (db) => acceptGrant(db, s.vendor, actG));
   /* §6 proof: the two rejections above changed nothing. The skill's only
      material effect is a TEAM_CHANGED change-ledger entry, so its absence is
      the evidence that a refused cross-tenant action persists no mutation —

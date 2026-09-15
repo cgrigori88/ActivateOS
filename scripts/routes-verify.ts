@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from "pg";
+import { assertDisposableDatabase } from "./verify-guard";
 import { upsertPursuit } from "../src/lib/pursuits/model";
 import { recomputeRoute } from "../src/lib/routing/route-model";
 import { selectPartnerRoute } from "../src/lib/routing/override";
@@ -84,6 +85,7 @@ async function seed(): Promise<Seed> {
 }
 
 async function main() {
+  await assertDisposableDatabase(pool); // refuses the canonical world (H1A — certification integrity)
   console.log(`[routes-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
   const s = await seed();
   console.log(`[routes-verify] seeded orgA=${s.orgA.slice(0, 8)} pursuitA=${s.pursuitA.slice(0, 8)}\n`);
@@ -142,7 +144,7 @@ async function main() {
   console.log("§61.14  Selection vs recommendation, override lineage, no Pursuit fork");
   await asOrg(s.orgA, async (db) => {
     // Select the NON-recommended WWT → override.
-    const sel = await selectPartnerRoute(db, s.pursuitA, { partnerId: s.wwt, actorId: crypto.randomUUID(), reason: "exec relationship", category: "EXECUTIVE_DIRECTION" });
+    const sel = await selectPartnerRoute(db, s.orgA, s.pursuitA, { partnerId: s.wwt, actorId: crypto.randomUUID(), reason: "exec relationship", category: "EXECUTIVE_DIRECTION" });
     check("selecting non-recommended route is an override", sel.isOverride);
     const ov = await db.query<{ original_recommendation: { recommendedPartnerId: string; ranking: unknown[] }; human_decision: { category: string } }>(`select original_recommendation, human_decision from pursuit_overrides where pursuit_id=$1 and field='partner' order by created_at desc limit 1`, [s.pursuitA]);
     check("override preserves original recommendation", ov.rows[0].original_recommendation.recommendedPartnerId === s.cdw);
@@ -153,7 +155,7 @@ async function main() {
     check("recommended vs selected are distinct on snapshot", (await db.query<{ recommended_partner_id: string; selected_partner_id: string }>(`select recommended_partner_id, selected_partner_id from pursuit_route_snapshots where pursuit_id=$1 and is_current`, [s.pursuitA])).rows[0].selected_partner_id === s.wwt);
     // Re-select CDW — partner change must NOT fork the pursuit.
     const pursuitCount1 = (await db.query<{ n: string }>(`select count(*)::text n from pursuits where id=$1`, [s.pursuitA])).rows[0].n;
-    await selectPartnerRoute(db, s.pursuitA, { partnerId: s.cdw, actorId: crypto.randomUUID(), reason: "back to recommended" });
+    await selectPartnerRoute(db, s.orgA, s.pursuitA, { partnerId: s.cdw, actorId: crypto.randomUUID(), reason: "back to recommended" });
     check("partner change does not fork the pursuit", (await db.query<{ n: string }>(`select count(*)::text n from pursuits where id=$1`, [s.pursuitA])).rows[0].n === pursuitCount1);
   });
 

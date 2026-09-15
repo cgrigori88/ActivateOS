@@ -27,6 +27,8 @@ export interface LaunchResult {
 export async function launchCampaign(
   db: pg.PoolClient,
   args: {
+    /** The caller's org (trusted server context) — the campaign must belong to it. */
+    orgId: string;
     campaignId: string;
     recipientEmail: string;
     recipientContactId?: string | null;
@@ -46,18 +48,25 @@ export async function launchCampaign(
     ? args.startDate
     : now.toISOString().slice(0, 10);
 
+  const { rows: owned } = await db.query(
+    `select 1 from campaigns where id = $1 and org_id = $2`,
+    [args.campaignId, args.orgId],
+  );
+  if (owned.length === 0) throw new Error("campaign not found");
+
   const { rows: approved } = await db.query<{ id: string; send_offset_days: number }>(
-    `select id, send_offset_days from campaign_touches
-     where campaign_id = $1 and status = 'approved' order by touch_no`,
-    [args.campaignId],
+    `select t.id, t.send_offset_days from campaign_touches t
+     join campaigns c on c.id = t.campaign_id and c.org_id = $2
+     where t.campaign_id = $1 and t.status = 'approved' order by t.touch_no`,
+    [args.campaignId, args.orgId],
   );
   if (approved.length === 0) throw new Error("no approved touches — approve at least one before launching");
 
   await db.query(
     `update campaigns set status = 'launched', launched_at = $2, start_date = $5,
        send_time = $6, send_tz = $7, recipient_email = $3, recipient_contact_id = $4
-     where id = $1`,
-    [args.campaignId, now, to, args.recipientContactId ?? null, startStr, time, tz],
+     where id = $1 and org_id = $8`,
+    [args.campaignId, now, to, args.recipientContactId ?? null, startStr, time, tz, args.orgId],
   );
 
   let firstAt: Date | null = null;
@@ -71,10 +80,14 @@ export async function launchCampaign(
   return { scheduled: approved.length, firstAt };
 }
 
-/** Send one touch to the campaign's recipient. Used by manual "send now" and the drainer. */
+/**
+ * Send one touch to the campaign's recipient. Used by manual "send now" and the drainer.
+ * `orgId` is the caller's org (trusted context); a touch whose campaign belongs to any
+ * other org reads as not found — fail closed before anything leaves.
+ */
 export async function sendTouchNow(
   db: pg.PoolClient,
-  args: { touchId: string; overrideTo?: string | null },
+  args: { orgId: string; touchId: string; overrideTo?: string | null },
 ): Promise<{ messageId: string }> {
   const { rows } = await db.query<{
     campaign_id: string;
@@ -84,7 +97,6 @@ export async function sendTouchNow(
     html_body: string | null;
     recipient_email: string | null;
     cc_emails: string[] | null;
-    org_id: string | null;
     company_id: string | null;
     m_company: string | null;
     motion_id: string | null;
@@ -93,15 +105,15 @@ export async function sendTouchNow(
     seller_name: string | null;
   }>(
     `select t.campaign_id, t.status, t.subject, t.text_body, t.html_body, t.cc_emails,
-            ca.recipient_email, ca.org_id, ca.company_id, ca.sender_name as campaign_sender,
+            ca.recipient_email, ca.company_id, ca.sender_name as campaign_sender,
             m.company_id as m_company, m.id as motion_id,
             m.partner_seller_id as seller_id, s.name as seller_name
      from campaign_touches t
      join campaigns ca on ca.id = t.campaign_id
      left join revenue_motions m on m.id = ca.motion_id
      left join sellers s on s.id = m.partner_seller_id
-     where t.id = $1`,
-    [args.touchId],
+     where t.id = $1 and ca.org_id = $2`,
+    [args.touchId, args.orgId],
   );
   if (rows.length === 0) throw new Error("touch not found");
   const t = rows[0];
@@ -117,7 +129,7 @@ export async function sendTouchNow(
   const localPart = senderName.toLowerCase().replace(/[^a-z]+/g, ".").replace(/^\.|\.$/g, "") || "team";
 
   const result = await sendOutbound(db, {
-    orgId: t.org_id,
+    orgId: args.orgId,
     companyId,
     motionId: t.motion_id,
     identity: { displayName: senderName, localPart },
@@ -136,12 +148,12 @@ export async function sendTouchNow(
   );
   await db.query(
     `update campaigns set status = 'completed'
-     where id = $1 and not exists (
+     where id = $1 and org_id = $2 and not exists (
        select 1 from campaign_touches x where x.campaign_id = $1 and x.status in ('scheduled','approved')
      )`,
-    [t.campaign_id],
+    [t.campaign_id, args.orgId],
   );
-  await deriveEngagement(db, { orgId: t.org_id, companyId });
+  await deriveEngagement(db, { orgId: args.orgId, companyId });
   return { messageId: result.messageId };
 }
 

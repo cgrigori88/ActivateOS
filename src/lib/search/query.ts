@@ -103,7 +103,8 @@ export async function resolveShowMeWithTotals(
   db: PoolClient, orgId: string, q: ParsedQuery, companyIds: string[] | null,
 ): Promise<{ hits: QueryHit[]; amountUsd: number }> {
   const scoped = companyIds != null;
-  const where: string[] = ["o.stage not in ('closed_won','closed_lost')"]; const params: unknown[] = [];
+  // Tenant isolation first: the org predicate is $1 and precedes every filter and the limit.
+  const where: string[] = ["o.org_id = $1", "o.stage not in ('closed_won','closed_lost')"]; const params: unknown[] = [orgId];
   const P = (v: unknown) => { params.push(v); return `$${params.length}`; };
   if (q.partner) where.push(`pa.name ilike ${P(`%${q.partner}%`)}`);
   if (q.stages.length) where.push(`o.stage = any(${P(q.stages)})`);
@@ -238,7 +239,7 @@ export const EXPLAIN_ASPECTS: ExplainAspect[] = ["route", "timing", "readiness",
  * `aspect`, when given, replaces the keyword sniffing — nothing else about resolution changes.
  */
 export async function resolveExplain(
-  db: PoolClient, q: string, orgId?: string, aspect?: ExplainAspect | null,
+  db: PoolClient, q: string, orgId: string, aspect?: ExplainAspect | null,
 ): Promise<Explanation | { note: string }> {
   // Identify the subject account by name (the only entity EXPLAIN grounds against today). Leading
   // question words are stripped first so "Who is the economic buyer for Globex?" grounds against
@@ -252,15 +253,15 @@ export async function resolveExplain(
   const co = (await db.query<{ id: string; legal_name: string }>(
     `select id, legal_name from companies c
       where c.legal_name ilike $1
-      order by (exists (select 1 from pursuits p where p.account_id = c.id)) desc,
-               (exists (select 1 from opportunities o where o.company_id = c.id)) desc,
+      order by (exists (select 1 from pursuits p where p.account_id = c.id and p.org_id = $3)) desc,
+               (exists (select 1 from opportunities o where o.company_id = c.id and o.org_id = $3)) desc,
                (c.legal_name ilike $2) desc,
                length(c.legal_name) asc
-      limit 1`, [`%${candidate}%`, `${candidate}%`])).rows[0];
+      limit 1`, [`%${candidate}%`, `${candidate}%`, orgId])).rows[0];
   if (!co) return { note: "No matching records." };
 
   const pursuit = (await db.query<{ id: string; use_case: string | null; tim: number | null; why_now: unknown }>(
-    `select id, use_case, current_timing_score tim, why_now from pursuits where account_id=$1 order by created_at asc limit 1`, [co.id])).rows[0];
+    `select id, use_case, current_timing_score tim, why_now from pursuits where account_id=$1 and org_id = $2 order by created_at asc limit 1`, [co.id, orgId])).rows[0];
 
   // A supplied aspect wins outright; otherwise the facet is sniffed from the words, as before.
   const pin = (a: ExplainAspect) => aspect === a;
@@ -388,7 +389,7 @@ export async function resolveExplain(
          from pursuit_route_snapshots s
          left join partners rp on rp.id = s.recommended_partner_id
          left join partners sp on sp.id = s.selected_partner_id
-        where s.pursuit_id=$1 and s.is_current limit 1`, [pursuit.id])).rows[0];
+        where s.pursuit_id=$1 and s.org_id = $2 and s.is_current limit 1`, [pursuit.id, orgId])).rows[0];
     if (route && (route.rec || route.sel)) {
       const overridden = !!(route.sel && route.rec && route.sel !== route.rec);
       const lines: { label: string; value: string }[] = [];
@@ -417,9 +418,9 @@ export async function resolveExplain(
         `select rr.detail, rr.reason_code
            from route_candidates rc
            join route_candidate_reasons rr on rr.candidate_id = rc.id
-          where rc.route_snapshot_id = $1 and rc.is_recommended and rr.polarity = 1
+          where rc.route_snapshot_id = $1 and rc.org_id = $2 and rc.is_recommended and rr.polarity = 1
             and rr.disclosure_class not in ('TRANSACTION_CONFIDENTIAL','RESTRICTED','PII')
-          order by rr.weight desc nulls last limit 4`, [route.snapshot_id])).rows;
+          order by rr.weight desc nulls last limit 4`, [route.snapshot_id, orgId])).rows;
       for (const r of reasons) lines.push({ label: "Because", value: r.detail ?? r.reason_code.replace(/_/g, " ") });
       return {
         title: `Why ${co.legal_name} is routed ${route.sel ? `through ${route.sel}` : "as recommended"}`,

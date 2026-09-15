@@ -21,6 +21,7 @@
  *   DEMO_URL=… npx tsx scripts/lifecycle-query-verify.ts
  */
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { assertSeededClone } from "./seeded-clone";
 import { routeIntent, resolveUtterance, resolveStructured, listIntents, getIntent } from "../src/lib/search/registry";
 import "../src/lib/search/intents";
 import { classifyIntent } from "../src/lib/search/query";
@@ -53,6 +54,9 @@ function row(over: Partial<LifecycleFactRow> = {}): LifecycleFactRow {
 }
 
 async function main() {
+  // H1A: this suite commits through real application paths — refuse the canonical world;
+  // verify-run.ts gives it a disposable seeded clone (scripts/seeded-clone.ts).
+  await assertSeededClone(pool);
   const db = (await pool.connect()) as PoolClient;
   const one = async <T extends QueryResultRow>(sql: string, p: unknown[] = []): Promise<T> => (await db.query<T>(sql, p)).rows[0] as T;
   try {

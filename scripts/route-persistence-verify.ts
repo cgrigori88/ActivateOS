@@ -16,6 +16,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
+import { assertSeededClone } from "./seeded-clone";
 import { dispatchSkill } from "../src/lib/pursuits/federation/skills";
 import { getRouteComparison } from "../src/lib/pursuits/read-models/route";
 import { recomputeRoute, persistRoute } from "../src/lib/routing/route-model";
@@ -38,6 +39,9 @@ const snapshot = async (pool: Pool, pid: string) => (await pool.query<{ recommen
 
 async function main() {
   const pool = new Pool({ connectionString: URL });
+  // H1A: this suite commits through real application paths — refuse the canonical world;
+  // verify-run.ts gives it a disposable seeded clone (scripts/seeded-clone.ts).
+  await assertSeededClone(pool);
   try {
     // A CDW-recommended pursuit with a WWT alternative, not already decided by another run.
     const pick = (await pool.query<{ pursuit_id: string; org_id: string }>(

@@ -14,18 +14,18 @@ export interface GovernanceHealth {
   outbox: Record<string, number>;        // by status
 }
 
-// The org scope comes from RLS (app.org_id GUC), so these counts are already this
-// tenant's rows — no interpolated predicate (the table/column names are fixed literals).
-async function countBy(db: PoolClient, table: "governed_action_invocations" | "recompute_requests" | "action_outbox"): Promise<Record<string, number>> {
-  const { rows } = await db.query<{ k: string; n: string }>(`select status as k, count(*)::text n from ${table} group by status`);
+// The app connects as the table owner (BYPASSRLS), so RLS does not scope these counts —
+// each carries an explicit `org_id = $1` (the table/column names are fixed literals).
+async function countBy(db: PoolClient, orgId: string, table: "governed_action_invocations" | "recompute_requests" | "action_outbox"): Promise<Record<string, number>> {
+  const { rows } = await db.query<{ k: string; n: string }>(`select status as k, count(*)::text n from ${table} where org_id = $1 group by status`, [orgId]);
   return Object.fromEntries(rows.map((r) => [r.k, Number(r.n)]));
 }
 
-export async function governanceHealth(db: PoolClient, _orgId: string): Promise<GovernanceHealth> {
+export async function governanceHealth(db: PoolClient, orgId: string): Promise<GovernanceHealth> {
   return {
-    invocations: await countBy(db, "governed_action_invocations"),
-    recomputes: await countBy(db, "recompute_requests"),
-    outbox: await countBy(db, "action_outbox"),
+    invocations: await countBy(db, orgId, "governed_action_invocations"),
+    recomputes: await countBy(db, orgId, "recompute_requests"),
+    outbox: await countBy(db, orgId, "action_outbox"),
   };
 }
 

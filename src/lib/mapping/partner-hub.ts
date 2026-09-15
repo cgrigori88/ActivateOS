@@ -38,23 +38,23 @@ export async function partnerHub(
       `select count(*)::int total,
               count(*) filter (where status in ('active','approved'))::int active
        from revenue_motions
-       where partner_id is not null and ($1::uuid is null or partner_id = $1)`,
-    [args.partnerId],
+       where org_id = $2 and partner_id is not null and ($1::uuid is null or partner_id = $1)`,
+    [args.partnerId, args.orgId],
   );
   const campaigns = await db.query<{ total: number; live: number }>(
       `select count(*)::int total,
               count(*) filter (where ca.status in ('launched','completed'))::int live
-       from campaigns ca join revenue_motions m on m.id = ca.motion_id
-       where m.partner_id is not null and ($1::uuid is null or m.partner_id = $1) and ca.dismissed_at is null`,
-    [args.partnerId],
+       from campaigns ca join revenue_motions m on m.id = ca.motion_id and m.org_id = $2
+       where ca.org_id = $2 and m.partner_id is not null and ($1::uuid is null or m.partner_id = $1) and ca.dismissed_at is null`,
+    [args.partnerId, args.orgId],
   );
   const touches = await db.query<{ sent: number }>(
       `select count(*)::int sent
        from campaign_touches t
-       join campaigns ca on ca.id = t.campaign_id
-       join revenue_motions m on m.id = ca.motion_id
+       join campaigns ca on ca.id = t.campaign_id and ca.org_id = $2
+       join revenue_motions m on m.id = ca.motion_id and m.org_id = $2
        where t.status = 'sent' and m.partner_id is not null and ($1::uuid is null or m.partner_id = $1)`,
-    [args.partnerId],
+    [args.partnerId, args.orgId],
   );
   const opps = await db.query<{ open_n: number; open_usd: string; won_n: number; won_usd: string }>(
       `select
@@ -62,9 +62,9 @@ export async function partnerHub(
          coalesce(sum(o.amount_usd) filter (where o.stage not in ('closed_won','closed_lost')), 0) as open_usd,
          count(*) filter (where o.stage = 'closed_won')::int as won_n,
          coalesce(sum(o.amount_usd) filter (where o.stage = 'closed_won'), 0) as won_usd
-       from opportunities o join revenue_motions m on m.id = o.motion_id
-       where m.partner_id is not null and ($1::uuid is null or m.partner_id = $1)`,
-    [args.partnerId],
+       from opportunities o join revenue_motions m on m.id = o.motion_id and m.org_id = $2
+       where o.org_id = $2 and m.partner_id is not null and ($1::uuid is null or m.partner_id = $1)`,
+    [args.partnerId, args.orgId],
   );
 
   return {

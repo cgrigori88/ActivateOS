@@ -33,13 +33,13 @@ function dimBand(v: number | null): RouteDimensionCell {
 
 async function buildCandidate(db: PoolClient, snapshotId: string, candId: string, row: CandRow, caller: Caller, dimensionKeys: string[]): Promise<RouteCandidateView> {
   const dimsRows = await db.query<{ dimension: string; normalized_value: string | null }>(
-    `select dimension, normalized_value from route_candidate_dimensions where candidate_id = $1`, [candId]);
+    `select dimension, normalized_value from route_candidate_dimensions where candidate_id = $1`, [candId]);   // candId comes from the org-scoped candidate query
   const dimMap = new Map(dimsRows.rows.map((d) => [d.dimension, d.normalized_value == null ? null : Number(d.normalized_value) * 100]));
   const dimensions: Record<string, RouteDimensionCell> = {};
   for (const k of dimensionKeys) dimensions[k] = dimBand(dimMap.has(k) ? dimMap.get(k)! : null);   // absent dimension = unknown (§17)
 
   const reasonRows = await db.query<{ reason_code: string; polarity: number; detail: string; ref_type: string | null; ref_id: string | null; disclosure_class: string }>(
-    `select reason_code, polarity, detail, ref_type, ref_id, disclosure_class from route_candidate_reasons where candidate_id = $1`, [candId]);
+    `select reason_code, polarity, detail, ref_type, ref_id, disclosure_class from route_candidate_reasons where candidate_id = $1 and org_id = $2`, [candId, caller.orgId]);
   const shareable: ScoreReason[] = [];
   const internal: ScoreReason[] = [];
   for (const r of reasonRows.rows) {
@@ -74,7 +74,7 @@ interface CandRow { id: string; label: string; route_topology: string; rank: num
 export async function getRouteComparison(db: PoolClient, caller: Caller, pursuitId: string): Promise<RouteComparisonView> {
   const dimensionKeys = ["account_relationship", "product_capability", "seller_coverage", "transaction_adjacency", "territory_alignment"];
   const snap = await db.query<{ id: string; recommended_partner_id: string | null; selected_partner_id: string | null; route_status: string }>(
-    `select id, recommended_partner_id, selected_partner_id, route_status from pursuit_route_snapshots where pursuit_id = $1 and is_current`, [pursuitId]);
+    `select id, recommended_partner_id, selected_partner_id, route_status from pursuit_route_snapshots where pursuit_id = $1 and org_id = $2 and is_current`, [pursuitId, caller.orgId]);
   if (!snap.rows[0]) return { path: [], recommended: null, selected: null, selectionMatchesRecommendation: true, overrideReason: null, overrideCategory: null, alternatives: [], changeEvents: [], dimensionKeys, decided: false, selectedKey: null, recomputePending: false };
   const snapshotId = snap.rows[0].id;
   const decided = snap.rows[0].route_status === "SELECTED";
@@ -87,7 +87,7 @@ export async function getRouteComparison(db: PoolClient, caller: Caller, pursuit
        from route_candidates rc
        left join partners p on p.id = rc.partner_id
        left join partners d on d.id = rc.distributor_id
-      where rc.route_snapshot_id = $1 order by rc.rank`, [snapshotId]);
+      where rc.route_snapshot_id = $1 and rc.org_id = $2 order by rc.rank`, [snapshotId, caller.orgId]);
 
   const views: RouteCandidateView[] = [];
   for (const c of cands.rows) views.push(await buildCandidate(db, snapshotId, c.id, { ...c, total_score: c.total_score == null ? null : Number(c.total_score), partner_activation_score: num(c.partner_activation_score), suitability_score: num(c.suitability_score), activation_readiness_score: num(c.activation_readiness_score), candidate_confidence: num(c.candidate_confidence) }, caller, dimensionKeys));
@@ -97,13 +97,13 @@ export async function getRouteComparison(db: PoolClient, caller: Caller, pursuit
   // to the candidates the panel actually renders; internal-only (the shareable projection keeps
   // its generalized reasons — the raw win/loss figures never enter the partner payload).
   if (caller.canSeeInternal) {
-    const ctx = (await db.query<{ org_id: string; node: string | null }>(
-      `select org_id, product_category_id node from pursuits where id = $1`, [pursuitId])).rows[0];
+    const ctx = (await db.query<{ node: string | null }>(
+      `select product_category_id node from pursuits where id = $1 and org_id = $2`, [pursuitId, caller.orgId])).rows[0];
     if (ctx) {
       for (let i = 0; i < views.length && i < 4; i++) {
         const pid = cands.rows[i].partner_id;
         if (!pid) continue;
-        const ev = await getExecutionEvidence(db, ctx.org_id, pid, ctx.node);
+        const ev = await getExecutionEvidence(db, caller.orgId, pid, ctx.node);
         views[i].executionHistory = ev.lines.map((l) => ({ text: l.text, polarity: l.polarity, refType: l.refType, refId: l.refId }));
         views[i].executionSummary = { won: ev.won, lost: ev.lost, sample: ev.sample };
       }
@@ -121,23 +121,23 @@ export async function getRouteComparison(db: PoolClient, caller: Caller, pursuit
   // is simply never pending — a catalog check, never a failing query that would break the read.
   const hasRecompute = (await db.query<{ r: string | null }>(`select to_regclass('public.recompute_requests') as r`)).rows[0]?.r;
   const recomputePending = hasRecompute
-    ? Number((await db.query<{ n: string }>(`select count(*)::text n from recompute_requests where pursuit_id = $1 and status in ('PENDING','RUNNING')`, [pursuitId])).rows[0].n) > 0
+    ? Number((await db.query<{ n: string }>(`select count(*)::text n from recompute_requests where pursuit_id = $1 and org_id = $2 and status in ('PENDING','RUNNING')`, [pursuitId, caller.orgId])).rows[0].n) > 0
     : false;
 
   // Participant path.
   const parts = await db.query<{ participant_role: string; sequence: number; pname: string | null; dname: string | null }>(
     `select rp.participant_role, rp.sequence, p.name pname, d.name dname from pursuit_route_participants rp
        left join partners p on p.id = rp.partner_id left join partners d on d.id = rp.distributor_id
-      where rp.route_snapshot_id = $1 order by rp.sequence`, [snapshotId]);
+      where rp.route_snapshot_id = $1 and rp.org_id = $2 order by rp.sequence`, [snapshotId, caller.orgId]);
   const path: RoutePathStep[] = parts.rows.map((p) => ({ role: p.participant_role, label: p.pname ?? p.dname ?? p.participant_role.charAt(0) + p.participant_role.slice(1).toLowerCase(), sequence: p.sequence }));
 
   // Override reason (latest partner override) + route change events.
   const ov = await db.query<{ reason: string | null; human_decision: { category?: string } }>(
-    `select reason, human_decision from pursuit_overrides where pursuit_id = $1 and field = 'partner' order by created_at desc limit 1`, [pursuitId]);
+    `select reason, human_decision from pursuit_overrides where pursuit_id = $1 and org_id = $2 and field = 'partner' order by created_at desc limit 1`, [pursuitId, caller.orgId]);
   const selectionMatches = (snap.rows[0].selected_partner_id ?? null) === (snap.rows[0].recommended_partner_id ?? null) || !selected;
   const synthetic = await hasSyntheticTx(db, caller.orgId);
   const changes = await db.query<{ recorded_at: Date; before_state: { recommendedPartnerId?: string } | null; after_state: { recommendedPartnerId?: string } | null; reason: string | null }>(
-    `select recorded_at, before_state, after_state, reason from change_ledger where pursuit_id = $1 and change_type = 'ROUTE_RECOMMENDATION_CHANGED' order by recorded_at asc`, [pursuitId]);
+    `select recorded_at, before_state, after_state, reason from change_ledger where pursuit_id = $1 and org_id = $2 and change_type = 'ROUTE_RECOMMENDATION_CHANGED' order by recorded_at asc`, [pursuitId, caller.orgId]);
   const nameOf = async (id: string | null | undefined) => id ? (await db.query<{ name: string }>(`select name from partners where id = $1`, [id])).rows[0]?.name ?? "—" : "Direct";
   const changeEvents = [];
   for (const c of changes.rows) changeEvents.push({ at: c.recorded_at.toISOString(), before: await nameOf(c.before_state?.recommendedPartnerId), after: await nameOf(c.after_state?.recommendedPartnerId), trigger: c.reason ?? "New intelligence", synthetic });

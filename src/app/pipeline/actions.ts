@@ -24,18 +24,18 @@ import { assessMeddpicc, upsertElement, type ElementKey, type Status } from "@/l
 export async function setMeddpiccAction(opportunityId: string, element: ElementKey, formData: FormData): Promise<void> {
   const status = String(formData.get("status") ?? "unknown") as Status;
   const notes = String(formData.get("notes") ?? "").trim() || null;
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await upsertElement(db, { opportunityId, element, status, notes, source: "human", updatedBy: "web" });
+    await upsertElement(db, orgId, { opportunityId, element, status, notes, source: "human", updatedBy: "web" });
   });
   revalidatePath("/pipeline");
 }
 
 /** Draft a full MEDDPICC assessment from the account's evidence & stakeholders. */
 export async function assessMeddpiccAction(opportunityId: string): Promise<void> {
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await assessMeddpicc(db, opportunityId);
+    await assessMeddpicc(db, orgId, opportunityId);
   });
   revalidatePath("/pipeline");
 }
@@ -44,17 +44,17 @@ export async function advanceOpportunityAction(
   opportunityId: string,
   to: Stage,
 ): Promise<void> {
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await advanceOpportunity(db, opportunityId, to);
+    await advanceOpportunity(db, orgId, opportunityId, to);
   });
   revalidatePath("/pipeline");
 }
 
 export async function promoteMotionAction(motionId: string): Promise<void> {
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await createOpportunityFromMotion(db, motionId);
+    await createOpportunityFromMotion(db, orgId, motionId);
   });
   revalidatePath("/pipeline");
   revalidatePath(`/briefs/${motionId}`);
@@ -65,19 +65,18 @@ export async function registerDealAction(opportunityId: string, formData: FormDa
   const vendor = String(formData.get("vendor") ?? "").trim() || null;
   const product = String(formData.get("product") ?? "").trim() || null;
   const protectDays = Number(formData.get("protectDays") ?? 90) || 90;
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
     const { rows } = await db.query<{
-      org_id: string | null;
       company_id: string;
       motion_id: string | null;
       amount_usd: string | null;
       partner_id: string | null;
     }>(
-      `select o.org_id, o.company_id, o.motion_id, o.amount_usd, m.partner_id
-       from opportunities o left join revenue_motions m on m.id = o.motion_id
-       where o.id = $1`,
-      [opportunityId],
+      `select o.company_id, o.motion_id, o.amount_usd, m.partner_id
+       from opportunities o left join revenue_motions m on m.id = o.motion_id and m.org_id = o.org_id
+       where o.id = $1 and o.org_id = $2`,
+      [opportunityId, orgId],
     );
     if (rows.length === 0) throw new Error("opportunity not found");
     const o = rows[0];
@@ -86,7 +85,7 @@ export async function registerDealAction(opportunityId: string, formData: FormDa
         (org_id, opportunity_id, company_id, motion_id, partner_id, vendor, product,
          amount_usd, status, submitted_at, protected_until)
        values ($1, $2, $3, $4, $5, $6, $7, $8, 'submitted', now(), (now() + make_interval(days => $9))::date)`,
-      [o.org_id, opportunityId, o.company_id, o.motion_id, o.partner_id, vendor, product, o.amount_usd, protectDays],
+      [orgId, opportunityId, o.company_id, o.motion_id, o.partner_id, vendor, product, o.amount_usd, protectDays],
     );
   });
   revalidatePath("/pipeline");
@@ -96,15 +95,16 @@ export async function registerDealAction(opportunityId: string, formData: FormDa
 export async function setRegistrationStatusAction(registrationId: string, status: string): Promise<void> {
   const allowed = ["submitted", "approved", "rejected", "expired"];
   if (!allowed.includes(status)) throw new Error("invalid status");
-  await withTenant(async (db) => {
+  await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    await db.query(
+    const res = await db.query(
       `update deal_registrations
          set status = $2, decided_at = case when $2 in ('approved','rejected') then now() else decided_at end,
              updated_at = now()
-       where id = $1`,
-      [registrationId, status],
+       where id = $1 and org_id = $3`,
+      [registrationId, status, orgId],
     );
+    if ((res.rowCount ?? 0) === 0) throw new Error("registration not found");
   });
   revalidatePath("/pipeline");
 }
@@ -123,9 +123,15 @@ export async function setStakeholderAction(
     // evidence, so it lands as an honest `unverified` assertion (verification happens on the
     // Pursuit's stakeholder panel, with evidence). The 0097 trigger makes the old direct role
     // UPDATE an error, not a convention.
+    // stakeholders has no org_id: gate on the opportunity belonging to the caller's org.
+    const owned = await db.query(`select 1 from opportunities where id = $1 and org_id = $2`, [opportunityId, orgId]);
+    if (owned.rows.length === 0) throw new Error("opportunity not found");
     await db.query(
-      `update stakeholders set sentiment = $3 where opportunity_id = $1 and contact_id = $2`,
-      [opportunityId, contactId, sentiment],
+      `update stakeholders s set sentiment = $3
+         from opportunities o
+        where o.id = s.opportunity_id and o.org_id = $4
+          and s.opportunity_id = $1 and s.contact_id = $2`,
+      [opportunityId, contactId, sentiment, orgId],
     );
     const current = (await db.query<{ role: string }>(
       `select role from stakeholders where opportunity_id = $1 and contact_id = $2`, [opportunityId, contactId])).rows[0];

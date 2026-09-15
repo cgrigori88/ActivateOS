@@ -50,7 +50,7 @@ export default async function ReviewPage({
   const sp = await searchParams;
   const byPartner = sp.group === "partner";
 
-  const { all, sources, companyPartners } = await withTenant(async (db) => {
+  const { all, sources, companyPartners } = await withTenant(async (db, orgId) => {
     const { rows: all } = await db.query<Item>(
       `select rq.id, rq.reason, rq.created_at,
             e.claim, e.raw_excerpt, e.source_type, e.status, e.computed_confidence, e.observed_at,
@@ -58,9 +58,10 @@ export default async function ReviewPage({
      from review_queue rq
      join evidence e on e.id = rq.evidence_id
      left join companies c on c.id = e.company_id
-     where rq.status = 'pending'
+     where rq.status = 'pending' and rq.org_id = $1
      order by (rq.reason = 'contradiction') desc, (rq.reason = 'checker_disagreement') desc, rq.created_at
      limit 300`,
+      [orgId],
     );
     const { rows: sources } = await db.query<{ name: string; trust: string; rate: string }>(
       `select name, round(trust_score, 2) as trust, round(audit_sample_rate * 100) as rate
@@ -75,9 +76,10 @@ export default async function ReviewPage({
         `select distinct pm.company_id, p.name as partner_name
        from population_members pm
        join account_populations ap on ap.id = pm.population_id and ap.partner_id is not null and ap.status = 'approved'
+         and ap.org_id = $2
        join partners p on p.id = ap.partner_id
        where pm.company_id = any($1)`,
-        [companyIds],
+        [companyIds, orgId],
       );
       for (const r of pm) companyPartners.set(r.company_id, [...(companyPartners.get(r.company_id) ?? []), r.partner_name]);
     }

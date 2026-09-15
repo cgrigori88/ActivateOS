@@ -101,7 +101,7 @@ export async function decideRouteAction(
     if (role !== "owner" && role !== "operator") return { ok: false as const, error: "Read-only access — ask an owner to make you an operator." };
 
     // Keep DEMO/synthetic pursuits labeled DEMO through the ledger + recompute (never PRODUCTION).
-    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1`, [pursuitId])).rows[0]?.data_environment ?? "PRODUCTION";
+    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId])).rows[0]?.data_environment ?? "PRODUCTION";
 
     const skillId = mode === "override" ? "override_partner_route" : "select_partner_route";
     const dispatch = await dispatchSkill(db, skillId, { type: "USER", id: null, orgId, role }, {
@@ -140,7 +140,7 @@ export async function decideTeamAction(
     if (!(await experienceEnabledFor(db, orgId))) return { ok: false as const, error: "Not enabled for this tenant." };
     const role = await currentRole(db);
     if (role !== "owner" && role !== "operator") return { ok: false as const, error: "Read-only access — ask an owner to make you an operator." };
-    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1`, [pursuitId])).rows[0]?.data_environment ?? "PRODUCTION";
+    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId])).rows[0]?.data_environment ?? "PRODUCTION";
     const dispatch = await dispatchSkill(db, skillId, { type: "USER", id: null, orgId, role }, {
       pursuitId, args: { memberId }, dataEnvironment: env });
     return { ok: dispatch.status === "EXECUTED", status: dispatch.status, error: dispatch.status === "EXECUTED" ? undefined : (dispatch.reason ?? "Team decision was not accepted.") };
@@ -172,7 +172,7 @@ export async function assertStakeholderAction(pursuitId: string, formData: FormD
     if (!(await experienceEnabledFor(db, orgId))) return { ok: false as const };
     const roleName = await currentRole(db);
     if (roleName !== "owner" && roleName !== "operator") return { ok: false as const };
-    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1`, [pursuitId])).rows[0]?.data_environment ?? "PRODUCTION";
+    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId])).rows[0]?.data_environment ?? "PRODUCTION";
     const dispatch = await dispatchSkill(db, "assert_stakeholder_role", { type: "USER", id: null, orgId, role: roleName }, {
       pursuitId,
       args: { opportunityId, contactId, role, assertionState, source: "human:pursuit-detail", evidence, basis: evidence ? ["human_statement"] : null },

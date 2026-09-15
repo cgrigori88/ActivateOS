@@ -361,7 +361,7 @@ async function main() {
       // assessMeddpicc deliberately never overwrites a human-set element. Clear it inside this
       // rolled-back transaction so the AI proposal actually runs and can be inspected.
       await db.query(`delete from opportunity_meddpicc where opportunity_id = $1 and element = 'economic_buyer'`, [oppRow.id]);
-      await assessMeddpicc(db, oppRow.id);
+      await assessMeddpicc(db, org, oppRow.id);
       const eb = await one<{ status: string; notes: string }>(
         `select status, notes from opportunity_meddpicc where opportunity_id = $1 and element = 'economic_buyer'`, [oppRow.id]);
       ok("an UNVERIFIED canonical assertion can never be reported as a STRONG economic buyer",
@@ -374,7 +374,7 @@ async function main() {
       [org, await cid("Globex")]);
     if (gOpp) {
       await db.query(`delete from opportunity_meddpicc where opportunity_id = $1 and element = 'metrics'`, [gOpp.id]);
-      await assessMeddpicc(db, gOpp.id);
+      await assessMeddpicc(db, org, gOpp.id);
       const met = await one<{ notes: string }>(
         `select notes from opportunity_meddpicc where opportunity_id = $1 and element = 'metrics'`, [gOpp.id]);
       ok("MEDDPICC `metrics` consumes the Value Case, and distinguishes our revenue from the buyer's metric",

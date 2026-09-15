@@ -31,14 +31,15 @@ export function computeMotionDiff(
 
 export async function approveMotion(
   db: pg.PoolClient,
+  orgId: string,
   motionId: string,
   edits: Partial<Record<EditableField, string>> = {},
 ): Promise<{ edited: boolean }> {
   const { rows } = await db.query(
     `select id, org_id, company_id, status, thesis, trigger_summary,
             primary_persona, secondary_persona, cta
-     from revenue_motions where id = $1`,
-    [motionId],
+     from revenue_motions where id = $1 and org_id = $2`,
+    [motionId, orgId],
   );
   if (rows.length === 0) throw new Error(`motion not found: ${motionId}`);
   const motion = rows[0];
@@ -48,12 +49,12 @@ export async function approveMotion(
   const edited = Object.keys(diff).length > 0;
 
   const sets: string[] = [`status = 'approved'`, `approved_at = now()`];
-  const params: unknown[] = [motionId];
+  const params: unknown[] = [motionId, orgId];
   for (const [field, change] of Object.entries(diff)) {
     params.push(change.to);
     sets.push(`${field} = $${params.length}`);
   }
-  await db.query(`update revenue_motions set ${sets.join(", ")} where id = $1`, params);
+  await db.query(`update revenue_motions set ${sets.join(", ")} where id = $1 and org_id = $2`, params);
 
   await db.query(
     `update agent_runs set human_decision = $2, human_diff = $3
@@ -69,11 +70,11 @@ export async function approveMotion(
   return { edited };
 }
 
-export async function rejectMotion(db: pg.PoolClient, motionId: string, note?: string): Promise<void> {
+export async function rejectMotion(db: pg.PoolClient, orgId: string, motionId: string, note?: string): Promise<void> {
   const { rows } = await db.query(
-    `update revenue_motions set status = 'abandoned' where id = $1 and status = 'draft'
+    `update revenue_motions set status = 'abandoned' where id = $1 and org_id = $2 and status = 'draft'
      returning org_id, company_id`,
-    [motionId],
+    [motionId, orgId],
   );
   if (rows.length === 0) throw new Error(`motion not found or not a draft: ${motionId}`);
 

@@ -57,19 +57,19 @@ export async function dealMomentum(db: Db, orgId: string, opps: MomentumInput[])
        left join revenue_motions m on m.id = ca.motion_id
        join email_events e on e.message_id = t.message_id and e.event_type = 'REPLIED'
          and e.occurred_at > now() - interval '${WINDOW_DAYS} days'
-       where coalesce(ca.company_id, m.company_id) = any($1)
+       where coalesce(ca.company_id, m.company_id) = any($1) and ca.org_id = $2
        group by 1`,
-      [companyIds],
+      [companyIds, orgId],
     ),
     db.query<{ company_id: string; n: string }>(
       `select coalesce(ca.company_id, m.company_id) as company_id, count(distinct t.id) as n
        from campaign_touches t
        join campaigns ca on ca.id = t.campaign_id
        left join revenue_motions m on m.id = ca.motion_id
-       where coalesce(ca.company_id, m.company_id) = any($1)
+       where coalesce(ca.company_id, m.company_id) = any($1) and ca.org_id = $2
          and t.status = 'sent' and t.sent_at > now() - interval '${WINDOW_DAYS} days'
        group by 1`,
-      [companyIds],
+      [companyIds, orgId],
     ),
     db.query<{ company_id: string; n: string }>(
       `select jp.company_id, count(*) as n
@@ -84,8 +84,8 @@ export async function dealMomentum(db: Db, orgId: string, opps: MomentumInput[])
     ),
     db.query<{ company_id: string; last: Date | null }>(
       `select company_id, max(last_engaged_at) as last from engagement_scores
-       where company_id = any($1) group by company_id`,
-      [companyIds],
+       where company_id = any($1) and org_id = $2 group by company_id`,
+      [companyIds, orgId],
     ),
   ]);
 

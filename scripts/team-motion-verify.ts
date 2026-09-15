@@ -17,6 +17,7 @@
  *   npx tsx scripts/team-motion-verify.ts
  */
 import { Pool, type PoolClient } from "pg";
+import { assertSeededClone } from "./seeded-clone";
 import { dispatchSkill, type Actor } from "../src/lib/pursuits/federation/skills";
 import { requiredRolesMet } from "../src/lib/routing/team";
 import { drainRecomputeQueue } from "../src/lib/pursuits/federation/events";
@@ -34,6 +35,9 @@ async function tx<T>(pool: Pool, orgId: string, fn: (db: PoolClient) => Promise<
 }
 async function main() {
   const pool = new Pool({ connectionString: URL });
+  // H1A: this suite commits through real application paths — refuse the canonical world;
+  // verify-run.ts gives it a disposable seeded clone (scripts/seeded-clone.ts).
+  await assertSeededClone(pool);
   const num = async (sql: string, p: unknown[]) => Number((await pool.query<{ n: string }>(sql, p)).rows[0].n);
   const one = async <T extends import("pg").QueryResultRow>(sql: string, p: unknown[]): Promise<T> => (await pool.query<T>(sql, p)).rows[0] as T;
   try {

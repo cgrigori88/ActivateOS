@@ -42,6 +42,14 @@ export interface SuiteSpec {
    * a reason that has nothing to do with routing.
    */
   env?: Record<string, string>;
+  /**
+   * H1A — certification integrity. `SEEDED_CLONE`: the suite needs the canonical world's content
+   * but WRITES through real application paths that commit on their own connections. verify-run.ts
+   * runs it on a disposable clone of the canonical world (never the world itself), and the suite
+   * refuses to run on anything that is not a marked clone (scripts/seeded-clone.ts). Measured, not
+   * assumed: each of these moved the whole-world fingerprint when run against the canonical world.
+   */
+  isolation?: "SEEDED_CLONE";
 }
 
 /** The full experience chain plus outcome learning — see SuiteSpec.env. */
@@ -65,13 +73,13 @@ export const SUITES: SuiteSpec[] = [
   // ── SEEDED: reads the canonical synthetic demo world; nothing to read on a
   //    bare migrated database.
   { name: "interpret", cls: "SEEDED", why: "resolves Ask intents against canonical demo accounts" },
-  { name: "lifecycle-query", cls: "SEEDED", why: "queries the canonical lifecycle projections" },
-  { name: "lifecycle-acceptance", cls: "SEEDED", why: "walks the canonical lifecycle acceptance path", env: OUTCOME_LEARNING_ENV },
+  { name: "lifecycle-query", cls: "SEEDED", why: "queries the canonical lifecycle projections; H1A: rewrites canonical facts in place (same count, new content) — measured by the whole-world fingerprint, so it runs on a disposable seeded clone", isolation: "SEEDED_CLONE" },
+  { name: "lifecycle-acceptance", cls: "SEEDED", why: "walks the canonical lifecycle acceptance path; H1A: commits attribution, ledger, governed invocations, a new opportunity, stage transitions, outcomes, overrides and team members — measured by the whole-world fingerprint, so it runs on a disposable seeded clone", env: OUTCOME_LEARNING_ENV, isolation: "SEEDED_CLONE" },
   { name: "value-case", cls: "SEEDED", why: "reads canonical value cases and their bands" },
   { name: "stakeholder-intel", cls: "SEEDED", why: "reads canonical stakeholder assertions" },
-  { name: "partner-intel", cls: "SEEDED", why: "reads canonical partner activation history" },
-  { name: "outcome-bridge", cls: "SEEDED", why: "bridges canonical opportunities to pursuit outcomes", env: OUTCOME_LEARNING_ENV },
-  { name: "motion-intel", cls: "SEEDED", why: "reads canonical motions and their briefs" },
+  { name: "partner-intel", cls: "SEEDED", why: "reads canonical partner activation history; H1A: commits a pursuit team member — measured by the whole-world fingerprint, so it runs on a disposable seeded clone", isolation: "SEEDED_CLONE" },
+  { name: "outcome-bridge", cls: "SEEDED", why: "bridges canonical opportunities to pursuit outcomes; H1A: commits attribution, opportunities, outcomes, recompute requests and a revenue motion — measured by the whole-world fingerprint, so it runs on a disposable seeded clone", env: OUTCOME_LEARNING_ENV, isolation: "SEEDED_CLONE" },
+  { name: "motion-intel", cls: "SEEDED", why: "reads canonical motions and their briefs; H1A: commits ledger rows, governed invocations and team-member changes — measured by the whole-world fingerprint, so it runs on a disposable seeded clone", isolation: "SEEDED_CLONE" },
 
   // These five were labelled EITHER and are not: each opens with an unqualified
   // `select ... limit 1` over a table it never wrote — `organizations`,
@@ -83,10 +91,10 @@ export const SUITES: SuiteSpec[] = [
   // anyone touching them. Tightening those reads is real work and is NOT done
   // here — Wave 6C classifies; it does not rewrite suites to be green.
   { name: "append-only", cls: "SEEDED", why: "reads the first existing ledger/override/invocation row; nothing to read on a bare database" },
-  { name: "canonical-microloop", cls: "SEEDED", why: "reads a canonical pursuit with >=2 signals and a second existing org" },
-  { name: "route-persistence", cls: "SEEDED", why: "reads a canonical pursuit with >=2 signals and its recorded route history" },
+  { name: "canonical-microloop", cls: "SEEDED", why: "reads a canonical pursuit with >=2 signals and a second existing org; H1A: commits route snapshots, candidates, participants, overrides and ledger rows, and rewrites pursuits — measured by the whole-world fingerprint, so it runs on a disposable seeded clone", isolation: "SEEDED_CLONE" },
+  { name: "route-persistence", cls: "SEEDED", why: "reads a canonical pursuit with >=2 signals and its recorded route history; H1A: commits route snapshots, candidates, participants, overrides and ledger rows — measured by the whole-world fingerprint, so it runs on a disposable seeded clone", isolation: "SEEDED_CLONE" },
   { name: "scope", cls: "SEEDED", why: "reads the oldest existing organization; fails with 'no org' on a bare database" },
-  { name: "team-motion", cls: "SEEDED", why: "reads a canonical routed pursuit and an existing draft motion" },
+  { name: "team-motion", cls: "SEEDED", why: "reads a canonical routed pursuit and an existing draft motion; H1A: commits a route selection, team invites/accepts, governed invocations and ledger rows (it once staled the certified Slice 2A Globex recommendation) — measured by the whole-world fingerprint, so it runs on a disposable seeded clone", isolation: "SEEDED_CLONE" },
   {
     name: "vnext-coordination",
     cls: "SEEDED",
@@ -96,6 +104,12 @@ export const SUITES: SuiteSpec[] = [
     name: "today-tenant",
     cls: "SEEDED",
     why: "Today/Queue tenant isolation (2026-09-14 hardening): reads every canonical org's Today (flag OFF and ON) and Queue inside READ ONLY transactions, then plants guest-org clones of real rows inside a transaction that is ROLLED BACK and proves the sponsor's surfaces do not move",
+  },
+  {
+    name: "tenant-isolation",
+    cls: "SEEDED",
+    why: "H1A broad cross-tenant adversarial verifier: plants a foreign tenant (clones of the sponsor's own rows, every readable field marked) and crawls every room of the real production build, calls every non-HTTP surface and every audited write with foreign ids, then plants the same rows into the sponsor as a NEGATIVE CONTROL. It COMMITS the planted rows (the running app must see them), so it runs on a disposable seeded clone. Needs `npm run build` first",
+    isolation: "SEEDED_CLONE",
   },
   {
     name: "vnext-attention",
@@ -129,7 +143,7 @@ export const SUITES: SuiteSpec[] = [
   { name: "governed-mutation", cls: "EITHER", why: "run-scoped fixtures" },
   { name: "isolation", cls: "EITHER", why: "run-scoped fixtures; asserts tenant isolation" },
   { name: "observability", cls: "EITHER", why: "run-scoped fixtures" },
-  { name: "ops", cls: "EITHER", why: "reads process/registry state only" },
+  { name: "ops", cls: "EITHER", why: "run-scoped fixtures: COMMITS organizations, governed invocations and outbox rows to exercise the ops health and dead-letter reads (H1A: previously described as read-only, which it is not)" },
   { name: "outbox", cls: "EITHER", why: "run-scoped fixtures" },
   { name: "outcomes", cls: "EITHER", why: "run-scoped fixtures" },
   { name: "recompute", cls: "EITHER", why: "run-scoped fixtures" },
