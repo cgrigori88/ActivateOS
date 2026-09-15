@@ -1502,4 +1502,25 @@ The owner found **only Vertex data plus the expected, explicitly consented TD SY
 - **D-P1 (`/pipeline?timeframe=` snapshot overwrite): OPEN.** It must be fixed before Gate 9 / a real pilot.
 - **Harness debt (non-blocking):** `demo-team`, `vnext-attention` and `vnext-coordination` assume the local canonical world and cannot run as `app_rw`. Making them tenant-context-aware and baseline-aware is recommended before they are relied on for hosted certification.
 
+### Gate 7 closeout note — the manifest digest is clock-relative on a persistent world (2026-09-15, 22:07Z)
+
+**Publish.** `9c61aac` (docs) and `bd4bd61` (harness) were pushed and deployed as `dpl_4xmjsCLnDmghF3Av8Y4EJvcdSNgg`: READY, the branch alias target.
+- The only non-docs file changed since `1c4fb5e` is `scripts/partnership-app-rw-verify.ts`; `src/` has 0 changes.
+- `/api/build`: `app_rw` · bypassRls false · tenantEnforcement true · probe live · sending off.
+- Env metadata unchanged; Production unchanged.
+
+**Finding: the manifest digest moved without any data change.** The post-publish snapshot read the manifest as `14e2e97f8453fb75`, not `db1f78f7a11bbacb`.
+- **Nothing in the stored data changed:** business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb` and **all 155 per-table content fingerprints are identical**. The security hash, `app_rw` posture and send rows are unchanged.
+- **Cause:** `scripts/demo-manifest.ts` includes a clock-relative field, `days_since_activity = extract(day from now() - o.updated_at)`. The hosted heroes were last updated around 2026-09-14 21:02Z, so at 2026-09-15 21:02Z every counter ticked over one whole day. Every Gate 7 snapshot up to about 19:55Z read before the tick.
+- **Proof:** the full manifest compared field by field with the Gate 1 hosted manifest record (`db1f78f7a11bbacb`) differs in exactly **22 fields**: the digest, plus 21 `heroes.N.days_since_activity` values, **each exactly +1**. No other field differs.
+- **Why it wasn't seen before:** the local canonical world is re-seeded, so its manifest is deterministic relative to seed time. The persistent hosted world is not re-seeded, so its manifest digest drifts once a day at the heroes' update time-of-day.
+
+**Consequence for Gate 7: none.** No data mutation occurred, and **Gate 7 PASS stands**.
+
+**Consequence for CFR-1:** rule 1 ("the manifest is strict") cannot hold literally on the hosted world. **Proposed CFR-1.1, not adopted, for owner decision before Gate 8:**
+- the hosted manifest is compared **with `days_since_activity` normalised**. Every such field must equal its baseline value plus the whole days elapsed since the baseline for that row; any other manifest field must be byte-identical;
+- the per-table content fingerprints and the business-data / whole-world fingerprints remain strict, and they remain the primary integrity proof.
+
+Until the owner decides, the manifest of record stays `db1f78f7a11bbacb` (as of 2026-09-15 before 21:02Z). The as-of-now value `14e2e97f8453fb75` is recorded here and is **not** adopted as a re-baseline.
+
 **Gate 8 was NOT begun** (rollback rehearsal; two separate approvals). H1B and H1 are not complete.

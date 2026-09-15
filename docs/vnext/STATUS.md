@@ -17,7 +17,9 @@
 - **DB (CFR-1):** 0 of 155 tables changed in every snapshot. Env unchanged. Sending off.
 - **Open:** D-P1 stays OPEN (before Gate 9).
 
-Record: `H1-PRE-PILOT-HARDENING.md` § "Gate 7". **Gate 8 NOT begun.**
+**Closeout note:** after publishing, the hosted manifest digest read `14e2e97f8453fb75`, not `db1f78f7a11bbacb`, **with no data change**: all 155 per-table fingerprints and the business-data / whole-world fingerprints are identical. `demo-manifest.ts`'s `days_since_activity` is clock-relative, and all 21 values ticked +1 at 21:02Z. Gate 7 PASS stands. **CFR-1.1** (normalise `days_since_activity` in the hosted manifest comparison) is proposed for an owner decision before Gate 8.
+
+Record: `H1-PRE-PILOT-HARDENING.md` § "Gate 7" and § "Gate 7 closeout note". **Gate 8 NOT begun.**
 
 **2026-09-15 — D-G5-1: HOSTED ACCEPTED / CLOSED.**
 - **The deploy:** the owner-approved push of `1c4fb5e` auto-deployed `dpl_CZ4iZ5S4q3c4ZLL1cLfddHqTfsC2` (Preview, READY, the branch alias target). Its `/api/build` reports `app_rw` / bypassRls false / tenantEnforcement true / probe live / sending unarmed.
