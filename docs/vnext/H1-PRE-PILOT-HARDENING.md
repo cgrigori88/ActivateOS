@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 not begun** (`app_rw` still NOLOGIN). **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED at precheck, NOT executed** (2026-09-15: operator secret not loaded; SECURITY DEFINER name resolution shadowable via `pg_temp` — follow-up hardening migration 0105 recommended) · `app_rw` still NOLOGIN. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -528,6 +528,93 @@ That is a match. The rollback is documented prose, not a script. If it is ever n
 - business data identical to Gate 1.
 
 **Gate 2 was NOT begun.** `app_rw` remains NOLOGIN.
+
+---
+
+## Gate 2 — give `app_rw` LOGIN: PRECHECK BLOCKED, NOT EXECUTED (2026-09-15)
+
+**Verdict: BLOCKED before the mutation. No hosted change was made.** `app_rw` is still NOLOGIN. Every hosted read ran in a READ ONLY transaction with `txid_current_if_assigned() = NULL`.
+
+### Pre-mutation identity checks: all 8 passed
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Target identity | `postgres.mejokqxriwyawfhawuxu`, host `aws-0-ca-central-1.pooler.supabase.com:6543` |
+| 2 | Not the forbidden project | does not contain `qifatlqxfuhwrwvpbwsc` |
+| 3 | Environment identity | `demo` / `is_synthetic=true` |
+| 4 | Migration count | 104 |
+| 5 | Latest migration | `0104_h1b0_consent_scoped_access.sql` |
+| 6 | Manifest | `db1f78f7a11bbacb` |
+| 7 | Business-data fingerprint (excluding `schema_migrations`) | `79321d9130d1dc94` |
+| 8 | `app_rw` LOGIN | false |
+
+Whole-world fingerprint: `0288ae73bb385a1c`.
+
+**Pre-change role baseline, recorded for the Gate 2 comparison.**
+- `app_rw`: LOGIN false, SUPERUSER false, BYPASSRLS false, INHERIT false, CREATEROLE false, CREATEDB false, REPLICATION false, connection limit −1, no expiry.
+- Member of no role.
+- `postgres` holds it with ADMIN true, INHERIT false and SET false, granted by `supabase_admin`.
+- Its table, column and function grants are the Gate 1b set; security-catalogue hash `b36da6987ceabfdf`.
+
+### Blocker 1: the operator secret is not loaded
+
+`APP_RW_PASSWORD` is not present in this session's environment; presence was checked by name only. No password was generated. A generated secret would either have to be displayed or be lost before Gate 3 and Gate 5, and in either case it would not be under operator control.
+
+### Blocker 2: SECURITY DEFINER name resolution can be influenced through `pg_temp`
+
+**Schema CREATE on `public` passes.** The only role that can create there is the owner (`pg_database_owner`, which `postgres` holds).
+
+| Role | CREATE on `public` |
+|---|---|
+| PUBLIC | no (USAGE only) |
+| `app_rw` | no |
+| `anon` | no |
+| `authenticated` | no |
+| `service_role` | no |
+
+`app_rw` is a member of no role, so there is no indirect path, and it can CREATE in no other schema.
+
+**But `pg_temp` shadowing is possible.** PUBLIC holds `TEMPORARY` on the database, so `app_rw`, `anon`, `authenticated` and `service_role` can all create temporary tables. PostgreSQL searches the session's temporary schema **first** for tables whenever `pg_temp` is not listed in `search_path`. A pinned `search_path=public` therefore does not prevent shadowing. The PostgreSQL documentation's guidance for SECURITY DEFINER functions is to list `pg_temp` last.
+
+**Proven locally, as the real `app_rw` login, on a throwaway clone.** Meridian, which is not a party to the Vertex ↔ TD SYNNEX partnership, created a temp `partnerships` table naming itself a party:
+- `partnership_settlement_rows(P1)` went from **0 rows** to **2 rows** of Vertex's settlement data;
+- `record_broker_event` into the Vertex ↔ TD SYNNEX room went from **refused** to **allowed**.
+
+**The fix, also proven locally on the same clone.** With `search_path = pg_catalog, public, pg_temp` on the functions involved, the same shadow is ineffective: the read returns **0 rows**, and the write is **refused**.
+
+**Scope, read from the hosted catalogue.** 27 functions in `public` pin `search_path=public`:
+- the **18 SECURITY DEFINER functions from 0104**;
+- **8 pre-existing SECURITY DEFINER functions**: `can_see_partnership`, `can_see_pursuit`, `grant_is_live`, `grant_population_delete_guard`, `is_org_member`, `org_role`, `resolve_api_key`, `resolve_user_org`;
+- the **SECURITY INVOKER** guard `h1b_consent_guard()`.
+
+The pre-existing 8 include the RLS helpers every `_rw` policy uses. The gap therefore predates 0104; 0104 inherited the pattern. Today it has no exposure, because `app_rw` cannot log in and the app runs as the owner.
+
+**Severity assessment.**
+- Exploiting it needs arbitrary SQL as a database role: a temp table must be created. The application issues no such statement, and PostgREST (anon / authenticated) cannot issue DDL.
+- Under the H1B threat model, RLS guards against application query bugs. An arbitrary-SQL `app_rw` session can already set `app.org_id` to any org, so shadowing adds little *practical* power beyond that impersonation.
+- It does, however, break the Gate 2 precondition as stated ("no … way that would let an app_rw caller influence SECURITY DEFINER name resolution"). It also defeats the consent guard's and the definer functions' own validation, which is the layer H1B-0 relies on.
+- **It is not clearly proven safe, so Gate 2 stops.**
+
+### Recommendation (not implemented; owner decision)
+
+1. **Follow-up hardening migration `0105`** (additive; zero data change):
+   - `ALTER FUNCTION … SET search_path = pg_catalog, public, pg_temp` for all 27 functions above;
+   - optionally, also schema-qualify table references in the 0104 function bodies.
+2. **Certify 0105 locally in full:**
+   - a new shadowing negative test in `partnership-app-rw`, which must fail before 0105 and pass after;
+   - `certify-world --runs 2`;
+   - the `app_rw` rehearsal.
+3. **Apply 0105 to `mejokqxriwyawfhawuxu`** as its own approved hosted step, before Gate 2.
+4. **Not recommended:** revoking `TEMPORARY` from PUBLIC at database level. It is a broader grant change, and Supabase platform roles may rely on it. The function-level fix is the standard control and is sufficient.
+
+### Loading the operator secret (for the Gate 2 re-run)
+
+- **Never paste it into chat.** Generate the `app_rw` password in the operator's password manager / secret store, where it must stay available for Gates 3 and 5.
+- **Expose it to the Claude Code process** through the same mechanism that supplies `DEMO_TARGET_URL`: in the terminal that launches the session, `read -rs APP_RW_PASSWORD && export APP_RW_PASSWORD` (hidden input), then relaunch or resume the session so it is inherited.
+- **Each tool command starts a fresh shell**, so a variable exported inside the session does not persist.
+- **The Gate 2 command will read it from the process environment** and send it only as a bound query parameter over the database connection. It never appears on a command line, in output, or in a file.
+
+**Next:** the owner decides on 0105. The Gate 2 re-run requires 0105 applied, or an explicit, documented owner acceptance of the residual risk, *and* the secret loaded.
 
 ### Local rehearsal (H1A — no hosted change)
 
