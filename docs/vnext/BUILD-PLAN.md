@@ -96,7 +96,7 @@ SLICE 2B Pursuit Attention + Today/Queue   (P3)        DEMO CERTIFIED / FROZEN
    │      lineage on Queue · "Current approved plan" labelling · D-034…D-042, D-046 · no
    │      migration · Today/Queue tenant-scoped explicitly (D-041) · hosted human review PASSED
    ↓
-H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 PASS · GATE 4 PASS (re-baselined) · GATE 5 PASS · GATE 6 PASS · D-G5-1 CLOSED · GATE 7 PASS · GATE 8 PHASE 1 PASS (paused in the owner posture) · PHASE 2 NEXT  ← current
+H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 PASS · GATE 4 PASS (re-baselined) · GATE 5 PASS · GATE 6 PASS · D-G5-1 CLOSED · GATE 7 PASS · GATE 8 PASS · D-G8-1 + D-P1 FIXES → GATE 9  ← current
    │      H1B-0: partnership/consent flows work under app_rw — consent-scoped definer functions,
    │      a guard against forged consent rows, best-effort audit that cannot abort (D-049);
    │      /api/build posture proof. 0104 applied to the isolated hosted DB (Gate 1b PASS)
@@ -134,7 +134,10 @@ H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 ·
    │      Gate 8 Phase 1 PASS: branch Preview DATABASE_URL → owner (value-only); /api/build postgres /
    │      bypassRls true / tenantEnforcement false; crawls equivalent (time-derived text only) plus
    │      D-G8-1 (/pipeline stakeholder order has no ORDER BY; role-dependent tie); DB 0/155 —
-   │      Preview PAUSED in the owner posture; Phase 2 (re-apply app_rw) needs approval; D-P1 before Gate 9
+   │      Preview paused in the owner posture until Phase 2
+   │      Gate 8 PASS: Phase 2 restored app_rw (value-only; /api/build app_rw / false / true / live);
+   │      crawls equal Gate 7 app_rw apart from validated clock text; isolation smoke PASS; DB 0/155
+   │      — next: fix D-G8-1 (stakeholder ORDER BY) and D-P1 (?timeframe= overwrite), then Gate 9
    │      H1A: every data path explicitly tenant-scoped (D-043); certification integrity —
    │      clone isolation + whole-world fingerprint gate (D-044); broad adversarial verifier
    │      H1B: web runtime → app_rw so RLS binds (D-045) — owner-approved hosted cutover
