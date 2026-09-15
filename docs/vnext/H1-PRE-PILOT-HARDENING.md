@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · **Gate 6 PASS** (2026-09-15; read-only; serving `766cb13` `dpl_JD8DtC8…`; live `/api/build` probe reports `app_rw`, bypassRls false, tenantEnforcement true, probe live; routing and smoke verified; DB 0/155 changed) · **D-G5-1 HOSTED ACCEPTED / CLOSED** (2026-09-15; deterministic tiebreakers in `divergence.ts` and `projection.ts`, certified locally (`ordering-determinism` 17/0, `certify-world --runs 2` 82/82), then deployed as `1c4fb5e` on the `app_rw` Preview. Two full hosted crawls (4 passes) are identical in order; Today "stage vs engagement" and the CDW list label are deterministic; DB 0/155 changed) · **D-P1 blocks Gate 9 / pilot** · Gates 7–9 not begun. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · **Gate 6 PASS** (2026-09-15; read-only; serving `766cb13` `dpl_JD8DtC8…`; live `/api/build` probe reports `app_rw`, bypassRls false, tenantEnforcement true, probe live; routing and smoke verified; DB 0/155 changed) · **D-G5-1 HOSTED ACCEPTED / CLOSED** (2026-09-15; deterministic tiebreakers in `divergence.ts` and `projection.ts`, certified locally (`ordering-determinism` 17/0, `certify-world --runs 2` 82/82), then deployed as `1c4fb5e` on the `app_rw` Preview. Two full hosted crawls (4 passes) are identical in order; Today "stage vs engagement" and the CDW list label are deterministic; DB 0/155 changed) · **Gate 7 PASS** (2026-09-15; hosted tenant/RLS certification on the `app_rw` Preview. Exact-RLS probe as `app_rw` 80/0 across 3 orgs × 155 tables; 37-room crawl identical to the accepted D-G5-1 crawl; `partnership-app-rw` on hosted, rolled back, 117/0; blind probe accepted as a substitution; supplemental owner-backed suites recorded; owner human review PASS; DB 0/155 changed) · **D-P1 blocks Gate 9 / pilot** · Gates 8–9 not begun. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -1410,4 +1410,96 @@ Only then Gate 7.
 
 **D-P1 remains OPEN — MUST FIX BEFORE GATE 9 / REAL PILOT** (`/pipeline?timeframe=` overwrites today's snapshot). It was not used and not fixed.
 
-**Gate 7 was NOT begun.** Gates 7–8, H1B and H1 are not complete.
+*(At the D-G5-1 hosted acceptance, Gate 7 had not begun. It is recorded below.)*
+
+---
+
+## Gate 7 — hosted tenant / RLS certification: RESULT (2026-09-15)
+
+**Gate 7 — PASS.** The owner approved the gate, the three test decisions below, and the human review. Every hosted action was read-only or rolled back. There was no committed hosted write, and no schema, migration, RLS, grant, policy, role, env or Production change. Normal tenant execution stayed on `app_rw` (BYPASSRLS false). Owner-only execution stayed on `DATABASE_URL_OWNER`. External sending stayed off. **D-P1 was not touched and remains OPEN.**
+
+**Deployment under test.** `dpl_GgADRii19khvG5CXotVgkxbJfXdc`, commit `84c09e4`: docs-only over the accepted product commit `1c4fb5e`, and the branch alias target throughout the gate.
+- `/api/build`: `app_rw` · bypassRls false · tenantEnforcement true · probe live · sending off.
+- Production target unchanged (`dpl_Bre6yKpy…`).
+- Vercel env metadata identical at the gate's start, middle and end.
+
+### The `app_rw` tenant-isolation proof
+
+**(i) Catalogue and RLS: PASS.**
+- **The Gate 3 exact-RLS probe, re-run against current hosted data: 80 / 0.** It ran as the real `app_rw.mejokqxriwyawfhawuxu` pooler login; every `app_rw` transaction was rolled back and the owner connection was read-only.
+- **Login posture:** `current_user = app_rw`, BYPASSRLS false, member of nothing, `row_security` on.
+- **No tenant context:** 0 tenant-owned rows across the 126 tenant and default-deny tables.
+- **Per-org exactness:** under each of Vertex, Meridian and TD SYNNEX, `app_rw` sees **exactly** the owner-evaluated authorized set on **all 155 tables**, by count and content hash.
+- **Foreign rows** are invisible on **all 81** `org_id`-scoped tables. Other-org visibility comes only through consent and participation policies, each equal to the owner-evaluated predicate.
+- **No context leak** across 10 transactions on **one pooled backend**, spanning ROLLBACK, COMMIT, three orgs and a second client.
+- **Foreign writes on `pursuits`:** UPDATE and DELETE → 0 rows; INSERT or re-home → 42501; own-org UPDATE → 1 row. All rolled back.
+- **Escalation:** `SET ROLE` / `SET SESSION AUTHORIZATION` to every privileged role → 42501.
+- **Residue:** none. No `app_rw`-owned objects, and no prepared or open transactions.
+- **`search-path-verify --catalogue-only`: 12 / 0** (31 protected, 0 unsafe).
+
+**(ii) Full hosted room crawl: PASS.** A signed-in 37-room crawl (two passes) was compared **line by line, in order**, against the accepted D-G5-1 crawl (`1c4fb5e`), not the pre-fix Gate 4 crawl.
+- **37/37 identical.** The palette endpoint is identical JSON.
+- The D-G5-1 surfaces are unchanged: Today View All is Datacenter exit — phase 1 → Kubernetes managed services → Core banking resilience → Legacy virtualization exit; Today and the drawer show its exact prefix; the CDW label is "CDW customer book".
+- Owner-only paths are identical: `/login` signed out and in, the `/join` dead-code loader, `/admin` members (which read `auth.users` through `DATABASE_URL_OWNER`), `/ops`, the webhook (503, secret unset) and research (401).
+
+### Accepted test decisions
+
+**(iii) The owner-backed verifier suites are SUPPLEMENTAL functional coverage only (decision 1(a)).**
+- **Why not as `app_rw`.** The five named suites are owner-connection harnesses. On a local clone as `app_rw` with no tenant context, all five stop at setup ("no pursuit" / "canonical world not seeded"). They therefore do **not** count as proof under `app_rw`; that proof is (i) and (ii).
+- **How they ran on hosted.** Only `DATABASE_URL_VERIFY` was set, to the owner connection. `DATABASE_URL`, the send variables and `APP_RW_PASSWORD` were unset, so no library code could open its own hosted pool. The whole-world fingerprint was checked after **each** suite and stayed `dce27935d88743fb` every time.
+
+| Suite (owner-backed, supplemental) | Result | Note |
+|---|---|---|
+| `vnext-context` (Slice 1) | **62 / 0** | — |
+| `today-tenant` | **51 / 0** | — |
+| `demo-team` | 10 / 1 | **Harness / hosted-data limitation.** It expects the local world's 10-row Globex ledger; hosted has 14. The four extra rows (`ACTION_CREATED`, `PLAN_DECIDED`, `STAKEHOLDER_ROLE_ASSERTED` by a user, `PLAN_REVIEW_REQUIRED`) are Slice 2A/2B human-acceptance history from 2026-09-14 21:45–21:53Z, kept by the Gate 1 re-baseline |
+| `vnext-attention` (Slice 2B) | 40 / 24 | **Harness / hosted-data limitation.** Its state walk assumes the canonical "recommendation awaiting a person". Hosted Globex's plan is already human-approved (revision 2, 2026-09-14 21:45Z), with an updated recommendation (revision 3, 21:53Z). **Its tenant-isolation and no-send sections pass 11 / 0**: Meridian and TD SYNNEX each derive attention only for their own pursuits, their composed Today holds no foreign card, no foreign plan lineage, no outbox / message / email event, and the world is unchanged |
+| `vnext-coordination` (Slice 2A) | fatal at section 3 | **Same hosted-data limitation.** A null `revisionId`, because there is no pending recommendation. It stopped before its `set local role app_rw` scenarios, so the hosted owner's lack of the SET option on `app_rw` did not arise. No role or grant was changed |
+
+**(iv) Two-session blind test: ACCEPTED TEST SUBSTITUTION, not a literal two-login test (decision 2(c)).**
+- **Why a substitute.** Hosted has one login, the Vertex owner. Meridian and TD SYNNEX have no members, and no synthetic user or membership was created.
+- **The substitute:**
+  - Through the deployed Preview, the Vertex session requested the **Meridian-owned pursuit** (`49de6cc1…`, the only other-org object with a detail route) → **404, byte-identical to a random nonexistent pursuit id**, with no Meridian field rendered, stable across both passes. That is **no data leak and no existence oracle**.
+  - Together with the per-org exactness of (i).
+
+**(v) Partnership and joint handshakes: PASS (decision 3(a)).**
+- **The one harness change**, committed separately as `bd4bd61`: `partnership-app-rw-verify.ts` gained opt-in `APP_RW_VERIFY_USER` / `APP_RW_VERIFY_PASSWORD` overrides, so it can log in as the pooler's `app_rw.<ref>`. The defaults are unchanged. Validated locally first: the default path gives 117/0 and the override path 117/0 on seeded clones; `tsc` is clean and `npm test` 376/376.
+- **The hosted run.** It ran **once** on hosted with `SEEDED_CLONE_GUARD=off` for that run only, as `app_rw.mejokqxriwyawfhawuxu`. Every handshake ran in **one `app_rw` transaction, ROLLED BACK**.
+- **Result: 117 / 0, equal to the local 117/0 baseline.**
+  - **Authorised:** invite → redeem, context grant, field-limited list grant (accept, pull-in, sync, revoke), overlap ladder, evidence share, skill share, warm intro, joint pursuit and room events, settlement across both books, partnership revoke, audit rows in both ledgers without aborting.
+  - **Refused:** a third party, forged consent rows, self-approval, acts after revoke, and no tenant context.
+  - "Committed state identical before and after (every step rolled back)" ✓.
+  - The DB snapshots around the run are identical: 41/0, 0 of 155 tables changed.
+
+**(vi) Hosted human review: PASS (owner, 2026-09-15).** The owner reviewed on the branch Preview:
+- Today, Queue and Pursuit Detail;
+- Pipeline without a `timeframe` filter;
+- Partners, the Joint pursuits overview, and the Cyberdyne / TD SYNNEX joint-room detail;
+- Admin.
+
+The owner found **only Vertex data plus the expected, explicitly consented TD SYNNEX joint context**. There was no Meridian-private data, no unrelated TD SYNNEX-private data, no unexpected disclosure, no missing authorized data and no visual authorization anomaly.
+
+### Database, env and send safety
+
+**Database (CFR-1, strict; same UTC day 2026-09-15; no allowance used).** Every Gate 7 snapshot passed **41/0, 0 of 155 tables changed**: the start, after (i), after the blind probe, before and after the supplemental suites, and before and after the partnership run.
+- Migrations 105; manifest `db1f78f7a11bbacb`.
+- Business-data `c9623fb5abe2f9bc`; whole-world `dce27935d88743fb`.
+- Security hash `30772757ebd4688c`.
+- `app_rw` LOGIN true, BYPASSRLS false; 31 protected / 0 unsafe; partnership data unchanged.
+
+**Send safety.** `externalSendingArmed` false. 0 messages / outbox / email events / identities / sent touches. No external message was sent and no webhook event was delivered.
+
+**Secrets.** Every input was checked by presence only, and no value was printed or persisted. A 1,314-file scan found 0 occurrences.
+
+**Hosted baseline of record after Gate 7:** unchanged.
+- migrations 105;
+- manifest `db1f78f7a11bbacb`;
+- business-data `c9623fb5abe2f9bc`;
+- whole-world `dce27935d88743fb`;
+- security hash `30772757ebd4688c`.
+
+**Open items.**
+- **D-P1 (`/pipeline?timeframe=` snapshot overwrite): OPEN.** It must be fixed before Gate 9 / a real pilot.
+- **Harness debt (non-blocking):** `demo-team`, `vnext-attention` and `vnext-coordination` assume the local canonical world and cannot run as `app_rw`. Making them tenant-context-aware and baseline-aware is recommended before they are relied on for hosted certification.
+
+**Gate 8 was NOT begun** (rollback rehearsal; two separate approvals). H1B and H1 are not complete.

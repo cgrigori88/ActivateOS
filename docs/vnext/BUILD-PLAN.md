@@ -96,7 +96,7 @@ SLICE 2B Pursuit Attention + Today/Queue   (P3)        DEMO CERTIFIED / FROZEN
    │      lineage on Queue · "Current approved plan" labelling · D-034…D-042, D-046 · no
    │      migration · Today/Queue tenant-scoped explicitly (D-041) · hosted human review PASSED
    ↓
-H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 PASS · GATE 4 PASS (re-baselined) · GATE 5 PASS · GATE 6 PASS · D-G5-1 CLOSED · GATE 7 NEXT  ← current
+H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 PASS · GATE 4 PASS (re-baselined) · GATE 5 PASS · GATE 6 PASS · D-G5-1 CLOSED · GATE 7 PASS · GATE 8 NEXT  ← current
    │      H1B-0: partnership/consent flows work under app_rw — consent-scoped definer functions,
    │      a guard against forged consent rows, best-effort audit that cannot abort (D-049);
    │      /api/build posture proof. 0104 applied to the isolated hosted DB (Gate 1b PASS)
@@ -125,7 +125,11 @@ H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 ·
    │      auto-deploy, owner-approved)
    │      D-G5-1 HOSTED ACCEPTED / CLOSED: 1c4fb5e on the app_rw Preview; two full crawls (4 passes)
    │      identical in order; Today "stage vs engagement" + /pipeline CDW label deterministic; DB
-   │      0/155 changed — Gate 7 next (crawl baseline = this accepted crawl); D-P1 before Gate 9
+   │      0/155 changed
+   │      Gate 7 PASS: exact-RLS probe as app_rw 80/0 (3 orgs × 155 tables, no pooled leak,
+   │      writes/escalation refused); 37-room crawl identical to the accepted D-G5-1 crawl;
+   │      partnership-app-rw on hosted, rolled back, 117/0; blind probe (accepted substitution);
+   │      owner human review PASS; DB 0/155 — Gate 8 (rollback rehearsal) next; D-P1 before Gate 9
    │      H1A: every data path explicitly tenant-scoped (D-043); certification integrity —
    │      clone isolation + whole-world fingerprint gate (D-044); broad adversarial verifier
    │      H1B: web runtime → app_rw so RLS binds (D-045) — owner-approved hosted cutover
