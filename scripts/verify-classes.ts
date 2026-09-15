@@ -138,6 +138,12 @@ export const SUITES: SuiteSpec[] = [
     cls: "SEEDED",
     why: "vNext Slice 1 loader harness: reads the canonical world's richest pursuit and asserts the loader+read-model composition. Requested as EITHER, but EITHER means run-scoped fixtures on a DISPOSABLE database, and this harness is deliberately READ-ONLY — it writes nothing, so it can only read demo content, which is what SEEDED means. On a disposable database it would find no pursuit and assert nothing (the Wave 6C mislabelling, again)",
   },
+  {
+    name: "ordering-determinism",
+    cls: "SEEDED",
+    why: "D-G5-1 (H1B Gate 5): plants ordering TIES — seven equally-stale late-stage deals under a LIMIT, and same-instant lists on an attributed renewal account — then proves Today's divergences, the Today overview and the renewal projection return the exact documented key order, byte-identical across five planner configurations, two heap layouts and both roles (owner and the REAL app_rw login with withTenant's context), with eligibility unchanged and the old SQL as a negative control. It COMMITS its fixtures, so it runs on a disposable seeded clone",
+    isolation: "SEEDED_CLONE",
+  },
 
   // ── EITHER: run-scoped fixtures (per-run ids), no reliance on demo content.
   //    Because they need nothing from the demo world, they are given a disposable

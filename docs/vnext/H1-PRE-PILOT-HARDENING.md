@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · **Gate 6 PASS** (2026-09-15; read-only; serving `766cb13` `dpl_JD8DtC8…`; live `/api/build` probe reports `app_rw`, bypassRls false, tenantEnforcement true, probe live; routing and smoke verified; DB 0/155 changed) · **D-G5-1 must be resolved before Gate 7; D-P1 blocks Gate 9 / pilot** · Gates 7–9 not begun. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · **Gate 6 PASS** (2026-09-15; read-only; serving `766cb13` `dpl_JD8DtC8…`; live `/api/build` probe reports `app_rw`, bypassRls false, tenantEnforcement true, probe live; routing and smoke verified; DB 0/155 changed) · **D-G5-1 FIXED LOCALLY / AWAITING HOSTED ACCEPTANCE** (2026-09-15; deterministic tiebreakers in `divergence.ts` and `projection.ts`; `ordering-determinism` suite 17/0, byte-identical across 5 plans × 2 heaps × owner/`app_rw`; rehearsal 38/38; `certify-world --runs 2` 82/82; committed locally, not pushed) · **D-P1 blocks Gate 9 / pilot** · Gates 7–9 not begun. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -1256,5 +1256,92 @@ The rollback value is proven present and correct.
 **Open defects** (unchanged; not fixed in Gate 6):
 - **D-G5-1** (untied ORDER BYs in `divergence.ts` and `projection.ts`): **must be resolved before Gate 7.**
 - **D-P1** (`/pipeline?timeframe=` overwrites today's snapshot): **a Gate 9 / real-pilot blocker.**
+
+*(At the Gate 6 record, D-G5-1 was open. Its local fix follows.)*
+
+---
+
+## D-G5-1 — ordering determinism: FIXED LOCALLY / AWAITING HOSTED ACCEPTANCE (2026-09-15)
+
+**Status.** The code is fixed and certified locally. It is committed on `roadmap/pursuitos-vnext` **locally and NOT pushed**, because a push auto-deploys the branch Preview (Vercel git integration, no ignored-build step) and the owner has not approved that deploy.
+
+No Vercel, env, hosted-database, migration, RLS, grant or role change was made, and no Production or `qifatlqxfuhwrwvpbwsc` contact. **D-P1 is unchanged** (`?timeframe=` snapshot overwrite): it must be fixed before Gate 9 or a real pilot. **Gate 7 was NOT begun.**
+
+**Root cause.** PostgreSQL returns rows that tie on every ORDER BY key, or rows from a query with no ORDER BY, in whatever order the chosen plan produces. The runtime moved from the owner to `app_rw`, and RLS adds predicates, so on hosted the plans changed and the tie order changed with them. The data, the tenant and the code were all the same.
+- **Today:** `accountDivergences()` "stage vs engagement" (`src/lib/context/divergence.ts`) had **`limit 5` and no ORDER BY at all**. Once more than five deals qualify, even the capped membership is plan-dependent. Today's capped view shows the first items, so a different deal could appear.
+- **Pipeline:** `renewalProjection()` (`src/lib/lifecycle/projection.ts`) names the list with `distinct on (pm.company_id) … order by pm.company_id, ap.created_at`. The seed creates an org's lists in one statement, so their `created_at` values are **identical by construction**. For an account on two such lists, the "on <list>" label was arbitrary.
+
+**The fix: tiebreakers appended, never a new primary key.**
+
+| Query | Before | After |
+|---|---|---|
+| divergence "stage vs engagement" | *(no ORDER BY)* `limit 5` | `order by o.updated_at asc, o.id asc limit 5` |
+| divergence "stale deal" | `order by o.updated_at asc limit 5` | `order by o.updated_at asc, o.id asc limit 5` |
+| divergence "joint room gap" | *(no ORDER BY)* `limit 5` | `order by jp.created_at asc, jp.id asc limit 5` |
+| divergence "renewal uncovered" (`distinct on company`) | `order by f.company_id, coalesce(f.date_value, f.valid_from) asc limit 5` | `… asc, f.id asc limit 5` |
+| divergence "motion stalled" | *(no ORDER BY)* `limit 5` | `order by m.created_at asc, m.id asc limit 5` |
+| divergence "CRM vs platform" (`distinct on company, name`) | `order by s.company_id, lower(s.opportunity_name), s.reported_at desc` | `…, s.reported_at desc, s.id desc, o.id asc` |
+| projection list attribution (both the scoped and the unscoped query) | `order by pm.company_id, ap.created_at` | `order by pm.company_id, ap.created_at, ap.name, ap.id` |
+
+**Why ranking semantics are unchanged.**
+- Every existing ORDER BY key is kept, in its original position and direction. No WHERE clause, LIMIT or join changed, so **eligibility is identical**.
+- Where a query had **no** ORDER BY ("stage vs engagement", "joint room gap", "motion stalled"), there was no ranking to preserve: the old order was undefined.
+  - "Stage vs engagement" takes `updated_at asc`, the same recency key its sibling rule "stale deal" already uses in the same function: longest-quiet first.
+  - The other two take `created_at asc`.
+  - Every one ends in the table's primary key.
+- **Why `ap.name` precedes `ap.id` in the projection.** List `created_at` ties are structural (same-statement inserts), and ids are random per seeded world. An id-only tiebreak would therefore still pick a different list in each reseeded world. The name is canonical seed content, so it is stable across worlds. `ap.id` still guarantees a unique final key when names also tie.
+- **Hosted effect** (at hosted acceptance):
+  - Today's capped "stage vs engagement" order becomes longest-quiet first: Datacenter exit (Aug 11), Kubernetes managed services (Aug 19), Core banking resilience, Legacy virtualization exit.
+  - CDW's `/pipeline` label resolves to "CDW customer book", the value the owner showed at Gate 4.
+- **Scope note.** D-G5-1 named two queries. The four sibling rules in the same `accountDivergences()` feed the same capped Today list and had the same defect class, so they received the same pure tiebreakers (or, where missing, a first ORDER BY). No other file's queries were changed.
+
+**Tests.**
+- **`tests/ordering-determinism.test.ts`** (static guard, in `npm test`):
+  - every capped or `distinct on` query in both files must end its ORDER BY in a unique `.id`;
+  - the exact new ORDER BYs are pinned;
+  - the pre-existing primary keys are asserted preserved.
+  - **Red before the fix: 0/4. Green after: 4/4.**
+- **`scripts/ordering-determinism-verify.ts`** (new suite `ordering-determinism`, SEEDED_CLONE, registered in `verify-classes.ts`).
+  - **Fixtures, planted on a disposable clone:**
+    - 7 qualifying deals with **identical `updated_at`**, older than every canonical one, inserted in **descending id order**, so LIMIT 5 is active and physical order is the reverse of key order;
+    - two extra approved lists at the **same `created_at`** as an attributed renewal account's earliest list. The alphabetically-first list has the **larger** id, so the name, not the id, must decide.
+  - **Runs:** each read under **5 planner configurations** (default; no index scans; no seq scans; no hash or merge joins; no nested loops) × **2 heap layouts** (insertion order, then tuples relocated by a real no-op UPDATE with `updated_at` kept equal) × **2 roles** (the owner, and the real `app_rw` login with `withTenant`'s transaction-local `app.org_id`). That is 20 runs per read path.
+  - **Red before the fix: 9 passed, 8 failed.** The divergence, `loadTodayOverview` and projection payloads all varied with the plan, under both roles. The capped list was `Kubernetes, Core banking, Datacenter, Legacy, DG51 tie deal 0`, a heap-order artefact. The tied-list label flipped between "…A" and "…B".
+  - **Green after the fix: 17 / 0.** In detail:
+    - canonical membership is unchanged (all 4 qualifying deals shown);
+    - eligibility is unchanged (11 qualifying = canonical + exactly the 7 fixtures);
+    - the capped "stage vs engagement" list and the capped "stale deal" list are each exactly the five lowest ids in id order;
+    - the complete ordered payloads of `accountDivergences`, `loadTodayOverview` and `renewalProjection` (scoped and unscoped) are **byte-identical across all 20 runs**;
+    - the label is the name-first list on both projection paths;
+    - the renewal rows (everything but the label) equal the pre-fixture rows;
+    - negative control: the old SQL does not produce the key-ordered result;
+    - no send rows.
+
+**Owner vs `app_rw`, exact order.**
+- **Library level:** the verifier above checks byte-identical ordered payloads, with ties planted, under 5 plans × 2 heaps.
+- **Page level:** `app-rw-rehearsal` ran on a clone with the same 7-deal tie fixture added. The canonical world already carries the CDW-style list tie. The result: **38/38 rooms line-identical** under the owner and `app_rw`, a full ordered line comparison with no set equality. The rooms include Today (`/`), Today View All (`?today=all`), the Today drawer (`?drawer=`) and `/pipeline`. The consent fixture rendered 6/6 under both, and `/api/build` posture was truthful under both.
+
+**Full local regression** (hosted secrets unset for every local run).
+
+| Item | Result |
+|---|---|
+| TypeScript (`tsc --noEmit`) | clean |
+| Unit tests (`npm test`) | 376 / 376 |
+| Production build (`next build`) | OK |
+| `app-rw-rehearsal` (37+ rooms, owner vs `app_rw`, with the tie fixture) | 38 / 38 identical |
+| **`certify-world --runs 2`** | **82 / 82 suite runs clean** (41 suites × 2), **3,588 assertions, 0 failures**. It includes Slice 1 `vnext-context` 62, Slice 2A `vnext-coordination` 116, Slice 2B `vnext-attention` 64, `today-tenant` 51, `tenant-isolation` 205, `partnership-app-rw` 117, `search-path` 39, `value-case` 126, `demo-team` 11 and `ordering-determinism` 17 |
+| Canonical immutability | digest `e98b43254f98d5ec` at the start, after run 1 and after run 2; **no drift attributed to any suite**. After the battery: manifest `be0da833990ce436`, fingerprint `e98b43254f98d5ec`, 0 leftover clones |
+| Send safety | 0 messages / outbox / email events / sent touches; `OUTREACH_AUTOSEND` and `RESEND_API_KEY` blank for every suite |
+
+No Slice 1 / 2A / 2B verifier assertion changed, and none asserts the tie order. The frozen semantics are intact.
+
+**Hosted acceptance (not done; needs owner approval).**
+1. Push `roadmap/pursuitos-vnext`. That auto-deploys the branch Preview, still on the `app_rw` runtime, with no env change.
+2. Confirm `/api/build` reports `app_rw` / bypassRls false / tenantEnforcement true on the new commit.
+3. Run the signed-in 37-room crawl.
+4. Confirm the Today "stage vs engagement" and `/pipeline` label outputs match the key order above, and are stable across repeated crawls.
+5. Run the DB check under CFR-1.
+
+Only then Gate 7.
 
 **Gate 7 was NOT begun.** Gates 7–8, H1B and H1 are not complete.

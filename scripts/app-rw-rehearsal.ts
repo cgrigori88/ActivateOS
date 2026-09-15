@@ -143,6 +143,25 @@ async function consentFixture(q: Pool, sponsor: string): Promise<ConsentFixture 
   };
 }
 
+/**
+ * D-G5-1 ordering fixture (on the CLONE only): seven qualifying "stage vs engagement" / stale deals with
+ * IDENTICAL updated_at, older than every canonical one so they fill the capped slots, inserted in
+ * DESCENDING id order so physical order is the reverse of the key order. Today, the drawer and View All
+ * then render a capped list whose content depends entirely on tie-breaking — so the exact line-by-line
+ * owner-vs-app_rw comparison below proves the tie is resolved identically under both roles. (The
+ * canonical world already carries a created_at tie between two lists on one renewal account for /pipeline.)
+ */
+async function orderingFixture(q: Pool, sponsor: string): Promise<void> {
+  const ids = Array.from({ length: 7 }, () => crypto.randomUUID()).sort().reverse();
+  for (const [i, id] of ids.entries()) {
+    const co = crypto.randomUUID();
+    await q.query(`insert into companies (id, legal_name, normalized_name) values ($1, $2, $3)`, [co, `DG51 Tie Co ${i}`, `dg51 tie co ${i}`]);
+    await q.query(
+      `insert into opportunities (id, org_id, company_id, name, stage, amount_usd, created_at, updated_at)
+       values ($1, $2, $3, $4, 'proposal', 100000, $5, $5)`, [id, sponsor, co, `DG51 tie deal ${i}`, "2026-01-01T00:00:00Z"]);
+  }
+}
+
 async function main(): Promise<void> {
   if (!existsSync(".next/BUILD_ID")) throw new Error("no production build — run `npm run build` first");
   const src = new URL(SRC).pathname.slice(1);
@@ -168,6 +187,7 @@ async function main(): Promise<void> {
     // either role and the comparison would prove nothing about consent-scoped reads. Every artefact is
     // TD SYNNEX → sponsor, on the canonical active partnership and its active joint pursuit.
     const fx = await consentFixture(q, sponsor);
+    await orderingFixture(q, sponsor);
     await q.end();
     const rooms = [
       "/", "/?today=all", `/?drawer=${account}`, "/queue", "/pipeline", "/accounts", `/accounts/${account}`, "/accounts/export",

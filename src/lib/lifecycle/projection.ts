@@ -132,7 +132,7 @@ export async function renewalProjection(
         where ap.org_id = $1 and ap.status = 'approved'
           and ($3::uuid is null or ap.partner_id = $3)
           and ($4::boolean is false or pm.company_id = any($2))
-        order by pm.company_id, ap.created_at`,
+        order by pm.company_id, ap.created_at, ap.name, ap.id`,
       [orgId, companyIds ?? [], partnerId, companyIds != null]);
     memberIds = rows.map((r) => r.company_id);
     for (const r of rows) listName.set(r.company_id, r.name);
@@ -189,7 +189,7 @@ export async function renewalProjection(
          from population_members pm
          join account_populations ap on ap.id = pm.population_id
         where ap.org_id = $1 and ap.status = 'approved' and pm.company_id = any($2)
-        order by pm.company_id, ap.created_at`,
+        order by pm.company_id, ap.created_at, ap.name, ap.id`,
       [orgId, ids]);
     for (const r of rows) listName.set(r.company_id, r.name);
   }

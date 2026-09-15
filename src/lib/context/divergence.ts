@@ -35,7 +35,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
      from opportunities o join companies c on c.id = o.company_id
      where o.stage not in ('closed_won', 'closed_lost') and ($1::uuid is null or o.org_id = $1)
        and o.updated_at < now() - interval '21 days'
-     order by o.updated_at asc limit 5`,
+     order by o.updated_at asc, o.id asc limit 5`,
     [orgId],
   ) : { rows: [] };
   for (const r of stale) {
@@ -59,6 +59,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
        and not exists (select 1 from meeting_notes mn
                        where mn.company_id = o.company_id and mn.org_id = $1
                          and mn.met_at > (now() - interval '30 days')::date)
+     order by o.updated_at asc, o.id asc
      limit 5`,
     [orgId],
   ) : { rows: [] };
@@ -83,6 +84,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
        and not exists (select 1 from opportunities o
                        where o.company_id = jp.company_id and o.org_id = $1
                          and o.stage not in ('closed_won', 'closed_lost'))
+     order by jp.created_at asc, jp.id asc
      limit 5`,
     [orgId],
   ) : { rows: [] };
@@ -119,7 +121,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
                        and o.stage not in ('closed_won', 'closed_lost'))
        and not exists (select 1 from revenue_motions m where m.company_id = f.company_id and m.org_id = $1
                        and m.status in ('draft', 'approved', 'active'))
-     order by f.company_id, coalesce(f.date_value, f.valid_from) asc limit 5`,
+     order by f.company_id, coalesce(f.date_value, f.valid_from) asc, f.id asc limit 5`,
     [orgId],
   ) : { rows: [] };
   for (const r of uncovered) {
@@ -141,6 +143,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
        and not exists (select 1 from campaign_touches t
                        join campaigns ca on ca.id = t.campaign_id
                        where ca.motion_id = m.id and t.sent_at > now() - interval '14 days')
+     order by m.created_at asc, m.id asc
      limit 5`,
     [orgId],
   ) : { rows: [] };
@@ -172,7 +175,7 @@ export async function accountDivergences(db: Db, orgId: string, limit = 12): Pro
      left join opportunities o on o.org_id = s.org_id and o.company_id = s.company_id
        and lower(o.name) = lower(s.opportunity_name)
      where s.org_id = $1 and s.reported_at > now() - interval '45 days'
-     order by s.company_id, lower(s.opportunity_name), s.reported_at desc`,
+     order by s.company_id, lower(s.opportunity_name), s.reported_at desc, s.id desc, o.id asc`,
     [orgId],
   ) : { rows: [] };
   for (const s of snaps) {
