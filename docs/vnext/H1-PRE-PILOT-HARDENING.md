@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed; not yet used) · Gates 3–9 not begun. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · Gates 4–9 not begun. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -880,3 +880,72 @@ The emergency rollback is `ALTER ROLE app_rw NOLOGIN;`, run as `postgres`.
 - security hash `30772757ebd4688c`.
 
 **Gate 3 was NOT begun.** `app_rw` has never connected. H1B, and so H1, are not complete.
+
+---
+
+## Gate 3 — prove the `app_rw` pooler login and the hosted RLS / tenant-context model: RESULT (2026-09-15)
+
+**Gate 3 — PASS.** This was a probe gate, with **no hosted mutation**:
+- every `app_rw` transaction ended in ROLLBACK, except one read-only COMMIT for the leak test, with txid NULL;
+- the owner connection was used read-only only;
+- the whole world is byte-identical before and after.
+
+What was **not** done:
+- no Vercel change, no deploy, no `DATABASE_URL` or `DATABASE_URL_OWNER` change;
+- no role, password, migration, policy, grant or membership change;
+- no reseed, no committed write, no sending;
+- no Gate 4 or 5.
+
+Production and `qifatlqxfuhwrwvpbwsc` were not contacted.
+
+**Connection.**
+- The user was **`app_rw.mejokqxriwyawfhawuxu`**, the documented `<role>.<ref>` form, on the **transaction pooler `aws-0-ca-central-1.pooler.supabase.com:6543`**, database `postgres`.
+- The host, port, database and SSL parameters are the owner connection's own; it carries no URL or SSL parameters.
+- The config was built in process memory. The password was supplied through node-postgres's lazy password callback, which was set to refuse a cleartext request. The pooler asked for **SCRAM-SHA-256**, so the password never crossed the wire.
+- `APP_RW_PASSWORD` was checked by presence only. A 332-file scan afterwards found 0 occurrences.
+
+**Pre-gate baseline (owner, read-only): 39 / 0.** It was re-taken immediately before the final run and passed 39 / 0 again.
+- Identity checks; demo / synthetic.
+- Migrations 105, latest 0105.
+- Manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`.
+- `app_rw` LOGIN true and BYPASSRLS false; 31 protected functions, 0 unsafe.
+- Sending unarmed.
+- Security hash `30772757ebd4688c`; zero delta against the Gate 2 record.
+
+**Method: the tenant inventory is the hosted catalogue, not a hand list.**
+- For each of the 155 RLS tables, the probe takes the permissive policies that apply to `app_rw` for SELECT: roles `app_rw` or PUBLIC, cmd ALL or SELECT. No RESTRICTIVE policy applies.
+- That classifies **125 tenant tables** (81 purely `is_org_member(org_id)`), **29 global tables** (qual `true`: `companies`, `organizations`, taxonomy, products, providers, `environment_identity`, and the rest), and **1 default-deny** table (`schema_migrations`).
+- None of the 29 global tables has an `org_id` column. A tenant table exposed by `true` would have failed this check.
+- For each context:
+  - **owner side:** evaluated each table's own policy predicates under the same transaction-local `app.org_id`;
+  - **`app_rw` side:** read every table through the pooler;
+  - **compared:** the row count and an order-independent content hash of every row must be equal. That proves `app_rw` sees exactly the authorized set.
+
+| Check | Result |
+|---|---|
+| **3A. Pooler login** | Succeeds, with SCRAM. Asserted from the `app_rw` connection itself: `current_user = app_rw`, `session_user = app_rw`; `rolcanlogin` true, `rolsuper` false, `rolbypassrls` false, NOINHERIT; member of no role; `row_security = on`; `is_superuser = off`; PG 17.6 |
+| **3B. No tenant context** | `current_setting('app.org_id', true)` is NULL and `app_current_org()` is NULL. **0 tenant-owned rows** across all 126 tenant and default-deny tables. The only non-global rows visible are the 5 org-less global `pursuit_team_requirements` rows, by design. Exact set equality on all 155 tables |
+| **3C. Vertex context** | Set by `select set_config('app.org_id', $1, true)`, the `withTenant` mechanism, in one transaction that was rolled back. `app_current_org()` = Vertex; exact set equality on all 155 tables (851 tenant rows visible). **Explicitly scoped owner counts match:** opportunities 19/19, contacts 5/5, pursuits (own) 13/13, `revenue_motions` 7/7, `motion_actions` 6/6, partnerships 1/1, campaigns 0/0. **Parent-scoped children** match the owner's join on Vertex parents: stakeholders via opportunities 5/5, `opportunity_meddpicc` 152/152, `campaign_touches` 0/0. `organizations` (3/3) and `companies` (14/14) are global by design (0104 / 0061). Other-org rows are invisible on all 81 `org_id` tables; the only other-org rows visible come through participation (`pursuit_participants` 2), exactly the owner-evaluated predicate. The Meridian pursuit stays hidden |
+| **3D. Context leak (transaction pooler)** | The sequence, on one client: no context → Vertex (ROLLBACK) → no context → Vertex (read-only **COMMIT**, the application's commit path) → no context → Meridian → no context → TD SYNNEX → no context. Then a **second, fresh pooler client** with no context. **Every transaction began with `app.org_id` absent** (NULL at first, `''` once the placeholder existed) and `app_current_org()` NULL, and every no-context transaction showed 0 tenant rows. The pooler served **all 10 transactions, from both clients, on the same backend (one pid)**. That is the strongest form of the test: the context did not survive ROLLBACK or COMMIT on a reused backend. **No leak** |
+| **Second- and third-org isolation** | **Meridian:** 14 tenant rows, exact set equality; 397 other-org rows in 33 tables stay hidden. **TD SYNNEX:** 33 rows, exact; 398 other-org rows hidden. TD SYNNEX's other-org visibility is participation only (its joint pursuit and the related participant, outcome, route-snapshot and route-candidate rows), each exactly the owner-evaluated predicate |
+| **3E. Foreign-write refusal** | One transaction, **always rolled back**, as `app_rw` with Vertex context. Target `pursuits`: write policy `is_org_member(org_id)`, 0 triggers, no consent primitive; foreign row = the Meridian pursuit. Results: foreign same-value UPDATE → **0 rows**; foreign DELETE → **0 rows**; INSERT carrying Meridian's `org_id` → **42501** (row-level security); re-homing an own pursuit into Meridian → **42501** (WITH CHECK); own-org same-value UPDATE → **1 row**, so `app_rw` is not globally read-only. Owner, read-only afterwards: the foreign row, the own row and the whole `pursuits` table are unchanged |
+| **3F. Privilege escalation** | `SET ROLE` to `postgres`, `supabase_admin`, `service_role`, `authenticator`, `authenticated`, `anon`, `pg_read_all_data` and `pg_write_all_data`, and `SET SESSION AUTHORIZATION postgres`: **all refused (42501)**. `app_rw` is a member of none of them, and afterwards `current_user = session_user = app_rw` |
+| **3G. Security boundary** | `search-path-verify --catalogue-only` gives **12 / 0**, both pre and post: 31 protected, 0 unsafe, no CREATE on `public` for PUBLIC or any runtime role, EXECUTE posture intact. BYPASSRLS false. Memberships, policies and grants are unchanged. The destructive temp-table suite was **not** run on hosted |
+| **3H. Zero residue** | Owner, read-only; the post-snapshot is identical to both Gate 3 pre-snapshots (41 / 0 each): manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1` and all 155 per-table fingerprints **unchanged**. Migrations 105; security hash `30772757ebd4688c` unchanged. Partnership data unchanged (1 · 1 · 4 · 2, the rest 0). 0 send rows. **No relation, function, schema or type owned by `app_rw`; no prepared transaction; no `app_rw` backend mid-transaction.** One idle pooled backend is held by the pooler |
+
+**A note on the run.**
+- The first probe run stopped by design at 3E, before any write transaction opened. Every hosted `contacts` row, and every opportunity, belongs to Vertex, so there was no foreign row to aim at. Its no-context and three-org checks had already passed.
+- Its one ✗ was a vacuous negative control: `opportunities` has no foreign rows on hosted.
+- The probe was fixed to prove non-vacuity per context and to target `pursuits`. The baseline was re-taken (39 / 0; the aborted run had changed nothing), and the rerun passed **80 / 0**.
+
+The tooling (`gate3-probe.ts`, `gate3-targets.ts`, and the snapshot and assertion modes) is kept in the session scratchpad and never committed, as for the earlier gates.
+
+**Hosted baseline of record after Gate 3:** unchanged from Gate 2.
+- migrations 105;
+- manifest `db1f78f7a11bbacb`;
+- business-data fingerprint `79321d9130d1dc94`;
+- whole-world fingerprint `de05e204801988d1`;
+- `app_rw` LOGIN true;
+- security hash `30772757ebd4688c`.
+
+**Gate 4 was NOT begun.** Nothing in Vercel changed. H1B, and so H1, are not complete.
