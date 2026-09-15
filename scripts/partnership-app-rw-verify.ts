@@ -40,8 +40,11 @@ import {
  */
 
 const CONN = process.env.DATABASE_URL_VERIFY ?? process.env.DEMO_URL ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
-const RW_PASSWORD = process.env.APP_RW_LOCAL_PASSWORD ?? "demo"; // local-only login, set by scripts/demo-db.ts
-const rwUrl = (() => { const u = new URL(CONN); u.username = "app_rw"; u.password = RW_PASSWORD; return u.toString(); })();
+const RW_PASSWORD = process.env.APP_RW_VERIFY_PASSWORD ?? process.env.APP_RW_LOCAL_PASSWORD ?? "demo"; // local-only login, set by scripts/demo-db.ts
+// H1B Gate 7: a Supabase transaction pooler names the role `app_rw.<project-ref>`. Opt-in only — the
+// default stays the local `app_rw` login, so verify-run / certify-world behave exactly as before.
+const RW_USER = process.env.APP_RW_VERIFY_USER ?? "app_rw";
+const rwUrl = (() => { const u = new URL(CONN); u.username = RW_USER; u.password = RW_PASSWORD; return u.toString(); })();
 const owner = new Pool({ connectionString: CONN, max: 2 });
 const rw = new Pool({ connectionString: rwUrl, max: 1 });
 
