@@ -24,7 +24,8 @@ export async function loadTodayNextActions(db: PoolClient, orgId: string): Promi
        from revenue_motions m
        join companies c on c.id = m.company_id
        left join propensity_scores p on p.id = m.propensity_score_id
-      where m.status = 'draft' and m.org_id = $1`,
+      where m.status = 'draft' and m.org_id = $1
+      order by m.id`,
     [orgId],
   );
   const approved = await db.query(
@@ -33,13 +34,15 @@ export async function loadTodayNextActions(db: PoolClient, orgId: string): Promi
        from revenue_motions m
        join companies c on c.id = m.company_id
        left join propensity_scores p on p.id = m.propensity_score_id
-      where m.status = 'approved' and m.org_id = $1`,
+      where m.status = 'approved' and m.org_id = $1
+      order by m.id`,
     [orgId],
   );
   const review = await db.query(`select count(*) as n from review_queue where status = 'pending' and org_id = $1`, [orgId]);
   const contradictions = await db.query(
     `select distinct c.id, c.legal_name from contradictions ct
-       join companies c on c.id = ct.company_id where ct.status = 'open' and ct.org_id = $1`,
+       join companies c on c.id = ct.company_id where ct.status = 'open' and ct.org_id = $1
+      order by c.legal_name, c.id`,
     [orgId],
   );
   // A catalog account past its refresh date is this org's hygiene work only if this org works it.
@@ -49,7 +52,8 @@ export async function loadTodayNextActions(db: PoolClient, orgId: string): Promi
         and (exists (select 1 from propensity_scores ps where ps.company_id = c.id and ps.org_id = $1)
           or exists (select 1 from pursuits pu where pu.account_id = c.id and pu.org_id = $1)
           or exists (select 1 from opportunities o where o.company_id = c.id and o.org_id = $1)
-          or exists (select 1 from revenue_motions rm where rm.company_id = c.id and rm.org_id = $1))`,
+          or exists (select 1 from revenue_motions rm where rm.company_id = c.id and rm.org_id = $1))
+      order by c.legal_name, c.id`,
     [orgId],
   );
 
@@ -94,7 +98,7 @@ export async function loadTodayNextActions(db: PoolClient, orgId: string): Promi
       `select distinct on (d.company_id) d.company_id, c.legal_name, d.items
      from account_digests d join companies c on c.id = d.company_id
      where d.org_id = $1
-     order by d.company_id, d.created_at desc`,
+     order by d.company_id, d.created_at desc, d.id desc`,
       [orgId],
     );
     for (const d of digests) {
@@ -140,14 +144,14 @@ export async function loadTodayOverview(db: PoolClient, orgId: string, scopeIds:
      join companies c on c.id = p.company_id
      join taxonomy_nodes n on n.id = p.taxonomy_node_id
      where p.org_id = $3 and ($2::boolean is false or p.company_id = any($1))
-     order by p.company_id, p.computed_at desc`,
+     order by p.company_id, p.computed_at desc, p.id desc`,
     [scopeIds ?? [], scopeIds != null, orgId],
   );
   const activity = await db.query(
     `select e.event_type, e.occurred_at, c.legal_name
      from outcome_events e left join companies c on c.id = e.company_id
      where e.org_id = $3 and ($2::boolean is false or e.company_id = any($1))
-     order by e.occurred_at desc limit 6`,
+     order by e.occurred_at desc, e.id desc limit 6`,
     [scopeIds ?? [], scopeIds != null, orgId],
   );
   return { divergences, counts: counts.rows, top: top.rows, activity: activity.rows };

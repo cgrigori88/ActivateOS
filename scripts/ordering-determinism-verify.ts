@@ -3,7 +3,10 @@ import { Pool, type PoolClient } from "pg";
 import { assertSeededClone } from "./seeded-clone";
 import { accountDivergences } from "../src/lib/context/divergence";
 import { renewalProjection } from "../src/lib/lifecycle/projection";
-import { loadTodayOverview } from "../src/lib/today/overview";
+import { loadTodayNextActions, loadTodayOverview } from "../src/lib/today/overview";
+import { getAccountIntel } from "../src/lib/accounts/intel";
+import { getPursuitPortfolio } from "../src/lib/pursuits/read-models/portfolio";
+import { getSellerPaths } from "../src/lib/partners/intelligence";
 
 /**
  * Ordering determinism under any query plan and either runtime role (D-G5-1, found at H1B Gate 5).
@@ -265,6 +268,210 @@ async function main(): Promise<void> {
   const oldStWrong = oldStRuns.filter((o) => JSON.stringify(o) !== JSON.stringify(expectedSt)).length;
   check("negative control: the OLD stakeholder query (no ORDER BY) does not return the documented order",
     oldStWrong > 0, `${oldStWrong}/${oldStRuns.length} old runs differ · ${new Set(oldStRuns.map((o) => JSON.stringify(o))).size} distinct old order(s)`);
+
+  // ── 4. D-G8-2A: the remaining ordering defect classes, on the real read paths ─────────────────────
+  // One representative consumer per class, each with PLANTED ties. Every payload must be byte-identical
+  // across 5 planner configurations × 2 heap layouts × owner and the real app_rw login, and each class
+  // also asserts the documented key order (so "deterministic but wrong" fails too).
+  console.log("\nD-G8-2A — remaining defect classes (unordered→cap, non-unique LIMIT, distinct-on, first-row pick, encounter-order group, tied visible list)");
+  const caller = { orgId: V, canSeeInternal: true, canSeeTransactionDetail: true };
+  const newCompany = async (name: string) => {
+    const id = randomUUID();
+    await owner.query(`insert into companies (id, legal_name, normalized_name) values ($1, $2, $3)`, [id, name, name.toLowerCase()]);
+    return id;
+  };
+
+  // C1 unordered query feeding a capped downstream sort: contradictions all carry the same fixed weight,
+  // and rankNextActions() slices. Names are the REVERSE of insertion/id order, so heap order ≠ key order.
+  const contraIds: string[] = [];
+  for (const k of [7, 6, 5, 4, 3, 2, 1, 0]) {
+    const co = await newCompany(`DG82 Contra ${k}`);
+    contraIds.push(co);
+    await owner.query(`insert into contradictions (org_id, company_id, basis, status) values ($1, $2, 'dg82 fixture', 'open')`, [V, co]);
+  }
+  const expectedContra = [...Array(8).keys()].map((k) => `Resolve contradiction — DG82 Contra ${k}`);
+
+  // C2 non-unique ORDER BY + LIMIT: eight outcome events share one occurred_at, newer than everything else.
+  // `event_type` is a checked enum, so each event gets its own account — the activity row renders the name,
+  // and the names run in the REVERSE of id order.
+  const eventIds = Array.from({ length: 8 }, () => randomUUID()).sort();
+  for (const [i, id] of eventIds.entries()) {
+    const co = await newCompany(`DG82 Act ${7 - i}`);
+    // A FIXED literal, not now(): each insert is its own transaction, so now() would give all eight rows a
+    // distinct occurred_at (microseconds apart) and the clause would be legitimately deterministic — no tie.
+    await owner.query(`insert into outcome_events (id, org_id, company_id, event_type, occurred_at)
+                       values ($1, $2, $3, 'MEETING_BOOKED', '2026-09-16T00:00:00Z')`, [id, V, co]);
+  }
+  const expectedActivity = [0, 1, 2, 3, 4, 5].map((k) => `DG82 Act ${k}`);   // (occurred_at desc, id desc) → highest ids first
+
+  // C3 DISTINCT ON with an incomplete order: one company, two scores at the SAME computed_at.
+  const scoreCo = await newCompany("DG82 Score Tie");
+  const scoreIds = [randomUUID(), randomUUID()].sort();      // the documented pick is the greater id
+  const at = "2026-09-15T00:00:00Z";
+  for (const [i, id] of scoreIds.entries()) {
+    await owner.query(
+      `insert into propensity_scores select (jsonb_populate_record(null::propensity_scores, to_jsonb(x) || jsonb_build_object(
+          'id', $1::text, 'company_id', $2::text, 'score', $3::int, 'band', 'medium', 'computed_at', $4::text, 'partner_id', null))).*
+         from propensity_scores x where x.org_id = $5 limit 1`, [id, scoreCo, i === 0 ? 11 : 89, at, V]);
+  }
+  const expectedScore = 89;   // scoreIds[1] is the greater id → its score
+
+  // C4 first/latest-row picks + C5 encounter-order grouping: two pursuits created at the same instant,
+  // and two ledger rows recorded at the same instant on the earlier-keyed one.
+  const pickCo = await newCompany("DG82 Pick Co");
+  const pursuitIds = [randomUUID(), randomUUID()].sort();    // the pursuit pick is created_at asc, id asc
+  for (const [i, id] of pursuitIds.entries()) {
+    await owner.query(
+      `insert into pursuits select (jsonb_populate_record(null::pursuits, to_jsonb(x) || jsonb_build_object(
+          'id', $1::text, 'account_id', $2::text, 'org_id', $3::text, 'dedup_key', $4::text, 'use_case', $5::text,
+          'created_at', '2026-09-01T00:00:00Z', 'current_priority_score', null, 'merged_into_pursuit_id', null,
+          'status', 'DETECTED'))).*
+         from pursuits x where x.org_id = $3::uuid limit 1`, [id, pickCo, V, `dg82-pick-${i}`, `dg82 use case ${i}`]);
+  }
+  const ledgerIds = [randomUUID(), randomUUID()].sort();     // the material-change pick is occurred_at desc, id desc
+  for (const [i, id] of ledgerIds.entries()) {
+    await owner.query(
+      `insert into change_ledger (id, org_id, pursuit_id, entity_type, entity_id, change_type, materiality, reason, occurred_at, recorded_at)
+       values ($1, $2, $3, 'pursuit', $3, $4, 'HIGH', $5, '2026-09-10T00:00:00Z', now())`,
+      [id, V, pursuitIds[0], i === 0 ? "STATUS_CHANGED" : "SCORE_CHANGED", `dg82 reason ${i}`]);
+  }
+  const expectedUseCase = "dg82 use case 0";   // pursuitIds[0] is the lesser id
+  const expectedChange = "dg82 reason 1";      // ledgerIds[1] is the greater id
+
+  // C5 encounter-order grouping: four DIFFERENT accounts, each holding one pursuit at the SAME non-null score.
+  // Which account group appears first is then decided purely by the tie. (The C4 pair above cannot show this:
+  // both pursuits sit on ONE account, so the grouping cannot observe their order, and the seeded scores are
+  // all distinct — there is no tie in the real data to resolve.) Names are the reverse of id/insertion order.
+  const groupCos: string[] = [];
+  const groupPursuits: string[] = [];
+  for (const k of [3, 2, 1, 0]) {
+    const co = await newCompany(`DG82 Group ${k}`);
+    const id = randomUUID();
+    groupCos.push(co); groupPursuits.push(id);
+    await owner.query(
+      `insert into pursuits select (jsonb_populate_record(null::pursuits, to_jsonb(x) || jsonb_build_object(
+          'id', $1::text, 'account_id', $2::text, 'org_id', $3::text, 'dedup_key', $4::text, 'use_case', $5::text,
+          'created_at', '2026-09-02T00:00:00Z', 'current_priority_score', 77, 'merged_into_pursuit_id', null,
+          'status', 'DETECTED'))).*
+         from pursuits x where x.org_id = $3::uuid limit 1`, [id, co, V, `dg82-group-${k}`, `dg82 group ${k}`]);
+  }
+  const expectedGroups = ["DG82 Group 0", "DG82 Group 1", "DG82 Group 2", "DG82 Group 3"];
+
+  // C7 a visible ordered list whose business key ties: three sellers, identical strength and recency.
+  const sellerIds = Array.from({ length: 3 }, () => randomUUID()).sort();
+  const sellerNames = ["DG82 Seller C", "DG82 Seller A", "DG82 Seller B"];   // name order ≠ id order
+  for (const [i, id] of sellerIds.entries()) {
+    await owner.query(`insert into sellers (id, org_id, name) values ($1, $2, $3)`, [id, V, sellerNames[i]]);
+    await owner.query(`insert into seller_account_relationships (seller_id, company_id, strength, last_interaction_at)
+                       values ($1, $2, 50, '2026-09-05T00:00:00Z')`, [id, pickCo]);   // fixed literal: now() would not tie
+  }
+  const expectedSellers = [...sellerNames].sort();
+
+  const g82: { label: string; json: string; contra: string[]; activity: string[]; score: number | null; useCase: string | null; change: string | null; sellers: string[]; grouped: string; groupOrder: string[] }[] = [];
+  for (const heap of ["heap: insertion order", "heap: tuples relocated"]) {
+    if (heap.endsWith("relocated")) {
+      await owner.query(`update contradictions set basis = basis where company_id = any($1)`, [contraIds.filter((_, i) => i % 2 === 0)]);
+      await owner.query(`update outcome_events set event_type = event_type where id = any($1)`, [eventIds.filter((_, i) => i % 2 === 0)]);
+      await owner.query(`update propensity_scores set band = band where id = $1`, [scoreIds[0]]);
+      await owner.query(`update sellers set territory = territory where id = $1`, [sellerIds[0]]);
+    }
+    for (const [plan, off] of PLANS) for (const [role, pool] of ROLES) {
+      const label = `${heap} · ${plan} · ${role}`;
+      const [actions, overview, intel, portfolio, sellers] = await read(pool, V, off, async (c) => Promise.all([
+        loadTodayNextActions(c, V), loadTodayOverview(c, V, null), getAccountIntel(c, pickCo, V), getPursuitPortfolio(c, caller), getSellerPaths(c, V, pickCo),
+      ] as const));
+      g82.push({
+        label, json: JSON.stringify([actions, overview.top, overview.activity, intel, portfolio.rows, sellers]),
+        contra: actions.filter((a) => a.type === "RESOLVE_CONTRADICTION").map((a) => a.title),
+        activity: overview.activity.map((a) => String(a.legal_name)),
+        score: overview.top.find((t) => t.company_id === scoreCo)?.score != null ? Number(overview.top.find((t) => t.company_id === scoreCo)!.score) : null,
+        useCase: intel?.hunt.useCase ?? null,
+        change: intel?.whyNow.materialChange ?? null,
+        sellers: sellers.map((s) => s.name),
+        grouped: JSON.stringify(portfolio.grouped.map((g) => [g.accountLabel, g.pursuits.length])),
+        groupOrder: portfolio.grouped.map((g) => g.accountLabel).filter((l) => l.startsWith("DG82 Group")),
+      });
+    }
+  }
+  const f = g82[0];
+  check("C1 unordered→cap: contradiction actions follow (legal_name, id) — a prefix of the documented order",
+    f.contra.length > 0 && JSON.stringify(f.contra) === JSON.stringify(expectedContra.slice(0, f.contra.length)), JSON.stringify(f.contra));
+  check("C2 non-unique LIMIT: the 6 kept activity rows are the documented (occurred_at desc, id desc) set",
+    JSON.stringify(f.activity) === JSON.stringify(expectedActivity), JSON.stringify(f.activity));
+  check("C3 distinct-on: the score shown for the tied company is the documented (computed_at desc, id desc) pick",
+    f.score === expectedScore, `${f.score}`);
+  check("C4 first-row pick: the drawer's pursuit is the documented (created_at asc, id asc) pick", f.useCase === expectedUseCase, `${f.useCase}`);
+  check("C4 latest-row pick: the drawer's material change is the documented (occurred_at desc, id desc) pick", f.change === expectedChange, `${f.change}`);
+  check("C5 encounter-order group: the portfolio's account groups are deterministic", g82.every((r) => r.grouped === f.grouped), f.grouped.slice(0, 120));
+  check("C5 encounter-order group: the tied account groups follow the documented (legal_name, id) order",
+    JSON.stringify(f.groupOrder) === JSON.stringify(expectedGroups), JSON.stringify(f.groupOrder));
+  check("C7 tied visible list: seller paths follow (name, id) when strength and recency tie",
+    JSON.stringify(f.sellers) === JSON.stringify(expectedSellers), JSON.stringify(f.sellers));
+  // Per-class negative control. The assertions above read run 0 only, so a class can look correct merely
+  // because the default plan happened to emit the documented order. Each class must ALSO be identical
+  // across every plan/heap/role: pre-fix these vary (that is the red evidence for the class), post-fix none do.
+  const classes: [string, (r: typeof f) => string][] = [
+    ["C1 unordered→cap (contradiction actions)", (r) => JSON.stringify(r.contra)],
+    ["C2 non-unique LIMIT (activity rows)", (r) => JSON.stringify(r.activity)],
+    ["C3 distinct-on (tied score pick)", (r) => String(r.score)],
+    ["C4 first-row pick (drawer pursuit)", (r) => String(r.useCase)],
+    ["C4 latest-row pick (material change)", (r) => String(r.change)],
+    ["C5 encounter-order group (portfolio)", (r) => r.grouped],
+    ["C5 tied account groups (portfolio)", (r) => JSON.stringify(r.groupOrder)],
+    ["C7 tied visible list (seller paths)", (r) => JSON.stringify(r.sellers)],
+  ];
+  for (const [name, get] of classes) {
+    const vals = [...new Set(g82.map(get))];
+    check(`${name}: identical across all ${g82.length} runs`, vals.length === 1,
+      vals.length === 1 ? "" : `${vals.length} distinct — ${vals.slice(0, 3).map((v) => v.slice(0, 70)).join(" | ")}`);
+  }
+
+  // Old-SQL controls for the three classes whose app path happened to agree on every plan above. A tie the
+  // planner currently resolves "correctly" is luck, not a guarantee, so these run the UNFIXED clause
+  // literally over the same fixtures: they prove the fixture really ties and the clause does not determine
+  // the answer, and they keep proving it after the app is fixed (same form as the D-G5-1 controls above).
+  const OLD_ACTIVITY = `select c.legal_name v from outcome_events e left join companies c on c.id = e.company_id
+     where e.org_id = $1 order by e.occurred_at desc limit 6`;
+  const OLD_PURSUIT = `select use_case v from pursuits where account_id=$1 and org_id=$2 order by created_at asc limit 1`;
+  const OLD_PORTFOLIO = `select c.legal_name v from pursuits pu join companies c on c.id = pu.account_id
+      where pu.org_id = $1 and pu.status not in ('WON','LOST','DISQUALIFIED') and pu.merged_into_pursuit_id is null
+      order by pu.current_priority_score desc nulls last`;
+  const oldClauseShapes = async (sql: string, params: string[]): Promise<string[]> => {
+    const out: string[] = [];
+    for (const [, off] of PLANS) for (const [, pool] of ROLES) {
+      const rows = await read(pool, V, off, async (c) => (await c.query<{ v: string | null }>(sql, params)).rows);
+      out.push(JSON.stringify(rows.map((r) => r.v)));
+    }
+    return out;
+  };
+  // Plan choice alone does not decide a tie — PHYSICAL ROW ORDER does. Each rotation rewrites the tied rows
+  // in a different sequence (an `x = x` update writes a new tuple at the heap end), so the same rows and the
+  // same clause are read from a different layout. A clause with a unique trailing key is immune to this; an
+  // underdetermined one is not.
+  // Perturb the four rows that actually tie (score 77 on four different accounts). Perturbing the top of the
+  // real ordering proved nothing: the seeded scores are distinct, so there was no tie to resolve.
+  const tiedPortfolio = groupPursuits;
+  const TOUCH_EVENT = `update outcome_events set event_type = event_type where id = $1`;
+  const TOUCH_PURSUIT = `update pursuits set use_case = use_case where id = $1`;
+  for (const [name, sql, params, expected, touch, ids] of [
+    ["C2 non-unique LIMIT (activity rows)", OLD_ACTIVITY, [V], JSON.stringify(expectedActivity), TOUCH_EVENT, eventIds],
+    ["C4 first-row pick (drawer pursuit)", OLD_PURSUIT, [pickCo, V], JSON.stringify([expectedUseCase]), TOUCH_PURSUIT, pursuitIds],
+    ["C5 encounter-order group (portfolio)", OLD_PORTFOLIO, [V], null, TOUCH_PURSUIT, tiedPortfolio],
+  ] as [string, string, string[], string | null, string, string[]][]) {
+    const shapes: string[] = [];
+    for (let r = 0; r < 3; r++) {
+      for (let k = 0; k < ids.length; k++) await owner.query(touch, [ids[(k + r) % ids.length]]);
+      shapes.push(...await oldClauseShapes(sql, params));
+    }
+    const distinct = new Set(shapes).size;
+    const wrong = expected == null ? 0 : shapes.filter((s) => s !== expected).length;
+    check(`negative control: the OLD clause for ${name} is underdetermined`, distinct > 1 || wrong > 0,
+      `${distinct} distinct result(s) over ${shapes.length} runs (${ids.length} tied rows × 3 layouts); ${wrong} differ from the documented order`);
+  }
+
+  const g82Diff = g82.filter((r) => r.json !== f.json).map((r) => r.label);
+  check(`D-G8-2A: all six read paths byte-identical across ${g82.length} runs (5 plans × 2 heaps × owner/app_rw)`,
+    g82Diff.length === 0, g82Diff.length ? `differs: ${g82Diff.join(" | ")}` : "");
 
   const sendAfter = (await owner.query(`select (select count(*) from messages) m, (select count(*) from action_outbox) o, (select count(*) from email_events) e`)).rows[0];
   check("no send activity (messages / outbox / email events unchanged)", JSON.stringify(sendBefore) === JSON.stringify(sendAfter));

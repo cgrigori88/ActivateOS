@@ -142,7 +142,7 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
            join sellers s on s.id = sar.seller_id and s.org_id = $3
            left join partners pn on pn.id = s.partner_id
           where sar.company_id = pu.account_id and sar.strength > 0
-          order by sar.strength desc limit 1) sp on true
+          order by sar.strength desc, s.name, s.id limit 1) sp on true
       where pu.org_id = $3 and pu.status not in ('WON','LOST','DISQUALIFIED')
         and coalesce(pu.expected_value_weighted, 0) >= ${STAKEHOLDER_GAP_FLOOR_USD}
         and exists (select 1 from opportunities o where o.pursuit_id = pu.id and o.org_id = pu.org_id)
@@ -206,7 +206,7 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
         where p.org_id = $1 and p.status not in ('CLOSED','ARCHIVED')
           and coalesce(p.expected_value_weighted, 0) >= $2
           and ($4::boolean is false or p.account_id = any($3))
-        order by p.expected_value_weighted desc nulls last limit 25`,
+        order by p.expected_value_weighted desc nulls last, p.id limit 25`,
       [caller.orgId, VALUE_FLOOR_USD, ids, scoped]);
     for (const row of econRows.rows) {
       const vc = await getValueCase(db, caller.orgId, row.id);
@@ -242,7 +242,7 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
       where cl.pursuit_id is not null and cl.recorded_at > now() - interval '14 days'
         and cl.org_id = $3 and pu.org_id = $3
         and ($2::boolean is false or pu.account_id = any($1))
-      order by cl.recorded_at desc limit 60`, [ids, scoped, caller.orgId]);
+      order by cl.recorded_at desc, cl.id desc limit 60`, [ids, scoped, caller.orgId]);
   for (const ch of changes.rows) {
     const cls = classifyChange(ch.change_type);
     if (!cls || !isMaterial(ch.materiality)) continue;
@@ -251,9 +251,13 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
       [{ label: "Open", skill: "explain_partner_route", sideEffect: "READ" }], `/pursuits/${ch.pursuit_id}`, brief(ch.before_state), brief(ch.after_state)));
   }
 
+  // `todaySort` ends on age, which is not unique, and this list is cut to `opts.limit` — so a tie decided by
+  // arrival order changes WHICH decisions reach Today. End on the item's stable key, as the attention queue
+  // already does in `byMateriality` (D-G8-2A).
   items.sort((a, b) => todaySort(
     { decisionClass: a.decisionClass, operationalUrgency: a.operationalUrgency, commercialPriority: a.commercialPriority, ageSeconds: (now - new Date(a.at).getTime()) / 1000 },
-    { decisionClass: b.decisionClass, operationalUrgency: b.operationalUrgency, commercialPriority: b.commercialPriority, ageSeconds: (now - new Date(b.at).getTime()) / 1000 }));
+    { decisionClass: b.decisionClass, operationalUrgency: b.operationalUrgency, commercialPriority: b.commercialPriority, ageSeconds: (now - new Date(b.at).getTime()) / 1000 })
+    || a.id.localeCompare(b.id) || a.deepLink.localeCompare(b.deepLink));
 
   const counts = { DECISION_REQUIRED: 0, MATERIAL_CHANGE: 0, ACTION_REQUIRED: 0, RISK: 0, OPPORTUNITY: 0, FYI: 0 } as Record<DecisionClass, number>;
   for (const it of items) counts[it.decisionClass]++;

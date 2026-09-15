@@ -120,5 +120,7 @@ export function rankNextActions(state: PortfolioState, limit = 10): NextAction[]
     });
   }
 
-  return actions.sort((a, b) => b.priority - a.priority).slice(0, limit);
+  // Tie-break on the displayed label, then the link: priority alone is not a total order, and this list
+  // is cut to `limit`, so a tie decided by arrival order changes WHICH actions reach Today (D-G8-2A).
+  return actions.sort((a, b) => b.priority - a.priority || a.title.localeCompare(b.title) || a.href.localeCompare(b.href)).slice(0, limit);
 }

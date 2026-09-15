@@ -27,7 +27,7 @@ export async function getPursuitPortfolio(db: PoolClient, caller: Caller): Promi
        left join partners pr on pr.id = sn.recommended_partner_id
        left join route_candidates rc on rc.route_snapshot_id = sn.id and rc.is_recommended and rc.org_id = pu.org_id
       where pu.org_id = $1 and pu.status not in ('WON','LOST','DISQUALIFIED') and pu.merged_into_pursuit_id is null
-      order by pu.current_priority_score desc nulls last`, [caller.orgId]);
+      order by pu.current_priority_score desc nulls last, c.legal_name, pu.id`, [caller.orgId]);
 
   const viewRows: PortfolioRow[] = rows.map((r) => ({
     pursuitId: r.id, accountLabel: r.account_label, thesis: r.thesis ?? r.use_case ?? "Untitled pursuit", solution: r.solution,

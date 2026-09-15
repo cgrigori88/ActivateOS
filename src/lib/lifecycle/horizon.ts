@@ -67,7 +67,7 @@ export async function getLifecycleHorizon(
        left join lateral (
          select p.id, p.expected_value_weighted from pursuits p
           where p.account_id = c.id and p.org_id = $1 and p.status not in ('WON','LOST','DISQUALIFIED')
-          order by p.expected_value_weighted desc nulls last limit 1) pu on true
+          order by p.expected_value_weighted desc nulls last, p.id limit 1) pu on true
       where ($3::boolean is false or c.id = any($2))
         and (exists (select 1 from pursuits p where p.account_id = c.id and p.org_id = $1)
           or exists (select 1 from revenue_motions m where m.company_id = c.id and m.org_id = $1))`,
@@ -107,10 +107,12 @@ export async function getLifecycleHorizon(
     });
   }
 
+  // One item per account, so companyId is unique — a total order for a list cut to CAP (D-G8-2A).
   items.sort((x, y) =>
     STATE_RANK[x.event.state] - STATE_RANK[y.event.state] ||
     (x.event.daysUntil ?? 9999) - (y.event.daysUntil ?? 9999) ||
-    (y.expectedValue ?? 0) - (x.expectedValue ?? 0));
+    (y.expectedValue ?? 0) - (x.expectedValue ?? 0) ||
+    x.accountLabel.localeCompare(y.accountLabel) || x.companyId.localeCompare(y.companyId));
 
   return {
     days,

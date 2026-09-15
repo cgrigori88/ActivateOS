@@ -157,7 +157,7 @@ export async function getPartnerActivationProfile(
        join companies c on c.id = pu.account_id
       where tm.partner_id = $1 and pu.org_id = $2 and tm.status = 'INVITED'
         and pu.status not in ('WON','LOST','DISQUALIFIED')
-      order by 4 desc limit 10`, [partnerId, orgId])).rows;
+      order by 4 desc, c.legal_name, tm.pursuit_id, tm.role limit 10`, [partnerId, orgId])).rows;
 
   const gaps = (await db.query<{ company_id: string; account: string; gap: string }>(
     `with overlap as (
@@ -173,7 +173,7 @@ export async function getPartnerActivationProfile(
       where not exists (select 1 from partner_relationships pr where pr.partner_id = $1 and pr.company_id = o.company_id and pr.strength > 0)
          or not exists (select 1 from seller_account_relationships sar join sellers s on s.id = sar.seller_id
                          where s.partner_id = $1 and sar.company_id = o.company_id and sar.strength > 0)
-      order by c.legal_name limit 12`, [partnerId, orgId])).rows;
+      order by c.legal_name, o.company_id limit 12`, [partnerId, orgId])).rows;
 
   return {
     partnerId, name: p.name,
@@ -276,7 +276,9 @@ export async function getSellerPaths(db: PoolClient, orgId: string, companyId: s
       assignedOnLivePursuit: r.assigned,
     };
   });
-  paths.sort((a, b) => (b.strength ?? 0) - (a.strength ?? 0));
+  // Strength alone is not a total order and this list is rendered — tie-break on the displayed name,
+  // then the seller's primary key (D-G8-2A).
+  paths.sort((a, b) => (b.strength ?? 0) - (a.strength ?? 0) || a.name.localeCompare(b.name) || a.sellerId.localeCompare(b.sellerId));
   return paths;
 }
 
