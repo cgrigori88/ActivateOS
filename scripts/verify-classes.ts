@@ -106,6 +106,12 @@ export const SUITES: SuiteSpec[] = [
     why: "Today/Queue tenant isolation (2026-09-14 hardening): reads every canonical org's Today (flag OFF and ON) and Queue inside READ ONLY transactions, then plants guest-org clones of real rows inside a transaction that is ROLLED BACK and proves the sponsor's surfaces do not move",
   },
   {
+    name: "partnership-app-rw",
+    cls: "SEEDED",
+    why: "H1B-0: every partnership / consent flow as the REAL app_rw login (RLS binding) — invite→redeem, context and list grants, the overlap ladder, evidence and skill shares, warm intros, joint pursuits, settlement, revoke — plus third-party, forged-row, self-approval, post-revoke and no-context refusals. One transaction, ROLLED BACK, on a disposable seeded clone",
+    isolation: "SEEDED_CLONE",
+  },
+  {
     name: "tenant-isolation",
     cls: "SEEDED",
     why: "H1A broad cross-tenant adversarial verifier: plants a foreign tenant (clones of the sponsor's own rows, every readable field marked) and crawls every room of the real production build, calls every non-HTTP surface and every audited write with foreign ids, then plants the same rows into the sponsor as a NEGATIVE CONTROL. It COMMITS the planted rows (the running app must see them), so it runs on a disposable seeded clone. Needs `npm run build` first",

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { timingSafeEqual } from "node:crypto";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
+import { getPool } from "@/db/client";
+import { type DatabasePosture, probeDatabasePosture } from "@/lib/env/db-posture";
 import { buildInfo, databaseIdentity, environmentLabel, externalSendingArmed, siteMode } from "@/lib/env/environment";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +74,10 @@ export async function GET() {
 
   const build = buildInfo();
   const db = databaseIdentity();
+  // H1B Gate 6: the live posture of the RUNTIME pool — role, whether it bypasses RLS, and whether RLS
+  // therefore binds it. Never throws and never waits more than two seconds (see db-posture.ts).
+  let live: DatabasePosture = { status: "unavailable" };
+  try { live = await probeDatabasePosture(getPool()); } catch { /* DATABASE_URL unset — report unavailable */ }
 
   return NextResponse.json(
     {
@@ -89,6 +95,13 @@ export async function GET() {
         // Non-secret identifiers only — see the header comment.
         projectRef: db.projectRef ?? "unknown",
         host: db.host ?? "unknown",
+        // Runtime posture (H1B Gate 6). `role` is the live current_user when the probe answers, else
+        // the role name parsed from the connection string's user (never the password). `bypassRls` /
+        // `tenantEnforcement` are null when the probe could not answer — never guessed.
+        role: live.status === "live" ? live.role : (db.role ?? "unknown"),
+        bypassRls: live.status === "live" ? live.bypassRls : null,
+        tenantEnforcement: live.status === "live" ? live.tenantEnforcement : null,
+        probe: live.status,
       },
       posture: {
         // The two facts most often asserted from memory and most worth checking

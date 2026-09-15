@@ -35,7 +35,6 @@ export const LEVEL_EXPLAIN: Record<OverlapLevel, string> = {
   named: "Which accounts they are — each one is already in your book; this reveals only that the partner has it too, and how each side categorizes it.",
 };
 
-const NAMED_CAP = 500;
 
 export interface CountsResults {
   overlap: number;
@@ -84,13 +83,6 @@ function otherOrg(p: PartnershipRow, orgId: string): string {
   return other;
 }
 
-/** The org's own book: distinct companies in its approved, non-lens lists. */
-const BOOK_SQL = `
-  select distinct pm.company_id, ap.category
-  from population_members pm
-  join account_populations ap on ap.id = pm.population_id
-  where ap.org_id = $ORG and ap.status = 'approved' and ap.partner_id is null`;
-
 export async function bookSize(db: Db, orgId: string): Promise<number> {
   const { rows } = await db.query<{ n: string }>(
     `select count(distinct pm.company_id) as n
@@ -102,82 +94,9 @@ export async function bookSize(db: Db, orgId: string): Promise<number> {
   return Number(rows[0]?.n ?? 0);
 }
 
-/** Broker computation — deliberate cross-tenant read in system context (like
- * grant sync). Only rung-appropriate aggregates leave this function. */
-async function computeOverlap(
-  db: Db,
-  p: PartnershipRow,
-  level: OverlapLevel,
-): Promise<CountsResults | BandsResults | NamedResults> {
-  const [orgA, orgB] = memberOrgs(p);
-  const a = BOOK_SQL.replace("$ORG", "$1");
-  const b = BOOK_SQL.replace("$ORG", "$2");
-
-  const { rows: countRows } = await db.query<{ n: string }>(
-    `with a_book as (${a}), b_book as (${b})
-     select count(*) as n from (select distinct company_id from a_book) x
-     join (select distinct company_id from b_book) y using (company_id)`,
-    [orgA, orgB],
-  );
-  const overlap = Number(countRows[0]?.n ?? 0);
-  if (level === "counts") return { overlap };
-
-  if (level === "bands") {
-    const { rows: catRows } = await db.query<{ org_id: string; category: string; n: string }>(
-      `with a_book as (${a}), b_book as (${b}),
-       shared as (select distinct company_id from a_book intersect select distinct company_id from b_book)
-       select $1 as org_id, ab.category, count(distinct ab.company_id) as n
-       from a_book ab join shared s on s.company_id = ab.company_id group by ab.category
-       union all
-       select $2 as org_id, bb.category, count(distinct bb.company_id) as n
-       from b_book bb join shared s on s.company_id = bb.company_id group by bb.category`,
-      [orgA, orgB],
-    );
-    const categories: BandsResults["categories"] = { [orgA]: {}, [orgB]: {} };
-    for (const r of catRows) categories[r.org_id][r.category] = Number(r.n);
-
-    const { rows: indRows } = await db.query<{ industry: string | null; n: string }>(
-      `with a_book as (${a}), b_book as (${b}),
-       shared as (select distinct company_id from a_book intersect select distinct company_id from b_book)
-       select c.industry, count(*) as n from shared s join companies c on c.id = s.company_id
-       group by c.industry order by count(*) desc limit 8`,
-      [orgA, orgB],
-    );
-    return {
-      overlap,
-      categories,
-      industries: indRows.map((r) => ({ industry: r.industry ?? "unknown", count: Number(r.n) })),
-    };
-  }
-
-  const { rows: namedRows } = await db.query<{
-    company_id: string;
-    name: string;
-    industry: string | null;
-    a_cats: string[];
-    b_cats: string[];
-  }>(
-    `with a_book as (${a}), b_book as (${b}),
-     shared as (select distinct company_id from a_book intersect select distinct company_id from b_book)
-     select s.company_id, c.legal_name as name, c.industry,
-            (select array_agg(distinct ab.category) from a_book ab where ab.company_id = s.company_id) as a_cats,
-            (select array_agg(distinct bb.category) from b_book bb where bb.company_id = s.company_id) as b_cats
-     from shared s join companies c on c.id = s.company_id
-     order by c.legal_name limit ${NAMED_CAP + 1}`,
-    [orgA, orgB],
-  );
-  const truncated = namedRows.length > NAMED_CAP;
-  return {
-    overlap,
-    truncated,
-    accounts: namedRows.slice(0, NAMED_CAP).map((r) => ({
-      company_id: r.company_id,
-      name: r.name,
-      industry: r.industry,
-      cats: { [orgA]: r.a_cats ?? [], [orgB]: r.b_cats ?? [] },
-    })),
-  };
-}
+/* The overlap computation — both books, only the rung-appropriate aggregate out — lives in
+   decide_overlap_probe() / h1b_overlap_results() (migration 0104), so neither org's raw book ever
+   leaves the database, whichever role the runtime connects as. */
 
 // ── Ladder actions ───────────────────────────────────────────────────────────
 
@@ -241,22 +160,14 @@ export async function decideOverlapProbe(
   // The requester consented by requesting — only the counterpart can decide.
   if (probe.requested_by_org === orgId) throw new Error("The requesting side can't approve its own probe.");
 
-  if (!approve) {
-    await db.query(`update overlap_probes set status = 'declined', decided_at = now() where id = $1`, [probeId]);
-    for (const org of memberOrgs(p)) {
-      await audit(db, org, "overlap.declined", { level: probe.level, by: orgId === org ? "us" : "counterpart" }, p.id);
-    }
-    return;
-  }
-
-  const results = await computeOverlap(db, p, probe.level);
-  await db.query(
-    `update overlap_probes set status = 'approved', decided_at = now(), computed_at = now(), results = $2
-     where id = $1`,
-    [probeId, JSON.stringify(results)],
-  );
+  // The decision — and, on approval, the computation over BOTH books — happens in
+  // `decide_overlap_probe()` (0104): only the rung-appropriate aggregate is stored, and neither org's
+  // raw book ever leaves the database. It re-validates everything checked above.
+  const { rows: decided } = await db.query<{ outcome: string }>(
+    `select decide_overlap_probe($1, $2) as outcome`, [probeId, approve]);
+  const event = decided[0]?.outcome === "approved" ? "overlap.approved" : "overlap.declined";
   for (const org of memberOrgs(p)) {
-    await audit(db, org, "overlap.approved", { level: probe.level, by: orgId === org ? "us" : "counterpart" }, p.id);
+    await audit(db, org, event, { level: probe.level, by: orgId === org ? "us" : "counterpart" }, p.id);
   }
 }
 

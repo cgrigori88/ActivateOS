@@ -204,18 +204,15 @@ export async function skillsForContext(
   // Skills the partner on this pursuit shared with us (accepted, live-read):
   // consent already happened at accept time; they ground only when THAT
   // partner is on the deal, and carry their origin in the name.
+  // (The partner's skill lives in ITS book — read through `shared_in_skills()` (0104): accepted shares on
+  // the caller's ACTIVE partnerships only, matched to the caller's own lens on the sharer.)
   const { rows: shared } = ctx.partnerId
     ? await db.query<{ id: string; name: string; kind: SkillKind; body: string }>(
-        `select s.id, s.name || ' — shared by ' || o.name as name, s.kind, s.body
-         from skill_shares sh
-         join skills s on s.id = sh.skill_id and s.status = 'active' and s.org_id <> $1
-         join organizations o on o.id = s.org_id
-         join partnerships p on p.id = sh.partnership_id and p.status = 'active'
-         where sh.status = 'accepted' and s.kind = any($2)
-           and ((p.initiator_org_id = $1 and p.initiator_partner_id = $3)
-                or (p.counterpart_org_id = $1 and p.counterpart_partner_id = $3))
-         order by sh.offered_at desc limit 4`,
-        [orgId, kinds, ctx.partnerId],
+        `select id, name || ' — shared by ' || from_org_name as name, kind, body
+           from shared_in_skills()
+          where kind = any($1) and partner_id = $2
+          order by offered_at desc limit 4`,
+        [kinds, ctx.partnerId],
       )
     : { rows: [] };
 
@@ -269,9 +266,10 @@ export async function offerSkillShare(db: Db, orgId: string, skillId: string, pa
 }
 
 export async function decideSkillShare(db: Db, orgId: string, shareId: string, accept: boolean): Promise<void> {
+  // The skill belongs to the sharer, so the receiver reads its owner / name through
+  // `skill_share_subject()` (0104) — for a party to the share's partnership only.
   const { rows } = await db.query<{ partnership_id: string; status: string; owner_org: string; name: string }>(
-    `select sh.partnership_id, sh.status, s.org_id as owner_org, s.name
-     from skill_shares sh join skills s on s.id = sh.skill_id where sh.id = $1`,
+    `select partnership_id, status, owner_org, name from skill_share_subject($1)`,
     [shareId],
   );
   if (!rows[0]) throw new Error("Share not found.");
@@ -303,17 +301,14 @@ export async function revokeSkillShare(db: Db, orgId: string, shareId: string): 
 
 /** Both directions of sharing on one partnership, viewer-relative. */
 export async function listSkillShares(db: Db, orgId: string, partnershipId: string): Promise<SkillShareView[]> {
+  // Incoming shares are the counterpart's skills: `partnership_skill_shares()` (0104) returns both
+  // directions for a party to this partnership, and nothing to anyone else.
   const { rows } = await db.query<{
     id: string; skill_id: string; name: string; kind: SkillKind; status: SkillShareView["status"];
     owner_org: string; from_org_name: string; body: string; offered_at: Date;
   }>(
-    `select sh.id, sh.skill_id, s.name, s.kind, sh.status, s.org_id as owner_org,
-            o.name as from_org_name, s.body, sh.offered_at
-     from skill_shares sh
-     join skills s on s.id = sh.skill_id and s.status = 'active'
-     join organizations o on o.id = s.org_id
-     where sh.partnership_id = $1
-     order by sh.offered_at desc`,
+    `select id, skill_id, name, kind, status, owner_org, from_org_name, body, offered_at
+       from partnership_skill_shares($1)`,
     [partnershipId],
   );
   return rows.map((r) => ({
@@ -338,19 +333,11 @@ export async function sharedInSkills(
     id: string; name: string; kind: SkillKind; body: string; from_org_name: string;
     partner_id: string | null; partner_name: string | null;
   }>(
-    `select s.id, s.name, s.kind, s.body, o.name as from_org_name,
-            case when p.initiator_org_id = $1 then p.initiator_partner_id else p.counterpart_partner_id end as partner_id,
-            pa.name as partner_name
-     from skill_shares sh
-     join skills s on s.id = sh.skill_id and s.status = 'active' and s.org_id <> $1
-     join organizations o on o.id = s.org_id
-     join partnerships p on p.id = sh.partnership_id and p.status = 'active'
-       and (p.initiator_org_id = $1 or p.counterpart_org_id = $1)
-     left join partners pa on pa.id = case when p.initiator_org_id = $1 then p.initiator_partner_id else p.counterpart_partner_id end
-     where sh.status = 'accepted'
-     order by sh.offered_at desc`,
-    [orgId],
+    // Read live through `shared_in_skills()` (0104): the caller is the trusted `app.org_id`.
+    `select id, name, kind, body, from_org_name, partner_id, partner_name from shared_in_skills()`,
+    [],
   );
+  void orgId;
   return rows.map((r) => ({
     id: r.id, name: r.name, kind: r.kind, body: r.body,
     fromOrgName: r.from_org_name, partnerId: r.partner_id, partnerName: r.partner_name,

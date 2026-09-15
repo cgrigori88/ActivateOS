@@ -30,7 +30,21 @@ export async function currentActor(): Promise<string> {
   }
 }
 
-/** Append to an org's ledger. Never throws — an audit failure must not roll back the action it records. */
+/**
+ * Append to an org's ledger. Best-effort BY DOCTRINE: an audit failure must not roll back the action
+ * it records (D-049).
+ *
+ * Two things make that doctrine true under RLS (H1B-0), where before it was only claimed:
+ *
+ *  1. A partnership-scoped event may land in the COUNTERPART's ledger — the handshake doctrine is
+ *     "every step lands in each org's own audit_log". Under the least-privilege runtime role a plain
+ *     insert carrying the other org's id is refused by the audit_log policy, so those rows go through
+ *     `audit_partnership_event()` (migration 0104): a SECURITY DEFINER function that writes only to a
+ *     party of that exact partnership, only when the caller is a party too.
+ *  2. Inside a caller's transaction, a failed statement aborts the WHOLE transaction — catching the JS
+ *     error afterwards does not undo that. So the write runs under a SAVEPOINT and a failure rolls back
+ *     to it: the business action commits, and the lost audit row is logged loudly.
+ */
 export async function audit(
   db: Db,
   orgId: string,
@@ -38,15 +52,24 @@ export async function audit(
   detail: Record<string, unknown> = {},
   partnershipId?: string | null,
 ): Promise<void> {
+  const actor = await currentActor();
+  const write = () => partnershipId
+    ? db.query(`select audit_partnership_event($1, $2, $3, $4, $5::jsonb)`, [partnershipId, orgId, actor, event, JSON.stringify(detail)])
+    : db.query(`insert into audit_log (org_id, actor, event, detail, partnership_id) values ($1, $2, $3, $4, null)`,
+        [orgId, actor, event, JSON.stringify(detail)]);
+  // A Pool runs each query in its own implicit transaction — nothing to protect. A client may be inside
+  // the caller's transaction: guard the write with a savepoint (outside a transaction block SAVEPOINT
+  // itself errors harmlessly, and the write then runs on its own).
+  let savepoint = false;
+  if ("release" in db) {
+    try { await db.query("savepoint audit_write"); savepoint = true; } catch { /* not in a transaction block */ }
+  }
   try {
-    const actor = await currentActor();
-    await db.query(
-      `insert into audit_log (org_id, actor, event, detail, partnership_id)
-       values ($1, $2, $3, $4, $5)`,
-      [orgId, actor, event, JSON.stringify(detail), partnershipId ?? null],
-    );
+    await write();
+    if (savepoint) await db.query("release savepoint audit_write");
   } catch (err) {
-    console.error(`audit_log write failed (${event}):`, err);
+    if (savepoint) await db.query("rollback to savepoint audit_write").catch(() => {});
+    console.error(`audit_log write failed (${event}) — the action it records was kept:`, err);
   }
 }
 
@@ -103,33 +126,20 @@ export async function createPartnershipInvite(
  */
 export async function redeemPartnershipInvite(pool: Pool | PoolClient, orgId: string, code: string): Promise<void> {
   return runTx(pool, async (db) => {
-    const { rows } = await db.query<{
-      id: string; initiator_org_id: string; initiator_name: string;
-    }>(
-      `select p.id, p.initiator_org_id, o.name as initiator_name
-       from partnerships p join organizations o on o.id = p.initiator_org_id
-       where p.invite_code = $1 and p.status = 'invited'
-       for update of p`,
+    // Pre-membership by nature: the redeemer is not yet a party, so under the least-privilege runtime
+    // role the invited partnership is invisible to it. `redeem_partnership_invite()` (migration 0104)
+    // acts on the ONE partnership whose code was presented — the ~93-bit code is the credential — as
+    // the caller's org from trusted server context (`app.org_id`, set here from the authenticated org
+    // for the owner-pool /join path; withTenant has already set the same value on the admin path). It
+    // can neither list nor discover invites.
+    await db.query(`select set_config('app.org_id', $1, true)`, [orgId]);
+    const { rows } = await db.query<{ partnership_id: string; initiator_org_id: string; initiator_name: string; redeemer_name: string }>(
+      `select partnership_id, initiator_org_id, initiator_name, redeemer_name from redeem_partnership_invite($1)`,
       [code.trim().toUpperCase()],
     );
     const invite = rows[0];
-    if (!invite) throw new Error("Invite code not found, already redeemed, or revoked.");
-    if (invite.initiator_org_id === orgId) throw new Error("This invite was issued by your own organization.");
-
-    const { rows: lens } = await db.query<{ id: string }>(
-      `insert into partners (org_id, name, partner_type) values ($1, $2, 'alliance') returning id`,
-      [orgId, invite.initiator_name],
-    );
-    await db.query(
-      `update partnerships
-       set counterpart_org_id = $2, counterpart_partner_id = $3,
-           status = 'active', activated_at = now()
-       where id = $1`,
-      [invite.id, orgId, lens[0].id],
-    );
-    await audit(db, orgId, "partnership.accepted", { with: invite.initiator_name }, invite.id);
-    const { rows: me } = await db.query<{ name: string }>(`select name from organizations where id = $1`, [orgId]);
-    await audit(db, invite.initiator_org_id, "partnership.accepted", { by: me[0]?.name ?? orgId }, invite.id);
+    await audit(db, orgId, "partnership.accepted", { with: invite.initiator_name }, invite.partnership_id);
+    await audit(db, invite.initiator_org_id, "partnership.accepted", { by: invite.redeemer_name ?? orgId }, invite.partnership_id);
   });
 }
 
@@ -149,18 +159,15 @@ export async function revokePartnership(pool: Pool | PoolClient, orgId: string, 
     const p = rows[0];
     if (!p) throw new Error("Partnership not found (or already revoked).");
 
-    // Kill every live grant + its materialized copy.
-    await db.query(
-      `update account_populations set status = 'rejected'
-       where id in (select materialized_population_id from list_grants
-                    where partnership_id = $1 and materialized_population_id is not null)`,
-      [partnershipId],
-    );
+    // Kill every live grant, then its materialized copy. The copies sit in the RECEIVING org's book, so
+    // flipping them is a cross-party write: `revoke_list_grant_copies()` (0104) does it for exactly the
+    // copies of this partnership's now-revoked grants, and nothing else. Access ends NOW on both sides.
     await db.query(
       `update list_grants set status = 'revoked', decided_at = now()
        where partnership_id = $1 and status in ('offered','accepted')`,
       [partnershipId],
     );
+    await db.query(`select revoke_list_grant_copies($1, null)`, [partnershipId]);
     await db.query(
       `update partnerships set status = 'revoked', revoked_at = now() where id = $1`,
       [partnershipId],
@@ -243,34 +250,24 @@ async function loadIncomingGrant(db: Db, orgId: string, grantId: string, lock: b
 }
 
 /**
- * (Re)materialize a copy's members from the source: wipe and re-copy, member
- * attributes cut down to the granted fields (null = all). Used by accept and
- * by every later sync — one code path, no drift.
+ * (Re)materialize a copy's members from the source: wipe and re-copy, member attributes cut down to
+ * the granted fields (null = all). Used by accept and by every later sync — one code path, no drift.
+ *
+ * The source list belongs to the SHARER and the copy to the RECEIVER, so the copy is a cross-party
+ * operation by definition. It runs in `sync_list_grant_members()` (0104), which copies only an
+ * ACCEPTED grant on an ACTIVE partnership, only into that grant's own materialized copy, only the
+ * granted fields — and only for a party to the partnership.
  */
-async function materializeMembers(
-  db: Db,
-  sourcePopId: string,
-  targetPopId: string,
-  selectedFields: string[] | null,
-): Promise<number> {
-  await db.query(`delete from population_members where population_id = $1`, [targetPopId]);
-  if (selectedFields === null) {
-    const res = await db.query(
-      `insert into population_members (population_id, company_id, attributes)
-       select $2, company_id, attributes from population_members where population_id = $1`,
-      [sourcePopId, targetPopId],
-    );
-    return res.rowCount ?? 0;
-  }
-  const res = await db.query(
-    `insert into population_members (population_id, company_id, attributes)
-     select $2, m.company_id,
-            coalesce((select jsonb_object_agg(e.key, e.value)
-                      from jsonb_each(m.attributes) e where e.key = any($3)), '{}'::jsonb)
-     from population_members m where m.population_id = $1`,
-    [sourcePopId, targetPopId, selectedFields],
-  );
-  return res.rowCount ?? 0;
+async function materializeMembers(db: Db, grantId: string): Promise<number> {
+  const { rows } = await db.query<{ n: number }>(`select sync_list_grant_members($1) as n`, [grantId]);
+  return Number(rows[0]?.n ?? 0);
+}
+
+/** The shared list's name / category and member counts, visible to either party of the grant (0104). */
+async function grantSourceState(db: Db, grantId: string): Promise<{ list_name: string; category: string } | null> {
+  const { rows } = await db.query<{ list_name: string; category: string }>(
+    `select list_name, category from list_grant_source_state($1)`, [grantId]);
+  return rows[0] ?? null;
 }
 
 /**
@@ -286,25 +283,23 @@ export async function acceptListGrant(pool: Pool | PoolClient, orgId: string, gr
     // My lens on the sharer: their side initiated → my lens is counterpart's, and vice versa.
     const myLens = g.initiator_org_id === orgId ? g.initiator_partner_id : g.counterpart_partner_id;
 
-    const { rows: src } = await db.query<{ name: string; category: string }>(
-      `select name, category from account_populations where id = $1`,
-      [g.population_id],
-    );
-    if (!src[0]) throw new Error("The shared list no longer exists.");
+    const src = await grantSourceState(db, grantId);
+    if (!src) throw new Error("The shared list no longer exists.");
 
     const { rows: copy } = await db.query<{ id: string }>(
       `insert into account_populations (org_id, partner_id, name, category, status, created_by)
        values ($1, $2, $3, $4, 'approved', 'partner share') returning id`,
-      [orgId, myLens, `${src[0].name} (shared)`, src[0].category],
+      [orgId, myLens, `${src.list_name} (shared)`, src.category],
     );
-    await materializeMembers(db, g.population_id, copy[0].id, g.selected_fields);
+    // Accept first, then copy: the copy function only ever fills an ACCEPTED grant's own copy.
     await db.query(
       `update list_grants set status = 'accepted', decided_at = now(), synced_at = now(),
               materialized_population_id = $2
        where id = $1`,
       [grantId, copy[0].id],
     );
-    const detail = { list: src[0].name, grant_id: grantId };
+    await materializeMembers(db, grantId);
+    const detail = { list: src.list_name, grant_id: grantId };
     await audit(db, orgId, "grant.accepted", detail, g.partnership_id);
     await audit(db, g.from_org_id, "grant.accepted", detail, g.partnership_id);
   });
@@ -319,16 +314,13 @@ export async function acceptListGrant(pool: Pool | PoolClient, orgId: string, gr
 export async function syncListGrant(pool: Pool | PoolClient, orgId: string, grantId: string): Promise<void> {
   return runTx(pool, async (db) => {
     const { rows } = await db.query<{
-      id: string; partnership_id: string; population_id: string;
-      selected_fields: string[] | null; materialized_population_id: string | null;
-      from_org_id: string; initiator_org_id: string; counterpart_org_id: string | null; list_name: string;
+      id: string; partnership_id: string; materialized_population_id: string | null;
+      from_org_id: string; initiator_org_id: string; counterpart_org_id: string | null;
     }>(
-      `select g.id, g.partnership_id, g.population_id, g.selected_fields,
-              g.materialized_population_id, g.from_org_id,
-              p.initiator_org_id, p.counterpart_org_id, ap.name as list_name
+      `select g.id, g.partnership_id, g.materialized_population_id, g.from_org_id,
+              p.initiator_org_id, p.counterpart_org_id
        from list_grants g
        join partnerships p on p.id = g.partnership_id
-       join account_populations ap on ap.id = g.population_id
        where g.id = $1 and g.status = 'accepted' and p.status = 'active'
          and (p.initiator_org_id = $2 or p.counterpart_org_id = $2)
        for update of g`,
@@ -338,9 +330,10 @@ export async function syncListGrant(pool: Pool | PoolClient, orgId: string, gran
     if (!g) throw new Error("No live accepted share with that id on an active partnership.");
     if (!g.materialized_population_id) throw new Error("Their copy no longer exists — offer the list again.");
 
-    const n = await materializeMembers(db, g.population_id, g.materialized_population_id, g.selected_fields);
+    const src = await grantSourceState(db, grantId);
+    const n = await materializeMembers(db, grantId);
     await db.query(`update list_grants set synced_at = now() where id = $1`, [grantId]);
-    const detail = { list: g.list_name, members: n, grant_id: grantId };
+    const detail = { list: src?.list_name ?? null, members: n, grant_id: grantId };
     await audit(db, g.from_org_id, "grant.synced", detail, g.partnership_id);
     const other = otherOrg(g, g.from_org_id);
     if (other) await audit(db, other, "grant.synced", detail, g.partnership_id);
@@ -374,10 +367,9 @@ export async function revokeListGrant(pool: Pool | PoolClient, orgId: string, gr
     );
     const g = rows[0];
     if (!g) throw new Error("No live grant of yours with that id.");
-    if (g.materialized_population_id) {
-      await db.query(`update account_populations set status = 'rejected' where id = $1`, [g.materialized_population_id]);
-    }
+    // Revoke first; then flip the receiver's copy of THIS now-revoked grant (a cross-party write, 0104).
     await db.query(`update list_grants set status = 'revoked', decided_at = now() where id = $1`, [grantId]);
+    if (g.materialized_population_id) await db.query(`select revoke_list_grant_copies($1, $2)`, [g.partnership_id, grantId]);
     await audit(db, orgId, "grant.revoked", { grant_id: grantId }, g.partnership_id);
     const other = otherOrg(g, orgId);
     if (other) await audit(db, other, "grant.revoked", { grant_id: grantId }, g.partnership_id);
@@ -451,22 +443,22 @@ export async function listGrantViews(db: Db, orgId: string): Promise<GrantView[]
     id: string; from_org_id: string; list_name: string; other_name: string | null;
     selected_fields: string[] | null; status: GrantView["status"]; created_at: Date; stale: boolean;
   }>(
-    `select g.id, g.from_org_id, ap.name as list_name,
+    // The source list is the SHARER's and the copy the RECEIVER's: each side sees the other's half only
+    // through `list_grant_source_state()` (0104) — the list's name / category and member counts for a
+    // grant on a partnership the caller is party to. No member row crosses here.
+    `select g.id, g.from_org_id, s.list_name,
             case when g.from_org_id = $1
                  then (select o.name from organizations o
                        where o.id = case when p.initiator_org_id = $1 then p.counterpart_org_id else p.initiator_org_id end)
                  else (select o.name from organizations o where o.id = g.from_org_id) end as other_name,
             g.selected_fields, g.status, g.created_at,
             (g.status = 'accepted' and g.materialized_population_id is not null and (
-               exists (select 1 from population_members s
-                       where s.population_id = g.population_id
-                         and s.created_at > coalesce(g.synced_at, g.decided_at))
-               or (select count(*) from population_members s where s.population_id = g.population_id)
-                  <> (select count(*) from population_members c where c.population_id = g.materialized_population_id)
+               s.source_last_added > coalesce(g.synced_at, g.decided_at)
+               or s.source_members <> s.copy_members
             )) as stale
      from list_grants g
      join partnerships p on p.id = g.partnership_id
-     join account_populations ap on ap.id = g.population_id
+     cross join lateral list_grant_source_state(g.id) s
      where p.initiator_org_id = $1 or p.counterpart_org_id = $1
      order by g.created_at desc`,
     [orgId],

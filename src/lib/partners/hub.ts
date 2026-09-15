@@ -61,13 +61,10 @@ export async function listPartnerRooms(db: Pool | PoolClient, orgId: string): Pr
                where o.id = case when p.initiator_org_id = $1 then p.counterpart_org_id else p.initiator_org_id end) as other_org_name,
               (select count(*) from joint_pursuits jp
                where jp.partnership_id = p.id and jp.status = 'active')::text as open_pursuits,
-              -- Settlement consent rule inlined: closed_won on jointly pursued accounts only.
-              (select coalesce(sum(o2.amount_usd), 0)
-               from joint_pursuits jp
-               join opportunities o2 on o2.company_id = jp.company_id
-               where jp.partnership_id = p.id and jp.status in ('active', 'closed')
-                 and o2.stage = 'closed_won'
-                 and o2.org_id in (p.initiator_org_id, p.counterpart_org_id))::text as settled_usd
+              -- Settlement consent rule: closed_won on jointly pursued accounts only, both books, read
+              -- through partnership_settlement_rows() (0104) — the counterpart's half is in ITS book.
+              (select coalesce(sum(sr.amount_usd), 0)
+               from partnership_settlement_rows(p.id) sr where sr.stage = 'closed_won')::text as settled_usd
        from partnerships p
        where (p.initiator_org_id = $1 and p.initiator_partner_id = pa.id)
           or (p.counterpart_org_id = $1 and p.counterpart_partner_id = pa.id)
@@ -206,8 +203,9 @@ export async function partnerRoom(db: Pool | PoolClient, orgId: string, partnerI
   if (partnership && partnership.status === "active") {
     ladder = await overlapLadder(db, orgId, partnership.id);
     const { rows: gRows } = await db.query<{ id: string; from_org_id: string; list_name: string; status: string }>(
-      `select g.id, g.from_org_id, ap.name as list_name, g.status
-       from list_grants g join account_populations ap on ap.id = g.population_id
+      // An incoming grant's list is the sharer's: its name comes through list_grant_source_state() (0104).
+      `select g.id, g.from_org_id, s.list_name, g.status
+       from list_grants g cross join lateral list_grant_source_state(g.id) s
        where g.partnership_id = $1
        order by g.created_at desc`,
       [partnership.id],
@@ -260,12 +258,9 @@ export async function partnerRoom(db: Pool | PoolClient, orgId: string, partnerI
   let responsivenessDays: number | null = null;
   if (partnership && partnership.status === "active") {
     const { rows: cyc } = await db.query<{ days: string | null }>(
-      `select avg(extract(epoch from (coalesce(o.closed_at, o.updated_at) - o.created_at)) / 86400)::text as days
-       from joint_pursuits jp
-       join partnerships p on p.id = jp.partnership_id
-       join opportunities o on o.company_id = jp.company_id
-         and o.org_id in (p.initiator_org_id, p.counterpart_org_id)
-       where jp.partnership_id = $1 and jp.status in ('active', 'closed') and o.stage = 'closed_won'`,
+      // Both books on jointly pursued accounts, through partnership_settlement_rows() (0104).
+      `select avg(extract(epoch from (coalesce(sr.closed_at, sr.updated_at) - sr.created_at)) / 86400)::text as days
+       from partnership_settlement_rows($1) sr where sr.stage = 'closed_won'`,
       [partnership.id],
     );
     avgCycleDays = cyc[0]?.days == null ? null : Math.round(Number(cyc[0].days));

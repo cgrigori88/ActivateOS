@@ -1170,3 +1170,68 @@ Classification of the other recorded concerns:
 - inbound subject matching: POST_CUTOVER, resolve before any sending;
 - stored digests: validate at Gate 1;
 - pooler login: validate at Gate 3, a hard stop.
+
+## D-049 · H1B-0 — cross-company access is consent-scoped, object-scoped, purpose-scoped and auditable
+
+**Context.** Under the least-privilege runtime role (`app_rw`) every partnership flow failed closed
+(D-048). Two things were broken:
+1. **Counterpart audit rows aborted the action they recorded.**
+2. **Consented shared data became invisible.**
+
+The H1B-0 inventory found a third, more dangerous problem. Under `app_rw` the consent tables'
+policies did not bind their actor columns, so a party could forge consent rows. Examples: a
+pre-activated partnership, a grant "from" the other org, an approved overlap probe with fabricated
+results. Any function that trusted such rows would have turned a forged row into real cross-tenant
+access.
+
+**Decision** (migration `0104_h1b0_consent_scoped_access.sql`):
+
+1. **No broad cross-tenant policy.** Cross-party reads and writes go through narrow SECURITY DEFINER
+   functions, one per consent object. Each:
+   - derives the caller from `app_current_org()`;
+   - validates both parties and the exact grant / share / probe / intro / joint pursuit / invite;
+   - refuses revoked, declined or inactive consent;
+   - returns only the displayed columns;
+   - has EXECUTE granted to `app_rw` alone (revoked from PUBLIC and the Supabase API roles).
+
+   There is no generic cross-tenant read or write.
+2. **Two narrow policies.**
+   - The joint-room ledger is symmetric by design, so it gets an object-scoped SELECT policy, with
+     inserts bound to the caller's org and no update or delete.
+   - `organizations` becomes read-only for `app_rw`, except an update of its own row.
+3. **Consent rows cannot be forged.** A guard trigger, enforced only for `app_rw`, sits on
+   partnerships, list grants, overlap probes, evidence shares, skill shares, joint pursuits, warm
+   intros and context grants. It:
+   - binds every actor column to the caller;
+   - allows only the product's own transitions;
+   - sends every disclosing approval through a function: invite activation, overlap results, the
+     copy of a list grant.
+
+   Owner / operator paths and the definer functions (which run as the owner) are unaffected.
+4. **Audit is best-effort by doctrine, and now actually so.**
+   - A partnership event reaches either party's ledger through `audit_partnership_event()`. It writes
+     only to a party of that partnership, only when the caller is a party.
+   - The write runs under a SAVEPOINT, so a failure rolls back to it; it can no longer abort the
+     business transaction.
+   - A lost audit row is logged. It is not silently swallowed into an aborted transaction.
+   - Audit is not made mandatory: the handshake doctrine says "an audit failure must not roll back
+     the action it records".
+5. **Invite redemption** is pre-membership by nature. It goes through `redeem_partnership_invite(code)`,
+   which acts on the one invite whose code was presented, as the caller's org. The function cannot
+   list or discover invites. `/join` keeps its owner pool, and the admin path works under `app_rw`.
+6. **Revocation ends access now, on both sides.** Revoking a list grant or a partnership rejects the
+   receiver's materialised copy through `revoke_list_grant_copies()`. Under `app_rw` the old direct
+   update would have silently left that copy live.
+7. **Gate 6 posture.** `/api/build` reports `database.role`, `database.bypassRls` and
+   `database.tenantEnforcement` from a live probe of the runtime pool, with a two-second cap and
+   never a secret. `databaseIdentity()` parses `<role>.<ref>` users, so an `app_rw.<ref>` login no
+   longer reports the project as unknown.
+
+**Proof:**
+- `partnership-app-rw`: every flow as the real `app_rw` login, authorised and refused.
+- A negative control with the guard dropped: the forged rows are accepted, and one forged
+  counterpart takeover cascades.
+- The consent-fixture room rehearsal, under both roles.
+- Full certification.
+
+The migration is **NOT applied to any hosted database**. Applying it is Gate 1b, a separate approval.

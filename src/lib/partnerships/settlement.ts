@@ -76,6 +76,9 @@ export async function settlementStatement(db: Db, partnershipId: string): Promis
   // partnership — the consent boundary is the join, not a WHERE we might
   // forget. updated_at stands in for close date (stage transitions carry the
   // precise moment; the statement needs the quarter).
+  // The counterpart's half lives in ITS book, so the rows come from `partnership_settlement_rows()`
+  // (0104): both books, ONLY on this partnership's jointly pursued accounts, ONLY to a party of it, and
+  // only the columns a statement needs.
   const { rows } = await db.query<{
     org_id: string;
     company_id: string;
@@ -85,14 +88,9 @@ export async function settlementStatement(db: Db, partnershipId: string): Promis
     updated_at: Date;
     registered: boolean;
   }>(
-    `select o.org_id, o.company_id, c.legal_name, o.stage, o.amount_usd, o.updated_at,
-            exists (select 1 from deal_registrations dr where dr.opportunity_id = o.id) as registered
-     from joint_pursuits jp
-     join opportunities o on o.company_id = jp.company_id and o.org_id = any($2)
-     join companies c on c.id = o.company_id
-     where jp.partnership_id = $1 and jp.status in ('active', 'closed')
-     order by o.updated_at desc`,
-    [partnershipId, orgs],
+    `select org_id, company_id, legal_name, stage, amount_usd, updated_at, registered
+       from partnership_settlement_rows($1)`,
+    [partnershipId],
   );
 
   const settled: SettlementEntry[] = [];

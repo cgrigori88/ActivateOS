@@ -27,6 +27,17 @@ const RW_PASSWORD = process.env.APP_RW_LOCAL_PASSWORD ?? "demo";
 const PORT = Number(process.env.REHEARSAL_PORT ?? 3198);
 const BASE = `http://127.0.0.1:${PORT}`;
 const CLONE = `v_app_rw_rehearsal_${Date.now().toString(36)}`;
+// One-off token so the rehearsal can read /api/build's runtime posture (H1B Gate 6) from the running app.
+const OPS_TOKEN = `rehearsal-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+
+/** The running app's own report of its database posture (/api/build → database.*). */
+async function posture(): Promise<{ role?: string; bypassRls?: boolean | null; tenantEnforcement?: boolean | null; probe?: string; projectRef?: string } | null> {
+  try {
+    const r = await fetch(`${BASE}/api/build`, { headers: { "x-ops-token": OPS_TOKEN }, signal: AbortSignal.timeout(10_000) });
+    if (!r.ok) return null;
+    return ((await r.json()) as { database?: Record<string, never> }).database ?? null;
+  } catch { return null; }
+}
 
 const TIMEISH = /\b\d+\s*(?:s|sec|secs|m|min|mins|h|hr|hrs|d|w|mo|y)\s+ago\b|\bjust now\b|\b\d+\s*(?:seconds?|minutes?|hours?|days?|weeks?|months?)\s+ago\b|\bin \d+\s*(?:s|m|h|d|minutes?|hours?|days?)\b|\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm)?|\b20\d\d-\d\d-\d\dT[\d:.]+Z?/g;
 const lines = (html: string) => html.replace(/<script[\s\S]*?<\/script>/gi, "\n").replace(/<style[\s\S]*?<\/style>/gi, "\n").replace(/<[^>]+>/g, "\n")
@@ -47,7 +58,8 @@ async function start(env: Record<string, string>): Promise<ChildProcess> {
       NEXT_PUBLIC_SUPABASE_URL: "", NEXT_PUBLIC_SUPABASE_ANON_KEY: "", OUTREACH_AUTOSEND: "", RESEND_API_KEY: "",
       PURSUITS_ENABLED: "true", FACTS_ENABLED: "true", ROUTING_ENABLED: "true", PURSUIT_EXPERIENCE_ENABLED: "true",
       OUTCOME_LEARNING_ENABLED: "true", FEDERATION_ENABLED: "true", GOVERNED_ACTION_ENABLED: "true",
-      VNEXT_PURSUIT_COORDINATION_ENABLED: "true", VNEXT_PURSUIT_ATTENTION_ENABLED: "true", ...env,
+      VNEXT_PURSUIT_COORDINATION_ENABLED: "true", VNEXT_PURSUIT_ATTENTION_ENABLED: "true",
+      OPS_FINGERPRINT_TOKEN: OPS_TOKEN, ...env,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -81,6 +93,56 @@ async function crawl(rooms: string[]): Promise<Map<string, { status: number; lin
   return out;
 }
 
+interface ConsentFixture { jointPursuit: string; company: string; expect: [room: string, marker: string, what: string][] }
+
+/**
+ * Seed, on the rehearsal clone only, one of each counterpart → sponsor consent artefact the sponsor's
+ * rooms render: an accepted evidence share (account timeline), an accepted skill share (/skills), an
+ * accepted + materialised list grant (/admin), the counterpart's and the broker's lines in the joint
+ * room, and a counterpart closed-won deal on the jointly pursued account (settlement on /joint).
+ * Returns null (and the rehearsal runs without it) if the canonical partnership / joint pursuit is absent.
+ */
+async function consentFixture(q: Pool, sponsor: string): Promise<ConsentFixture | null> {
+  const row = async <T,>(sql: string, p: unknown[] = []) => (await q.query(sql, p)).rows[0] as T | undefined;
+  const ps = await row<{ id: string; other: string }>(
+    `select id, case when initiator_org_id = $1 then counterpart_org_id else initiator_org_id end as other
+       from partnerships where status = 'active' and counterpart_org_id is not null and $1 in (initiator_org_id, counterpart_org_id) limit 1`, [sponsor]);
+  const jp = ps ? await row<{ id: string; company_id: string }>(`select id, company_id from joint_pursuits where partnership_id = $1 and status = 'active' limit 1`, [ps.id]) : undefined;
+  if (!ps || !jp) return null;
+  const T = ps.other;
+  const ev = await row<{ id: string }>(
+    `insert into evidence select (jsonb_populate_record(null::evidence, to_jsonb(e) || jsonb_build_object(
+        'id', gen_random_uuid(), 'org_id', $1::uuid, 'company_id', $2::uuid, 'claim', 'H1B0FX counterpart field claim',
+        'claim_fingerprint', 'h1b0fx-' || gen_random_uuid()))).*
+       from evidence e where e.status = 'verified' limit 1 returning id`, [T, jp.company_id]);
+  await q.query(`insert into evidence_shares (evidence_id, partnership_id, offered_by_org, status, decided_at) values ($1, $2, $3, 'accepted', now())`, [ev!.id, ps.id, T]);
+  const sk = await row<{ id: string }>(`insert into skills (org_id, name, kind, scope_type, body, status, created_by)
+      values ($1, 'H1B0FX counterpart positioning', 'positioning', 'org', 'H1B0FX shared skill body', 'active', 'h1b0-fixture') returning id`, [T]);
+  await q.query(`insert into skill_shares (skill_id, partnership_id, status, decided_at) values ($1, $2, 'accepted', now())`, [sk!.id, ps.id]);
+  const src = await row<{ id: string }>(`insert into account_populations (org_id, name, category, status, created_by)
+      values ($1, 'H1B0FX counterpart coverage list', 'target', 'approved', 'h1b0-fixture') returning id`, [T]);
+  await q.query(`insert into population_members (population_id, company_id, attributes) values ($1, $2, '{}'::jsonb)`, [src!.id, jp.company_id]);
+  const cp = await row<{ id: string }>(`insert into account_populations (org_id, name, category, status, created_by)
+      values ($1, 'H1B0FX counterpart coverage list (shared)', 'target', 'approved', 'partner share') returning id`, [sponsor]);
+  await q.query(`insert into population_members (population_id, company_id, attributes) values ($1, $2, '{}'::jsonb)`, [cp!.id, jp.company_id]);
+  await q.query(`insert into list_grants (partnership_id, from_org_id, population_id, status, decided_at, synced_at, materialized_population_id)
+      values ($1, $2, $3, 'accepted', now(), now(), $4)`, [ps.id, T, src!.id, cp!.id]);
+  await q.query(`insert into joint_pursuit_events (pursuit_id, org_id, actor, kind, body) values ($1, $2, 'counterpart@example.invalid', 'note', 'H1B0FX counterpart room note')`, [jp.id, T]);
+  await q.query(`insert into joint_pursuit_events (pursuit_id, org_id, actor, kind, body) values ($1, null, 'broker', 'proposal', 'H1B0FX broker proposal line')`, [jp.id]);
+  await q.query(`insert into opportunities (org_id, company_id, name, stage, amount_usd, closed_at) values ($1, $2, 'H1B0FX counterpart won deal', 'closed_won', 987000, now())`, [T, jp.company_id]);
+  return {
+    jointPursuit: jp.id, company: jp.company_id,
+    expect: [
+      [`/joint/${jp.id}`, "H1B0FX counterpart room note", "joint-room line"],
+      [`/joint/${jp.id}`, "H1B0FX broker proposal line", "broker line"],
+      ["/joint", "987", "settlement deal (both books)"],
+      ["/skills", "H1B0FX counterpart positioning", "shared skill"],
+      [`/accounts/${jp.company_id}`, "H1B0FX counterpart field claim", "shared evidence claim"],
+      ["/admin", "H1B0FX counterpart coverage list", "incoming list grant"],
+    ],
+  };
+}
+
 async function main(): Promise<void> {
   if (!existsSync(".next/BUILD_ID")) throw new Error("no production build — run `npm run build` first");
   const src = new URL(SRC).pathname.slice(1);
@@ -100,6 +162,12 @@ async function main(): Promise<void> {
     const account = await one(`select account_id id from pursuits where id = '${hero}'`);
     const firstOf = (t: string) => one(`select id from ${t} where org_id = '${sponsor}' order by created_at limit 1`);
     const [contact, motion, goal, partner] = [await firstOf("contacts"), await firstOf("revenue_motions"), await firstOf("goals"), await firstOf("partners")];
+
+    // H1B-0 consent fixture (committed on the CLONE, as the owner): the canonical counterpart holds no
+    // shared artefacts, so without this the partnership rooms would render no counterpart data under
+    // either role and the comparison would prove nothing about consent-scoped reads. Every artefact is
+    // TD SYNNEX → sponsor, on the canonical active partnership and its active joint pursuit.
+    const fx = await consentFixture(q, sponsor);
     await q.end();
     const rooms = [
       "/", "/?today=all", `/?drawer=${account}`, "/queue", "/pipeline", "/accounts", `/accounts/${account}`, "/accounts/export",
@@ -107,15 +175,24 @@ async function main(): Promise<void> {
       `/goals/${goal}`, "/campaigns", "/upcoming", "/analytics", "/insights", "/review", "/sources", "/provider-health", "/partners",
       `/partners/${partner}`, `/partners/${partner}/review`, "/joint", "/skills", "/routines", "/admin", "/ops", "/ask", "/trust", "/intake",
       "/api/palette?q=Globex",
+      ...(fx ? [`/joint/${fx.jointPursuit}`, `/accounts/${fx.company}`] : []),
     ];
 
     let app = await start({ DATABASE_URL: owner, DATABASE_URL_OWNER: owner });
     const asOwner = await crawl(rooms);
     const asOwner2 = await crawl(rooms);
+    const postureOwner = await posture();
     await stop(app);
     app = await start({ DATABASE_URL: rw, DATABASE_URL_OWNER: owner });
     const asRw = await crawl(rooms);
+    const postureRw = await posture();
     await stop(app);
+    // Gate 6, rehearsed: the running process must report its own posture truthfully under each role.
+    const ownerOk = postureOwner?.probe === "live" && postureOwner.role === "postgres" && postureOwner.bypassRls === true && postureOwner.tenantEnforcement === false;
+    const rwOk = postureRw?.probe === "live" && postureRw.role === "app_rw" && postureRw.bypassRls === false && postureRw.tenantEnforcement === true;
+    console.log(`/api/build posture — owner: ${JSON.stringify(postureOwner)} ${ownerOk ? "✓" : "✗"}`);
+    console.log(`/api/build posture — app_rw: ${JSON.stringify(postureRw)} ${rwOk ? "✓" : "✗"}`);
+    if (!ownerOk || !rwOk) process.exitCode = 1;
 
     let same = 0;
     const rows: string[] = [];
@@ -135,8 +212,22 @@ async function main(): Promise<void> {
       rows.push(`  ${verdict === "IDENTICAL" ? "✓" : "✗"} ${r.padEnd(58)} ${verdict}`);
     }
     console.log(rows.join("\n"));
-    console.log(`\nAPP_RW REHEARSAL: ${same}/${rooms.length} rooms identical under app_rw (RLS binding) and the owner (RLS bypassed).`);
-    process.exitCode = same === rooms.length ? 0 : 1;
+    // The consent fixture must actually RENDER — under both roles — or the identity above is vacuous.
+    let rendered = 0;
+    const markerRows: string[] = [];
+    if (fx) {
+      for (const [room, marker, what] of fx.expect) {
+        const inOwner = (asOwner.get(room)?.lines ?? []).some((l) => l.includes(marker));
+        const inRw = (asRw.get(room)?.lines ?? []).some((l) => l.includes(marker));
+        if (inOwner && inRw) rendered++;
+        markerRows.push(`  ${inOwner && inRw ? "✓" : "✗"} ${room.padEnd(58)} counterpart ${what} — owner ${inOwner ? "shown" : "MISSING"} · app_rw ${inRw ? "shown" : "MISSING"}`);
+      }
+      console.log(`\nConsent-scoped counterpart data (TD SYNNEX → sponsor), rendered under BOTH roles:\n${markerRows.join("\n")}`);
+    }
+    const fxOk = !fx || rendered === fx.expect.length;
+    console.log(`\nAPP_RW REHEARSAL: ${same}/${rooms.length} rooms identical under app_rw (RLS binding) and the owner (RLS bypassed)` +
+      (fx ? `; consent fixture rendered ${rendered}/${fx.expect.length} under both.` : "."));
+    process.exitCode = same === rooms.length && fxOk ? 0 : 1;
   } finally {
     await admin.query(`select pg_terminate_backend(pid) from pg_stat_activity where datname = $1`, [CLONE]).catch(() => {});
     await admin.query(`drop database if exists "${CLONE}"`);

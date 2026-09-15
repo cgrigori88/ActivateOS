@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { audit } from "./partnerships";
 
 /**
  * Evidence exchange (slice G): consented sharing of verified claims across an
@@ -108,20 +109,18 @@ export async function revokeEvidenceShare(db: Db, orgId: string, shareId: string
 
 /** Both directions on one partnership, for the partner-room card. */
 export async function listEvidenceShares(db: Db, orgId: string, partnershipId: string): Promise<EvidenceShareView[]> {
+  // The counterpart's claims live in ITS book: they are read through `partnership_evidence_shares()`
+  // (0104) — only the claim's displayed columns, only for a party, incoming ones only on an ACTIVE
+  // partnership. Never the raw excerpt, source URL or verification detail.
   const { rows } = await db.query<{
     id: string; status: string; offered_by_org: string; claim: string; source_type: string;
     observed_at: Date; legal_name: string; company_id: string; offered_at: Date;
   }>(
-    `select s.id, s.status, s.offered_by_org, e.claim, e.source_type, e.observed_at,
-            c.legal_name, e.company_id, s.offered_at
-     from evidence_shares s
-     join partnerships ps on ps.id = s.partnership_id and (ps.initiator_org_id = $2 or ps.counterpart_org_id = $2)
-     join evidence e on e.id = s.evidence_id
-     join companies c on c.id = e.company_id
-     where s.partnership_id = $1 and s.status <> 'revoked'
-     order by s.offered_at desc limit 40`,
-    [partnershipId, orgId],
+    `select id, status, offered_by_org, claim, source_type, observed_at, legal_name, company_id, offered_at
+       from partnership_evidence_shares($1)`,
+    [partnershipId],
   );
+  void orgId;
   return rows.map((r) => ({
     id: r.id,
     direction: r.offered_by_org === orgId ? "outgoing" : "incoming",
@@ -144,17 +143,13 @@ export async function sharedInEvidence(
   orgId: string,
   companyId: string,
 ): Promise<{ claim: string; sourceType: string; observedAt: string; sharedBy: string }[]> {
+  // Read live from the partner's record through `shared_in_evidence()` (0104): accepted shares on the
+  // caller's ACTIVE partnerships only, displayed columns only. The caller is the trusted `app.org_id`.
   const { rows } = await db.query<{ claim: string; source_type: string; observed_at: Date; org_name: string }>(
-    `select e.claim, e.source_type, e.observed_at, o.name as org_name
-     from evidence_shares s
-     join partnerships p on p.id = s.partnership_id and p.status = 'active'
-       and (p.initiator_org_id = $1 or p.counterpart_org_id = $1)
-     join evidence e on e.id = s.evidence_id and e.company_id = $2
-     join organizations o on o.id = s.offered_by_org
-     where s.status = 'accepted' and s.offered_by_org <> $1
-     order by e.observed_at desc limit 20`,
-    [orgId, companyId],
+    `select claim, source_type, observed_at, org_name from shared_in_evidence($1)`,
+    [companyId],
   );
+  void orgId;
   return rows.map((r) => ({
     claim: r.claim,
     sourceType: r.source_type,
@@ -163,6 +158,7 @@ export async function sharedInEvidence(
   }));
 }
 
+/** Both parties' ledgers, through the one best-effort, partnership-validated audit path (D-049). */
 async function auditBoth(db: Db, partnershipId: string, event: string, detail: Record<string, unknown>): Promise<void> {
   const { rows } = await db.query<{ initiator_org_id: string; counterpart_org_id: string | null }>(
     `select initiator_org_id, counterpart_org_id from partnerships where id = $1`,
@@ -170,10 +166,6 @@ async function auditBoth(db: Db, partnershipId: string, event: string, detail: R
   );
   if (!rows[0]) return;
   for (const org of [rows[0].initiator_org_id, rows[0].counterpart_org_id]) {
-    if (!org) continue;
-    await db.query(
-      `insert into audit_log (org_id, actor, event, detail, partnership_id) values ($1, 'operator', $2, $3, $4)`,
-      [org, event, JSON.stringify(detail), partnershipId],
-    );
+    if (org) await audit(db, org, event, detail, partnershipId);
   }
 }

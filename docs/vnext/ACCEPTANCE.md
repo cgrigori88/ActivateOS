@@ -320,3 +320,19 @@ Full record, audit matrix and results: `H1-PRE-PILOT-HARDENING.md`. Decisions D-
 | H1A-6 | Every verifier is READ_ONLY, ROLLBACK_SAFE or DISPOSABLE_DB_ONLY. None is UNSAFE. | harness audit |
 | H1A-7 | The full battery run twice leaves the canonical world byte-identical. | `certify-world --runs 2` |
 | H1A-8 | Slice 1, 2A and 2B stay green and frozen. | their verifiers + unit tests |
+
+## H1B-0 — Partnership / consent flows under the least-privilege runtime role
+
+Record: `H1-PRE-PILOT-HARDENING.md` § H1B-0. Decision D-049. Migration 0104 (local only; hosted is Gate 1b).
+
+| # | Criterion | Proven by |
+|---|---|---|
+| H1B0-1 | Every partnership flow works as the real `app_rw` login:<br>• invite → redeem;<br>• context grant;<br>• field-limited list grant (accept, pull-in, sync, revoke);<br>• overlap ladder counts → bands → named, with results equal to the true book intersection;<br>• evidence share;<br>• skill share, including grounding a motion;<br>• warm intro with contact reveal;<br>• joint pursuit with cross-party lines and the broker line;<br>• settlement across both books;<br>• partnership revoke. | `partnership-app-rw` |
+| H1B0-2 | A third-party org gets nothing and can do nothing at any step. | `partnership-app-rw` (WITHHELD / REFUSED) |
+| H1B0-3 | No consent row can be forged under `app_rw`: partnership, context grant, list grant, overlap probe (row or results), evidence share, skill share, warm intro, joint pursuit, joint-room line, ledger row. | `partnership-app-rw`, and the guard-dropped negative control |
+| H1B0-4 | No self-approval; no action after revoke; no access without tenant context. | `partnership-app-rw` |
+| H1B0-5 | Audit rows reach BOTH parties' ledgers, and an audit write never aborts the business transaction. | `partnership-app-rw` §10 (one transaction, every step) |
+| H1B0-6 | Revocation ends access on both sides immediately, including the receiver's materialised copy. | `partnership-app-rw` §3, §11 |
+| H1B0-7 | The partnership rooms render counterpart consent data identically under `app_rw` and the owner. | `app-rw-rehearsal` consent fixture |
+| H1B0-8 | `/api/build` proves the runtime posture live: owner → `postgres` / `bypassRls: true` / `tenantEnforcement: false`; `app_rw` → `app_rw` / `false` / `true`. | `app-rw-rehearsal`; unit tests |
+| H1B0-9 | Full certification stays green and the canonical world is unchanged. | `certify-world --runs 2` |

@@ -1,24 +1,23 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-14 (H1A — Pre-Pilot Hardening Gate: tenant isolation + certification integrity)
+**Last updated:** 2026-09-15 (H1B-0 — partnership / consent flows under app_rw; Gate 1 re-baselined)
 
-**2026-09-15T02:40Z (latest) — H1B GATE 1 (read-only hosted preflight of `mejokqxriwyawfhawuxu`): FAIL as specified, on one criterion only.**
+**2026-09-15 (latest) — H1B-0 COMPLETE (local). Gate 5 is no longer blocked by partnership / consent behaviour; Gate 1b needs approval.**
 
-The hosted manifest digest is `db1f78f7a11bbacb`, not `be0da833990ce436`. It differs in one field: `stakeholders` is 5 where the canonical world has 4. The extra rows are the owner's documented Slice 2A hosted-acceptance actions: the economic buyer verified, the plan approved, and a plan review.
+Record: `H1-PRE-PILOT-HARDENING.md` § H1B-0; D-049; migration `0104_h1b0_consent_scoped_access.sql` (**not applied to any hosted database**).
 
-Every other criterion passes:
-- identity `demo` / synthetic;
-- 103/103 migrations, with H1B-0 not applied;
-- `app_rw` NOLOGIN, with no RLS bypass;
-- RLS and FORCE on 155/155 tables, and every `org_id` table has an `app_rw` policy;
-- the catalogue is identical to the certified local world;
-- 0 digests and 0 routines;
-- no unexpected org-less, dangling or orphan rows;
-- canonical counts exact;
-- 0 send rows;
-- zero writes proven (READ ONLY transactions, no transaction id assigned, identical digests before and after).
+- **Partnership flows now work under `app_rw`.** Consent-scoped SECURITY DEFINER functions, one per consent object, return only authorised columns. There is no broad cross-tenant policy.
+- **Consent rows cannot be forged.** An `app_rw`-only guard trigger on eight consent tables prevents it.
+- **Audit is now truly best-effort.** It goes through a validated function under a savepoint, so an audit write can never abort the business action.
+- **Invite redemption** goes through a narrow function that acts only on the presented code.
+- **`/api/build`** reports `database.role`, `database.bypassRls` and `database.tenantEnforcement` live.
 
-**Owner decision needed:** re-baseline the hosted digest (recommended; documentation only), or reseed (a hosted write). **Gate 1b not begun.** Record: `H1-PRE-PILOT-HARDENING.md` § "Gate 1 — RESULT".
+**Proof:**
+- `partnership-app-rw` **117/0**, as the real `app_rw` login. A guard-dropped negative control fails as expected.
+- `app-rw-rehearsal`: **38/38 rooms identical**; consent fixture **6/6** rendered under both roles; posture correct under both.
+- Certification: `certify-world --runs 2` **78 / 78 suite runs clean** (39 suites incl. `partnership-app-rw`; 3,476 assertions, 0 failures); canonical digest `e98b43254f98d5ec` before run 1, after run 1 and after run 2 — CERTIFICATION INTEGRITY: PASS; manifest `be0da833990ce436` unchanged; 0 send rows.
+
+**Gate 1 (2026-09-15T02:40Z) — PASS AFTER DOCUMENTED RE-BASELINE.** The owner chose re-baseline, not reseed. The hosted baseline of record is manifest `db1f78f7a11bbacb` and fingerprint `2678f34d4fc7b0a2`, intentional Slice 2A/2B acceptance residue. Every other Gate 1 criterion passed as run. Gate 1b is not begun.
 
 **2026-09-14 — H1B BASELINE: COMPLETELY GREEN.** `certify-world --runs 2` gives **76/76 suite runs clean**: 3,242 assertions, 0 failures. The canonical digest is `e98b43254f98d5ec` before run 1, after run 1 and after run 2, and the manifest `be0da833990ce436` is unchanged.
 
@@ -154,7 +153,7 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | **Today / Queue tenant scoping (hardening)** | P6 / #67 | **DONE (local)** — the Slice 2B security gate; subsumed by H1A | `c0eea5a` | 2026-09-14 | — | D-041. `today-tenant` verifier + source guard |
 | **Pursuit Attention + Today / Queue — Vertical Slice 2B** | P3 | **DEMO CERTIFIED / FROZEN** (hosted human review on the isolated Preview, 2026-09-14) | `roadmap/pursuitos-vnext` @ `54ab990` | 2026-09-14 | Nothing. Do not materially redesign it absent pilot feedback | One card per PURSUIT, not per account (Globex modernization → Plan needs review; Globex expansion → its own CDW route decision). Plan review outranks the stale action; the Queue preserves the action once with plan-review context; "Current approved plan / Focus when approved". D-034…D-042, D-046 |
 | **H1A — Tenant isolation + certification integrity** | P6 / #67 | **COMPLETE (local)** | `roadmap/pursuitos-vnext` (H1A commit) | 2026-09-14 | Nothing in H1A. H1 completes with H1B | 293 paths audited; 152 fixed + 1 reclassified; `tenant-isolation` 205/0; 0 UNSAFE verifiers; fingerprint gate PASS (`e98b43254f98d5ec` at start, after run 1 and after run 2; 74/76 suite runs clean, the 2 exceptions being the pre-existing `motion-intel` fixture gap); app_rw rehearsal 36/36. D-043, D-044. Reported, not fixed: global learning tables, inbound subject matching, stored digests (`H1-PRE-PILOT-HARDENING.md` § C) |
-| **H1B — Least-privilege runtime / RLS cutover** | P6 / #67 | **NOT STARTED** — baseline 76/76 green; readiness reviewed; nine gates defined | — | 2026-09-14 | H1B-0 (local): consent flows under app_rw + `/api/build` posture probe → Gate 1 read-only preflight → Gates 1b–8, each hosted mutation separately approved → Gate 9 pilot decision (`H1-PRE-PILOT-HARDENING.md` § H1B execution plan) | D-045, D-048. Consent flows fail closed under app_rw (proven) — MUST resolve before Gate 5. Pooler login unproven until Gate 3 (hard stop) |
+| **H1B — Least-privilege runtime / RLS cutover** | P6 / #67 | **IN PROGRESS** — Gate 1 PASS (re-baselined); **H1B-0 COMPLETE (local)**; Gate 1b not begun | `roadmap/pursuitos-vnext` | 2026-09-15 | Gate 1b (owner-approved): apply 0104 to `mejokqxriwyawfhawuxu` → Gates 2–9, each hosted mutation separately approved | D-045, D-048, D-049. Pooler login unproven until Gate 3 (hard stop). Hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2` |
 | · pursuit context narrative (rendered) | P1 | **PREVIEW READY** | `6c5b7a9` `components/pursuit/context-narrative.tsx` | 2026-09-12 | Product sign-off on the refined surface, then GATE D/E | Titled **"What matters now"**, full-width on desktop. GATE C **N-1 fixed** (all 10 ledger rows reachable, override chronology included), **N-2/N-4/N-6 fixed**. Flag OFF verified identical panel-for-panel. Residual: R-1 "What changed" right half empty (cosmetic), R-2 283px void beside Value case. See `GATE-C-PRODUCT-REVIEW.md` § GATE C REFINEMENT |
 | · pursuit evidence (direct + supporting) | P1 | **PREVIEW READY** | `620bc12` `read-models/pursuit-evidence.ts` | 2026-09-12 | Consumed by "What matters now" since `99bd5dd` | 18 tests. **Supersedes the plan to swap `getFacts` to pursuit scope** — Globex has 1 linked fact, so the swap would have deleted the best evidence on the screen. See D-020 |
 | · fact freshness | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/facts/freshness.ts` | — | Compose at pursuit level | Exists per-fact; nothing composes per-pursuit |

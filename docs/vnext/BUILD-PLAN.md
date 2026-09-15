@@ -96,7 +96,10 @@ SLICE 2B Pursuit Attention + Today/Queue   (P3)        DEMO CERTIFIED / FROZEN
    │      lineage on Queue · "Current approved plan" labelling · D-034…D-042, D-046 · no
    │      migration · Today/Queue tenant-scoped explicitly (D-041) · hosted human review PASSED
    ↓
-H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A LOCAL COMPLETE · H1B DESIGN ONLY  ← current
+H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A COMPLETE · GATE 1 PASS (re-baselined) · H1B-0 LOCAL  ← current
+   │      H1B-0: partnership/consent flows work under app_rw — consent-scoped definer functions,
+   │      a guard against forged consent rows, best-effort audit that cannot abort (D-049);
+   │      /api/build posture proof. Migration 0104 NOT applied to hosted (Gate 1b)
    │      H1A: every data path explicitly tenant-scoped (D-043); certification integrity —
    │      clone isolation + whole-world fingerprint gate (D-044); broad adversarial verifier
    │      H1B: web runtime → app_rw so RLS binds (D-045) — owner-approved hosted cutover

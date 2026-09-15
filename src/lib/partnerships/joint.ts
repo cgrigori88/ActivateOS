@@ -70,7 +70,13 @@ async function addEvent(
   body: string,
   detail: Record<string, unknown> = {},
 ): Promise<void> {
-  const actor = orgId === null ? "broker" : await currentActor();
+  if (orgId === null) {
+    // The broker's line belongs to no org — both sides read it identically — so it is written through
+    // `record_broker_event()` (0104), only into an ACTIVE room of the caller's own partnership.
+    await db.query(`select record_broker_event($1, $2, $3::jsonb)`, [pursuitId, body, JSON.stringify(detail)]);
+    return;
+  }
+  const actor = await currentActor();
   await db.query(
     `insert into joint_pursuit_events (pursuit_id, org_id, actor, kind, body, detail)
      values ($1, $2, $3, $4, $5, $6)`,

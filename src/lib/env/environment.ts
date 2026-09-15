@@ -80,19 +80,23 @@ export function environmentLabel(): string {
  * database is misconfigured is exactly the surface you cannot use to diagnose
  * a misconfigured database.
  */
-export function databaseIdentity(): { projectRef: string | null; host: string | null } {
-  const url = process.env.DATABASE_URL;
-  if (!url) return { projectRef: null, host: null };
+export function databaseIdentity(url: string | undefined = process.env.DATABASE_URL): { projectRef: string | null; host: string | null; role: string | null } {
+  if (!url) return { projectRef: null, host: null, role: null };
   try {
     const parsed = new URL(url);
     // Supabase encodes the project ref two ways depending on pooled vs direct:
-    //   pooled: user is `postgres.<ref>`, host is a regional pooler
-    //   direct: host is `db.<ref>.supabase.co`
-    const fromUser = /^postgres\.([a-z0-9]{20})$/.exec(decodeURIComponent(parsed.username))?.[1];
+    //   pooled: user is `<role>.<ref>` (`postgres.<ref>`, or `app_rw.<ref>` after the H1B
+    //           runtime cutover), host is a regional pooler
+    //   direct: host is `db.<ref>.supabase.co`, user is the bare role
+    // The role NAME is not a secret (it is a Postgres identifier, not a credential); the password
+    // is never read here.
+    const user = decodeURIComponent(parsed.username);
+    const pooled = /^([a-z_][a-z0-9_]*)\.([a-z0-9]{20})$/.exec(user);
     const fromHost = /^db\.([a-z0-9]{20})\.supabase\.co$/.exec(parsed.hostname)?.[1];
-    return { projectRef: fromUser ?? fromHost ?? null, host: parsed.hostname || null };
+    const role = pooled?.[1] ?? (/^[a-z_][a-z0-9_]*$/.test(user) ? user : null);
+    return { projectRef: pooled?.[2] ?? fromHost ?? null, host: parsed.hostname || null, role };
   } catch {
-    return { projectRef: null, host: null };
+    return { projectRef: null, host: null, role: null };
   }
 }
 

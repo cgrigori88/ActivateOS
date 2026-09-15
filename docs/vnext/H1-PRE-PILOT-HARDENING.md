@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: readiness reviewed, nine gates defined, one MUST-resolve item (consent flows under `app_rw`) before Gate 5 · **Gate 1 (read-only preflight, 2026-09-15T02:40Z): FAIL as specified on the manifest criterion only — explained as Slice 2A hosted-acceptance residue; owner re-baseline decision pending; Gate 1b not begun.** **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · migration 0104 **NOT applied to hosted** · **Gate 1b not begun**. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -346,7 +346,15 @@ Production is outside H1B. Promoting the same posture to a production project is
 
 ### Gate 1 — read-only hosted preflight: RESULT (2026-09-15T02:40:43Z–02:41:31Z)
 
-**Verdict: FAIL as specified, on one criterion only — the manifest digest.** The cause is fully explained and benign. Every other Gate 1 criterion passes. Gate 1b and every later gate were **not** begun.
+**Verdict: PASS AFTER DOCUMENTED RE-BASELINE.**
+
+As run, Gate 1 failed one criterion: the hosted manifest digest differed from the pristine canonical `be0da833990ce436`. The difference was fully explained as Slice 2A human-acceptance residue. The owner then chose **re-baseline, not reseed** (2026-09-15): the hosted vNext world deliberately carries its Slice 2A / 2B acceptance history, and it must not be erased.
+
+**Hosted baseline of record, for Gates 1b–8:**
+- manifest **`db1f78f7a11bbacb`**;
+- whole-world fingerprint **`2678f34d4fc7b0a2`** (155 tables, 1,165 rows).
+
+Every other Gate 1 criterion passed as run. Gate 1b and every later gate were **not** begun.
 
 **How it ran.** A read-only preflight script, kept in the session scratchpad and never committed:
 - The target string was read in-process only, never printed, logged or persisted. Only the non-secret project ref, host, port and role were reported.
@@ -376,11 +384,86 @@ Production is outside H1B. Promoting the same posture to a production project is
 
 These are the owner's **documented Slice 2A human-acceptance steps 3, 4, 6, 8 and 10** (`ACCEPTANCE.md` § Slice 2A human product acceptance) — certification residue on the hosted world, not drift or corruption. Nothing about it bears on the tenant or RLS posture.
 
-**Owner decision required before Gate 1b** (not taken here):
+**Owner decision (taken 2026-09-15): (a) RE-BASELINE.** The hosted baseline of record is manifest `db1f78f7a11bbacb` and fingerprint `2678f34d4fc7b0a2`. This is intentional acceptance-state residue, not unexplained drift, and it is not to be erased. The options as they were put:
 - **(a) Re-baseline.** Record `db1f78f7a11bbacb` and fingerprint `2678f34d4fc7b0a2` as the hosted post-acceptance baseline, and use them as the comparison point for Gates 1b–8. This is documentation only, with no hosted write.
 - **(b) Restore the canonical world.** Reseed the hosted world to canonical `be0da833990ce436`. This is a hosted write, a separate approval, and it would erase the acceptance history.
 
 (a) is recommended: the accepted state is the certified Slice 2A/2B world as a person actually left it.
+
+---
+
+## H1B-0 — partnership / consent flows under `app_rw` + the Gate 6 posture proof (2026-09-15, LOCAL)
+
+**Status: COMPLETE (local).** Migration `0104_h1b0_consent_scoped_access.sql` is **NOT applied to any hosted database**; applying it is Gate 1b, a separate approval. Decision D-049.
+
+### Root causes (inventory of every cross-party statement, confirmed as the real `app_rw` login)
+
+1. **Audit abort.** Every handshake writes a row into the counterpart's `audit_log`. RLS refuses it. `audit()` swallowed the error *without a savepoint*, so the transaction stayed aborted and the request's `COMMIT` became a `ROLLBACK`: **the UI reported success for an action that never happened.** This hit invites, list grants, overlap probes, skill and evidence shares (evidence shares threw instead, through a raw insert), warm intros, joint pursuits, joint playbooks and partnership revoke.
+2. **Consented data invisible.** Under `app_rw` the counterpart's rows are invisible, even when a live consent object authorises the read. The affected reads were:
+   - the shared list and its members (accept / sync / grant views);
+   - the counterpart's book for overlap computation, which came back *silently wrong*;
+   - shared evidence and shared skills;
+   - the counterpart's and the broker's joint-room lines;
+   - the counterpart's settlement deals;
+   - the invite being redeemed.
+
+   Also: broker lines, which carry no org, were refused, and revocation silently left the receiver's materialised copy live.
+3. **Forgeable consent (found by the inventory).** Under `app_rw` the consent tables' policies checked only that the caller could see the partnership. They never checked who the actor column named, and never checked transitions. A party could therefore:
+   - forge a pre-activated partnership or re-point its counterpart;
+   - forge a list grant, evidence share or skill share of the *other* org's object and accept it;
+   - approve its own overlap probe with fabricated results;
+   - forge a context grant "from" the other org.
+
+   Any function trusting those rows would have turned forgery into exfiltration.
+
+### Design (D-049)
+
+| Need | Mechanism (0104) | Scope it enforces |
+|---|---|---|
+| Counterpart audit rows | `audit_partnership_event(pid, org, actor, event, detail)` + SAVEPOINT in `audit()` | writes only for a party of that partnership, only when the caller is a party; event name validated; a failed audit rolls back to its savepoint and is logged |
+| Invite redemption (pre-membership) | `redeem_partnership_invite(code)` | the one invited partnership with that code, as the caller's org; cannot list or discover; `/join` keeps the owner pool |
+| List grants | `list_grant_source_state(grant)` · `sync_list_grant_members(grant)` · `revoke_list_grant_copies(pid, grant?)` | name, category and counts only, to a party · copy only an ACCEPTED grant on an ACTIVE partnership into its own receiver copy, granted fields only · reject only copies of REVOKED grants |
+| Overlap ladder | `decide_overlap_probe(probe, approve)` (+ internal `h1b_overlap_results`) | the counterpart of the requester decides; only the rung's aggregate is stored; raw books never leave the database; ACTIVE partnership only |
+| Evidence shares | `partnership_evidence_shares(pid)` · `shared_in_evidence(company)` | claim, source type, observed date and account only (never excerpt, URL or verification); accepted shares on ACTIVE partnerships |
+| Skill shares | `partnership_skill_shares(pid)` · `shared_in_skills()` · `skill_share_subject(share)` · `h1b_skill_owner(skill)` | a party to the share's partnership; accepted and active for shared-in reads |
+| Broker line | `record_broker_event(pursuit, body, detail)` | an ACTIVE room of the caller's own partnership |
+| Settlement | `partnership_settlement_rows(pid)` | both books, ONLY opportunities on this partnership's jointly pursued accounts, ONLY to a party — which also closes the old "no party check" gap |
+| Joint-room ledger (symmetric by design) | SELECT policy via the visible joint pursuit; INSERT with `org_id = app_current_org()`; no UPDATE / DELETE | whole lines of a room the caller can see |
+| Organisations | SELECT `true`; UPDATE own row only; no INSERT / DELETE for `app_rw` | provisioning stays owner-path |
+| Forgery | `h1b_consent_guard` trigger on 8 consent tables, `app_rw` only | actor columns = the caller's org; only product transitions; disclosing approvals only through functions; no deletes except the product's own |
+
+Every function is SECURITY DEFINER with a pinned `search_path`. EXECUTE is revoked from PUBLIC and the Supabase API roles; 14 are granted to `app_rw`, and 5 internal helpers to no one.
+
+**Invite redemption, specifically.** `ownerTenant()` was audited: it is `withTenant` plus an org-**owner role** check, and it runs on the tenant connection, not the owner pool. That is why admin redemption broke under `app_rw`. The operation is legitimately pre-membership, so it moved to the narrow function rather than the owner pool. The `/join` path keeps `getOwnerPool()` and therefore still needs `DATABASE_URL_OWNER` at cutover, per the Gate 4 order.
+
+### Proof
+
+- **`partnership-app-rw` (new; SEEDED, seeded clone, one rolled-back transaction, the REAL `app_rw` login): 117 / 0.**
+  - Per section: posture 2, partnership 9, context grant 8, list grant 13, overlap 14, evidence 12, skill 15, warm intro 8, joint pursuit 12, settlement 4, audit 5, revoke 10, organisations and context 3, residue 2.
+  - Every forged-row refusal is refused by the intended mechanism, each with its own message.
+- **Negative control: the same verifier with the guard trigger dropped.** It FAILS:
+  - forged partnership rows, a re-pointed counterpart, a forged context grant and fabricated probe results are all **accepted**;
+  - the re-pointed counterpart then **cascades**, letting the third party decide a probe.
+
+  The guard is load-bearing.
+- **Room rehearsal (`app-rw-rehearsal`, with the consent fixture):** **38 / 38 rooms are identical** under `app_rw` (RLS binding) and the owner. That includes:
+  - Today, Queue and Pursuit Detail (Slice 1 / 2A / 2B);
+  - every partnership room, the joint room and the jointly pursued account.
+
+  A committed TD SYNNEX → sponsor consent fixture on the rehearsal clone **renders under both roles, 6 / 6**: the counterpart's joint-room line, the broker line, the settlement deal from the counterpart's book, the shared skill, the shared evidence claim and the incoming list grant. Without 0104, all six are invisible under `app_rw`.
+
+  **`/api/build` posture, read from the running process:**
+  - owner: `role: postgres`, `bypassRls: true`, `tenantEnforcement: false`;
+  - `app_rw`: `role: app_rw`, `bypassRls: false`, `tenantEnforcement: true`.
+
+  That is the Gate 6 success condition, rehearsed.
+- **Certification:** `certify-world --runs 2` **78 / 78 suite runs clean** (39 suites incl. `partnership-app-rw`; 3,476 assertions, 0 failures); canonical digest `e98b43254f98d5ec` before run 1, after run 1 and after run 2 — CERTIFICATION INTEGRITY: PASS; manifest `be0da833990ce436` unchanged; 0 send rows.
+
+### Not changed (recorded)
+
+- Org-less `evidence` (none in either world) is invisible under `app_rw` wherever it appears. That follows from the existing policy, and is not specific to partnerships.
+- `companies_rw` stays `FOR ALL USING(true)`, a writable shared catalogue. That concerns catalogue integrity (the H1A note on intake enrichment), not consent.
+- `can_see_partnership` still shows history on revoked partnerships. Every consent-scoped *content* read above requires an ACTIVE partnership for counterpart data.
 
 ### Local rehearsal (H1A — no hosted change)
 
