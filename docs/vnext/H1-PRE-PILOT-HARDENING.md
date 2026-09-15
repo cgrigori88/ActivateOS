@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · **Gate 6 PASS** (2026-09-15; read-only; serving `766cb13` `dpl_JD8DtC8…`; live `/api/build` probe reports `app_rw`, bypassRls false, tenantEnforcement true, probe live; routing and smoke verified; DB 0/155 changed) · **D-G5-1 FIXED LOCALLY / AWAITING HOSTED ACCEPTANCE** (2026-09-15; deterministic tiebreakers in `divergence.ts` and `projection.ts`; `ordering-determinism` suite 17/0, byte-identical across 5 plans × 2 heaps × owner/`app_rw`; rehearsal 38/38; `certify-world --runs 2` 82/82; committed locally, not pushed) · **D-P1 blocks Gate 9 / pilot** · Gates 7–9 not begun. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · **Gate 6 PASS** (2026-09-15; read-only; serving `766cb13` `dpl_JD8DtC8…`; live `/api/build` probe reports `app_rw`, bypassRls false, tenantEnforcement true, probe live; routing and smoke verified; DB 0/155 changed) · **D-G5-1 HOSTED ACCEPTED / CLOSED** (2026-09-15; deterministic tiebreakers in `divergence.ts` and `projection.ts`, certified locally (`ordering-determinism` 17/0, `certify-world --runs 2` 82/82), then deployed as `1c4fb5e` on the `app_rw` Preview. Two full hosted crawls (4 passes) are identical in order; Today "stage vs engagement" and the CDW list label are deterministic; DB 0/155 changed) · **D-P1 blocks Gate 9 / pilot** · Gates 7–9 not begun. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -1343,5 +1343,71 @@ No Slice 1 / 2A / 2B verifier assertion changed, and none asserts the tie order.
 5. Run the DB check under CFR-1.
 
 Only then Gate 7.
+
+### D-G5-1 hosted acceptance: HOSTED ACCEPTED / CLOSED (2026-09-15)
+
+**D-G5-1 — HOSTED ACCEPTED / CLOSED.** Deterministic SQL ordering is now enforced on the hosted vNext Preview under the `app_rw` runtime. The owner approved the push and its automatic Preview deployment for this step only. No Vercel env, database, migration, role, RLS, grant, policy or sending change was made. Production and `qifatlqxfuhwrwvpbwsc` were not touched.
+
+**Push and deployment.**
+- The preconditions held: branch `roadmap/pursuitos-vnext`, a clean tree, HEAD `1c4fb5e`, one ahead of origin.
+- The push produced **`dpl_CZ4iZ5S4q3c4ZLL1cLfddHqTfsC2`** (`pursuitos-demo-o910z8we7-…`): `pursuitos-demo`, target preview, branch `roadmap/pursuitos-vnext`, READY, commit **`1c4fb5ea0cc3…`**. It is the branch alias target.
+- The Production target is unchanged (`dpl_Bre6yKpy…`).
+- The product diff against the Gate 6 serving code (`dec2679`) is exactly `divergence.ts` and `projection.ts`.
+
+**`/api/build` posture: PASS** (unchanged from Gate 6). `demo` · `Private demo` · `preview` · `roadmap/pursuitos-vnext` · ref `mejokqxriwyawfhawuxu` · **`app_rw` · bypassRls false · tenantEnforcement true · probe live** · commit `1c4fb5e` · `externalSendingArmed` false.
+
+**The acceptance run.** Two full signed-in 37-room crawls ran against that one deployment, each with its own sign-in through the real `/login` as the synthetic Vertex owner. Each crawl covers every room twice, so there were **4 passes** in all. The comparison was an ordered, line-by-line diff with only the certified clock-phrase normalisation, and no set reduction.
+- **Crawl 1 vs crawl 2: all 37 rooms identical**, with the same statuses (all 200), no empty state and no missing or foreign data. The palette endpoint is identical JSON; the compare script flags it only because the response is a single line.
+- **Owner-only paths identical in all passes:**
+  - `/login` signed out and signed in;
+  - the `/join` dead-code loader;
+  - `/admin` owner gate and members (which read `auth.users`, so they go through `DATABASE_URL_OWNER`);
+  - `/ops`;
+  - the unsigned webhook (503, secret unset) and research (401, closed).
+
+**The D-G5-1 surfaces**, extracted from the rendered lines by exact label, in order, in every one of the 4 passes (the payload is byte-identical across all 4):
+
+| Surface | Result |
+|---|---|
+| Today View All (`?today=all`), "stage vs engagement" | **Datacenter exit — phase 1 → Kubernetes managed services → Core banking resilience → Legacy virtualization exit** (exact, 4 of 4) |
+| Today (`/`), capped | Datacenter exit — phase 1 → Kubernetes managed services (the exact prefix of that order) |
+| Today drawer (`?drawer=`), capped | the same exact prefix |
+| `/pipeline` CDW renewal label | **"CDW customer book"** |
+
+**Changes against the pre-fix `app_rw` crawl (Gate 5), all from the D-G5-1 tie resolution:**
+- **Today, the drawer and View All:** the order changed to longest-quiet first. Umbrella's Datacenter exit (quiet since Aug 11) now leads.
+- **`/pipeline`:** the CDW label changed from "Our modernization targets" to "CDW customer book".
+- **`/accounts/<Globex>` renewal timeline** (`src/lib/context/timeline.ts` → `renewalProjection().listName`): "Account is on" changed from "Our modernization targets" to "CDW customer book".
+  - This is the **same tie on a second consumer**: Globex is on the two Vertex lists "CDW customer book" and "Our modernization targets", with **identical `created_at`** (2026-09-14 21:03:29.063576Z).
+  - Before the fix, the plan happened to return "Our modernization targets" on this page under both roles, while `/pipeline` under the owner showed "CDW customer book". The same fact was labelled differently on two surfaces.
+  - It now resolves by name on every surface, and `/pipeline` and the timeline agree.
+  - This consumer was not listed in the local-fix expectations; it is recorded here as a disclosed, intended consequence, **not a regression**.
+- **Every other room is line-identical** to the Gate 5 crawl.
+
+**Database (read-only, after both crawls): 41/0** against the Gate 6 record, **0 of 155 tables differ** (strict CFR-1; same UTC day 2026-09-15; no allowance used).
+- Migrations 105; manifest `db1f78f7a11bbacb`.
+- Business-data `c9623fb5abe2f9bc`; whole-world `dce27935d88743fb`.
+- Security hash `30772757ebd4688c`.
+- `app_rw` LOGIN true, BYPASSRLS false, NOINHERIT, member of nothing; 31 protected / 0 unsafe.
+- Partnership data unchanged; routines byte-identical (xmin 2415).
+- The same-day `pipeline_snapshots` row was rewritten with identical values (11 · $8,040,000 · $3,361,500 · null).
+- 3 live `app_rw` backends.
+
+**Vercel env:** metadata identical before and after the push, and identical to the Gate 6 record.
+- `DATABASE_URL` (`m6TuSKisz54kJlsD`, Preview + `roadmap/pursuitos-vnext`) → `app_rw`.
+- `DATABASE_URL_OWNER` (`I2giX3iM1sNwoN47`, Preview + branch) → `postgres` owner.
+- No Production scope changed.
+
+**Send safety:** `externalSendingArmed` false; 0 messages / outbox / email events / identities / sent touches. The only webhook request was the unsigned probe, refused 503; nothing was delivered.
+
+**Disposition.** D-G5-1 is **CLOSED**.
+- Deterministic ordering is enforced in SQL.
+- Today is stable under the `app_rw` runtime, and the renewal list projection is stable on `/pipeline` and on the account timeline.
+- The full hosted crawl shows no regression.
+- The Gate 6 posture is intact.
+
+**Note for Gate 7.** Its room crawl should be compared against **this accepted crawl** (commit `1c4fb5e`), not the Gate 4 crawl. The Gate 4 crawl predates the fix and carries the old arbitrary tie resolution on Today, View All, the drawer, `/pipeline` and the Globex timeline.
+
+**D-P1 remains OPEN — MUST FIX BEFORE GATE 9 / REAL PILOT** (`/pipeline?timeframe=` overwrites today's snapshot). It was not used and not fixed.
 
 **Gate 7 was NOT begun.** Gates 7–8, H1B and H1 are not complete.
