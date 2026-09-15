@@ -96,7 +96,7 @@ SLICE 2B Pursuit Attention + Today/Queue   (P3)        DEMO CERTIFIED / FROZEN
    │      lineage on Queue · "Current approved plan" labelling · D-034…D-042, D-046 · no
    │      migration · Today/Queue tenant-scoped explicitly (D-041) · hosted human review PASSED
    ↓
-H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 PASS · GATE 4 APPLIED (owner decision pending)  ← current
+H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 PASS · GATE 4 PASS (re-baselined) · GATE 5 NEXT  ← current
    │      H1B-0: partnership/consent flows work under app_rw — consent-scoped definer functions,
    │      a guard against forged consent rows, best-effort audit that cannot abort (D-049);
    │      /api/build posture proof. 0104 applied to the isolated hosted DB (Gate 1b PASS)
@@ -108,10 +108,10 @@ H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 ·
    │      Gate 3 PASS: app_rw.<ref> pooler login (SCRAM) proven; RLS exact on all 155 tables for
    │      no-context + 3 orgs; no context leak across 10 txns on one pooled backend; foreign
    │      writes refused; zero residue
-   │      Gate 4 APPLIED: Preview (branch-scoped) DATABASE_URL_OWNER added; DATABASE_URL unchanged;
-   │      runtime still postgres; owner paths + 37-room signed-in crawl identical before/after;
-   │      fingerprint moved by the crawl's own render-time writes (/routines, /pipeline) on the
-   │      pre-change deployment → owner decision (re-baseline or revert) before Gate 5
+   │      Gate 4 PASS (re-baselined): Preview (branch-scoped) DATABASE_URL_OWNER added; DATABASE_URL
+   │      unchanged; runtime still postgres; owner paths + 37-room signed-in crawl identical;
+   │      one-time render materialization (/routines defaults, /pipeline daily snapshot) proven
+   │      stable on a repeat crawl; certification fingerprint rule CFR-1 — Gate 5 is next
    │      H1A: every data path explicitly tenant-scoped (D-043); certification integrity —
    │      clone isolation + whole-world fingerprint gate (D-044); broad adversarial verifier
    │      H1B: web runtime → app_rw so RLS binds (D-045) — owner-approved hosted cutover

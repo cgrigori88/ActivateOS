@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 APPLIED AND VERIFIED; ONE CRITERION NOT MET; AWAITING OWNER DECISION** (2026-09-15; `DATABASE_URL_OWNER` added to Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical. The fingerprints moved to business-data `c9623fb5abe2f9bc` / whole-world `dce27935d88743fb`, caused by the crawl's own render-time writes on the pre-change deployment) · Gates 5–9 not begun. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · Gates 5–9 not begun. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -954,7 +954,7 @@ The tooling (`gate3-probe.ts`, `gate3-targets.ts`, and the snapshot and assertio
 
 ## Gate 4 — add `DATABASE_URL_OWNER` to the branch Preview: RESULT (2026-09-15)
 
-**Gate 4 — CHANGE APPLIED AND VERIFIED · ONE CRITERION NOT MET (database fingerprint) · AWAITING OWNER DECISION.**
+**Gate 4 — PASS AFTER DOCUMENTED RE-BASELINE** (owner decision, 2026-09-15; see § "Gate 4 close-out" below). The result as first run follows: change applied and verified, with one criterion not met (the database fingerprint).
 
 Every runtime, routing, owner-path and room criterion passed. The whole-world and business-data fingerprints did **not** stay at the baseline of record. The signed-in room crawl itself caused the drift: two crawled rooms write on render. The drift happened on the **pre-change** deployment, during the BEFORE crawl, before the variable existed. It is not caused by `DATABASE_URL_OWNER`, and removing the variable would not undo it. So the rollback trigger ("adding `DATABASE_URL_OWNER` causes a regression") is not met, and the variable stays. Gate 4 is **not** recorded as a clean PASS, because the specified criterion "fingerprints unchanged" did not hold. The owner decides below.
 
@@ -1023,5 +1023,81 @@ Every runtime, routing, owner-path and room criterion passed. The whole-world an
 - Removing the variable returns `getOwnerPool()` to its inert fallback, `getPool()`, which is the pre-Gate-4 behaviour.
 
 The tooling is kept in the session scratchpad and never committed, as for the earlier gates: `g4-crawl.mjs`, `g4-compare.mjs`, `vercel-env-snap.mjs`, and the Gate 2/3 snapshot tool re-pointed at a new output directory.
+
+### Gate 4 close-out — re-baseline, materialization semantics, stability proof and CFR-1 (2026-09-15)
+
+**Owner decision: option (a), RE-BASELINE.** The three render-created rows are kept and not deleted, because the next signed-in crawl would recreate them. They are:
+- Vertex `routines` `morning_brief`;
+- Vertex `routines` `account_digest`;
+- the Vertex `pipeline_snapshots` row for 2026-09-15.
+
+They are not caused by `DATABASE_URL_OWNER`:
+- they were written during the BEFORE crawl (16:22Z), before the variable existed (added 16:24:02Z);
+- they were written through `withTenant`, which is `getPool()` → the existing `DATABASE_URL`, not the owner pool.
+
+**Gate 4 — PASS AFTER DOCUMENTED RE-BASELINE.** No Vercel, deploy, env, database or Production change was made in the close-out.
+
+**Materialization semantics** (from the code; product behaviour not modified).
+
+| | `/routines` → `listRoutines()` (`src/lib/routines/routines.ts`) | `/pipeline` → the page loader (`src/app/pipeline/page.tsx`) |
+|---|---|---|
+| Write | per catalog kind: `insert into routines (org_id, kind) … on conflict (org_id, kind) do nothing` | `insert into pipeline_snapshots … values (org, now()::date, …) on conflict (org_id, taken_on) do update set open_count, open_usd, weighted_usd, crm_usd = excluded.*` |
+| Creation | **create-once defaults**, one row per org per catalog kind, the first time that org renders `/routines`: `enabled=false`, `config {}`, `state {}`, `last_run_at` null, `created_at` now() | **once per org per calendar date.** The primary key is `(org_id, taken_on)`; `taken_on = now()::date` in the database timezone (**UTC**). The first `/pipeline` render of the day inserts |
+| A later render | **no change.** A conflicting DO NOTHING insert touches no tuple | **same day:** an upsert that recomputes the four value columns and rewrites the tuple. There is no timestamp column. **A new UTC date:** a new row |
+| Columns a normal render can change | **none**, after creation. `enabled` and `config` change only through POST server actions (toggle, save config). `last_run_at`, `state` and `routine_runs` change only through the routine runner (worker, or the "run now" action), never a GET | `open_count`, `open_usd`, `weighted_usd`, `crm_usd` of **today's** row, and only if the inputs differ: (i) live opportunities change; (ii) the org's stage-weight curve changes; (iii) `crm_snapshots` change; or (iv) **the render carries `?timeframe=7\|30\|90`**. The snapshot is computed from `opps`, which the timeframe filter narrows, so a filtered view overwrites the day's business fields. The other filters (stage, partner, quote, qual, value, life) only narrow the displayed `visible` set and do not affect the snapshot. Rows for earlier dates are never touched |
+
+(iv) is a latent product defect: snapshot history depends on the view filter. It is recorded here and **not fixed in H1B**. The certification crawl renders `/pipeline` without `timeframe`.
+
+**Stability proof** (same UTC day, 2026-09-15, 16:37–16:39Z; deployment `dpl_AbED1JMQDDoFfzMVtWEz4ZGLWpTy`, commit `acffd94`; synthetic Vertex owner, real `/login`). The sequence:
+1. read-only snapshot;
+2. a full signed-in crawl of all 37 rooms, **twice**, including `/routines`, `/pipeline`, Today, Queue and Pursuit Detail;
+3. read-only snapshot again.
+
+The results:
+- **Pre-snapshot vs the Gate 4 post record:** 41/0.
+- **Post-snapshot vs pre-snapshot:** **41/0, 0 of 155 tables differ.**
+  - Business-data `c9623fb5abe2f9bc` → `c9623fb5abe2f9bc`; whole-world `dce27935d88743fb` → `dce27935d88743fb`.
+  - Manifest, security hash, counts and `app_rw` unchanged.
+- **`routines`:** still 2 rows, byte-identical, **tuple not rewritten** (xmin 2415 before and after, the Gate 4 creation transaction); `routine_runs` 0.
+- **`pipeline_snapshots`:** still 1 row for the org and day. The tuple was rewritten (xmin 2419 → 2422) with **identical values**: 11 open · $8,040,000 open · $3,361,500 weighted · `crm_usd` null. Those equal the unchanged live pipeline.
+- **The rooms:** all 37 returned 200 and were equivalent to the Gate 4 AFTER crawl. The owner paths were identical.
+
+**Conclusion.** The Gate 4 materialization was one-time initialization. Same-day repeat crawls are fingerprint-neutral, so the strict fingerprints are kept and the re-baselined values carry forward. The one behaviour that can still move them is a **later UTC date**, which adds one `pipeline_snapshots` row per org whose `/pipeline` is rendered. That is what CFR-1 governs.
+
+**Hosted baseline of record after Gate 4 (the Gate 5 baseline):**
+- migrations 105 (latest 0105);
+- manifest `db1f78f7a11bbacb`;
+- business-data fingerprint `c9623fb5abe2f9bc`;
+- whole-world fingerprint `dce27935d88743fb`;
+- security hash `30772757ebd4688c`;
+- `app_rw` LOGIN true, BYPASSRLS false;
+- 31 protected functions / 0 unsafe;
+- 0 send rows;
+- `pipeline_snapshots` latest `taken_on` 2026-09-15.
+
+**Vercel posture after Gate 4.** `DATABASE_URL_OWNER` exists only on `pursuitos-demo` Preview + `roadmap/pursuitos-vnext`. The env metadata at close-out is identical to the Gate 4 post record. Preview `DATABASE_URL` is unchanged, so the runtime is still the owner (`postgres`). `/api/build` reports role `postgres` / bypassRls true / tenantEnforcement false / `externalSendingArmed` false.
+
+#### CFR-1 — hosted certification fingerprint rule (adopted 2026-09-15; governs Gates 5–8)
+
+1. **The manifest is strict.** `db1f78f7a11bbacb` must be unchanged.
+2. **Every table is strict by default.** Every `public` table is compared by row count and content hash against the baseline of record, and both the business-data and whole-world fingerprints are compared. No table or column is excluded.
+3. **The allowlist is exhaustive:** only these two deltas may be accepted, and each must be semantically validated.
+   - **A. `pipeline_snapshots`, a new UTC date only.**
+     - Allowed: rows whose `taken_on` is later than the baseline's latest `taken_on` (2026-09-15); at most one per (org, date); only for an org whose `/pipeline` was rendered in the run.
+     - Validation, per new row:
+       - `open_count` and `open_usd` equal that org's **unfiltered** open opportunities, count and sum. For Vertex, with business data unchanged: 11 / $8,040,000.
+       - `weighted_usd` equals the stage-weighted value of the same set under the org's stage-weight curve. For Vertex: $3,361,500.
+       - `crm_usd` is null while the org has no `crm_snapshots`.
+     - Rows with `taken_on` on or before the baseline date must be **byte-identical**: a content hash over that subset must equal the baseline table hash.
+     - A same-day comparison gets **no allowance**, because same-day stability is proven. A same-day value change, for example from a `?timeframe=` render, **fails**.
+   - **B. `routines`, first-render initialization for an org with no routines rows only.** This arises, for example, when a Gate 7 session signs in as Meridian or TD SYNNEX and opens `/routines`.
+     - Allowed: exactly one row per catalog kind (`morning_brief`, `account_digest`) for that org, with `enabled=false`, `config {}`, `state {}` and `last_run_at` null.
+     - Required: `routine_runs` unchanged.
+     - Vertex's existing rows must stay byte-identical. Any change to `enabled`, `config`, `state` or `last_run_at`, any extra row, or any run **fails**.
+4. **Everything else fails.** Any delta outside 3A/3B is a certification failure. That covers any other table, any change to a pre-existing row, the manifest, the security hash, or `app_rw`. There is no blanket "ignore fingerprints" exception.
+5. **Accepted deltas are reported explicitly.** When 3A or 3B is used, the run lists each accepted row with its validation, and the strict per-table result for every other table.
+6. **Re-baselining stays an owner decision.** It is recorded in this document, and CFR-1 is not a re-baseline.
+
+A delta accepted under 3A or 3B does not move the baseline of record. The next gate compares against the baseline plus the validated allowlist rows, or against a new owner-approved re-baseline.
 
 **Gate 5 was NOT begun.** Preview `DATABASE_URL` is unchanged and the runtime is still `postgres`. H1B, and so H1, are not complete.
