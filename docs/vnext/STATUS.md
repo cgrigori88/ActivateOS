@@ -2,7 +2,34 @@
 
 **Last updated:** 2026-09-14 (Slice 2B — Pursuit Attention + Today / Queue coordination, local pass)
 
-**2026-09-14 (latest) — TENANT HARDENING PASSED: the Slice 2B security gate is closed.**
+**2026-09-14 (latest) — SLICE 2B HOSTED REVIEW: the final Today defect is fixed locally. Slice 2B is still PREVIEW READY** until this fix is deployed and human reviewed.
+
+The hosted review passed the Queue and the Pursuit Detail labelling, but failed Today: State D showed two Globex cards.
+
+**Root cause, confirmed with a guarded read-only query of `mejokqxriwyawfhawuxu`.** They are two canonical pursuits:
+- the hero MODERNIZATION pursuit, whose route is decided (WWT);
+- a separate EXPANSION pursuit, "AI platform expansion", with its own pending CDW route approval.
+
+Grouping already held one card per pursuit, but the two cards named only the account.
+
+**Fix (D-042):**
+- Grouping stays by pursuit identity, never by account.
+- Where one account has several pursuit cards, each names its pursuit.
+- Every reason for one pursuit competes under the existing ranking and folds beneath the winner with its own CTA ("Approve route via CDW → Approve").
+- "Decisions to make" again counts underlying reasons (its certified meaning); View all counts cards.
+
+Proven:
+- `vnext-attention` 64/0 (+7, on the real world in State D);
+- `today-tenant` 51/0;
+- `npm test` 362/0; `tsc` 0; build 0;
+- Slice 1 62/0; Slice 2A 116/0; team 11/0;
+- manifest `be0da833990ce436`.
+
+Against the accepted build (`c0eea5a`), Queue, Pursuit Detail, the drawers and all flag-OFF Today pages are unchanged. With attention on, only Today differs.
+
+Also fixed from the render review: composed cards on mobile clipped long lines past the card edge. The stacked layout used `items-start`; it now uses `items-stretch`, and 0 elements cross a card edge at 390 or 1440.
+
+**Earlier the same day — TENANT HARDENING PASSED: the Slice 2B security gate is closed.**
 
 **The leak.** A pre-existing Today / Queue tenant leak was found during Slice 2B. With the flag OFF, the guest org's certified Today listed 17–18 of Vertex's items and Vertex's whole $8,040,000 open pipeline.
 

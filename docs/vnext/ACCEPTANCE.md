@@ -252,4 +252,38 @@ A pre-existing leak blocked Slice 2B. With the flag OFF, a guest org's Today lis
 
 Flag-OFF Today is no longer required to be byte-identical where the only difference is foreign data removed. Security correctness supersedes byte identity (D-041).
 
-**Not certified.** Slice 2B is PREVIEW READY (local) at most until a hosted human review.
+### Slice 2B hosted human review — the final defect, and its resolution (2026-09-14)
+
+**Hosted review results:** Queue PASS · Pursuit Detail stale-plan labelling PASS · Today FAIL
+(the one-card-per-pursuit invariant). In State D, Today showed two Globex cards: "Plan needs
+review" and "Approve route via CDW".
+
+> **One pursuit can produce many underlying attention/decision reasons, but Today renders one
+> pursuit-level attention card.**
+
+**Root cause, confirmed read-only on the hosted database.** The two cards belong to two canonical
+Globex pursuits: the hero MODERNIZATION pursuit, whose route is already decided (WWT), and a
+separate EXPANSION pursuit, "AI platform expansion", whose own CDW route approval is pending.
+The composition already grouped by pursuit. The cards were indistinguishable because a card
+named only the account.
+
+**Resolution (D-042):**
+- Two pursuits stay two cards — never merged by account.
+- Where one account has several pursuit cards, each card names its pursuit.
+- Every reason for one pursuit competes under the existing ranking, and folds beneath the winner
+  with its own CTA intact.
+- "Decisions to make" counts every underlying reason again: its certified meaning.
+
+| # | Criterion | Proven by |
+|---|---|---|
+| S2B-R1 | State D with a plan review, a route approval and the queued approved-plan action on ONE pursuit renders exactly ONE card, with plan review primary. | unit test · `vnext-attention` D |
+| S2B-R2 | A same-pursuit route approval sits in "other items", still actionable ("Approve route via CDW → Approve"). | unit test |
+| S2B-R3 | No pursuit appears twice, in the top decisions or in View all. | unit test · `vnext-attention` D |
+| S2B-R4 | A pursuit with only a route approval renders exactly the certified card. | unit test |
+| S2B-R5 | Two canonical pursuits on one account are NOT collapsed; each card names its pursuit. | unit test · `vnext-attention` D, on the real world |
+| S2B-R6 | Tenant and disclosure filtering happen before grouping, hidden counts, labels and ranking. A foreign pursuit on the same account changes nothing. | unit test · `today-tenant` |
+| S2B-R7 | An existing decision that outranks the plan's attention leads its pursuit's card. | unit test |
+| S2B-R8 | "Decisions to make" counts underlying reasons; View all counts cards. | unit test · `vnext-attention` D |
+| S2B-R9 | Queue, Pursuit Detail, the drawers and flag-OFF Today are unchanged against the accepted build (`c0eea5a`). | render comparison |
+
+**Not certified.** Slice 2B stays PREVIEW READY until this fix is deployed and human reviewed.

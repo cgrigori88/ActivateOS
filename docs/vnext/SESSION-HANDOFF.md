@@ -16,7 +16,8 @@
 | **Current commit** | this session's Slice 2B commit, on top of `b677acf` |
 | **Known-good demo commit** | **`97e975f0d9895c54bfc49cdcc24924d6ac58e796`** (Wave 6D) |
 | **Slice status** | Slice 1 **DEMO CERTIFIED / FROZEN** · Slice 2A **DEMO CERTIFIED / FROZEN** (human product acceptance on the isolated hosted Preview) · Slice 2B **PREVIEW READY (local)** — its tenant security gate passed; not certified; no hosted work done |
-| **Session completed** | **TODAY / QUEUE TENANT HARDENING — PASSED** (the Slice 2B release blocker). See § "Today / Queue tenant hardening" below. No hosted database, Vercel, flag, role, grant, deployment or Production change. |
+| **Session completed** | **SLICE 2B HOSTED-REVIEW DEFECT — FIXED LOCALLY.** See § "Slice 2B hosted review" below. No hosted write, Vercel, flag, deployment or Production change. One guarded **read-only** query of `mejokqxriwyawfhawuxu` confirmed the root cause. |
+| **Before that** | **TODAY / QUEUE TENANT HARDENING — PASSED** (`c0eea5a`, the Slice 2B release blocker). See § "Today / Queue tenant hardening". |
 | **Before that** | **SLICE 2B — PURSUIT ATTENTION + TODAY / QUEUE, LOCAL** (`8261ef3`). See § "Vertical Slice 2B". |
 | **Previous session** | **HOSTED TEAM-LAYER REPAIR — FIXED.** Root cause (in-place reseed clears the 0075-only team requirements) reproduced locally and fixed in code (`6ab3599`); `mejokqxriwyawfhawuxu` reseeded in place. Hosted coordination **112 pass / 0 fail / 4 environmentally not run** (as-`app_rw` only; equivalents pass), Slice 1 62/0, demo-team 11/0, manifest unchanged, 0 send rows. Slice 2A stays **PREVIEW READY**, not DEMO CERTIFIED. No Vercel, flag, deploy, auth or Production change; Monday demo never addressed. See § "Hosted team-layer repair" below. |
 | **Previous session** | **SLICE 2A HOSTED PROMOTION — INSTALLED, VERIFICATION PARTIAL** (16:49Z, docs `a9846b4`): 0103 + Globex plan story on `mejokqxriwyawfhawuxu`; found the no-team defect. |
@@ -31,6 +32,44 @@
 - Also the head of `ui-wave-6d`, and tagged `backup/2026-09-04/tds-live-demo`
   (annotated, already on origin — the durable immutable reference).
 - Working tree clean at session start and at session end.
+
+---
+
+## Slice 2B hosted review (2026-09-14) — the final Today defect, fixed locally
+
+**Review results:** Queue PASS · Pursuit Detail labelling PASS · Today FAIL: two Globex cards in State D, "Plan needs review" and "Approve route via CDW".
+
+**Root cause.** Confirmed with a guarded, read-only query of `mejokqxriwyawfhawuxu`: the script refuses any other ref, runs in a `READ ONLY` transaction, and never prints the credential.
+
+| Hosted pursuit | Type · thesis | Route | Plan |
+|---|---|---|---|
+| `8e5f5d34` (hero) | MODERNIZATION · "Exit legacy virtualization before renewal" | SELECTED — WWT, over the CDW recommendation | 1 |
+| `db8cf1b8` | EXPANSION · "AI platform expansion" | RECOMMENDED — CDW, pending | 0 |
+
+"Approve route via CDW" is the EXPANSION pursuit's own item. The composition already produced one card per pursuit; both cards showed only "Globex Manufacturing Inc.". A pristine local State D reproduces the hosted result exactly. The local copies had hidden it before, because `team-motion-verify` had selected that route.
+
+**Fix (D-042):**
+
+| Change | Where |
+|---|---|
+| Two pursuits stay two cards (never merged by account). Where one account has several pursuit cards, each title leads with the pursuit's thesis, e.g. "AI platform expansion · Approve route via CDW". Keyed by company id, after the tenant filter | `composeAttentionQueue`, `pursuitCardLabel`; labels read org-scoped in `composeTodayAttention` |
+| Every reason for one pursuit competes under the existing `todaySort`; the plan wins exact ties; the loser folds beneath the winner | `composeAttentionQueue` (amends D-035) |
+| Each folded item keeps its CTA — "Approve route via CDW → Approve" | `DecisionOther.actionLabel`, `components/pursuit/today.tsx` |
+| "Decisions to make" = every underlying reason (`decisionCount`), its certified meaning; "View all N" counts cards | `TodayQueueView.decisionCount`, `app/page.tsx` |
+
+**Tests:**
+- 7 new unit tests: State D one card with plan review primary; route approval folded and actionable; top-4 and View all never duplicate; a lone route approval stays unchanged; two same-account pursuits are not collapsed and are named; foreign same-account items change nothing; the metric semantics.
+- 7 new `vnext-attention` checks on the real world in State D.
+
+**Render proof, against the accepted build `c0eea5a`** (fresh world, ids resolved per database):
+- Queue, Pursuit Detail, the Today/Pipeline/Accounts drawers and every flag-OFF Today page are identical in all five configurations.
+- With attention on, only Today differs.
+- In State D, Today shows "Exit legacy virtualization before renewal · Plan needs review" and "AI platform expansion · Approve route via CDW"; "decisions to make" = 38.
+- Screenshots: `docs/vnext/review/slice-2b/today-D-*-final.png`.
+
+**One mobile fix from the same review.** The composed cards' stacked layout used `items-start`, so long titles clipped past the card edge at 390px. It now uses `items-stretch`: 0 elements cross a card edge on desktop or mobile. This only affects composed cards; flag-OFF markup is unchanged.
+
+**Next:** the owner-approved redeploy of the branch head to the Preview scope, then the final hosted human review. Slice 2B remains PREVIEW READY until then.
 
 ---
 

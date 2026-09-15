@@ -3,7 +3,7 @@
 Durable architecture, product and UX decisions for the vNext lane. Append, don't
 rewrite: a superseded decision stays, marked `SUPERSEDED`, with the reason.
 
-**Last updated:** 2026-09-14 (Slice 2A — D-024…D-033 · Slice 2B — D-034…D-040 · tenant hardening — D-041)
+**Last updated:** 2026-09-14 (Slice 2A — D-024…D-033 · Slice 2B — D-034…D-040 · tenant hardening — D-041 · hosted review — D-042)
 
 ---
 
@@ -770,6 +770,10 @@ says them:
 
 They stay on the model (`reasons`, `subsumedBy`) and are never counted as "other items".
 
+> **AMENDED by D-042 (hosted review).** Rule 2 no longer lets plan attention lead unconditionally.
+> Every reason for a pursuit competes under the existing ranking, and the plan wins exact ties.
+> Two pursuits on one account are two cards, each naming its pursuit.
+
 **Why not a second "Needs attention" list beside the decision queue.** Wave 2 made the
 decision queue Today's only ranked worklist, after three renderings of two rows taught readers
 that no list was authoritative. A parallel list would undo that. The existing panel is composed
@@ -960,3 +964,62 @@ are unchanged. RLS stays correct and inert on the app path. Once the app runs as
 becomes a second, independent layer under these predicates, not a replacement for them. Other
 rooms (Pipeline, Accounts list, Motions, and so on) were not audited in this pass. They carry the
 same class of risk until #67 lands, or until each is audited the same way.
+
+## D-042 · One pursuit, many reasons, ONE card — composed by pursuit identity, never by account
+
+**The rule (the final Slice 2B hosted-review finding):**
+
+> **One pursuit can produce many underlying attention/decision reasons, but Today renders one
+> pursuit-level attention card.**
+
+**What the hosted review saw.** In hosted State D, Today showed two Globex cards: "Plan needs
+review" and "Approve route via CDW". A guarded, read-only check of `mejokqxriwyawfhawuxu`
+settled whose they are:
+
+| Hosted pursuit | Type · thesis | Route | Plan |
+|---|---|---|---|
+| `8e5f5d34` (hero) | MODERNIZATION · "Exit legacy virtualization before renewal" | SELECTED — WWT, over the CDW recommendation | 1 |
+| `db8cf1b8` | EXPANSION · "AI platform expansion" | RECOMMENDED — CDW, not selected | 0 |
+
+So "Approve route via CDW" is the EXPANSION pursuit's own pending route approval. The hero's
+route was decided long ago. One card per pursuit already held.
+
+The defect was that **two canonical pursuits on one account rendered as indistinguishable
+cards**. A card named only the account. The pristine local State D reproduces the hosted result
+exactly.
+
+**Decision:**
+
+1. **Group by canonical pursuit id, never by account or name.** Folding the expansion pursuit's
+   route approval under the modernization pursuit's plan review would merge two canonical
+   pursuits. It would also bury a real decision on a different deal. Two pursuits stay two cards.
+2. **Where one account holds more than one pursuit card, each card names its pursuit**: "Exit
+   legacy virtualization before renewal · Plan needs review" and "AI platform expansion ·
+   Approve route via CDW".
+   - The name is the pursuit's own thesis, read with `org_id = caller`.
+   - Detection is keyed by the canonical company id.
+   - It runs after the tenant filter, so another org's pursuit on the same account can neither
+     add a card nor trigger a label.
+   - An account with one pursuit card is unchanged.
+3. **Every reason for a pursuit competes under Today's existing ranking.** The attention model's
+   own primary is still chosen by the accepted order (review › decision › overdue › blocked ›
+   owner › due › progress). It then competes with the pursuit's most material existing item
+   under `todaySort`, and the plan wins exact ties.
+   - Whichever loses folds beneath the winner as "N other items".
+   - So a route, fact or team decision never bypasses its pursuit's card, and a higher-ranked
+     one still leads it.
+   - In State D a CRITICAL plan review outranks a HIGH route approval, so plan review stays
+     primary. This amends D-035's "the plan leads where a person coordinates it".
+4. **Folded reasons stay actionable.** Each "other item" carries its own CTA, for example
+   "Approve route via CDW → Approve". The CTA goes to the item's own governed control. Nothing
+   is suppressed and no canonical state changes.
+
+**Summary metric, inspected rather than guessed.** "Decisions to make" is certified to count
+Today's underlying decision items; flag OFF, one item is one card. Slice 2B had silently turned
+it into a card count (36 → 11).
+
+It now reads `decisionCount`: every underlying reason, however grouped (each card plus
+everything folded beneath it). That reproduces the certified meaning. With one reason per card,
+it equals the old total exactly. "View all N" keeps counting the cards it opens; under the flag
+its words drop "decisions" so it no longer claims a number of decisions. Both numbers are
+computed after the tenant filter.

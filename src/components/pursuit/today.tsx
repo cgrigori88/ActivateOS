@@ -88,7 +88,7 @@ export function TodayDecisionCard({
   // rooms now share one vocabulary. The card keeps a plain hairline.
   return (
     <div
-      className={composed ? "pos-lift flex flex-col items-start gap-3 rounded-card p-4 sm:flex-row sm:items-center sm:gap-4" : "pos-lift flex items-center gap-4 rounded-card p-4"}
+      className={composed ? "pos-lift flex flex-col items-stretch gap-3 rounded-card p-4 sm:flex-row sm:items-center sm:gap-4" : "pos-lift flex items-center gap-4 rounded-card p-4"}
       style={{ background: "var(--surface-primary)", boxShadow: "var(--shadow-low)", border: "1px solid var(--border-subtle)" }}
     >
       <div className="flex flex-none items-center gap-2">
@@ -170,6 +170,10 @@ export function TodayDecisionCard({
                   <li key={o.key} className="list-disc">
                     <Link href={o.deepLink} className="font-medium text-neutral-600 hover:underline dark:text-neutral-300">{o.title}</Link>
                     {o.detail && <span> — {o.detail}</span>}
+                    {/* Folded, never lost: the item's own action stays one click away. */}
+                    {o.actionLabel && (
+                      <Link href={o.deepLink} className="ml-1.5 whitespace-nowrap font-semibold text-accent hover:underline dark:text-blue-400">{o.actionLabel} →</Link>
+                    )}
                   </li>
                 ))}
               </ul>

@@ -95,6 +95,8 @@ SLICE 2B Pursuit Attention + Today/Queue   (P3)        PREVIEW READY (local)  �
    │      derived pursuit attention on Today (one card per pursuit) · plan lineage on
    │      Queue · "Current approved plan" labelling · D-034…D-040 · no migration
    │      security gate PASSED: Today/Queue tenant-scoped explicitly (D-041)
+   │      hosted review: one card per PURSUIT, named when an account has several (D-042);
+   │      awaiting redeploy + final hosted human review
    ↓
 SLICE 2C Coordination breadth              (P3)        NOT STARTED
    │      goal editing · plan closure · multi-pursuit plans · review recording on events

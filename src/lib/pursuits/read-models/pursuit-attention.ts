@@ -341,7 +341,7 @@ export function derivePursuitAttention(input: PursuitAttentionInput, caller: Cal
 export function attentionToDecisionItem(a: PursuitAttention, extraOthers: DecisionOther[] = []): DecisionItem {
   const p = a.primary;
   const others: DecisionOther[] = [
-    ...a.others.map((r) => ({ key: r.key, title: r.headline, detail: r.detail, deepLink: r.cta.href })),
+    ...a.others.map((r) => ({ key: r.key, title: r.headline, detail: r.detail, deepLink: r.cta.href, actionLabel: r.cta.label })),
     ...extraOthers,
   ];
   return {
@@ -378,14 +378,23 @@ export function attentionToDecisionItem(a: PursuitAttention, extraOthers: Decisi
 // Today composition — one card per pursuit
 // ---------------------------------------------------------------------------
 
-function byMateriality(now: Date) {
+/** Today's existing materiality policy, as a comparator (class → urgency → priority → age). */
+function materiality(now: Date) {
   const age = (it: DecisionItem) => (now.getTime() - new Date(it.at).getTime()) / 1000;
   return (a: DecisionItem, b: DecisionItem) =>
     todaySort(
       { decisionClass: a.decisionClass, operationalUrgency: a.operationalUrgency, commercialPriority: a.commercialPriority, ageSeconds: age(a) },
       { decisionClass: b.decisionClass, operationalUrgency: b.operationalUrgency, commercialPriority: b.commercialPriority, ageSeconds: age(b) },
-    ) || a.id.localeCompare(b.id);   // total order: ranking never depends on arrival order
+    );
 }
+
+function byMateriality(now: Date) {
+  const m = materiality(now);
+  return (a: DecisionItem, b: DecisionItem) => m(a, b) || a.id.localeCompare(b.id);   // total order: never arrival order
+}
+
+const reasonAsOther = (r: AttentionReason): DecisionOther =>
+  ({ key: r.key, title: r.headline, detail: r.detail, deepLink: r.cta.href, actionLabel: r.cta.label });
 
 export interface AttentionQueueInput {
   /** The existing Today decision items, UNCUT, in any order. */
@@ -394,16 +403,34 @@ export interface AttentionQueueInput {
   attention: PursuitAttention[];
   /** Pursuits the caller's organization owns. Anything else never reaches the composition. */
   tenantPursuitIds: ReadonlySet<string>;
+  /**
+   * The caller's own pursuits' names (their thesis), keyed by pursuit id. Used only to tell two
+   * cards on the SAME account apart — two canonical pursuits are never merged, so they must not
+   * look identical either.
+   */
+  pursuitLabels?: ReadonlyMap<string, string>;
   now: Date;
   limit?: number;
 }
 
 export interface AttentionQueueResult {
   items: DecisionItem[];
+  /** Cards — what "View all" opens. */
   total: number;
+  /** Every underlying reason, however grouped: each card plus everything folded beneath it. */
+  decisionCount: number;
   counts: Record<DecisionClass, number>;
   /** Every composed card, uncut — for badges that must reflect only what the caller owns. */
   all: DecisionItem[];
+}
+
+/** A pursuit's name for a card title: its thesis, trimmed to a readable length at a word boundary. */
+export function pursuitCardLabel(thesis: string | null | undefined): string | null {
+  const t = (thesis ?? "").trim().replace(/\.$/, "");
+  if (!t) return null;
+  if (t.length <= 56) return t;
+  const cut = t.slice(0, 56);
+  return `${cut.slice(0, cut.lastIndexOf(" ") > 30 ? cut.lastIndexOf(" ") : 56).trim()}…`;
 }
 
 /**
@@ -412,9 +439,12 @@ export interface AttentionQueueResult {
  *   • Tenant first. A pursuit-scoped item whose pursuit the caller's organization does not own
  *     is dropped before anything is grouped, ranked or counted — so no other org's pursuit can
  *     move a card, a count, a badge or an "other items" number.
- *   • Where a person is coordinating a pursuit through a plan and that plan needs them, the
- *     plan's attention is the pursuit's card: it already composes the pursuit's focus gap, route,
- *     team and milestones. The pursuit's other Today items fold beneath it as "other items".
+ *   • Where a pursuit has plan attention, it competes with the pursuit's existing Today items
+ *     under the existing ranking; the plan wins exact ties, and everything else about that
+ *     pursuit — attention reasons and existing decisions alike — folds beneath the winner as
+ *     "other items", each still carrying its own action.
+ *   • Grouping is by canonical PURSUIT id, never by account. Two pursuits on one account are two
+ *     cards, and where that happens each card names its pursuit.
  *   • Every other pursuit keeps its most material item (the existing policy, `todaySort`) as its
  *     card, with the rest folded beneath it. A pursuit with a single item is unchanged.
  *   • Items with no pursuit (a fact review, a motion-wide aggregate) are left exactly as they are.
@@ -432,28 +462,59 @@ export function composeAttentionQueue(input: AttentionQueueInput): AttentionQueu
     (byPursuit.get(it.pursuitId) ?? byPursuit.set(it.pursuitId, []).get(it.pursuitId)!).push(it);
   }
 
-  const toOther = (it: DecisionItem): DecisionOther => ({ key: it.id, title: it.title, detail: null, deepLink: it.deepLink });
+  const toOther = (it: DecisionItem): DecisionOther => ({ key: it.id, title: it.title, detail: null, deepLink: it.deepLink, actionLabel: it.allowedActions[0]?.label ?? "Open" });
   const cards: DecisionItem[] = [...standalone];
   const pursuitIds = [...new Set([...attByPursuit.keys(), ...byPursuit.keys()])].sort();
   for (const pid of pursuitIds) {
     const existing = [...(byPursuit.get(pid) ?? [])].sort(order);
     const att = attByPursuit.get(pid);
     if (att) {
-      cards.push(attentionToDecisionItem(att, existing.map(toOther)));
+      // Every reason for the pursuit competes under Today's EXISTING ranking: the attention
+      // model's own primary (already chosen by the declared order) against the pursuit's most
+      // material existing item. The plan wins an exact tie. Whichever loses folds beneath the
+      // winner — so a pre-existing route / fact / team decision can never bypass the pursuit card,
+      // and a higher-ranked one still leads it (Globex State D: a CRITICAL plan review outranks a
+      // HIGH route approval on the same pursuit).
+      const attItem = attentionToDecisionItem(att);
+      const lead = existing[0];
+      if (lead && materiality(input.now)(lead, attItem) < 0) {
+        const rest = [...[att.primary, ...att.others].map(reasonAsOther), ...existing.slice(1).map(toOther)];
+        cards.push({ ...lead, others: rest });
+      } else {
+        cards.push(attentionToDecisionItem(att, existing.map(toOther)));
+      }
     } else if (existing.length) {
       const [primary, ...rest] = existing;
       cards.push(rest.length ? { ...primary, others: rest.map(toOther) } : primary);
     }
   }
 
-  cards.sort(order);
+  // One account can hold several canonical pursuits (Globex: a modernization AND an AI-platform
+  // expansion). They stay separate cards — grouping is by pursuit identity, never by account — so
+  // where one account has more than one pursuit card, each card names its pursuit. Keyed by the
+  // canonical company id, not the display name; runs after the tenant filter, so another org's
+  // pursuit on the same account can neither add a card nor trigger a label.
+  const pursuitsByCompany = new Map<string, Set<string>>();
+  for (const c of cards) {
+    if (!c.pursuitId || !c.companyId) continue;
+    (pursuitsByCompany.get(c.companyId) ?? pursuitsByCompany.set(c.companyId, new Set()).get(c.companyId)!).add(c.pursuitId);
+  }
+  const labelled = cards.map((c) => {
+    const label = c.pursuitId && c.companyId && (pursuitsByCompany.get(c.companyId)?.size ?? 0) > 1
+      ? pursuitCardLabel(input.pursuitLabels?.get(c.pursuitId))
+      : null;
+    return label ? { ...c, title: `${label} · ${c.title}` } : c;
+  });
+
+  labelled.sort(order);
   const counts = { DECISION_REQUIRED: 0, MATERIAL_CHANGE: 0, ACTION_REQUIRED: 0, RISK: 0, OPPORTUNITY: 0, FYI: 0 } as Record<DecisionClass, number>;
-  for (const c of cards) counts[c.decisionClass]++;
+  for (const c of labelled) counts[c.decisionClass]++;
   return {
-    items: input.limit != null ? cards.slice(0, input.limit) : cards,
-    total: cards.length,
+    items: input.limit != null ? labelled.slice(0, input.limit) : labelled,
+    total: labelled.length,
+    decisionCount: labelled.reduce((n, c) => n + 1 + (c.others?.length ?? 0), 0),
     counts,
-    all: cards,
+    all: labelled,
   };
 }
 

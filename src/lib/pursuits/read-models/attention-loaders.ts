@@ -92,15 +92,22 @@ export async function composeTodayAttention(
 ): Promise<TodayQueueView> {
   const now = opts.now ?? new Date();
   const attention = await loadPursuitAttention(db, caller, { companyIds: opts.companyIds, now });
-  const ids = [...new Set(queue.items.map((i) => i.pursuitId).filter((x): x is string => !!x))];
+  const ids = [...new Set([...queue.items.map((i) => i.pursuitId), ...attention.map((a) => a.pursuitId)].filter((x): x is string => !!x))];
+  // The caller's own pursuits among them — the tenant set, and each one's name for telling two
+  // pursuits on one account apart. Read with `org_id = caller.orgId`: a foreign pursuit is absent.
   const owned = ids.length
-    ? (await db.query<{ id: string }>(`select id from pursuits where org_id = $1 and id = any($2::uuid[])`, [caller.orgId, ids])).rows.map((r) => r.id)
+    ? (await db.query<{ id: string; business_problem: string | null }>(
+      `select id, business_problem from pursuits where org_id = $1 and id = any($2::uuid[])`, [caller.orgId, ids])).rows
     : [];
-  const tenant = new Set([...owned, ...attention.map((a) => a.pursuitId)]);
-  const composed = composeAttentionQueue({ items: queue.items, attention, tenantPursuitIds: tenant, now, limit: opts.limit });
+  const tenant = new Set(owned.map((r) => r.id));
+  const pursuitLabels = new Map(owned.filter((r) => r.business_problem).map((r) => [r.id, r.business_problem!]));
+  const composed = composeAttentionQueue({ items: queue.items, attention, tenantPursuitIds: tenant, pursuitLabels, now, limit: opts.limit });
   // The badge answers from what the caller owns, never from an item another org contributed.
   const synthetic = composed.all.some((i) => i.synthetic) || await orgHasSynthetic(db, caller.orgId);
-  return { generatedAt: queue.generatedAt, items: composed.items, counts: composed.counts, total: composed.total, demoBanner: synthetic ? DEMO_BANNER : null };
+  return {
+    generatedAt: queue.generatedAt, items: composed.items, counts: composed.counts,
+    total: composed.total, decisionCount: composed.decisionCount, demoBanner: synthetic ? DEMO_BANNER : null,
+  };
 }
 
 /**

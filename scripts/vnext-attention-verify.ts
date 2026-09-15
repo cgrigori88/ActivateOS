@@ -262,6 +262,30 @@ async function main(): Promise<void> {
     check("D: the Queue still holds the approved action once, pending, marked for review",
       await onceInQueue() === 1 && linD[stagedId]?.state === "REVIEW_NEEDED");
 
+    // ── The hosted Slice 2B review: one ACCOUNT, two canonical PURSUITS ───────────
+    const sibling = (await db.query<{ id: string; label: string }>(
+      `select p.id, p.business_problem label from pursuits p
+        where p.account_id = (select account_id from pursuits where id = $1) and p.org_id = $2 and p.id <> $1
+        order by p.created_at limit 1`, [hero.id, hero.org_id])).rows[0];
+    const heroLabel = (await db.query<{ label: string }>(`select business_problem label from pursuits where id = $1`, [hero.id])).rows[0].label;
+    const rawD = await getTodayQueue(db, caller, {});
+    const siblingRoute = sibling ? rawD.items.find((i) => i.pursuitId === sibling.id && i.type === "ROUTE_APPROVAL") : undefined;
+    check("D: Globex holds a second canonical pursuit with its OWN pending route approval (the hosted second card)", !!siblingRoute, sibling?.label);
+    const heroCardD = cardsFor(todayD, hero.id)[0];
+    const siblingCards = sibling ? cardsFor(todayD, sibling.id) : [];
+    check("D: exactly ONE card for the hero pursuit — the plan review", cardsFor(todayD, hero.id).length === 1 && heroCardD?.type === "PLAN_REVIEW_REQUIRED");
+    check("D: the other pursuit's route approval is its own card — pursuits are never merged by account",
+      siblingCards.length === 1 && siblingCards[0].type === "ROUTE_APPROVAL" && !(heroCardD?.others ?? []).some((o) => /Approve route/.test(o.title)));
+    check("D: where one account has two pursuit cards, each names its pursuit",
+      heroCardD?.title === `${heroLabel.replace(/\.$/, "")} · Plan needs review` && siblingCards[0]?.title === `${sibling!.label.replace(/\.$/, "")} · Approve route via CDW`,
+      `${heroCardD?.title} | ${siblingCards[0]?.title}`);
+    const top4 = await composeTodayAttention(db, caller, rawD, { limit: 4 });
+    const unique = (v: TodayQueueView) => { const p = v.items.map((i) => i.pursuitId).filter(Boolean); return new Set(p).size === p.length; };
+    check("D: no pursuit appears twice — Today's top decisions and View all", unique(top4) && unique(todayD));
+    check("D: the folded reasons stay actionable (each carries its own CTA)", (heroCardD?.others ?? []).every((o) => !!o.actionLabel && !!o.deepLink));
+    check("D: 'decisions to make' counts every underlying reason, not the collapsed cards",
+      todayD.decisionCount === todayD.items.reduce((n, c) => n + 1 + (c.others?.length ?? 0), 0) && (todayD.decisionCount ?? 0) > (todayD.total ?? 0));
+
     // ── Disclosure, in the richest state ───────────────────────────────────────
     const g = heroAttention(await loadPursuitAttention(db, guest), hero.id)[0];
     const gCard = cardsFor(await todayFor(db, guest), hero.id)[0];

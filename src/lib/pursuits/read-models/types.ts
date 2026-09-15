@@ -67,8 +67,23 @@ export interface DecisionAttention {
   /** Every reason derived for the pursuit, primary first (for explanation, never for re-ranking). */
   kinds: string[];
 }
-export interface DecisionOther { key: string; title: string; detail: string | null; deepLink: string; }
-export interface TodayQueueView { generatedAt: string; items: DecisionItem[]; counts: Record<DecisionClass, number>; total?: number; demoBanner: string | null; }
+/**
+ * A reason folded beneath a pursuit's card. `actionLabel` is the folded item's own CTA, so it stays
+ * actionable from the disclosure ("Approve route via CDW → Approve"), not merely listed.
+ */
+export interface DecisionOther { key: string; title: string; detail: string | null; deepLink: string; actionLabel?: string; }
+export interface TodayQueueView {
+  generatedAt: string; items: DecisionItem[]; counts: Record<DecisionClass, number>;
+  /** How many cards the queue holds (what "View all" opens). */
+  total?: number;
+  /**
+   * Slice 2B composition only: every underlying decision/attention reason on Today, however it is
+   * grouped (each card plus everything folded beneath it). Absent on the certified queue, where each
+   * reason is its own card and `total` already means the same thing.
+   */
+  decisionCount?: number;
+  demoBanner: string | null;
+}
 
 // ---- Portfolio (§5/§6) -----------------------------------------------------
 export interface PortfolioRow {

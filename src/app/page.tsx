@@ -98,6 +98,11 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   // Command-center cut (§2): show the top conditions by default; ?today=all reveals the rest.
   const divergences = viewAll ? allDivergences : allDivergences.slice(0, TODAY_TOP_CONDITIONS);
   const decisionsTotal = pursuitQueue?.total ?? pursuitQueue?.items.length ?? 0;
+  /* "Decisions to make" counts underlying decisions — its certified meaning, where every reason is
+     its own card. Under the Slice 2B composition one pursuit's reasons share a card, so the metric
+     reads `decisionCount` (each card plus everything folded beneath it) and does not shrink to the
+     card count; "View all" keeps counting the cards it opens. */
+  const decisionsToMake = pursuitQueue?.decisionCount ?? decisionsTotal;
 
   return (
     <main>
@@ -117,7 +122,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         <SummaryBand className="mb-6">
           <Metric label={`open pipeline${scope.scope.kind !== "ALL" ? ` · ${scope.label}` : ""}`} value={usdShort(exposure.openUsd)} />
           <Metric label="weighted" value={usdShort(exposure.weightedUsd)} subs={["by stage probability"]} />
-          <Metric label={`decision${decisionsTotal === 1 ? "" : "s"} to make`} value={decisionsTotal} intent="info" />
+          <Metric label={`decision${decisionsToMake === 1 ? "" : "s"} to make`} value={decisionsToMake} intent="info" />
           <Metric label={`condition${allDivergences.length === 1 ? "" : "s"}`} value={allDivergences.length} intent="warning" />
           <Metric label="won · 90d" value={usdShort(exposure.wonUsdPeriod)} intent="positive" subs={[`${exposure.wonCountPeriod} deal${exposure.wonCountPeriod === 1 ? "" : "s"}`]} />
         </SummaryBand>
@@ -134,9 +139,18 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           <TodayQueue items={pursuitQueue.items} drawerBase={drawerBase} />
           {!viewAll && decisionsTotal > pursuitQueue.items.length && (
             <div className="mt-3">
+              {/* Two whole links, chosen whole: the certified one verbatim with the flag OFF (U-16);
+                  under the Slice 2B composition the link counts the CARDS it opens, so it drops
+                  "decisions" — the metric above counts the decisions. */}
+              {attentionOn ? (
+                <Link href={{ query: { ...cleanQuery(sp), today: "all" } }} className="text-body font-semibold text-accent hover:underline dark:text-blue-400">
+                  View all {decisionsTotal} →
+                </Link>
+              ) : (
               <Link href={{ query: { ...cleanQuery(sp), today: "all" } }} className="text-body font-semibold text-accent hover:underline dark:text-blue-400">
                 View all {decisionsTotal} decisions →
               </Link>
+              )}
             </div>
           )}
           {viewAll && (

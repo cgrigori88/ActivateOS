@@ -366,6 +366,96 @@ test("today: the top-N cut happens after collapsing, and the total counts cards"
   assert.equal(q.all.length, 3);
 });
 
+// The hosted Slice 2B review — one pursuit, many reasons, ONE card ----------------------
+
+const G_ROUTE = existing({
+  type: "ROUTE_APPROVAL", decisionClass: "DECISION_REQUIRED", operationalUrgency: "high",
+  pursuitId: "p-globex", companyId: "c-p-globex", accountLabel: "Globex Manufacturing Inc.",
+  title: "Approve route via CDW", deepLink: "/pursuits/p-globex#route",
+  allowedActions: [{ label: "Approve", skill: "select_partner_route", sideEffect: "INTERNAL_WRITE" }],
+});
+/** Globex's OTHER canonical pursuit — the AI-platform expansion, same account, its own route approval. */
+const EXPANSION_ROUTE = { ...G_ROUTE, id: "ROUTE_APPROVAL:p-expansion", pursuitId: "p-expansion", deepLink: "/pursuits/p-expansion#route" };
+const LABELS = new Map([["p-globex", "Exit legacy virtualization before renewal"], ["p-expansion", "AI platform expansion"]]);
+const G_TENANT = new Set(["p-globex", "p-expansion", "p-stark"]);
+
+test("today (State D): plan review + route approval + queued action on ONE pursuit render exactly ONE card, plan review primary", () => {
+  const a = derive(stateD())!;
+  assert.ok(a.reasons.some((r) => r.kind === "ACTION_DUE" && r.ref.refId === "ma-1"), "the queued approved-plan action is one of the reasons");
+  for (const limit of [4, undefined]) {   // Today's top decisions, and View all
+    const q = composeAttentionQueue({ items: [G_ROUTE, ...GLOBEX_EXISTING, ...STARK], attention: [a], tenantPursuitIds: G_TENANT, pursuitLabels: LABELS, now: NOW, limit });
+    const g = q.items.filter((i) => i.pursuitId === "p-globex");
+    assert.equal(g.length, 1, `exactly one Globex card (limit ${limit})`);
+    assert.equal(g[0].type, "PLAN_REVIEW_REQUIRED", "a CRITICAL plan review outranks a HIGH route approval under the existing ranking");
+    const folded = g[0].others!.find((o) => o.title === "Approve route via CDW");
+    assert.ok(folded, "the route approval is in 'other items' — folded, not suppressed");
+    assert.equal(folded.actionLabel, "Approve", "…and still actionable from the disclosure");
+    assert.equal(folded.deepLink, "/pursuits/p-globex#route", "…to the governed route decision");
+    assert.ok(g[0].others!.some((o) => o.title === "Approved action is due" && o.actionLabel === "Open the work"), "the queued action is there too, with its own CTA");
+    assert.equal(new Set(q.items.map((i) => i.pursuitId).filter(Boolean)).size, q.items.filter((i) => i.pursuitId).length, "no pursuit appears twice");
+  }
+});
+
+test("today: an existing decision that outranks the plan's attention leads — the same ranking for every reason", () => {
+  const b = derive(stateB())!;   // attention primary: no confirmed owner (ACTION_REQUIRED, normal)
+  const q = composeAttentionQueue({ items: [G_ROUTE], attention: [b], tenantPursuitIds: G_TENANT, now: NOW });
+  assert.equal(q.items.length, 1, "still one card");
+  assert.equal(q.items[0].type, "ROUTE_APPROVAL", "a HIGH decision outranks an unowned action");
+  assert.deepEqual(q.items[0].others!.map((o) => o.title).slice(0, 2), ["Approved action has no confirmed owner", "Approved action is due"]);
+  assert.equal(q.items[0].others![0].actionLabel, "Open team");
+});
+
+test("today: two canonical pursuits on the same account are NOT collapsed — each keeps its card, and each names its pursuit", () => {
+  const a = derive(stateD())!;
+  const q = composeAttentionQueue({ items: [EXPANSION_ROUTE, ...STARK], attention: [a], tenantPursuitIds: G_TENANT, pursuitLabels: LABELS, now: NOW });
+  const hero = q.items.find((i) => i.pursuitId === "p-globex")!;
+  const expansion = q.items.find((i) => i.pursuitId === "p-expansion")!;
+  assert.equal(hero.type, "PLAN_REVIEW_REQUIRED");
+  assert.equal(expansion.type, "ROUTE_APPROVAL", "the other pursuit's route approval stays its own card");
+  assert.ok(!(hero.others ?? []).some((o) => o.title.includes("Approve route")), "never folded into a different pursuit");
+  assert.equal(hero.title, "Exit legacy virtualization before renewal · Plan needs review");
+  assert.equal(expansion.title, "AI platform expansion · Approve route via CDW");
+  const stark = q.items.find((i) => i.pursuitId === "p-stark")!;
+  assert.equal(stark.title, "Approve route via WWT", "one pursuit on its account needs no label");
+});
+
+test("today: a pursuit with only a route approval renders exactly the certified card", () => {
+  const q = composeAttentionQueue({ items: [EXPANSION_ROUTE], attention: [], tenantPursuitIds: G_TENANT, pursuitLabels: LABELS, now: NOW });
+  assert.deepEqual(q.items, [EXPANSION_ROUTE]);
+});
+
+test("today: foreign-org items cannot change 'other items', labels, ranking or counts — filtered before grouping", () => {
+  const a = derive(stateD())!;
+  const base = composeAttentionQueue({ items: [G_ROUTE, ...STARK], attention: [a], tenantPursuitIds: G_TENANT, pursuitLabels: LABELS, now: NOW });
+  const foreignSameAccount = [
+    { ...G_ROUTE, id: "f1", pursuitId: "p-foreign", operationalUrgency: "critical" as const, title: "Foreign route" },
+    { ...G_ROUTE, id: "f2", pursuitId: "p-foreign", decisionClass: "RISK" as const, title: "Foreign risk" },
+  ];
+  const withForeign = composeAttentionQueue({
+    items: [...foreignSameAccount, G_ROUTE, ...STARK], attention: [a], tenantPursuitIds: G_TENANT,
+    pursuitLabels: new Map([...LABELS, ["p-foreign", "Foreign thesis"]]), now: NOW,
+  });
+  assert.deepEqual(withForeign, base, "a foreign pursuit on the SAME account neither adds a card, an item, a count nor a label");
+  assert.ok(!base.items.find((i) => i.pursuitId === "p-globex")!.title.includes("·"), "Globex has one own pursuit card here, so no label");
+});
+
+test("today: 'decisions to make' counts every underlying reason, not the collapsed cards", () => {
+  const a = derive(stateD())!;
+  const q = composeAttentionQueue({ items: [G_ROUTE, ...GLOBEX_EXISTING, ...STARK, FACT_REVIEW], attention: [a], tenantPursuitIds: G_TENANT, now: NOW });
+  assert.equal(q.decisionCount, q.all.reduce((n, c) => n + 1 + (c.others?.length ?? 0), 0));
+  assert.equal(q.decisionCount, 1 + a.others.length + 1 + GLOBEX_EXISTING.length + STARK.length + 1, "every reason, once");
+  const flagOffShape = composeAttentionQueue({ items: STARK.map((s, i) => ({ ...s, pursuitId: `p-s${i}` })), attention: [], tenantPursuitIds: new Set(["p-s0", "p-s1", "p-s2"]), now: NOW });
+  assert.equal(flagOffShape.decisionCount, flagOffShape.total, "with one reason per card the two meanings agree — the certified metric");
+});
+
+test("today: the metric and the View-all link keep their meanings on the page", () => {
+  const page = readFileSync(new URL("../src/app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /const decisionsToMake = pursuitQueue\?\.decisionCount \?\? decisionsTotal;/);
+  assert.match(page, /value=\{decisionsToMake\}/);
+  assert.match(page, /\{attentionOn \? \(\s*<Link[^>]*>\s*View all \{decisionsTotal\} →\s*<\/Link>\s*\) : \(\s*<Link[^>]*>\s*View all \{decisionsTotal\} decisions →\s*<\/Link>\s*\)\}/,
+    "View all counts the cards it opens; flag OFF renders the certified link verbatim");
+});
+
 // Disclosure --------------------------------------------------------------------
 
 test("disclosure: a partner-safe caller gets declared wording only — no names, warm paths, plan text or reasoning", () => {
