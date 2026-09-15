@@ -2,7 +2,25 @@
 
 **Last updated:** 2026-09-14 (H1A — Pre-Pilot Hardening Gate: tenant isolation + certification integrity)
 
-**2026-09-14 (latest) — H1B BASELINE: COMPLETELY GREEN.** `certify-world --runs 2` gives **76/76 suite runs clean**: 3,242 assertions, 0 failures. The canonical digest is `e98b43254f98d5ec` before run 1, after run 1 and after run 2, and the manifest `be0da833990ce436` is unchanged.
+**2026-09-15T02:40Z (latest) — H1B GATE 1 (read-only hosted preflight of `mejokqxriwyawfhawuxu`): FAIL as specified, on one criterion only.**
+
+The hosted manifest digest is `db1f78f7a11bbacb`, not `be0da833990ce436`. It differs in one field: `stakeholders` is 5 where the canonical world has 4. The extra rows are the owner's documented Slice 2A hosted-acceptance actions: the economic buyer verified, the plan approved, and a plan review.
+
+Every other criterion passes:
+- identity `demo` / synthetic;
+- 103/103 migrations, with H1B-0 not applied;
+- `app_rw` NOLOGIN, with no RLS bypass;
+- RLS and FORCE on 155/155 tables, and every `org_id` table has an `app_rw` policy;
+- the catalogue is identical to the certified local world;
+- 0 digests and 0 routines;
+- no unexpected org-less, dangling or orphan rows;
+- canonical counts exact;
+- 0 send rows;
+- zero writes proven (READ ONLY transactions, no transaction id assigned, identical digests before and after).
+
+**Owner decision needed:** re-baseline the hosted digest (recommended; documentation only), or reseed (a hosted write). **Gate 1b not begun.** Record: `H1-PRE-PILOT-HARDENING.md` § "Gate 1 — RESULT".
+
+**2026-09-14 — H1B BASELINE: COMPLETELY GREEN.** `certify-world --runs 2` gives **76/76 suite runs clean**: 3,242 assertions, 0 failures. The canonical digest is `e98b43254f98d5ec` before run 1, after run 1 and after run 2, and the manifest `be0da833990ce436` is unchanged.
 
 The last failure (`motion-intel`, pre-existing) was a verifier fixture gap, fixed in the verifier (D-047): it had borrowed a linked motion that another suite committed.
 
