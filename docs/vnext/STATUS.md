@@ -1,8 +1,18 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-15 (H1B Gate 1b.1 — 0105 applied to the isolated hosted DB, PASS; Gate 2 not yet re-run)
+**Last updated:** 2026-09-15 (H1B Gate 2 — `app_rw` given LOGIN on the isolated hosted DB, PASS; Gate 3 not begun)
 
-**2026-09-15 (latest) — H1B GATE 1b.1: PASS.** Migration `0105_h1b01_temp_schema_hardening.sql` was applied to the isolated vNext database `mejokqxriwyawfhawuxu` **only**, as the one approved mutation, through `scripts/migrate.ts` in a single transaction.
+**2026-09-15 (latest) — H1B GATE 2: PASS.** On the isolated vNext database `mejokqxriwyawfhawuxu` **only**, the one approved mutation was run: semantically `ALTER ROLE app_rw WITH LOGIN PASSWORD <operator secret>`.
+- All 13 pre-mutation checks passed (32 / 0), with zero delta against the Gate 1b.1 record: target identity; demo / synthetic; migrations 105, latest 0105; manifest `db1f78f7a11bbacb`; business-data fingerprint `79321d9130d1dc94`; whole-world fingerprint `de05e204801988d1`; `app_rw` LOGIN false and BYPASSRLS false; 0 unsafe protected functions; no runtime CREATE on `public`; sending unarmed.
+- The secret was checked by presence only. It was hashed in-process to a SCRAM-SHA-256 verifier and applied through a bound parameter, so the plaintext never reached the server, its logs or any file (0 occurrences in a 323-file scan). The mechanism was proven first on a disposable local PostgreSQL 17 with SCRAM host auth.
+- The exact role delta: **`rolcanlogin` false → true**, plus the credential. SUPERUSER, BYPASSRLS, NOINHERIT, CREATEROLE, CREATEDB, REPLICATION, connection limit, expiry and memberships are unchanged, and no other role changed (post-check 45 / 0).
+- Catalogue, search path (31 / 31 hardened, 0 unsafe; `--catalogue-only` 12 / 0), policies, grants, triggers, manifest, both fingerprints, business counts and partnership data are all **unchanged**. There are 0 send rows.
+- The rollback `ALTER ROLE app_rw NOLOGIN` is ready and not executed; it keeps the credential.
+- **`app_rw` has not connected — Gate 3 NOT begun.**
+
+Record: `H1-PRE-PILOT-HARDENING.md` § "Gate 2 (re-run)". **Next:** Gate 3, the pooler login proof, which is owner-approved separately.
+
+**2026-09-15 — H1B GATE 1b.1: PASS.** Migration `0105_h1b01_temp_schema_hardening.sql` was applied to the isolated vNext database `mejokqxriwyawfhawuxu` **only**, as the one approved mutation, through `scripts/migrate.ts` in a single transaction.
 - All 12 pre-mutation checks passed: target identity; demo / synthetic; migrations 104, latest 0104, only 0105 pending; manifest `db1f78f7a11bbacb`; business-data fingerprint `79321d9130d1dc94`; whole-world fingerprint `0288ae73bb385a1c`; `app_rw` LOGIN false with no credential; sending unarmed.
 - Migrations 104 → **105** (latest 0105, nothing pending). Manifest `db1f78f7a11bbacb` and business-data fingerprint `79321d9130d1dc94` **unchanged**; business row counts unchanged. The whole-world fingerprint moves `0288ae73bb385a1c` → **`de05e204801988d1`**, and only the `schema_migrations` tracker changed.
 - **31 / 31 hardened, 0 unsafe**, derived from the hosted catalogue: 30 functions `pg_catalog, public, pg_temp`, and `app_current_org()` `pg_catalog, pg_temp`. `search-path-verify --catalogue-only` (read-only, hosted-safe) gives 12/0.
@@ -10,7 +20,7 @@
 - Partnership data is unchanged, and there are 0 send rows.
 - **`app_rw` is still NOLOGIN — Gate 2 NOT performed.**
 
-Record: `H1-PRE-PILOT-HARDENING.md` § "Gate 1b.1". **Next:** the Gate 2 re-run, with `APP_RW_PASSWORD` loaded via hidden input in the launching shell.
+Record: `H1-PRE-PILOT-HARDENING.md` § "Gate 1b.1". **Next (done — see Gate 2 above):** the Gate 2 re-run, with `APP_RW_PASSWORD` loaded via hidden input in the launching shell.
 
 **2026-09-15 — H1B-0.1 COMPLETE (local): temporary-schema shadowing closed by migration 0105 (not applied to hosted). Gate 2 remains BLOCKED / NOT EXECUTED.**
 
@@ -214,7 +224,7 @@ States: `NOT STARTED` · `BUILDING` · `PREVIEW READY` · `DEMO CERTIFIED` · `B
 | **Today / Queue tenant scoping (hardening)** | P6 / #67 | **DONE (local)** — the Slice 2B security gate; subsumed by H1A | `c0eea5a` | 2026-09-14 | — | D-041. `today-tenant` verifier + source guard |
 | **Pursuit Attention + Today / Queue — Vertical Slice 2B** | P3 | **DEMO CERTIFIED / FROZEN** (hosted human review on the isolated Preview, 2026-09-14) | `roadmap/pursuitos-vnext` @ `54ab990` | 2026-09-14 | Nothing. Do not materially redesign it absent pilot feedback | One card per PURSUIT, not per account (Globex modernization → Plan needs review; Globex expansion → its own CDW route decision). Plan review outranks the stale action; the Queue preserves the action once with plan-review context; "Current approved plan / Focus when approved". D-034…D-042, D-046 |
 | **H1A — Tenant isolation + certification integrity** | P6 / #67 | **COMPLETE (local)** | `roadmap/pursuitos-vnext` (H1A commit) | 2026-09-14 | Nothing in H1A. H1 completes with H1B | 293 paths audited; 152 fixed + 1 reclassified; `tenant-isolation` 205/0; 0 UNSAFE verifiers; fingerprint gate PASS (`e98b43254f98d5ec` at start, after run 1 and after run 2; 74/76 suite runs clean, the 2 exceptions being the pre-existing `motion-intel` fixture gap); app_rw rehearsal 36/36. D-043, D-044. Reported, not fixed: global learning tables, inbound subject matching, stored digests (`H1-PRE-PILOT-HARDENING.md` § C) |
-| **H1B — Least-privilege runtime / RLS cutover** | P6 / #67 | **IN PROGRESS** — Gate 1 PASS (re-baselined) · H1B-0 COMPLETE · Gate 1b PASS · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** · **Gate 1b.1 PASS** (0105 hosted; 31/31 hardened, 0 unsafe) | `roadmap/pursuitos-vnext` | 2026-09-15 | Gate 2 re-run with `APP_RW_PASSWORD` loaded via hidden input → Gates 3–9 | D-045, D-048, D-049, D-050. Hosted baseline: migrations 105 · manifest `db1f78f7a11bbacb` · business-data fingerprint `79321d9130d1dc94` · whole-world fingerprint `de05e204801988d1` |
+| **H1B — Least-privilege runtime / RLS cutover** | P6 / #67 | **IN PROGRESS** — Gate 1 PASS (re-baselined) · H1B-0 COMPLETE · Gate 1b PASS · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** · **Gate 1b.1 PASS** (0105 hosted; 31/31 hardened, 0 unsafe) · **Gate 2 PASS** (`app_rw` LOGIN false → true; nothing else changed) | `roadmap/pursuitos-vnext` | 2026-09-15 | Gate 3 (pooler login proof as `app_rw`, owner-approved) → Gates 4–9 | D-045, D-048, D-049, D-050. Hosted baseline: migrations 105 · manifest `db1f78f7a11bbacb` · business-data fingerprint `79321d9130d1dc94` · whole-world fingerprint `de05e204801988d1` · `app_rw` LOGIN true (not yet used) |
 | · pursuit context narrative (rendered) | P1 | **PREVIEW READY** | `6c5b7a9` `components/pursuit/context-narrative.tsx` | 2026-09-12 | Product sign-off on the refined surface, then GATE D/E | Titled **"What matters now"**, full-width on desktop. GATE C **N-1 fixed** (all 10 ledger rows reachable, override chronology included), **N-2/N-4/N-6 fixed**. Flag OFF verified identical panel-for-panel. Residual: R-1 "What changed" right half empty (cosmetic), R-2 283px void beside Value case. See `GATE-C-PRODUCT-REVIEW.md` § GATE C REFINEMENT |
 | · pursuit evidence (direct + supporting) | P1 | **PREVIEW READY** | `620bc12` `read-models/pursuit-evidence.ts` | 2026-09-12 | Consumed by "What matters now" since `99bd5dd` | 18 tests. **Supersedes the plan to swap `getFacts` to pursuit scope** — Globex has 1 linked fact, so the swap would have deleted the best evidence on the screen. See D-020 |
 | · fact freshness | P1 | **DEMO CERTIFIED** (pre-existing) | `src/lib/facts/freshness.ts` | — | Compose at pursuit level | Exists per-fact; nothing composes per-pursuit |

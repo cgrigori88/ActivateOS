@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · `app_rw` still NOLOGIN — Gate 2 not yet re-run. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed; not yet used) · Gates 3–9 not begun. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -533,6 +533,8 @@ That is a match. The rollback is documented prose, not a script. If it is ever n
 
 ## Gate 2 — give `app_rw` LOGIN: PRECHECK BLOCKED, NOT EXECUTED (2026-09-15)
 
+*(Superseded: both blockers were resolved and the Gate 2 re-run passed — see § "Gate 2 (re-run)" at the end.)*
+
 **Verdict: BLOCKED before the mutation. No hosted change was made.** `app_rw` is still NOLOGIN. Every hosted read ran in a READ ONLY transaction with `txid_current_if_assigned() = NULL`.
 
 ### Pre-mutation identity checks: all 8 passed
@@ -781,3 +783,100 @@ Classification of the 31 (the classes overlap):
 - `app_rw` LOGIN false.
 
 **Gate 2 was NOT begun.** Its blocker 2 (`pg_temp` shadowing) is closed on hosted. Blocker 1 remains until the operator loads `APP_RW_PASSWORD` via hidden input (`read -rs APP_RW_PASSWORD && export APP_RW_PASSWORD`) in the launching shell and relaunches. H1B, and so H1, are not complete.
+
+---
+
+## Gate 2 (re-run) — give `app_rw` LOGIN: RESULT (2026-09-15)
+
+**Gate 2 — PASS.** Exactly one approved mutation, on `mejokqxriwyawfhawuxu` **only**: semantically `ALTER ROLE app_rw WITH LOGIN PASSWORD <APP_RW_PASSWORD>`, run as `postgres`, which holds ADMIN on `app_rw`. It committed between the pre-snapshot (05:00:05Z) and the post-snapshot (05:01:21Z). The role delta is exactly **`rolcanlogin` false → true**, plus the credential, whose value was never read back or reported.
+
+What was **not** done:
+- no connection as `app_rw` (0 `app_rw` sessions, pre and post);
+- no Gate 3;
+- no Vercel change, no deploy, no `DATABASE_URL` or `DATABASE_URL_OWNER` change;
+- no migration, RLS, policy, grant, membership or SECURITY DEFINER change;
+- no reseed, no write-path verifier, no sending.
+
+Production and `qifatlqxfuhwrwvpbwsc` were not contacted.
+
+**How the secret was handled.**
+- `APP_RW_PASSWORD` was inherited from the launching shell and checked by presence only. It was never printed, logged, put on a command line or written to a file. After the gate, a scan of 323 scratchpad and repo files found **0 occurrences**.
+- It was hashed **in-process** into a SCRAM-SHA-256 verifier (4096 iterations, random 16-byte salt). This is the form `psql \password` sends, so the plaintext never reached the server, its logs or `pg_stat_statements`.
+- The verifier was bound as a query parameter into a transaction-local setting. It was applied by `EXECUTE format('alter role %I with login password %L', …)` inside a `DO` block, and the setting was cleared before commit. No top-level statement text carries it.
+- The hosted settings, read-only: `log_statement=ddl` (a `DO` block is not DDL), `pg_stat_statements.track=top` (the nested statement is not recorded), `pgaudit.log=none`, `password_encryption=scram-sha-256`.
+- **Proven before any hosted contact:**
+  - In-process, 19 / 0: node-postgres's independent SCRAM client accepts the real password against its verifier and rejects a wrong one. Random passwords behave the same. The secret passed the SASLprep-compatibility check.
+  - On a disposable local PostgreSQL 17 with `scram-sha-256` host auth, 9 / 0: the exact mechanism was run on a throwaway role. The server stored the verifier verbatim; only `rolcanlogin` changed; a real login succeeded; a wrong password was refused (`28P01`); `NOLOGIN` kept the credential. The cluster was then deleted.
+
+**How the run was guarded.**
+- Identity was proven from the parsed user (`postgres.mejokqxriwyawfhawuxu`; pooler `aws-0-ca-central-1.pooler.supabase.com:6543`) before any connection. The connection string was checked not to contain `qifatlqxfuhwrwvpbwsc`, and was never printed.
+- Every read ran `REPEATABLE READ READ ONLY`, was rolled back, and had `txid_current_if_assigned()` NULL. Snapshots ran with the secret unset.
+- The mutation transaction re-proved these against the pre-snapshot **before** the ALTER: environment, migrations, `current_user`, the `app_rw` row, all role memberships, and all 32 role rows.
+- **After** the ALTER, still uncommitted, it required three things, or it would ROLLBACK:
+  - the `app_rw` row equals the pre row with only `rolcanlogin` flipped;
+  - memberships and every other role are identical;
+  - the carrier setting is cleared.
+
+  All matched, and the transaction committed.
+- The tooling (`gate2.ts`, `gate2-alter.ts`, the SCRAM self-test) is a superset of the Gate 1b wrapper, kept in the session scratchpad and never committed.
+
+### Pre-mutation checks: all 13 passed (32 / 0, with zero delta against the Gate 1b.1 post record)
+
+| # | Check | Hosted value |
+|---|---|---|
+| 1–2 | target | `mejokqxriwyawfhawuxu`, not `qifatlqxfuhwrwvpbwsc` |
+| 3 | environment | `demo`, `is_synthetic=true` |
+| 4–5 | migrations | 105, latest `0105_h1b01_temp_schema_hardening.sql`; nothing pending, nothing extra |
+| 6 | manifest | `db1f78f7a11bbacb` |
+| 7 | business-data fingerprint | `79321d9130d1dc94` |
+| 8 | whole-world fingerprint | `de05e204801988d1` |
+| 9–10 | `app_rw` | LOGIN false; BYPASSRLS false; not superuser |
+| 11 | catalogue guard | 31 protected, **0 unsafe**. `search-path-verify --catalogue-only` gives 12 / 0 |
+| 12 | CREATE on `public` | none for PUBLIC, `app_rw`, anon, authenticated or service_role; no indirect path |
+| 13 | sending | 0 sending identities, messages, outbox rows, email events and sent touches; `OUTREACH_AUTOSEND` and `RESEND_API_KEY` unset |
+| + | catalogue | security hash `4682f232e8392034`, equal to the Gate 1b.1 record; functions, triggers, policies, RLS, grants, memberships and every per-table fingerprint identical to the Gate 1b.1 post snapshot |
+
+### `app_rw` posture, pre → post
+
+| Attribute | Pre | Post |
+|---|---|---|
+| `rolcanlogin` | false | **true** |
+| `rolsuper` · `rolbypassrls` | false · false | false · false |
+| `rolinherit` (NOINHERIT) | false | false |
+| `rolcreaterole` · `rolcreatedb` · `rolreplication` | false · false · false | false · false · false |
+| `rolconnlimit` · `rolvaliduntil` · role config | −1 · null · none | −1 · null · none |
+| member of | none | none |
+| held by | `postgres`: ADMIN true, INHERIT false, SET false, granted by `supabase_admin` | same |
+| database / schema | CONNECT and TEMPORARY (both pre-existing, via PUBLIC; TEMPORARY is closed as a definer-path risk by 0105), no CREATE; USAGE on `public`, no CREATE anywhere | same |
+| table, column and function grants | Gate 1b.1 set | identical |
+
+### Post-change verification (read-only): 45 / 0
+
+| Check | Result |
+|---|---|
+| Exact role delta | only `app_rw.rolcanlogin`. All 32 roles compared: no other role changed, and no other `app_rw` attribute changed. Memberships (`pg_auth_members` in full), role settings, and database and schema privileges are identical |
+| Catalogue | migrations 105 (latest 0105, nothing pending). Functions (bodies, owners, `proconfig`, EXECUTE), triggers (the 8 consent guards included), policies, RLS / FORCE, table and column grants, CREATE-on-`public` facts: **identical** |
+| Search path | 31 protected (30 `pg_catalog, public, pg_temp`; `app_current_org` `pg_catalog, pg_temp`), **0 unsafe**. `search-path-verify --catalogue-only` gives **12 / 0** |
+| Security hash | `4682f232e8392034` → `30772757ebd4688c`. The hash includes the `app_rw` attribute row, so the LOGIN flip moves it. With `rolcanlogin` masked it is **`a4ea548143702029` pre and post** |
+| Data | manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94` and whole-world fingerprint `de05e204801988d1` **all unchanged**. All 155 per-table fingerprints and every business count are identical (3 · 14 · 19 · 11 open · $8,040,000 · 14 · 5 stakeholders) |
+| Partnership data | 1 active partnership · 1 joint pursuit · 4 ACTIVE participants · 2 context grants. 0 list grants, overlap probes, evidence shares, skill shares, joint-pursuit events, warm intros and audit rows. No partnership write was exercised |
+| Send safety | no send operation. 0 send rows of every kind; nothing armed |
+
+### Rollback readiness (not executed)
+
+The emergency rollback is `ALTER ROLE app_rw NOLOGIN;`, run as `postgres`.
+- It refuses new `app_rw` logins immediately. There are no `app_rw` sessions to terminate today.
+- It does **not** destroy the credential. This was proven on the disposable server: the verifier was unchanged after `NOLOGIN`. Re-enabling access is `ALTER ROLE app_rw LOGIN;`, and Gate 3 and Gate 5 keep using the same operator-held secret.
+- A successful Gate 2 is not rolled back.
+
+**Operator note.** `APP_RW_PASSWORD` must stay in the operator's secret store. Gate 3, the pooler login proof, and Gate 5, the Preview `DATABASE_URL`, need this same value.
+
+**Hosted baseline of record after Gate 2:**
+- migrations 105;
+- manifest `db1f78f7a11bbacb`;
+- business-data fingerprint `79321d9130d1dc94`;
+- whole-world fingerprint `de05e204801988d1`;
+- `app_rw` **LOGIN true** (credential set, not yet used);
+- security hash `30772757ebd4688c`.
+
+**Gate 3 was NOT begun.** `app_rw` has never connected. H1B, and so H1, are not complete.

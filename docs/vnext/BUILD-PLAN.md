@@ -96,13 +96,15 @@ SLICE 2B Pursuit Attention + Today/Queue   (P3)        DEMO CERTIFIED / FROZEN
    │      lineage on Queue · "Current approved plan" labelling · D-034…D-042, D-046 · no
    │      migration · Today/Queue tenant-scoped explicitly (D-041) · hosted human review PASSED
    ↓
-H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 NEXT  ← current
+H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 NEXT  ← current
    │      H1B-0: partnership/consent flows work under app_rw — consent-scoped definer functions,
    │      a guard against forged consent rows, best-effort audit that cannot abort (D-049);
    │      /api/build posture proof. 0104 applied to the isolated hosted DB (Gate 1b PASS)
    │      H1B-0.1: temp-schema shadowing closed — migration 0105 pins pg_catalog, public, pg_temp
    │      on 31 authorization-sensitive functions (D-050); applied to the isolated hosted DB
-   │      (Gate 1b.1 PASS: 31/31 hardened, 0 unsafe, business data unchanged); app_rw still NOLOGIN
+   │      (Gate 1b.1 PASS: 31/31 hardened, 0 unsafe, business data unchanged)
+   │      Gate 2 PASS: app_rw given LOGIN + operator credential (rolcanlogin false → true only;
+   │      nothing else changed); not yet used — Gate 3 (pooler login proof) is next
    │      H1A: every data path explicitly tenant-scoped (D-043); certification integrity —
    │      clone isolation + whole-world fingerprint gate (D-044); broad adversarial verifier
    │      H1B: web runtime → app_rw so RLS binds (D-045) — owner-approved hosted cutover
