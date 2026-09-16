@@ -82,7 +82,8 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
        left join companies c on c.id = fc.company_id
       where fr.human_decision is null and fr.system_recommendation = 'REVIEW'
         and fr.org_id = $3
-        and ($2::boolean is false or fc.company_id = any($1))`, [ids, scoped, caller.orgId]);
+        and ($2::boolean is false or fc.company_id = any($1))
+      order by fr.created_at, fr.id`, [ids, scoped, caller.orgId]);
   for (const rv of reviews.rows) items.push(mk("FACT_REVIEW", "DECISION_REQUIRED", "normal", "moderate", rv.pursuit_id, rv.company_id, rv.account_label ?? "Account",
     "Review a proposed fact", rv.reason, false, rv.created_at, now,
     [{ label: "Accept", skill: "review_fact", sideEffect: "INTERNAL_WRITE" }, { label: "Reject", skill: "review_fact", sideEffect: "INTERNAL_WRITE" }], `/review`));
@@ -98,7 +99,8 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
        join companies c on c.id = pu.account_id
        left join partners pn on pn.id = tm.partner_id
       where tm.status = 'INVITED' and pu.org_id = $3 and pu.status not in ('WON','LOST','DISQUALIFIED')
-        and ($2::boolean is false or pu.account_id = any($1))`, [ids, scoped, caller.orgId]);
+        and ($2::boolean is false or pu.account_id = any($1))
+      order by tm.invited_at nulls last, tm.id`, [ids, scoped, caller.orgId]);
   for (const w of waitingTeam.rows) {
     const who = w.partner_name ?? w.role.replace(/_/g, " ").toLowerCase();
     // Materiality escalation (P1B): a partner acceptance holding a HIGH-band pursuit is operationally

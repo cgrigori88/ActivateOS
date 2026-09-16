@@ -66,7 +66,7 @@ export async function partnersWithPopulations(
     `select distinct p.id, p.name, p.partner_type
      from account_populations ap join partners p on p.id = ap.partner_id
      where ap.org_id = $1
-     order by p.name`,
+     order by p.name, p.id`,
     [orgId],
   );
   return rows;
@@ -83,7 +83,7 @@ export async function listPopulations(
      where ap.org_id = $1
        and ap.partner_id is not distinct from $2
        and ($3::text is null or ap.status = $3)
-     order by ap.category, ap.name`,
+     order by ap.category, ap.name, ap.id`,
     [args.orgId, args.partnerId, args.status ?? null],
   );
   return rows;
@@ -228,7 +228,7 @@ export async function matrix(
      join account_populations cp on cp.id = cm.population_id and cp.org_id = $1 and cp.partner_id is not null and cp.status = 'approved' and ($2::uuid is null or cp.partner_id = $2)
      left join lateral (
        select score, band from propensity_scores p
-       where p.company_id = rm.company_id and p.org_id = $1 order by computed_at desc limit 1
+       where p.company_id = rm.company_id and p.org_id = $1 order by computed_at desc, id desc limit 1
      ) ps on true
      group by grouping sets ((rm.population_id, cm.population_id), (rm.population_id), (cm.population_id))`,
     [args.orgId, args.partnerId],
@@ -264,7 +264,7 @@ export async function matrix(
             round(avg(ps.score)) as avg
      from overlap o
      left join lateral (
-       select score, band from propensity_scores p where p.company_id = o.company_id and p.org_id = $1 order by computed_at desc limit 1
+       select score, band from propensity_scores p where p.company_id = o.company_id and p.org_id = $1 order by computed_at desc, id desc limit 1
      ) ps on true`,
     [args.orgId, args.partnerId],
   );
@@ -350,10 +350,10 @@ export async function intersection(
      join companies c on c.id = rm.company_id
      left join lateral (
        select score, band from propensity_scores p
-       where p.company_id = c.id and p.org_id = $3 order by computed_at desc limit 1
+       where p.company_id = c.id and p.org_id = $3 order by computed_at desc, id desc limit 1
      ) ps on true
      where rm.population_id = $1
-     order by ps.score desc nulls last, c.legal_name`,
+     order by ps.score desc nulls last, c.legal_name, c.id`,
     [args.rowPopId, args.colPopId, args.orgId],
   );
   // pg returns numeric/int as strings — coerce so the UI can format them.
@@ -421,7 +421,7 @@ export async function populationFields(
   const { rows: sampleRows } = await db.query<{ attributes: Record<string, unknown>; legal_name: string }>(
     `select m.attributes, c.legal_name
      from population_members m join companies c on c.id = m.company_id
-     where m.population_id = $1 order by c.legal_name limit $2`,
+     where m.population_id = $1 order by c.legal_name, m.company_id limit $2`,
     [args.populationId, args.sampleSize ?? 25],
   );
   const sample = sampleRows.map((r) => ({ name: r.legal_name, attributes: r.attributes ?? {} }));

@@ -108,7 +108,7 @@ export default async function InsightsPage({
 
       // Editable stage weights (0036): the calibration card is also the editor.
       const { rows: partnerRows } = await db.query<{ id: string; name: string }>(
-        `select id, name from partners where org_id = $1 order by name`,
+        `select id, name from partners where org_id = $1 order by name, id`,
         [orgId],
       );
       const stageWeights = await loadStageWeights(db, orgId);

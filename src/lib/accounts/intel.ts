@@ -55,13 +55,13 @@ export async function getAccountIntel(db: PoolClient, companyId: string, orgId: 
     `select rp.name rec, sp.name sel from pursuit_route_snapshots s
        left join partners rp on rp.id = s.recommended_partner_id
        left join partners sp on sp.id = s.selected_partner_id
-      where s.pursuit_id=$1 and s.is_current limit 1`, [pursuit.id])).rows[0] : undefined;
+      where s.pursuit_id=$1 and s.is_current order by s.id limit 1`, [pursuit.id])).rows[0] : undefined;
 
   const partners = (await db.query<{ name: string; strength: number | null; tenure: number | null }>(
     `select p.name, pr.strength, pr.tenure_months tenure from partner_relationships pr join partners p on p.id=pr.partner_id where pr.company_id=$1 and p.org_id=$2 order by pr.strength desc nulls last, p.name, pr.partner_id`, [companyId, orgId])).rows;
 
   const overlapLists = (await db.query<{ name: string }>(
-    `select ap.name from population_members pm join account_populations ap on ap.id=pm.population_id where pm.company_id=$1 and ap.org_id=$2 and ap.partner_id is not null`, [companyId, orgId])).rows.map((r) => r.name);
+    `select ap.name from population_members pm join account_populations ap on ap.id=pm.population_id where pm.company_id=$1 and ap.org_id=$2 and ap.partner_id is not null order by ap.name, ap.id`, [companyId, orgId])).rows.map((r) => r.name);
 
   const motion = (await db.query<{ thesis: string | null; status: string }>(`select thesis, status from revenue_motions where company_id=$1 and org_id=$2 order by created_at desc, id desc limit 1`, [companyId, orgId])).rows[0];
   const nextAction = (await db.query<{ action: string; status: string }>(`select a.action, a.status from motion_actions a join revenue_motions m on m.id=a.motion_id where m.company_id=$1 and m.org_id=$2 and a.status='pending' order by a.due_at, a.id limit 1`, [companyId, orgId])).rows[0];

@@ -88,13 +88,13 @@ export default async function AdminPage({
       listGrantViews(db, orgId),
       auditEntries(db, orgId, 25),
       db.query<{ id: string; name: string }>(
-        `select id, name from partners where org_id = $1 order by name asc`,
+        `select id, name from partners where org_id = $1 order by name asc, id`,
         [orgId],
       ),
       db.query<{ id: string; name: string }>(
         `select id, name from account_populations
          where org_id = $1 and status = 'approved' and created_by is distinct from 'partner share'
-         order by name asc`,
+         order by name asc, id`,
         [orgId],
       ),
     ]);
@@ -139,7 +139,7 @@ export default async function AdminPage({
     // Agent API keys (task #76) — the BYO-bot surface.
     const { rows: apiKeys } = await db.query<{ id: string; name: string; created_at: Date; last_used_at: Date | null }>(
       `select id, name, created_at, last_used_at from api_keys
-       where org_id = $1 and revoked_at is null order by created_at desc`,
+       where org_id = $1 and revoked_at is null order by created_at desc, id desc`,
       [orgId],
     );
 
@@ -205,7 +205,7 @@ export default async function AdminPage({
       members = (await ownerPool.query<{ user_id: string; email: string | null; role: string; created_at: Date; last_sign_in_at: Date | null }>(
         `select m.user_id, u.email, m.role, m.created_at, u.last_sign_in_at
          from org_members m join auth.users u on u.id = m.user_id
-         where m.org_id = $1 order by m.created_at asc`,
+         where m.org_id = $1 order by m.created_at asc, m.user_id`,
         [orgId],
       )).rows;
     } catch {

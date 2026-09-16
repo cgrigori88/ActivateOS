@@ -146,7 +146,7 @@ export async function getPartnerActivationProfile(
        join pursuits pu on pu.id = po.pursuit_id
        join taxonomy_nodes n on n.id = pu.product_category_id
       where pu.org_id = $1 and pu.selected_partner_id = $2 and po.is_terminal
-      group by n.id, n.name order by n.name`, [orgId, partnerId])).rows;
+      group by n.id, n.name order by n.name, n.id`, [orgId, partnerId])).rows;
 
   // ---- Blocking now + coverage gaps ------------------------------------------------------------
   const blocking = (await db.query<{ pursuit_id: string; account: string; role: string; days: string }>(
@@ -157,7 +157,7 @@ export async function getPartnerActivationProfile(
        join companies c on c.id = pu.account_id
       where tm.partner_id = $1 and pu.org_id = $2 and tm.status = 'INVITED'
         and pu.status not in ('WON','LOST','DISQUALIFIED')
-      order by 4 desc, c.legal_name, tm.pursuit_id, tm.role limit 10`, [partnerId, orgId])).rows;
+      order by 4 desc, c.legal_name, tm.pursuit_id, tm.role, tm.id limit 10`, [partnerId, orgId])).rows;
 
   const gaps = (await db.query<{ company_id: string; account: string; gap: string }>(
     `with overlap as (
@@ -230,7 +230,7 @@ export async function partnerActivationHeadlines(db: PoolClient, orgId: string):
          where pu.org_id = $1 and pu.selected_partner_id = p.id and po.outcome_label = 'CLOSED_WON')::text won,
        (select count(*) from pursuit_outcomes po join pursuits pu on pu.id = po.pursuit_id
          where pu.org_id = $1 and pu.selected_partner_id = p.id and po.is_terminal)::text osample
-       from partners p where p.org_id = $1 order by p.name`, [orgId]);
+       from partners p where p.org_id = $1 order by p.name, p.id`, [orgId]);
   return rows.map((r) => ({
     partnerId: r.id, name: r.name, overlap: Number(r.overlap), selected: Number(r.sel),
     accepted: Number(r.acc), pending: Number(r.pend),
@@ -343,7 +343,7 @@ export async function getObservedActivationPattern(
        left join taxonomy_nodes n on n.id = pp.product_category_id
        left join partner_relationships pr on pr.partner_id = $2 and pr.company_id = pp.account_id
       group by 1, 2, 3
-      order by count(*) desc, 2`, [orgId, partnerId]);
+      order by count(*) desc, 2, 1, 3`, [orgId, partnerId]);
 
   const out: ObservedActivationRow[] = rows.map((r) => ({
     taxonomyNodeId: r.node_id, category: r.category,

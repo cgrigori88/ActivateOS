@@ -949,7 +949,7 @@ async function CellView({ rowId, colId, cols, partnerId }: { rowId: string; colI
 async function PopulationManager() {
   return withTenant(async (db, orgId) => {
     const { rows: partners } = await db.query<{ id: string; name: string }>(
-      `select id, name from partners where org_id = $1 order by name`,
+      `select id, name from partners where org_id = $1 order by name, id`,
       [orgId],
     );
     const pending = await listPopulations(db, { orgId, partnerId: null, status: "pending" });

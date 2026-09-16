@@ -353,7 +353,9 @@ export default async function PipelinePage({
           live: liveByCompany.get(r.company_id) ?? 0,
         }))
         .filter((d) => Math.abs(d.crm - d.live) >= 1)
-        .sort((a, b) => Math.abs(b.crm - b.live) - Math.abs(a.crm - a.live) || a.account.localeCompare(b.account))
+        // Cut to 5, and `account` is companies.legal_name, which is NOT unique — end on the id (D-G8-2A).
+        .sort((a, b) => Math.abs(b.crm - b.live) - Math.abs(a.crm - a.live)
+          || a.account.localeCompare(b.account) || a.companyId.localeCompare(b.companyId))
         .slice(0, 5);
       const { rows: weekAgoRows } = await db.query<{ open_usd: string; taken_on: string }>(
         `select open_usd, taken_on::text from pipeline_snapshots
@@ -859,7 +861,7 @@ export default async function PipelinePage({
                 else if (!o.stage.startsWith("closed")) e.open += Number(o.amount_usd ?? 0);
                 roll.set(o.partner_name, e);
               }
-              const partners = [...roll.entries()].sort((a, b) => b[1].open + b[1].won - (a[1].open + a[1].won));
+              const partners = [...roll.entries()].sort((a, b) => b[1].open + b[1].won - (a[1].open + a[1].won) || a[0].localeCompare(b[0]));
               const maxP = Math.max(1, ...partners.map(([, v]) => v.open + v.won));
               if (totalOpen === 0 && partners.length === 0) return null;
               return (
@@ -1117,7 +1119,8 @@ export default async function PipelinePage({
           .sort((a, b) => {
             const ca = a.stage.startsWith("closed"), cb = b.stage.startsWith("closed");
             if (ca !== cb) return ca ? 1 : -1;
-            return (Number(b.amount_usd ?? 0) * probOf(b)) - (Number(a.amount_usd ?? 0) * probOf(a));
+            // The list is cut to LEAD, so a tie must not decide WHICH deals lead (D-G8-2A).
+            return (Number(b.amount_usd ?? 0) * probOf(b)) - (Number(a.amount_usd ?? 0) * probOf(a)) || a.id.localeCompare(b.id);
           });
         const LEAD = 4;
         const lead = ordered.slice(0, LEAD);
