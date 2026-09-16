@@ -86,7 +86,7 @@ export async function commitImportAction(batchId: string, formData: FormData): P
     if (partnerSel === "new" && newPartner) {
       const type = String(formData.get("newPartnerType") ?? "reseller");
       const existing = await db.query<{ id: string }>(
-        `select id from partners where org_id = $1 and lower(name) = lower($2) limit 1`,
+        `select id from partners where org_id = $1 and lower(name) = lower($2) order by id limit 1`,
         [orgId, newPartner],
       );
       partnerId =

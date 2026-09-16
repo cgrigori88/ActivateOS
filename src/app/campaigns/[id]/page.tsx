@@ -177,7 +177,7 @@ export default async function CampaignDetailPage({
       );
 
       const { rows: contacts } = await db.query<{ email: string; name: string | null; title: string | null }>(
-        `select email, name, title from contacts where company_id = $1 and org_id = $2 order by name nulls last limit 25`,
+        `select email, name, title from contacts where company_id = $1 and org_id = $2 order by name nulls last, id limit 25`,
         [ca.company_id, orgId],
       );
 
@@ -192,7 +192,7 @@ export default async function CampaignDetailPage({
       }>(
         `select engagement_score, touches_sent, opens, clicks, replies, positive_replies, last_engaged_at
      from engagement_scores where company_id = $1 and contact_id is null and org_id = $2
-     order by computed_at desc limit 1`,
+     order by computed_at desc, id desc limit 1`,
         [ca.company_id, orgId],
       );
 

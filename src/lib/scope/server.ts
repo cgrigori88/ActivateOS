@@ -68,7 +68,7 @@ export async function deriveScopeOptions(db: PoolClient, orgId: string): Promise
     `select s.id, s.name from sellers s
       where s.org_id = $1
         and exists (select 1 from seller_account_relationships r where r.seller_id = s.id)
-      order by s.name limit 50`,
+      order by s.name, s.id limit 50`,
     [orgId],
   );
   for (const r of sellers.rows) opts.push({ kind: "SELLER", id: r.id, label: r.name, group: "Seller" });

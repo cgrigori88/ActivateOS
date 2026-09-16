@@ -75,7 +75,7 @@ export async function resolveLifecycleShowMe(
        left join lateral (
          select p.id, p.expected_value_weighted from pursuits p
           where p.account_id = c.id and p.org_id = $1 and p.status not in ('WON','LOST','DISQUALIFIED')
-          order by p.expected_value_weighted desc nulls last limit 1) pu on true
+          order by p.expected_value_weighted desc nulls last, p.id limit 1) pu on true
       where ($3::boolean is false or c.id = any($2))
         and exists (select 1 from pursuits p where p.account_id = c.id and p.org_id = $1)`,
     [ctx.orgId, ctx.companyIds ?? [], scoped]);

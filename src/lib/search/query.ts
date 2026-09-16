@@ -119,7 +119,7 @@ export async function resolveShowMeWithTotals(
        left join revenue_motions m on m.id = o.motion_id
        left join partners pa on pa.id = m.partner_id
       where ${where.join(" and ")}
-      order by o.amount_usd desc nulls last limit 25`, params);
+      order by o.amount_usd desc nulls last, o.id limit 25`, params);
   // Condition filter applied in JS via the canonical classifier (silent-days + stage).
   const hits: QueryHit[] = [];
   let amountUsd = 0;
@@ -204,7 +204,7 @@ export async function resolveStakeholderShowMe(
                          where o.pursuit_id = pu.id and st.role = $2 and st.assertion_state = 'verified')
         and ($4::boolean is false or pu.account_id = any($3))
         and ($5::text is null or sp.name ilike '%' || $5 || '%')
-      order by pu.expected_value_weighted desc nulls last limit 15`,
+      order by pu.expected_value_weighted desc nulls last, pu.id limit 15`,
     [orgId, parsed.role, companyIds ?? [], scoped, parsed.partner]);
   const roleWord = parsed.role.replace(/_/g, " ");
   // Rows are already ordered by expected value, so the first is the largest gap.
@@ -256,12 +256,13 @@ export async function resolveExplain(
       order by (exists (select 1 from pursuits p where p.account_id = c.id and p.org_id = $3)) desc,
                (exists (select 1 from opportunities o where o.company_id = c.id and o.org_id = $3)) desc,
                (c.legal_name ilike $2) desc,
-               length(c.legal_name) asc
+               length(c.legal_name) asc,
+               c.id asc
       limit 1`, [`%${candidate}%`, `${candidate}%`, orgId])).rows[0];
   if (!co) return { note: "No matching records." };
 
   const pursuit = (await db.query<{ id: string; use_case: string | null; tim: number | null; why_now: unknown }>(
-    `select id, use_case, current_timing_score tim, why_now from pursuits where account_id=$1 and org_id = $2 order by created_at asc limit 1`, [co.id, orgId])).rows[0];
+    `select id, use_case, current_timing_score tim, why_now from pursuits where account_id=$1 and org_id = $2 order by created_at asc, id asc limit 1`, [co.id, orgId])).rows[0];
 
   // A supplied aspect wins outright; otherwise the facet is sniffed from the words, as before.
   const pin = (a: ExplainAspect) => aspect === a;
@@ -285,7 +286,7 @@ export async function resolveExplain(
   // and says UNKNOWN when no verified assertion exists.
   if ((asksWhoRole || asksCoverage) && orgId) {
     const { getStakeholderCoverage, bestWarmPath, ROLE_WORD } = await import("@/lib/stakeholders/coverage");
-    const pu = (await db.query<{ id: string }>(`select id from pursuits where account_id = $1 and org_id = $2 order by created_at asc limit 1`, [co.id, orgId])).rows[0];
+    const pu = (await db.query<{ id: string }>(`select id from pursuits where account_id = $1 and org_id = $2 order by created_at asc, id asc limit 1`, [co.id, orgId])).rows[0];
     if (!pu) return { note: `${co.legal_name} has no canonical pursuit — stakeholder coverage lives on the Pursuit.` };
     const cov = await getStakeholderCoverage(db, orgId, pu.id);
     if (!cov) return { note: "No matching records." };
@@ -368,10 +369,10 @@ export async function resolveExplain(
     const prop = (await db.query<{ id: string; score: string; band: string; computed_at: Date }>(
       `select id, score, band, computed_at from propensity_scores
         where company_id = $1 and taxonomy_node_id = $2 and (org_id is null or org_id = $3)
-        order by computed_at desc limit 1`, [co.id, node.id, orgId])).rows[0];
+        order by computed_at desc, id desc limit 1`, [co.id, node.id, orgId])).rows[0];
     if (!prop) return { note: `${co.legal_name} has not been evaluated for ${node.name} — no propensity score on record.` };
     const feats = (await db.query<{ feature: string; contribution: string | null }>(
-      `select feature, contribution from score_features where score_id = $1 order by contribution desc nulls last limit 3`, [prop.id])).rows;
+      `select feature, contribution from score_features where score_id = $1 order by contribution desc nulls last, feature limit 3`, [prop.id])).rows;
     return {
       title: `Why ${co.legal_name} ${["very_high", "high"].includes(prop.band) ? "qualifies" : "does not qualify"} for ${node.name}`,
       subtitle: `Propensity ${prop.band.replace(/_/g, " ")} (${Math.round(Number(prop.score))}) · scored ${prop.computed_at.toISOString().slice(0, 10)}.`,
@@ -389,7 +390,7 @@ export async function resolveExplain(
          from pursuit_route_snapshots s
          left join partners rp on rp.id = s.recommended_partner_id
          left join partners sp on sp.id = s.selected_partner_id
-        where s.pursuit_id=$1 and s.org_id = $2 and s.is_current limit 1`, [pursuit.id, orgId])).rows[0];
+        where s.pursuit_id=$1 and s.org_id = $2 and s.is_current order by s.id limit 1`, [pursuit.id, orgId])).rows[0];
     if (route && (route.rec || route.sel)) {
       const overridden = !!(route.sel && route.rec && route.sel !== route.rec);
       const lines: { label: string; value: string }[] = [];
@@ -420,7 +421,7 @@ export async function resolveExplain(
            join route_candidate_reasons rr on rr.candidate_id = rc.id
           where rc.route_snapshot_id = $1 and rc.org_id = $2 and rc.is_recommended and rr.polarity = 1
             and rr.disclosure_class not in ('TRANSACTION_CONFIDENTIAL','RESTRICTED','PII')
-          order by rr.weight desc nulls last limit 4`, [route.snapshot_id, orgId])).rows;
+          order by rr.weight desc nulls last, rr.reason_code, rr.id limit 4`, [route.snapshot_id, orgId])).rows;
       for (const r of reasons) lines.push({ label: "Because", value: r.detail ?? r.reason_code.replace(/_/g, " ") });
       return {
         title: `Why ${co.legal_name} is routed ${route.sel ? `through ${route.sel}` : "as recommended"}`,
@@ -465,6 +466,6 @@ async function resolveHypothesis(
   if (named) return { ...named, stated: false };
   const recent = (await db.query<{ id: string; name: string }>(
     `select n.id, n.name from revenue_motions m join taxonomy_nodes n on n.id = m.taxonomy_node_id
-      where m.org_id = $1 and m.company_id = $2 order by m.created_at desc limit 1`, [orgId, companyId])).rows[0];
+      where m.org_id = $1 and m.company_id = $2 order by m.created_at desc, m.id desc limit 1`, [orgId, companyId])).rows[0];
   return recent ? { ...recent, stated: true } : null;
 }

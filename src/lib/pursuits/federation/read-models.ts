@@ -67,7 +67,7 @@ export async function getGovernedActions(db: PoolClient, actor: Actor, pursuitId
     .map((s) => ({ skillId: s.skillId, description: s.description, effectClass: s.effectClass, requiredPermission: String(s.requiredPermission) }));
   const { rows } = await db.query<{ skill_id: string; status: string; effect_class: string; requested_at: Date; reason: string | null }>(
     `select skill_id, status, effect_class, requested_at, reason from governed_action_invocations
-      where pursuit_id = $1 order by requested_at desc limit 50`, [pursuitId]);
+      where pursuit_id = $1 order by requested_at desc, id desc limit 50`, [pursuitId]);
   return {
     eligible,
     history: rows.map((r) => ({ skillId: r.skill_id, status: r.status, effectClass: r.effect_class, occurredAt: r.requested_at.toISOString(), reason: r.reason })),

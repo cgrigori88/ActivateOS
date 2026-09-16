@@ -110,7 +110,7 @@ export async function resolveChanges(
         and ($3::boolean is false or cl.materiality in ('HIGH','CRITICAL'))
         and ($5::boolean is false or pu.account_id = any($4))
         and ($7::boolean is false or pu.account_id = any($6))
-      order by cl.occurred_at desc
+      order by cl.occurred_at desc, cl.id desc
       limit 400`,
     [ctx.orgId, String(opts.days), opts.materialOnly,
      ctx.companyIds ?? [], scoped,

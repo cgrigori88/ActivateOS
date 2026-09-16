@@ -196,7 +196,7 @@ export async function skillsForContext(
                   select 1 from population_members pm
                   join account_populations ap on ap.id = pm.population_id and ap.status = 'approved'
                   where pm.population_id = s.scope_id and pm.company_id = $4)))
-     order by s.scope_type desc, s.updated_at desc
+     order by s.scope_type desc, s.updated_at desc, s.id desc
      limit 8`,
     [orgId, kinds, ctx.partnerId ?? null, ctx.companyId ?? null],
   );
@@ -211,7 +211,7 @@ export async function skillsForContext(
         `select id, name || ' — shared by ' || from_org_name as name, kind, body
            from shared_in_skills()
           where kind = any($1) and partner_id = $2
-          order by offered_at desc limit 4`,
+          order by offered_at desc, id desc limit 4`,
         [kinds, ctx.partnerId],
       )
     : { rows: [] };

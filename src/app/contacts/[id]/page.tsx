@@ -79,7 +79,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
          left join companies co on co.id = c.company_id
          left join partners p on p.id = c.partner_id
          left join lateral (select engagement_score, computed_at from engagement_scores
-                             where contact_id = c.id and org_id = $2 order by computed_at desc limit 1) es on true
+                             where contact_id = c.id and org_id = $2 order by computed_at desc, id desc limit 1) es on true
         where c.id = $1 and c.org_id = $2`,
       [id, orgId],
     );
@@ -129,7 +129,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
     }>(
       `select type, channel, actor, occurred_at, company_id
          from interaction_events where contact_id = $1 and org_id = $2
-        order by occurred_at desc limit 12`,
+        order by occurred_at desc, id desc limit 12`,
       [id, orgId],
     );
 

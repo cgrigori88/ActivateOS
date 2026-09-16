@@ -1950,3 +1950,77 @@ app_rw rehearsal **38/38** rooms + 6/6 consent under both roles · world digest 
 send rows 0/0/0.
 
 **Status: D-G8-2A — FIXED LOCALLY / NOT CONVERGED (C = 44) / NOT PUSHED. Gate 9 NOT begun.**
+
+### D-G8-2A — CONVERGED within the frozen certified-surface boundary (2026-09-15)
+
+The owner chose **Option A**: the frozen closure is the reproducibility boundary; the D-G8-2A **fix set** is
+the narrower certified-surface **impact** boundary inside it.
+
+**FROZEN CLOSURE — the reproducibility anchor.**
+- Manifest: `docs/vnext/D-G8-2A-CLOSURE-MANIFEST.txt` · **333 files** (80 `src/app`, 253 other), of 384 `src/` modules
+- **SHA-256 `94491ea17071b38fd75f73219a8d5f262ceb4d9d367f136371c281cd3b68716a`** (confirmed by `shasum`,
+  independently of the builder's own report)
+- Builder `scripts/closure-manifest.ts` **v1.0.0** — transitive import closure from every file under `src/app`,
+  members under `src/`; sorted, de-duplicated, trailing newline
+- Scanner `scripts/ordering-scan.ts` **v1.1.0** + `ordering-scan-allowlist.ts` (**9 entries**, each with a
+  reviewer-checkable reason)
+- Soundness: a resolution-based reverse-dependency check proved **no closure member imports any of the 51
+  excluded modules** (29 imported nowhere; 22 imported only by other excluded modules)
+- **Closure escape check: `--verify` recomputes to the same digest AFTER all edits — VERIFY PASS.** No fix
+  pulled in a dependency outside the frozen set.
+
+**SCANNER CORRECTION — v1.0.0's count of 177 is VOID.** Its `orderByOf` matched the first `order by` and ran
+to end-of-string, so any query with a LATERAL or subquery ORDER BY was judged on the wrong terminal term; it
+re-flagged sites already fixed and certified (`horizon.ts`, `populations.ts`, `writeback.ts`,
+`accounts/page.tsx`). v1.1.0 extracts every clause with a paren-aware scan and judges each independently,
+skips `array_agg(distinct X order by X)`, and accepts any genuine terminal tie-break key. **The recorded
+pre-fix baseline is 173 at v1.1.0**, not 177.
+
+**RESULT: pre-fix 173 → final 63. Unresolved D-G8-2A inside the certified-surface boundary = 0.**
+
+**Disposition of all 173 — no finding disappeared without one.**
+
+| Disposition | n |
+|---|---|
+| **2A — FIXED** in code, plus 9 allowlisted non-defects with reasons | **110** |
+| D-G8-3 — persisted/model determinism | 21 |
+| OUT — MCP/agent-only, not consumed by the certified experience | 13 |
+| OUT — ingest/intelligence-only | 11 |
+| D-G8-4C — entity resolution by `order by length(name)` | 10 |
+| D-G8-4A — provenance precedence (`projection.ts:87`, `state.ts:160/211`) | 3 |
+| D-G8-4C — in-force fact selection (`drivers.ts:213/231`) | 2 |
+| OUT — worker/send path (`federation/events`, `comms/sequence`) | 2 |
+| D-G8-2B — display-order-only (`partners/hub.ts:43`, uncapped, non-unique `pa.name`) | 1 |
+
+**What the fix set covered** (impact boundary, not pathname): the 37-room rendered experience; the shared
+shell (`layout.tsx` — a tie flipped the `/routines` red alert COUNT); **tenant/org context** (`auth/org.ts` ×3,
+`join/[code]` ×3, `login/actions.ts` — "first membership by `created_at`" was nondeterministically arbitrary
+and is now deterministically the same rule); and reachable read-models that decide a rendered value, a
+first/latest pick, or membership under a cap — `plan-loaders`, `detail`, `outcome-summary`, `route`,
+`context-loaders`, `pertinence`, `federation/read-models`, `coverage`, `skills`, `scope/server`,
+`goals/chain`, `value/assert`, `value/intents`, `meetings`, `search/*`, `interpret/answer`, `partners/hub`,
+`campaigns/lists`, `partnerships/*`, `autopsy`, `routing/partner-activation`, `provider-health`,
+`company-intel`, `motions/actions`.
+
+**One reclassification made on evidence, against an inherited label:** `app/motions/actions.ts:73` had been
+called D-G8-3 (persisted). Reading it showed the `DISTINCT ON` result builds `scoreOf`, which drives
+`ready.sort(...)` and then `ready.slice(0, DRAFT_BATCH)` — so the ordering decides WHICH accounts enter the
+draft batch (impact rule 5) and the `more` count shown back to the user. It is 2A, and was fixed.
+
+**Caveats resolved as directed.** `trust/page.tsx:29` — `model` is the GROUP BY key, so the order is already
+total: **classified A, not modified**. `layout.tsx:132` — a genuine shell defect, fixed. `join`/`login` — a
+mechanical unique tie-break preserves the existing rule, so fixed under 2A rather than reclassified.
+
+**NOT ASSESSED BY D-G8-2A CLOSURE** (outside the frozen closure — *not* a statement that they are clean):
+`src/worker/**`, `src/proxy.ts`, and the other 51 excluded modules (agents/campaign-composer, backup,
+comms/governed-send, ecosystem/*, facts/* pipeline, ingest/*, research/*, routing/asof and siblings).
+
+**Certification on the final tree.** SQL smoke tests — every changed statement shape executes (the only gate
+that can catch a bad column inside an `array_agg` ORDER BY; `tsc`, tests and build all pass regardless) ·
+`tsc` clean · `npm test` **388/388** · `ordering-determinism` **43/43** · build OK ·
+**`certify-world --runs 2` 82 clean / 0 failures**, digest `e98b43254f98d5ec` unchanged at start and after
+both runs, no drift · app_rw rehearsal **38/38** rooms + **6/6** consent under both roles, D-G8-1 order intact ·
+post-rehearsal world digest MATCH, **no residue** · send rows **0/0/0**.
+
+**Still open, unchanged:** D-G8-2B (display-only backlog) · D-G8-3A/B/C/D · D-G8-4A/B/C · D-G8-5
+(migration-gated `shared_in_evidence()`) · **D-P1**. Not pushed, not deployed. **Gate 9 NOT begun.**

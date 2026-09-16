@@ -57,7 +57,7 @@ async function casesInScope(ctx: ResolveContext, cap = 40): Promise<ValueCase[]>
     `select p.id, p.account_id from pursuits p
       where p.org_id = $1 and p.status not in ('CLOSED','ARCHIVED')
         and ($3::boolean is false or p.account_id = any($2))
-      order by p.expected_value_weighted desc nulls last limit $4`,
+      order by p.expected_value_weighted desc nulls last, p.id limit $4`,
     [ctx.orgId, ctx.companyIds ?? [], scoped, cap]);
   const seen = new Set<string>();
   const out: ValueCase[] = [];

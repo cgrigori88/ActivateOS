@@ -123,13 +123,13 @@ export async function connectExistingAction(code: string): Promise<void> {
     const { data } = await supabase.auth.getUser();
     if (!data.user) fail(code, "Sign in first, then reopen this link.");
     const { rows } = await pool.query<{ org_id: string }>(
-      `select org_id from org_members where user_id = $1 order by created_at asc limit 1`,
+      `select org_id from org_members where user_id = $1 order by created_at asc, org_id asc limit 1`,
       [data.user.id],
     );
     orgId = rows[0]?.org_id ?? null;
     if (!orgId) fail(code, "No workspace yet — claim one with the form instead.");
   } else {
-    const { rows } = await pool.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
+    const { rows } = await pool.query<{ id: string }>(`select id from organizations order by created_at asc, id asc limit 1`);
     orgId = rows[0]?.id ?? null;
     if (!orgId) fail(code, "No workspace exists on this deployment.");
   }

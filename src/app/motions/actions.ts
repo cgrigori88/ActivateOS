@@ -71,11 +71,12 @@ export async function draftMotionsAction(formData: FormData): Promise<void> {
         // the designer's score gate anyway, so the batch spends itself well).
         const { rows: scores } = await db.query<{ company_id: string; score: string }>(
           `select distinct on (company_id) company_id, score from propensity_scores
-           where company_id = any($1) and org_id = $2 order by company_id, computed_at desc`,
+           where company_id = any($1) and org_id = $2 order by company_id, computed_at desc, id desc`,
           [ready, orgId],
         );
         const scoreOf = new Map(scores.map((r) => [r.company_id, Number(r.score)]));
-        ready.sort((a, b) => (scoreOf.get(b) ?? -1) - (scoreOf.get(a) ?? -1));
+        // Cut to DRAFT_BATCH below, so equal scores must not decide WHICH accounts are drafted (D-G8-2A).
+        ready.sort((a, b) => (scoreOf.get(b) ?? -1) - (scoreOf.get(a) ?? -1) || a.localeCompare(b));
         more = Math.max(0, ready.length - DRAFT_BATCH);
 
         for (const companyId of ready.slice(0, DRAFT_BATCH)) {

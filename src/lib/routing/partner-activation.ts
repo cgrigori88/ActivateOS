@@ -37,7 +37,7 @@ export async function scorePartnerActivation(db: PoolClient, ctx: PursuitCtx, pa
 
   // Capability (HARD gate).
   const cap = await db.query<{ strength: string; certified: boolean }>(
-    `select strength, certified from partner_capabilities where partner_id = $1 and ($2::uuid is null or taxonomy_node_id = $2) order by strength desc limit 1`,
+    `select strength, certified from partner_capabilities where partner_id = $1 and ($2::uuid is null or taxonomy_node_id = $2) order by strength desc, taxonomy_node_id limit 1`,
     [partnerId, ctx.productCategoryId],
   );
   const capability = cap.rows[0] ? Number(cap.rows[0].strength) : 0;

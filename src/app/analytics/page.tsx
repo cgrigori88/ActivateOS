@@ -116,7 +116,7 @@ export default async function AnalyticsPage({
           db.query<{ band: string; sent: string; opened: string; replied: string }>(
             `with latest as (
                select distinct on (company_id) company_id, band
-               from propensity_scores where org_id = $1 order by company_id, computed_at desc
+               from propensity_scores where org_id = $1 order by company_id, computed_at desc, id desc
              )
              select coalesce(l.band, 'unscored') as band,
                     count(*) filter (where e.event_type = 'SENT') as sent,
@@ -136,7 +136,7 @@ export default async function AnalyticsPage({
              from interaction_events ie
              join companies c on c.id = ie.company_id
              where ie.type = 'ENGAGEMENT_SURGE' and ie.org_id = $1
-             order by ie.occurred_at desc limit 12`,
+             order by ie.occurred_at desc, ie.id desc limit 12`,
             [orgId],
           ),
         ]);

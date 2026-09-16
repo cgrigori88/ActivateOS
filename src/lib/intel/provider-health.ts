@@ -57,9 +57,9 @@ export async function loadProviderHealth(db: pg.Pool | pg.PoolClient, orgId: str
             coalesce(sum(evidence_created), 0) as evidence,
             coalesce(sum(cost_usd), 0) as cost_usd,
             max(finished_at) as last_run_at,
-            (array_agg(status order by started_at desc))[1] as last_status,
-            (array_agg(status order by started_at desc))[1:12] as recent_runs,
-            (array_agg(error order by started_at desc)
+            (array_agg(status order by started_at desc, id desc))[1] as last_status,
+            (array_agg(status order by started_at desc, id desc))[1:12] as recent_runs,
+            (array_agg(error order by started_at desc, id desc)
                filter (where status = 'failed' and error is not null))[1] as last_error
      from provider_runs where org_id = $1 group by provider_id`,
     [orgId],

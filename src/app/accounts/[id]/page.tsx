@@ -46,7 +46,7 @@ export default async function AccountPage({
   const { rows: digests } = await db.query<{ items: unknown; period_end: Date }>(
     `select d.items, d.period_end from account_digests d
      where d.company_id = $1 and d.org_id = $2
-     order by d.created_at desc limit 1`,
+     order by d.created_at desc, d.id desc limit 1`,
     [id, orgId],
   );
   const digest = digests[0] ?? null;
@@ -56,7 +56,7 @@ export default async function AccountPage({
   const { rows: openMotions } = await db.query<{ id: string; status: string }>(
     `select id, status from revenue_motions
      where company_id = $1 and org_id = $2 and status in ('draft', 'approved', 'active')
-     order by created_at desc limit 1`,
+     order by created_at desc, id desc limit 1`,
     [id, orgId],
   );
   const openMotion = openMotions[0] ?? null;
@@ -71,7 +71,7 @@ export default async function AccountPage({
     `select p.id, p.score, p.band, n.slug, p.computed_at,
             p.prev_score, p.positive_points, p.negative_points, p.changes
      from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
-     where p.company_id = $1 and p.org_id = $2 order by p.computed_at desc limit 1`,
+     where p.company_id = $1 and p.org_id = $2 order by p.computed_at desc, p.id desc limit 1`,
     [id, orgId],
   );
 
@@ -118,7 +118,7 @@ export default async function AccountPage({
        from pursuit_teams t
        left join sellers s on s.id = t.seller_id
        where t.company_id = $1 and t.org_id = $2 and t.status in ('recommended','accepted')
-       order by t.created_at desc limit 1`,
+       order by t.created_at desc, t.id desc limit 1`,
       [id, orgId],
     );
     team = result.rows[0] ?? null;
@@ -147,16 +147,18 @@ export default async function AccountPage({
          from seller_account_relationships sar
          join sellers s on s.id = sar.seller_id and s.org_id = $2
          where sar.company_id = f.company_id and s.partner_id = f.partner_id
-         order by sar.strength desc limit 1) as best on true
+         order by sar.strength desc, s.name, sar.seller_id limit 1) as best on true
        where f.company_id = $1 and f.org_id = $2
-       order by f.partner_id, f.computed_at desc`,
+       order by f.partner_id, f.computed_at desc, f.id desc`,
       [id, orgId],
     );
-    partnerFits = result.rows.sort((a, b) => Number(b.score) - Number(a.score));
+    // Rendered ranking: equal fit scores must not fall back to row order (D-G8-2A).
+    partnerFits = result.rows.sort((a, b) => Number(b.score) - Number(a.score)
+      || a.partner.localeCompare(b.partner) || a.partner_id.localeCompare(b.partner_id));
     if (partnerFits.length > 0) {
       const features = await db.query(
         `select fit_id, feature, contribution, detail from partner_fit_features
-         where fit_id = any($1) order by contribution desc`,
+         where fit_id = any($1) order by contribution desc, feature`,
         [partnerFits.map((f) => f.fit_id)],
       );
       fitFeatures = features.rows.reduce((m, r) => {
@@ -171,7 +173,7 @@ export default async function AccountPage({
   const { rows: motions } = await db.query(
     `select m.id, m.status, m.thesis, m.trigger_summary, m.primary_persona, m.secondary_persona,
             m.cta, m.confidence
-     from revenue_motions m where m.company_id = $1 and m.org_id = $2 order by m.created_at desc limit 1`,
+     from revenue_motions m where m.company_id = $1 and m.org_id = $2 order by m.created_at desc, m.id desc limit 1`,
     [id, orgId],
   );
 
@@ -188,7 +190,7 @@ export default async function AccountPage({
 
   const { rows: events } = await db.query(
     `select event_type, occurred_at from outcome_events where company_id = $1 and org_id = $2
-     order by occurred_at desc limit 10`,
+     order by occurred_at desc, id desc limit 10`,
     [id, orgId],
   );
 

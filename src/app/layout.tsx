@@ -133,7 +133,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
            select distinct on (r.id) rr.status
            from routines r join routine_runs rr on rr.routine_id = r.id
            where r.org_id = $1 and r.enabled
-           order by r.id, rr.ran_at desc
+           order by r.id, rr.ran_at desc, rr.id desc
          ) x where x.status = 'failed'`,
         [orgId],
       );

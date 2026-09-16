@@ -146,7 +146,7 @@ export async function getPursuitTeam(db: PoolClient, caller: Caller, pursuitId: 
 export async function getPursuitTimeline(db: PoolClient, orgId: string, pursuitId: string): Promise<PursuitTimelineView> {
   const { rows } = await db.query<{ recorded_at: Date; change_type: string; reason: string | null; before_state: Record<string, unknown> | null; after_state: Record<string, unknown> | null; materiality: string; data_environment: string }>(
     `select recorded_at, change_type, reason, before_state, after_state, materiality, data_environment
-       from change_ledger where pursuit_id = $1 and org_id = $2 order by recorded_at desc limit 100`, [pursuitId, orgId]);
+       from change_ledger where pursuit_id = $1 and org_id = $2 order by recorded_at desc, id desc limit 100`, [pursuitId, orgId]);
   const events: TimelineEvent[] = [];
   for (const e of rows) {
     if (!isTimelineWorthy(e.materiality)) continue;   // only material events (§23)
@@ -157,7 +157,7 @@ export async function getPursuitTimeline(db: PoolClient, orgId: string, pursuitI
 
 async function getFacts(db: PoolClient, orgId: string, companyId: string): Promise<FactItem[]> {
   const { rows } = await db.query<{ id: string; predicate_key: string; subject_label: string; status: string; confidence: string; provenance_class: string }>(
-    `select id, predicate_key, subject_label, status, confidence, provenance_class from facts where company_id = $1 and org_id = $2 and status <> 'REJECTED' order by confidence desc limit 20`, [companyId, orgId]);
+    `select id, predicate_key, subject_label, status, confidence, provenance_class from facts where company_id = $1 and org_id = $2 and status <> 'REJECTED' order by confidence desc, id desc limit 20`, [companyId, orgId]);
   return rows.map((f) => {
     const trust = [] as FactItem["trust"];
     if (f.status === "CURRENT") trust.push("VERIFIED"); else if (f.status === "DISPUTED") trust.push("DISPUTED"); else if (f.status === "STALE") trust.push("STALE"); else if (f.status === "SUPERSEDED") trust.push("SUPERSEDED");

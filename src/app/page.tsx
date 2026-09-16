@@ -94,7 +94,9 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   // queue and the "Awaiting approval" count — this was the third telling.
   const { divergences: allDivergences, counts, top, activity } = await withTenant((db, orgId) => loadTodayOverview(db, orgId, scopeIds));
   const c = counts[0];
-  const topRanked = [...top].sort((a, b) => Number(b.score) - Number(a.score)).slice(0, 5);
+  // Cut to 5, so equal scores must not decide WHICH accounts show (D-G8-2A).
+  const topRanked = [...top].sort((a, b) => Number(b.score) - Number(a.score)
+    || a.legal_name.localeCompare(b.legal_name) || a.company_id.localeCompare(b.company_id)).slice(0, 5);
   // Command-center cut (§2): show the top conditions by default; ?today=all reveals the rest.
   const divergences = viewAll ? allDivergences : allDivergences.slice(0, TODAY_TOP_CONDITIONS);
   const decisionsTotal = pursuitQueue?.total ?? pursuitQueue?.items.length ?? 0;

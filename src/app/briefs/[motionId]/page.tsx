@@ -50,7 +50,7 @@ export default async function BriefPage({
      cross join lateral unnest(r.input_evidence_ids) as ev(id)
      join evidence e on e.id = ev.id
      where r.motion_id = $1 and e.status = 'verified'
-     order by e.observed_at desc limit 12`,
+     order by e.observed_at desc, e.id desc limit 12`,
       [motionId],
     );
 
@@ -69,7 +69,7 @@ export default async function BriefPage({
 
     const { rows: threads } = await db.query(
       `select id, thread_alias from communication_threads
-     where motion_id = $1 and status = 'open' order by created_at desc limit 1`,
+     where motion_id = $1 and status = 'open' order by created_at desc, id desc limit 1`,
       [motionId],
     );
     const thread = threads[0] ?? null;

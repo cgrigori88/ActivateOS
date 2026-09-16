@@ -364,7 +364,7 @@ export function rankPertinence(input: PertinenceInput): PertinenceView {
 
     // The reasons that actually moved this item, strongest contribution first.
     const topReasons = [...signals]
-      .sort((a, b) => b.contribution - a.contribution)
+      .sort((a, b) => b.contribution - a.contribution || a.key.localeCompare(b.key))
       .slice(0, 2)
       .map((s) => s.reason);
 

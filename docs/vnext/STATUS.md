@@ -1,6 +1,17 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-15 (D-G8-2A — FIXED LOCALLY, **NOT CONVERGED (C = 44)**, NOT PUSHED; the sweep was stopped and needs a bounded pattern-sweep decision; D-G8-2B deferred; D-G8-3A/B/C/D, D-G8-4A/B/C, D-G8-5, D-P1 OPEN; Gate 9 not begun)
+**Last updated:** 2026-09-15 (D-G8-2A — **CONVERGED within the frozen certified-surface boundary**, FIXED LOCALLY, NOT PUSHED, awaiting hosted acceptance; closure digest `94491ea1…`; D-G8-2B deferred; D-G8-3A/B/C/D, D-G8-4A/B/C, D-G8-5, D-P1 OPEN; Gate 9 not begun)
+
+**2026-09-15 (latest) — D-G8-2A: CONVERGED within the frozen certified-surface boundary.**
+- **Frozen closure (the reproducibility anchor):** `docs/vnext/D-G8-2A-CLOSURE-MANIFEST.txt`, **333 files**, **SHA-256 `94491ea17071b38fd75f73219a8d5f262ceb4d9d367f136371c281cd3b68716a`**, builder `closure-manifest` v1.0.0, scanner `ordering-scan` v1.1.0, allowlist 9 (each with a checkable reason). Soundness proved by a resolution-based reverse-dependency check; **`--verify` after all edits returns VERIFY PASS**, so nothing escaped the closure.
+- **Result: 173 → 63; unresolved D-G8-2A inside the boundary = 0.** All 173 dispositioned: 110 resolved (fixes + 9 reasoned allowlist entries), 21 D-G8-3, 13 MCP/agent-only, 11 ingest/intel-only, 10 D-G8-4C, 3 D-G8-4A, 2 D-G8-4C in-force, 2 worker/send, 1 D-G8-2B.
+- **Scanner correction:** v1.0.0's 177 is **void** — its ORDER BY extraction ran past lateral/subquery boundaries and re-flagged already-certified sites. The baseline of record is 173 at v1.1.0.
+- **In scope by impact, not pathname:** the shared shell (`layout.tsx` — a tie flipped the `/routines` alert count), tenant/org context (`auth/org.ts`, `join`, `login`), and reachable read-models deciding a rendered value, a pick, or membership under a cap.
+- **Reclassified on evidence:** `motions/actions.ts:73` was labelled D-G8-3 but actually decides which accounts enter the draft batch under a cap → 2A, fixed. `trust/page.tsx:29` confirmed a non-defect (`model` is the GROUP BY key) and left unmodified.
+- **NOT ASSESSED BY D-G8-2A CLOSURE:** `src/worker/**`, `src/proxy.ts` and 51 other excluded modules — outside the frozen closure, *not* declared clean.
+- **Certification:** SQL smoke tests pass, `tsc` clean, `npm test` 388/388, `ordering-determinism` 43/43, build OK, **`certify-world --runs 2` 82 clean / 0 failures**, digest `e98b43254f98d5ec` unchanged, rehearsal **38/38** + 6/6, no residue, send rows 0/0/0.
+
+Record: `H1-PRE-PILOT-HARDENING.md` § "D-G8-2A — CONVERGED within the frozen certified-surface boundary". **Gate 9 NOT begun.**
 
 **2026-09-15 (latest) — D-G8-2A final convergence attempt: STOPPED, NOT CONVERGED.**
 - **Fixed (16 sites, 8 files, local only):** the three remaining pure tie-breaks (`intelligence.ts` ×2, `mapping/page.tsx` play templates), `insights.ts` ×3 (including the rank comparator before a 200-row cut that decides which accounts are selectable and therefore persistable), `funnel.ts` ×5, `value/aggregate.ts`, `overlap.ts`, `partnerships.ts`, `quotes.ts` ×2.

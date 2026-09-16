@@ -28,14 +28,14 @@ export async function currentOrgId(db: Db): Promise<string | null> {
     }
     if (userId) {
       const { rows } = await db.query<{ org_id: string }>(
-        `select org_id from org_members where user_id = $1 order by created_at asc limit 1`,
+        `select org_id from org_members where user_id = $1 order by created_at asc, org_id asc limit 1`,
         [userId],
       );
       return rows[0]?.org_id ?? null;
     }
   }
   const { rows } = await db.query<{ id: string }>(
-    `select id from organizations order by created_at asc limit 1`,
+    `select id from organizations order by created_at asc, id asc limit 1`,
   );
   return rows[0]?.id ?? null;
 }
@@ -57,7 +57,7 @@ export async function currentRole(db: Db): Promise<"owner" | "operator" | "viewe
   }
   if (!userId) return "owner"; // Basic-Auth session, not an identity session
   const { rows } = await db.query<{ role: "owner" | "operator" | "viewer" }>(
-    `select role from org_members where user_id = $1 order by created_at asc limit 1`,
+    `select role from org_members where user_id = $1 order by created_at asc, org_id asc limit 1`,
     [userId],
   );
   return rows[0]?.role ?? null;

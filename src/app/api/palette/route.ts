@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
            or exists (select 1 from revenue_motions m where m.company_id = c.id and m.org_id = $1)
            or exists (select 1 from campaigns ca where ca.company_id = c.id and ca.org_id = $1)
          )
-         order by c.legal_name limit 5`,
+         order by c.legal_name, c.id limit 5`,
         [orgId, pat],
       ),
       db.query<{ id: string; name: string; status: string; legal_name: string | null }>(
@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
          left join revenue_motions m on m.id = ca.motion_id
          left join companies c on c.id = coalesce(ca.company_id, m.company_id)
          where ca.org_id = $1 and ca.name ilike $2 and ca.dismissed_at is null
-         order by ca.created_at desc limit 5`,
+         order by ca.created_at desc, ca.id desc limit 5`,
         [orgId, pat],
       ),
       // A motion's searchable name is its account — that is how operators say
@@ -104,12 +104,12 @@ export async function GET(req: NextRequest) {
         `select m.id, m.status, c.legal_name
          from revenue_motions m join companies c on c.id = m.company_id
          where m.org_id = $1 and c.legal_name ilike $2
-         order by m.created_at desc limit 5`,
+         order by m.created_at desc, m.id desc limit 5`,
         [orgId, pat],
       ),
       db.query<{ id: string; name: string; partner_type: string | null }>(
         `select id, name, partner_type from partners
-         where org_id = $1 and name ilike $2 order by name limit 5`,
+         where org_id = $1 and name ilike $2 order by name, id limit 5`,
         [orgId, pat],
       ),
       db.query<{ id: string; name: string; status: string }>(
@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
          from joint_pursuits jp join partnerships p on p.id = jp.partnership_id
          where (p.initiator_org_id = $1 or p.counterpart_org_id = $1)
            and jp.name ilike $2
-         order by jp.created_at desc limit 5`,
+         order by jp.created_at desc, jp.id desc limit 5`,
         [orgId, pat],
       ),
     ]);

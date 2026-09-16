@@ -96,7 +96,7 @@ SLICE 2B Pursuit Attention + Today/Queue   (P3)        DEMO CERTIFIED / FROZEN
    │      lineage on Queue · "Current approved plan" labelling · D-034…D-042, D-046 · no
    │      migration · Today/Queue tenant-scoped explicitly (D-041) · hosted human review PASSED
    ↓
-H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 PASS · GATE 4 PASS (re-baselined) · GATE 5 PASS · GATE 6 PASS · D-G5-1 CLOSED · GATE 7 PASS · GATE 8 PASS · D-G8-1 CLOSED · D-G8-2A FIXED LOCALLY (NOT CONVERGED — C = 44 in 27 unaudited roots; sweep STOPPED, needs a bounded pattern-sweep decision) · D-G8-2B · D-G8-3A/B/C/D · D-G8-4A/B/C · D-G8-5 · D-P1 → GATE 9  ← current
+H1  PRE-PILOT HARDENING GATE               (P6 / #67)  H1A · GATE 1 · H1B-0 · GATE 1b PASS · H1B-0.1 · GATE 1b.1 PASS · GATE 2 PASS · GATE 3 PASS · GATE 4 PASS (re-baselined) · GATE 5 PASS · GATE 6 PASS · D-G5-1 CLOSED · GATE 7 PASS · GATE 8 PASS · D-G8-1 CLOSED · D-G8-2A CONVERGED within the frozen certified-surface boundary (closure `94491ea1…`, 333 files; 173 → 63, in-boundary unresolved = 0; awaiting hosted acceptance) · D-G8-2B · D-G8-3A/B/C/D · D-G8-4A/B/C · D-G8-5 · D-P1 → GATE 9  ← current
    │      H1B-0: partnership/consent flows work under app_rw — consent-scoped definer functions,
    │      a guard against forged consent rows, best-effort audit that cannot abort (D-049);
    │      /api/build posture proof. 0104 applied to the isolated hosted DB (Gate 1b PASS)

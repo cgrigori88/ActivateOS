@@ -204,9 +204,9 @@ async function goto(db: PoolClient, orgId: string, q: string, companyIds: string
             or exists (select 1 from campaigns ca where ca.company_id = c.id and ca.org_id = $1)
             or exists (select 1 from population_members pm join account_populations ap on ap.id = pm.population_id
                         where pm.company_id = c.id and ap.org_id = $1))
-        order by c.legal_name limit 5`, [orgId, pat, companyIds ?? [], scoped]),
+        order by c.legal_name, c.id limit 5`, [orgId, pat, companyIds ?? [], scoped]),
     db.query<{ id: string; name: string; partner_type: string | null }>(
-      `select id, name, partner_type from partners where org_id = $1 and name ilike $2 order by name limit 5`, [orgId, pat]),
+      `select id, name, partner_type from partners where org_id = $1 and name ilike $2 order by name, id limit 5`, [orgId, pat]),
   ]);
   return [
     ...accounts.rows.map((r) => ({ group: "Accounts", label: r.legal_name, sub: r.industry, href: `/accounts/${r.id}` })),

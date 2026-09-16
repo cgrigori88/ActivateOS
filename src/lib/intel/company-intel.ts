@@ -51,7 +51,7 @@ export async function loadCompanyIntel(pool: pg.Pool | pg.PoolClient, orgId: str
     pool.query(
       `select claim, source_type, provider_id, status, stance, computed_confidence, first_party, collected_at
        from evidence where company_id = $1 and (org_id = $2 or org_id is null)
-       order by collected_at desc limit 40`,
+       order by collected_at desc, id desc limit 40`,
       [companyId, orgId],
     ),
     pool.query(
@@ -60,7 +60,7 @@ export async function loadCompanyIntel(pool: pg.Pool | pg.PoolClient, orgId: str
               count(*) filter (where status = 'succeeded') as succeeded,
               coalesce(sum(evidence_created), 0) as evidence,
               max(finished_at) as last_run_at,
-              (array_agg(status order by started_at desc))[1] as latest_status
+              (array_agg(status order by started_at desc, id desc))[1] as latest_status
        from provider_runs where company_id = $1 and org_id = $2
        group by provider_id
        order by max(finished_at) desc nulls last`,

@@ -48,7 +48,7 @@ export async function namedOverlapAccounts(
   const { rows } = await db.query<{ results: NamedResults }>(
     `select results from overlap_probes
      where partnership_id = $1 and level = 'named' and status = 'approved'
-     order by decided_at desc limit 1`,
+     order by decided_at desc, id desc limit 1`,
     [partnershipId],
   );
   return rows[0]?.results?.accounts ?? [];

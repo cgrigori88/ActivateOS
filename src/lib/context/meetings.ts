@@ -79,7 +79,7 @@ export async function listMeetingNotes(db: Db, orgId: string, companyId: string,
   }>(
     `select id, met_at::text, title, attendees, body, created_by
      from meeting_notes where org_id = $1 and company_id = $2
-     order by met_at desc, created_at desc limit $3`,
+     order by met_at desc, created_at desc, id desc limit $3`,
     [orgId, companyId, limit],
   );
   return rows.map((r) => ({

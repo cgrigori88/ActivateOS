@@ -80,7 +80,7 @@ export async function opportunityAutopsy(db: Db, orgId: string, opportunityId: s
   const { rows: srcs } = await db.query<{ source_type: string; n: string }>(
     `select source_type, count(*) as n from evidence
      where company_id = $1 and status = 'verified' and (org_id = $2 or org_id is null)
-     group by source_type order by count(*) desc limit 6`,
+     group by source_type order by count(*) desc, source_type limit 6`,
     [o.company_id, orgId],
   );
   const sources = srcs.map((s) => ({ sourceType: s.source_type, claims: Number(s.n) }));

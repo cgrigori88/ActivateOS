@@ -75,7 +75,7 @@ export async function sendDraftAction(motionId: string, formData: FormData): Pro
       `select id, ai_draft from messages
        where thread_id = $1 and direction = 'outbound' and status = 'draft'
          and from_email = 'pending'
-       order by created_at desc limit 1`,
+       order by created_at desc, id desc limit 1`,
       [threadId],
     );
 

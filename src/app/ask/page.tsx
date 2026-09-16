@@ -245,7 +245,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
       `select id, question, answer, created_at, intent_key, intent_class, resolution_path,
               outcome, slots, record_hrefs, scope_size, interpret_ms, resolve_ms, total_ms,
               rejection, catalog_version, significance, next_action, unapplied
-         from ask_exchanges where org_id = $1 order by created_at desc limit 25`,
+         from ask_exchanges where org_id = $1 order by created_at desc, id desc limit 25`,
       [orgId],
     )).rows,
   }));

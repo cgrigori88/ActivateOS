@@ -72,10 +72,10 @@ export async function mergeAccountData(db: Db, orgId: string, companyId: string)
     `select c.legal_name, c.primary_domain, c.industry,
             (select n.name from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
               where p.company_id = c.id and p.org_id = $2
-              order by p.score desc nulls last, p.computed_at desc limit 1) as solution,
+              order by p.score desc nulls last, p.computed_at desc, p.id desc limit 1) as solution,
             (select e.claim from evidence e
               where e.company_id = c.id and e.status = 'verified' and (e.org_id = $2 or e.org_id is null)
-              order by e.computed_confidence desc nulls last, e.observed_at desc limit 1) as trigger
+              order by e.computed_confidence desc nulls last, e.observed_at desc, e.id desc limit 1) as trigger
      from companies c where c.id = $1`,
     [companyId, orgId],
   );
@@ -134,19 +134,19 @@ export async function campaignAccounts(db: Db, campaignId: string, orgId: string
             string_agg(distinct r.src, ' · ') as sources,
             (select n.name from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
               where p.company_id = c.id and p.org_id = $2
-              order by p.score desc nulls last, p.computed_at desc limit 1) as solution,
+              order by p.score desc nulls last, p.computed_at desc, p.id desc limit 1) as solution,
             (select round(p.score) from propensity_scores p
               where p.company_id = c.id and p.org_id = $2
-              order by p.score desc nulls last, p.computed_at desc limit 1) as score,
+              order by p.score desc nulls last, p.computed_at desc, p.id desc limit 1) as score,
             (select e.claim from evidence e
               where e.company_id = c.id and e.status = 'verified' and (e.org_id = $2 or e.org_id is null)
-              order by e.computed_confidence desc nulls last, e.observed_at desc limit 1) as trigger,
+              order by e.computed_confidence desc nulls last, e.observed_at desc, e.id desc limit 1) as trigger,
             (select round(es.engagement_score) from engagement_scores es
               where es.company_id = c.id and es.contact_id is null and es.org_id = $2
-              order by es.computed_at desc limit 1) as engagement
+              order by es.computed_at desc, es.id desc limit 1) as engagement
      from rows r join companies c on c.id = r.company_id
      group by c.id, c.legal_name, c.primary_domain, c.industry
-     order by score desc nulls last, c.legal_name`,
+     order by score desc nulls last, c.legal_name, c.id`,
     [campaignId, orgId],
   );
   return rows.map((r) => ({

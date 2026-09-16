@@ -25,7 +25,7 @@ export async function getPursuitOutcomeSummary(db: PoolClient, orgId: string, pu
   const total = Number((await db.query<{ n: string }>(`select count(*)::text n from pursuit_outcomes where pursuit_id = $1 and org_id = $2`, [pursuitId, orgId])).rows[0].n);
   const oc = (await db.query<{ outcome_label: string; is_terminal: boolean; occurred_at: Date; value_amount: string | null; attribution_id: string | null }>(
     `select outcome_label, is_terminal, occurred_at, value_amount, attribution_id
-       from pursuit_outcomes where pursuit_id = $1 and org_id = $2 order by occurred_at desc limit 1`, [pursuitId, orgId])).rows[0];
+       from pursuit_outcomes where pursuit_id = $1 and org_id = $2 order by occurred_at desc, id desc limit 1`, [pursuitId, orgId])).rows[0];
 
   let attribution: PursuitOutcomeSummary["attribution"] = null;
   if (oc?.attribution_id) {

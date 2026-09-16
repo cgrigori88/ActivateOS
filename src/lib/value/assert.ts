@@ -145,7 +145,7 @@ export async function assertEconomicFact(
     const prior = (await db.query<{ id: string; money_amount: string | null; object_value: { low?: number; high?: number } | null }>(
       `select id, money_amount, object_value from facts
         where org_id = $1 and fact_identity_key = $2 and status = 'CURRENT' and superseded_by is null
-        order by observed_last_at desc limit 1`, [actor.orgId, identity])).rows[0];
+        order by observed_last_at desc, id desc limit 1`, [actor.orgId, identity])).rows[0];
 
     const factId = randomUUID();
     // Supersession is THREE steps, because two constraints pull in opposite directions:

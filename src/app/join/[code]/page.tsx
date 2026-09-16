@@ -38,7 +38,7 @@ export default async function JoinPage({
     if (data.user) {
       const { rows } = await pool.query<{ name: string }>(
         `select o.name from org_members m join organizations o on o.id = m.org_id
-         where m.user_id = $1 order by m.created_at asc limit 1`,
+         where m.user_id = $1 order by m.created_at asc, m.org_id asc limit 1`,
         [data.user.id],
       );
       memberOrgName = rows[0]?.name ?? null;

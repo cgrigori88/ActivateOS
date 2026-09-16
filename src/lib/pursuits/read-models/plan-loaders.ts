@@ -71,7 +71,7 @@ export async function loadPlanState(db: PoolClient, caller: Caller, pursuitId: s
       `select id, name, stage, amount_usd, to_char(expected_close_date, 'YYYY-MM-DD') as close
          from opportunities
         where pursuit_id = $1 and org_id = $2
-        order by (stage not like 'closed%') desc, amount_usd desc nulls last, created_at asc
+        order by (stage not like 'closed%') desc, amount_usd desc nulls last, created_at asc, id asc
         limit 1`,
       [pursuitId, caller.orgId],
   );
@@ -95,7 +95,7 @@ export async function loadPlanState(db: PoolClient, caller: Caller, pursuitId: s
            left join partners pa on pa.id = m.partner_id
           where o.pursuit_id = $1 and o.org_id = $2 and m.org_id = $2
             and m.status in ('draft','approved','active')
-       ) x order by pref asc, created_at desc limit 1`,
+       ) x order by pref asc, created_at desc, id desc limit 1`,
       [pursuitId, caller.orgId],
   );
 
@@ -177,7 +177,7 @@ export async function loadPlanRecords(db: PoolClient, caller: Caller, pursuitId:
   const goal = await db.query<GoalRow>(
     `select id, objective, to_char(target_date, 'YYYY-MM-DD') as target_date, status, origin, decided_at, supersedes_goal_id, created_at
        from pursuit_goals where pursuit_id = $1 and org_id = $2
-      order by (status in ('PROPOSED','ACTIVE')) desc, created_at desc limit 1`,
+      order by (status in ('PROPOSED','ACTIVE')) desc, created_at desc, id desc limit 1`,
     [pursuitId, caller.orgId],
   );
   const g = goal.rows[0];
@@ -188,7 +188,7 @@ export async function loadPlanRecords(db: PoolClient, caller: Caller, pursuitId:
     ? await db.query<PlanRow>(
       `select id, goal_id, status, created_at
          from pursuit_plans where pursuit_id = $1 and org_id = $2 and goal_id = $3
-        order by (status in ('PROPOSED','ACTIVE')) desc, created_at desc limit 1`,
+        order by (status in ('PROPOSED','ACTIVE')) desc, created_at desc, id desc limit 1`,
       [pursuitId, caller.orgId, g.id],
     )
     : { rows: [] as PlanRow[] };
@@ -249,7 +249,7 @@ export async function loadChangesSince(db: PoolClient, caller: Caller, pursuitId
         and materiality in ('MEDIUM','HIGH','CRITICAL')
         and change_type not in ('PLAN_DECIDED','PLAN_REVIEW_REQUIRED')
         and entity_type not in ('pursuit_plan','motion_action')
-      order by occurred_at desc limit 10`,
+      order by occurred_at desc, id desc limit 10`,
     [pursuitId, caller.orgId, since],
   );
   return rows.map((r) => ({ id: r.id, changeType: r.change_type, reason: r.reason, occurredAt: r.occurred_at.toISOString() }));

@@ -78,7 +78,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
     const motion = (await db.query<{ id: string; status: string; hypothesis: string }>(
       `select m.id, m.status, n.name as hypothesis from revenue_motions m
          join taxonomy_nodes n on n.id = m.taxonomy_node_id
-        where m.pursuit_id = $1 and m.org_id = $2 order by m.created_at desc limit 1`, [id, orgId])).rows[0] ?? null;
+        where m.pursuit_id = $1 and m.org_id = $2 order by m.created_at desc, m.id desc limit 1`, [id, orgId])).rows[0] ?? null;
     let federation = null;
     if (fed) {
       const actions = await getGovernedActions(db, { type: "USER", orgId, role: "operator" }, id);
@@ -89,7 +89,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
     // only ever offers real people; nothing is synthesized.
     const contacts = (await db.query<{ id: string; name: string | null; title: string | null }>(
       `select id, name, title from contacts where company_id = $1 and org_id = $2
-        order by name nulls last limit 40`, [detail.accountId, orgId])).rows;
+        order by name nulls last, id limit 40`, [detail.accountId, orgId])).rows;
 
     /* vNext Slice 1 — the composed context narrative. Resolved through
        vnextCapabilities(tenant), which ANDs against the already-resolved tenant

@@ -266,7 +266,7 @@ export async function loadPursuitLedgerRows(
             model_version, agent_run_id, data_environment, occurred_at, recorded_at
        from change_ledger
       where pursuit_id = $1 and org_id = $2
-      order by occurred_at desc
+      order by occurred_at desc, id desc
       limit $3`,
     [pursuitId, caller.orgId, limit],
   );

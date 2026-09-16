@@ -87,11 +87,11 @@ export async function goalChain(db: Db, orgId: string, goalId: string): Promise<
             -- caller must present as "on this account" and never as provenance
             coalesce(m.pursuit_id,
                      (select p.id from pursuits p where p.account_id = m.company_id and p.org_id = m.org_id
-                       order by p.current_priority_score desc nulls last limit 1)) as pursuit_id
+                       order by p.current_priority_score desc nulls last, p.id limit 1)) as pursuit_id
        from revenue_motions m
        join companies c on c.id = m.company_id
       where m.goal_id = $1 and m.org_id = $2
-      order by m.estimated_value_usd desc nulls last, c.legal_name`,
+      order by m.estimated_value_usd desc nulls last, c.legal_name, m.id`,
     [goalId, orgId],
   );
 

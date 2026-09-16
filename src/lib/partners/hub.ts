@@ -68,7 +68,7 @@ export async function listPartnerRooms(db: Pool | PoolClient, orgId: string): Pr
        from partnerships p
        where (p.initiator_org_id = $1 and p.initiator_partner_id = pa.id)
           or (p.counterpart_org_id = $1 and p.counterpart_partner_id = pa.id)
-       order by (p.status = 'active') desc, p.created_at desc
+       order by (p.status = 'active') desc, p.created_at desc, p.id desc
        limit 1
      ) ps on true
      where pa.org_id = $1
@@ -177,7 +177,7 @@ export async function partnerRoom(db: Pool | PoolClient, orgId: string, partnerI
      from partnerships p
      where (p.initiator_org_id = $1 and p.initiator_partner_id = $2)
         or (p.counterpart_org_id = $1 and p.counterpart_partner_id = $2)
-     order by (p.status = 'active') desc, p.created_at desc
+     order by (p.status = 'active') desc, p.created_at desc, p.id desc
      limit 1`,
     [orgId, partnerId],
   );
@@ -234,7 +234,7 @@ export async function partnerRoom(db: Pool | PoolClient, orgId: string, partnerI
     for (const w of awaiting) {
       const { rows: cs } = await db.query<{ id: string; name: string | null; title: string | null; email: string }>(
         `select id, name, title, email from contacts
-         where org_id = $1 and company_id = $2 order by name nulls last limit 25`,
+         where org_id = $1 and company_id = $2 order by name nulls last, id limit 25`,
         [orgId, w.companyId],
       );
       contactOptions[w.companyId] = cs.map((c) => ({

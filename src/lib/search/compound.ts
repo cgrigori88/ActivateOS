@@ -222,7 +222,7 @@ export async function resolveCompound(ctx: ResolveContext, f: CompoundFilters): 
        left join partners sp on sp.id = coalesce(s.selected_partner_id, s.recommended_partner_id)
        left join opportunities o on o.pursuit_id = pu.id and o.stage not in ('closed_won','closed_lost')
       where ${where.join(" and ")}
-      order by pu.id, o.amount_usd desc nulls last
+      order by pu.id, o.amount_usd desc nulls last, o.id
       limit 300`, params);
 
   // Post-SQL families. Each is evaluated by the canonical engine that owns it — a second reading

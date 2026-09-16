@@ -100,7 +100,7 @@ export default async function IntakePage({
       `select b.id, b.filename, b.kind, b.status, b.row_count, b.matched_count, b.created_at, p.name as partner
      from import_batches b left join partners p on p.id = b.partner_id
      where b.org_id = $1
-     order by b.created_at desc limit 25`,
+     order by b.created_at desc, b.id desc limit 25`,
       [orgId],
     )).rows,
     /* Org-wide lifecycle counts — the log above is capped at 25, and a headline

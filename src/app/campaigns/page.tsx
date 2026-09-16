@@ -83,7 +83,7 @@ export default async function CampaignsPage({
              ) r) as reach,
             (select es.engagement_score from engagement_scores es
               where es.company_id = c.id and es.contact_id is null and es.org_id = $1
-              order by es.computed_at desc limit 1) as engagement
+              order by es.computed_at desc, es.id desc limit 1) as engagement
      from campaigns ca
      left join revenue_motions m on m.id = ca.motion_id
      join companies c on c.id = coalesce(ca.company_id, m.company_id)
@@ -91,7 +91,7 @@ export default async function CampaignsPage({
      left join taxonomy_nodes n on n.id = m.taxonomy_node_id
      left join goals g on g.id = ca.goal_id
      where ca.dismissed_at is null and ca.org_id = $1
-     order by ca.created_at desc`,
+     order by ca.created_at desc, ca.id desc`,
       [orgId],
     );
     const goals = await goalOptions(db, orgId);
@@ -101,12 +101,12 @@ export default async function CampaignsPage({
      from revenue_motions m
      join companies c on c.id = m.company_id
      where m.status in ('approved','active') and m.org_id = $1
-     order by m.created_at desc limit 50`,
+     order by m.created_at desc, m.id desc limit 50`,
       [orgId],
     );
 
     const { rows: accounts } = await db.query<{ id: string; legal_name: string }>(
-      `select id, legal_name from companies order by legal_name asc limit 300`,
+      `select id, legal_name from companies order by legal_name asc, id asc limit 300`,
     );
 
     return { campaigns, goals, motions, accounts };

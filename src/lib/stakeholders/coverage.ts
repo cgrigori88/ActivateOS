@@ -131,7 +131,7 @@ export async function getStakeholderCoverage(db: PoolClient, orgId: string, purs
   const history = (await db.query<{ recorded_at: Date; reason: string | null; before_state: Record<string, unknown> | null; after_state: Record<string, unknown> | null }>(
     `select recorded_at, reason, before_state, after_state from change_ledger
       where pursuit_id = $1 and change_type = 'STAKEHOLDER_ROLE_ASSERTED'
-      order by recorded_at desc limit 6`, [pursuitId])).rows;
+      order by recorded_at desc, id desc limit 6`, [pursuitId])).rows;
 
   return {
     established: true, notEstablishedReason: null,
@@ -167,7 +167,7 @@ export async function getWarmPaths(db: PoolClient, orgId: string, companyId: str
        join partnerships pr on pr.id = wr.partnership_id
        left join partners p on p.org_id = $1 and p.id in (pr.initiator_partner_id, pr.counterpart_partner_id)
       where wr.company_id = $2 and wr.requested_by_org = $1 and wr.status = 'accepted' and wr.revealed_contact is not null
-      order by wr.decided_at desc limit 3`, [orgId, companyId])).rows;
+      order by wr.decided_at desc, wr.id desc limit 3`, [orgId, companyId])).rows;
   for (const r of reveals) {
     out.push({
       tier: "PERSON_VERIFIED", via: r.partner_name,
@@ -191,7 +191,7 @@ export async function getWarmPaths(db: PoolClient, orgId: string, companyId: str
   const overlap = (await db.query<{ id: string; name: string }>(
     `select p.id, p.name from partner_relationships pr join partners p on p.id = pr.partner_id
       where pr.company_id = $1 and p.org_id = $2 and pr.strength > 0
-      order by pr.strength desc limit 3`, [companyId, orgId])).rows;
+      order by pr.strength desc, pr.partner_id limit 3`, [companyId, orgId])).rows;
   for (const o of overlap) {
     if (namedSellerPartners.has(o.name)) continue;
     out.push({

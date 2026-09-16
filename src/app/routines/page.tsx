@@ -32,7 +32,7 @@ export default async function RoutinesPage() {
       }>(
         `select rr.routine_id, rr.ran_at, rr.status, rr.summary, rr.output
      from routine_runs rr join routines r on r.id = rr.routine_id
-     where r.org_id = $1 order by rr.ran_at desc limit 20`,
+     where r.org_id = $1 order by rr.ran_at desc, rr.id desc limit 20`,
         [orgId],
       )
     ).rows,

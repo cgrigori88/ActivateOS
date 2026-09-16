@@ -29,7 +29,7 @@ async function namedOverlapCompanyIds(db: Db, partnershipId: string): Promise<Se
   const { rows } = await db.query<{ results: { accounts?: { company_id: string }[] } }>(
     `select results from overlap_probes
      where partnership_id = $1 and level = 'named' and status = 'approved'
-     order by computed_at desc limit 1`,
+     order by computed_at desc, id desc limit 1`,
     [partnershipId],
   );
   return new Set((rows[0]?.results?.accounts ?? []).map((a) => a.company_id));
@@ -51,7 +51,7 @@ export async function offerableEvidence(
        and not exists (select 1 from evidence_shares s
                        where s.evidence_id = e.id and s.partnership_id = $3
                          and s.status in ('offered', 'accepted'))
-     order by e.observed_at desc limit 30`,
+     order by e.observed_at desc, e.id desc limit 30`,
     [[...named], orgId, partnershipId],
   );
   return rows.map((r) => ({ id: r.id, claim: r.claim, accountName: r.legal_name }));

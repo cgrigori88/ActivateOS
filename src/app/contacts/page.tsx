@@ -152,7 +152,7 @@ export default async function ContactsPage({
               c.company_id, co.legal_name, co.primary_domain,
               p.name as partner_name, c.location, c.attributes, c.engagement_status,
               (select es.engagement_score from engagement_scores es
-                where es.contact_id = c.id and es.org_id = $1 order by es.computed_at desc limit 1) as engagement_score,
+                where es.contact_id = c.id and es.org_id = $1 order by es.computed_at desc, es.id desc limit 1) as engagement_score,
               sh.role sh_role, sh.assertion_state sh_state, sh.pursuit_id sh_pursuit
        from contacts c
        left join companies co on co.id = c.company_id
@@ -166,7 +166,7 @@ export default async function ContactsPage({
           left join pursuits pu on pu.id = s.pursuit_id and pu.org_id = $1
           where s.contact_id = c.id
           order by case s.assertion_state when 'verified' then 3 when 'inferred' then 2 else 1 end desc,
-                   s.asserted_at desc nulls last limit 1) sh on true
+                   s.asserted_at desc nulls last, s.opportunity_id limit 1) sh on true
        where c.org_id = $1`,
       [orgId],
     );
@@ -183,7 +183,7 @@ export default async function ContactsPage({
          select distinct on (company_id) company_id, raw_payload
          from raw_observations
          where provider_id = 'pdl_people' and raw_payload ? 'people' and org_id = $1
-         order by company_id, observed_at desc
+         order by company_id, observed_at desc, id desc
        )
        select c.id as company_id, c.legal_name, c.primary_domain,
               p->>'fullName' as full_name, p->>'jobTitle' as job_title
@@ -201,7 +201,7 @@ export default async function ContactsPage({
       `select c.id as company_id,
               nullif(concat_ws(', ', c.state, c.country), '') as location,
               (select n.name from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
-                where p.company_id = c.id and p.org_id = $1 order by p.score desc nulls last, p.computed_at desc limit 1) as brand
+                where p.company_id = c.id and p.org_id = $1 order by p.score desc nulls last, p.computed_at desc, p.id desc limit 1) as brand
        from companies c where c.id = any($2)`,
       [orgId, metaIds],
     );

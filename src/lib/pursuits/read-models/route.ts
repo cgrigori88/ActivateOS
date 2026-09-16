@@ -133,7 +133,7 @@ export async function getRouteComparison(db: PoolClient, caller: Caller, pursuit
 
   // Override reason (latest partner override) + route change events.
   const ov = await db.query<{ reason: string | null; human_decision: { category?: string } }>(
-    `select reason, human_decision from pursuit_overrides where pursuit_id = $1 and org_id = $2 and field = 'partner' order by created_at desc limit 1`, [pursuitId, caller.orgId]);
+    `select reason, human_decision from pursuit_overrides where pursuit_id = $1 and org_id = $2 and field = 'partner' order by created_at desc, id desc limit 1`, [pursuitId, caller.orgId]);
   const selectionMatches = (snap.rows[0].selected_partner_id ?? null) === (snap.rows[0].recommended_partner_id ?? null) || !selected;
   const synthetic = await hasSyntheticTx(db, caller.orgId);
   const changes = await db.query<{ recorded_at: Date; before_state: { recommendedPartnerId?: string } | null; after_state: { recommendedPartnerId?: string } | null; reason: string | null }>(

@@ -53,7 +53,7 @@ export async function createOwnerAction(formData: FormData): Promise<void> {
   const { rows: existing } = await pool.query<{ n: string }>(`select count(*)::text as n from org_members`);
   if (Number(existing[0].n) > 0) fail("An owner already exists — sign in instead, or ask them to invite you.");
 
-  const { rows: orgs } = await pool.query<{ id: string }>(`select id from organizations order by created_at asc limit 1`);
+  const { rows: orgs } = await pool.query<{ id: string }>(`select id from organizations order by created_at asc, id asc limit 1`);
   if (!orgs[0]) fail("No organization exists yet.");
 
   const admin = supabaseAdmin();

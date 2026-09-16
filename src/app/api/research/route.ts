@@ -52,7 +52,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     `select r.reason, r.status, r.detail, r.finished_at, c.legal_name as company
      from research_jobs r join companies c on c.id = r.company_id
      where r.finished_at is not null
-     order by r.finished_at desc limit 10`,
+     order by r.finished_at desc, r.id desc limit 10`,
   );
   return NextResponse.json({
     queue: Object.fromEntries(counts.map((c) => [c.status, Number(c.n)])),
