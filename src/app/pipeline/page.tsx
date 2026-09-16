@@ -48,6 +48,7 @@ import { getAccountIntel } from "@/lib/accounts/intel";
 import { IntelDrawer } from "@/components/intel/intel-drawer";
 import { formatMoney } from "@/lib/format/money";
 import { OperatingModel } from "@/components/operating-model";
+import { upsertCanonicalPipelineSnapshot } from "@/lib/pipeline/snapshot";
 
 const MEDDPICC_STATUSES: Status[] = ["unknown", "gap", "weak", "strong"];
 
@@ -405,14 +406,13 @@ export default async function PipelinePage({
       }
     }
     // Today's snapshot, idempotent — history accrues just by looking.
-    await db.query(
-      `insert into pipeline_snapshots (org_id, taken_on, open_count, open_usd, weighted_usd, crm_usd)
-       values ($1, now()::date, $2, $3, $4, $5)
-       on conflict (org_id, taken_on) do update
-         set open_count = excluded.open_count, open_usd = excluded.open_usd,
-             weighted_usd = excluded.weighted_usd, crm_usd = excluded.crm_usd`,
-      [tieOrgId, open.length, total, weighted, tieOut?.crmUsd ?? null],
-    );
+    //
+    // D-P1: this passes ONLY the org identity. `open`, `total`, `weighted` and `tieOut.crmUsd` above
+    // are the RENDERED projection — narrowed by `?timeframe=` and by the ecosystem scope — and used to
+    // be written straight into the canonical `(org_id, taken_on)` row, so merely looking at a 7-day
+    // view overwrote canonical history with filtered totals. The writer now derives every persisted
+    // field itself from the org's full unfiltered set, so no page aggregate can reach the snapshot.
+    await upsertCanonicalPipelineSnapshot(db, tieOrgId);
   }
 
   return {

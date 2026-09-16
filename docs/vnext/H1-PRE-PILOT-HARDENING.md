@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · **Gate 6 PASS** (2026-09-15; read-only; serving `766cb13` `dpl_JD8DtC8…`; live `/api/build` probe reports `app_rw`, bypassRls false, tenantEnforcement true, probe live; routing and smoke verified; DB 0/155 changed) · **D-G5-1 HOSTED ACCEPTED / CLOSED** (2026-09-15; deterministic tiebreakers in `divergence.ts` and `projection.ts`, certified locally (`ordering-determinism` 17/0, `certify-world --runs 2` 82/82), then deployed as `1c4fb5e` on the `app_rw` Preview. Two full hosted crawls (4 passes) are identical in order; Today "stage vs engagement" and the CDW list label are deterministic; DB 0/155 changed) · **Gate 7 PASS** (2026-09-15; hosted tenant/RLS certification on the `app_rw` Preview. Exact-RLS probe as `app_rw` 80/0 across 3 orgs × 155 tables; 37-room crawl identical to the accepted D-G5-1 crawl; `partnership-app-rw` on hosted, rolled back, 117/0; blind probe accepted as a substitution; supplemental owner-backed suites recorded; owner human review PASS; DB 0/155 changed) · **CFR-1.1 adopted** (`days_since_activity` validated by recomputation from source; all else strict) · **Gate 8 Phase 1 PASS** (2026-09-15; emergency rollback to `owner/postgres` proven: value-only branch Preview `DATABASE_URL` update, `/api/build` reports `postgres` / bypassRls true / tenantEnforcement false / live, crawls equivalent apart from time-derived text, DB 0/155; pre-existing ordering tie **D-G8-1** recorded; **the Preview is paused in the owner posture**) · **Gate 8 PASS** (2026-09-15; Phase 2 restored `app_rw`, value-only, as `dpl_7UEXPHAU63VqEAuDZja4Ba99iEtu`; `/api/build` reports `app_rw` / bypassRls false / tenantEnforcement true / live; crawls equal the Gate 7 `app_rw` crawl apart from clock text validated against source; isolation smoke PASS; DB 0/155; rollback and restoration both proven) · **D-G8-1 HOSTED ACCEPTED / CLOSED** (`/pipeline` stakeholders `order by s.opportunity_id, coalesce(ct.name, ct.email), s.contact_id`; certified locally with `ordering-determinism` red 20/3 → 23/0, rehearsal 38/38 and `certify-world` 82/82; deployed as `dcde3b6` on the `app_rw` Preview; two hosted crawls render the rule order identically; only the rule-driven row reorder differs from Gate 8; DB 0/155) · **D-G8-2 latent ordering backlog recorded** (owner decision) · **D-G8-2A HOSTED ACCEPTED / CLOSED** (2026-09-15 local / 2026-09-16Z; `a5da3b2` as `dpl_BcKULAScmeWVZaQYkakWbCRiZw7w` on the `app_rw` Preview; 37/37 rooms 200 and all 4 passes byte-identical; against the accepted D-G8-1 crawl 32/37 rooms identical, 5 pure reorders, **0 membership changes**, each explained by a committed tie-break; DB 154/155 per-table fingerprints identical with only the documented `pipeline_snapshots` new-date look-to-write row, NOT re-baselined; tenant/consent smoke and send safety clean; closure `94491ea1…` re-verified, audit not reopened) · **D-G8-3A/B/D FIXED LOCALLY** (2026-09-15; migrations 0106 `campaign_assets.position` and 0107 settlement `opportunity_id` + total order, applied LOCALLY only; 31 protected / 0 unsafe preserved through the DROP+CREATE; `certify-world --runs 2` 84 clean / 0 failures, digest `e98b43254f98d5ec` unchanged; rehearsal 38/38 + 6/6; new `persisted-determinism` suite 17/0; canonical fingerprint identical before and after; NOT pushed) · **D-G8-3 HOSTED MIGRATION GATE PASS** (2026-09-16Z; 0106 then 0107 applied separately to `mejokqxriwyawfhawuxu` while the accepted app kept serving; level 107; only `schema_migrations` moved of 155 per-table fingerprints; business-data `c56a1d229e483f2b` UNCHANGED; security `30772757ebd4688c` → `f31e51d50e9dec49`, accepted only after 31/0, grants, search_path and drift checks all passed; old app healthy 10/10; tenant-isolation 205/0 ×3; app code NOT pushed) · **D-G8-3A/B/D HOSTED ACCEPTED / CLOSED** (2026-09-16Z; `21326e5` as `dpl_K88acSQbydWTU4UjthhCEuT4GXsC`; 37/37 rooms and 4/4 passes byte-identical AND 37/37 identical to the accepted D-G8-2A crawl — zero rendered change; 3A proven by a rollback-safe hosted round trip with no residue; 3B non-party zero and no raw id in visible text; 3D deployed tie-breaks verified read-only; DB 0/155 per-table fingerprints changed; security `f31e51d50e9dec49` steady; 31/0) · **D-G8-3C RECLASSIFIED → D-G8-4D** (campaign seed selection semantics — no existing business rule resolves a score tie) · **D-G8-4A/B/C/D FIXED LOCALLY** (2026-09-16; CODE-ONLY, **no migration** — repo stays at 107; PROVENANCE_STRENGTH canonical for source-truth with HUMAN_ASSERTED/SECOND_PARTY deliberately UNRESOLVED; median corrected to the whole terminal population plus a categorical mode that surfaces ties; identity ladder replaces every name-length/alphabetical pick and ask-scope fails closed on ambiguity; in-force facts gain an explicit as-of validity window; campaign seed is deliberate or null; `certify-world --runs 2` 86 clean / 0 failures, digest `e98b43254f98d5ec` unchanged, new `semantic-determinism` suite 38/0; NOT pushed) · **D-G8-4A/B/D HOSTED ACCEPTED / CLOSED** (2026-09-16; `982a01f` as `dpl_29srUo2LNtc6FW7dm12K3ZVxRGo5`; 37/37 rooms and 4/4 passes byte-identical, 34/37 identical to the accepted D-G8-3 crawl with 3 explained differences — the pre-registered Stark disclosure on two consumers and 4B's new most-common-outcome line; DB 0/155 per-table fingerprints changed, migrations 107, security `f31e51d50e9dec49` steady, 31/0) · **D-G8-4C HOSTED ACCEPTED / CLOSED** (2026-09-16; `48a6157` as `dpl_Ey7DdPDSWzsk5dJ3ASMbqbLmtxf7`; rung 4 now normalizes BOTH sides, so `Initech Financial` resolves via NORMALIZED_NAME on the real hosted data instead of returning AMBIGUOUS; `companies` untouched at 14 rows with an identical content hash; crawl 37/37 identical to the accepted D-G8-4 crawl — no new rendered difference) · **D-G8-4 OVERALL HOSTED ACCEPTED / CLOSED** · **D-P1 OPEN — must be fixed before Gate 9** · Gate 9 not begun. **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · **Gate 6 PASS** (2026-09-15; read-only; serving `766cb13` `dpl_JD8DtC8…`; live `/api/build` probe reports `app_rw`, bypassRls false, tenantEnforcement true, probe live; routing and smoke verified; DB 0/155 changed) · **D-G5-1 HOSTED ACCEPTED / CLOSED** (2026-09-15; deterministic tiebreakers in `divergence.ts` and `projection.ts`, certified locally (`ordering-determinism` 17/0, `certify-world --runs 2` 82/82), then deployed as `1c4fb5e` on the `app_rw` Preview. Two full hosted crawls (4 passes) are identical in order; Today "stage vs engagement" and the CDW list label are deterministic; DB 0/155 changed) · **Gate 7 PASS** (2026-09-15; hosted tenant/RLS certification on the `app_rw` Preview. Exact-RLS probe as `app_rw` 80/0 across 3 orgs × 155 tables; 37-room crawl identical to the accepted D-G5-1 crawl; `partnership-app-rw` on hosted, rolled back, 117/0; blind probe accepted as a substitution; supplemental owner-backed suites recorded; owner human review PASS; DB 0/155 changed) · **CFR-1.1 adopted** (`days_since_activity` validated by recomputation from source; all else strict) · **Gate 8 Phase 1 PASS** (2026-09-15; emergency rollback to `owner/postgres` proven: value-only branch Preview `DATABASE_URL` update, `/api/build` reports `postgres` / bypassRls true / tenantEnforcement false / live, crawls equivalent apart from time-derived text, DB 0/155; pre-existing ordering tie **D-G8-1** recorded; **the Preview is paused in the owner posture**) · **Gate 8 PASS** (2026-09-15; Phase 2 restored `app_rw`, value-only, as `dpl_7UEXPHAU63VqEAuDZja4Ba99iEtu`; `/api/build` reports `app_rw` / bypassRls false / tenantEnforcement true / live; crawls equal the Gate 7 `app_rw` crawl apart from clock text validated against source; isolation smoke PASS; DB 0/155; rollback and restoration both proven) · **D-G8-1 HOSTED ACCEPTED / CLOSED** (`/pipeline` stakeholders `order by s.opportunity_id, coalesce(ct.name, ct.email), s.contact_id`; certified locally with `ordering-determinism` red 20/3 → 23/0, rehearsal 38/38 and `certify-world` 82/82; deployed as `dcde3b6` on the `app_rw` Preview; two hosted crawls render the rule order identically; only the rule-driven row reorder differs from Gate 8; DB 0/155) · **D-G8-2 latent ordering backlog recorded** (owner decision) · **D-G8-2A HOSTED ACCEPTED / CLOSED** (2026-09-15 local / 2026-09-16Z; `a5da3b2` as `dpl_BcKULAScmeWVZaQYkakWbCRiZw7w` on the `app_rw` Preview; 37/37 rooms 200 and all 4 passes byte-identical; against the accepted D-G8-1 crawl 32/37 rooms identical, 5 pure reorders, **0 membership changes**, each explained by a committed tie-break; DB 154/155 per-table fingerprints identical with only the documented `pipeline_snapshots` new-date look-to-write row, NOT re-baselined; tenant/consent smoke and send safety clean; closure `94491ea1…` re-verified, audit not reopened) · **D-G8-3A/B/D FIXED LOCALLY** (2026-09-15; migrations 0106 `campaign_assets.position` and 0107 settlement `opportunity_id` + total order, applied LOCALLY only; 31 protected / 0 unsafe preserved through the DROP+CREATE; `certify-world --runs 2` 84 clean / 0 failures, digest `e98b43254f98d5ec` unchanged; rehearsal 38/38 + 6/6; new `persisted-determinism` suite 17/0; canonical fingerprint identical before and after; NOT pushed) · **D-G8-3 HOSTED MIGRATION GATE PASS** (2026-09-16Z; 0106 then 0107 applied separately to `mejokqxriwyawfhawuxu` while the accepted app kept serving; level 107; only `schema_migrations` moved of 155 per-table fingerprints; business-data `c56a1d229e483f2b` UNCHANGED; security `30772757ebd4688c` → `f31e51d50e9dec49`, accepted only after 31/0, grants, search_path and drift checks all passed; old app healthy 10/10; tenant-isolation 205/0 ×3; app code NOT pushed) · **D-G8-3A/B/D HOSTED ACCEPTED / CLOSED** (2026-09-16Z; `21326e5` as `dpl_K88acSQbydWTU4UjthhCEuT4GXsC`; 37/37 rooms and 4/4 passes byte-identical AND 37/37 identical to the accepted D-G8-2A crawl — zero rendered change; 3A proven by a rollback-safe hosted round trip with no residue; 3B non-party zero and no raw id in visible text; 3D deployed tie-breaks verified read-only; DB 0/155 per-table fingerprints changed; security `f31e51d50e9dec49` steady; 31/0) · **D-G8-3C RECLASSIFIED → D-G8-4D** (campaign seed selection semantics — no existing business rule resolves a score tie) · **D-G8-4A/B/C/D FIXED LOCALLY** (2026-09-16; CODE-ONLY, **no migration** — repo stays at 107; PROVENANCE_STRENGTH canonical for source-truth with HUMAN_ASSERTED/SECOND_PARTY deliberately UNRESOLVED; median corrected to the whole terminal population plus a categorical mode that surfaces ties; identity ladder replaces every name-length/alphabetical pick and ask-scope fails closed on ambiguity; in-force facts gain an explicit as-of validity window; campaign seed is deliberate or null; `certify-world --runs 2` 86 clean / 0 failures, digest `e98b43254f98d5ec` unchanged, new `semantic-determinism` suite 38/0; NOT pushed) · **D-G8-4A/B/D HOSTED ACCEPTED / CLOSED** (2026-09-16; `982a01f` as `dpl_29srUo2LNtc6FW7dm12K3ZVxRGo5`; 37/37 rooms and 4/4 passes byte-identical, 34/37 identical to the accepted D-G8-3 crawl with 3 explained differences — the pre-registered Stark disclosure on two consumers and 4B's new most-common-outcome line; DB 0/155 per-table fingerprints changed, migrations 107, security `f31e51d50e9dec49` steady, 31/0) · **D-G8-4C HOSTED ACCEPTED / CLOSED** (2026-09-16; `48a6157` as `dpl_Ey7DdPDSWzsk5dJ3ASMbqbLmtxf7`; rung 4 now normalizes BOTH sides, so `Initech Financial` resolves via NORMALIZED_NAME on the real hosted data instead of returning AMBIGUOUS; `companies` untouched at 14 rows with an identical content hash; crawl 37/37 identical to the accepted D-G8-4 crawl — no new rendered difference) · **D-G8-4 OVERALL HOSTED ACCEPTED / CLOSED** · **D-G8-5 HOSTED ACCEPTED / CLOSED** (2026-09-16; migration 0108 applied to `mejokqxriwyawfhawuxu`; level 108; exactly 1 of 155 fingerprints moved — the ledger; business-data `c56a1d229e483f2b` UNCHANGED; new whole-world `933a5e30d79297a4`; new security `2a5ea0509145ee81` accepted only after 31/0 and a catalogue diff showing exactly one changed function) · **D-P1 FIXED LOCALLY / NOT PUSHED** (2026-09-16; CODE-ONLY, **no migration** — repo stays at 108. `/pipeline` no longer writes `pipeline_snapshots` at all: the new `upsertCanonicalPipelineSnapshot(db, orgId)` accepts no caller-computed value and derives `open_count`, `open_usd`, `weighted_usd` and `crm_usd` itself from the org's full unfiltered set, so neither `?timeframe=` nor the ecosystem scope — a second poisoning vector found during implementation — can reach canonical history. Read-triggered write KEPT. New `dp1-snapshot-boundary` suite 26/0 including a negative control that reproduces the pre-fix poisoning; `certify-world --runs 2` 90 clean / 0 failures, digest `e98b43254f98d5ec` unchanged; hosted untouched) · **D-P1 hosted acceptance is the FINAL pre-Gate-9 gate** · Gate 9 not begun. **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -2985,3 +2985,133 @@ whole-world **`933a5e30d79297a4`** · security **`2a5ea0509145ee81`** · protect
 LOGIN true / BYPASSRLS false.
 
 **D-P1 is now the FINAL pre-Gate-9 blocker. Gate 9 NOT started.**
+
+
+---
+
+## D-P1 — FIXED LOCALLY (2026-09-16) · CODE-ONLY, NO MIGRATION · NOT PUSHED
+
+**The defect, as confirmed at the design gate.** `/pipeline` computed its headline aggregates from the
+**rendered** projection and then wrote them straight into the canonical daily row:
+
+```
+opps     = horizon ? allOpps.filter(o => closeDate <= horizon) : allOpps   // ?timeframe=7|30|90
+open     = opps.filter(not closed)
+total    = sum(open.amountUsd)
+weighted = weightedPipelineValue(opps)
+insert into pipeline_snapshots (org_id, taken_on, open_count, open_usd, weighted_usd, crm_usd)
+values ($1, now()::date, open.length, total, weighted, tieOut?.crmUsd)
+on conflict (org_id, taken_on) do update set ...
+```
+
+So **merely looking at `/pipeline?timeframe=7` overwrote today's canonical snapshot with 7-day totals**,
+and the next unfiltered view silently overwrote it back. A pure read mutated committed history, and the
+value persisted depended on which URL a human happened to open last. Trend, radar and any downstream
+history read from that row.
+
+**A SECOND poisoning vector was found during implementation and is also closed.** `allOpps` is itself
+narrowed by `scopeIds` (the ecosystem scope), so the canonical row was corrupted by the *scope selector*
+as well as by `?timeframe=`. This is exactly why the accepted fix is structural rather than a
+"pass the unfiltered array instead" patch: **the page has more than one filtered view of the same set,
+and a caller-discipline fix would have to be re-proved at every call site forever.**
+
+### The fix — Owner Ruling 1, option (B)
+
+`src/lib/pipeline/snapshot.ts` is a new canonical writer with a deliberately minimal surface:
+
+```ts
+export async function upsertCanonicalPipelineSnapshot(db: Db, orgId: string): Promise<void>
+```
+
+It accepts **no caller-computed value at all** — no `open_count`, `open_usd`, `weighted_usd`, `crm_usd`,
+`timeframe`, horizon or filtered opportunity set — and derives every persisted field itself from the
+org's **full, unfiltered** opportunity set, using the canonical stage curve via `loadStageWeights`
+(partner override → org default → `STAGE_PROBABILITY`). **Poisoning is impossible by API shape, not by
+caller discipline.** `/pipeline` now holds no snapshot write of its own; its one call is
+`await upsertCanonicalPipelineSnapshot(db, tieOrgId);`.
+
+**Owner Ruling 2 — read-triggered write KEPT.** History still accrues just by looking. No cron, no job,
+no endpoint, no scheduler was added; the trigger point in `/pipeline` is unchanged. Only *what* is
+persisted changed.
+
+**Owner Ruling 3 — `crm_usd` is recomputed INSIDE the writer.** The page passes none. The writer runs the
+same `distinct on (company_id, lower(opportunity_name)) … order by … reported_at desc, id desc` latest-per-
+opportunity reduction over `crm_snapshots`, excluding closed stages and null amounts, and persists `null`
+when there is nothing to report. **This required no architectural change** — the reduction is a plain
+query against a table the writer already had the org id for — so the ruling's "STOP and report before
+widening scope" clause was not reached.
+
+### Certification — `dp1-snapshot-boundary`, 26 checks over the 21-item list, 26/26
+
+New SEEDED / `SEEDED_CLONE` suite (`scripts/dp1-snapshot-boundary-verify.ts`), registered in
+`verify-classes.ts`. **Every expected value is computed independently by the suite — the writer never
+certifies itself.** The fixture is a disposable org whose opportunities close far beyond 90 days, so a
+`?timeframe=` view is *materially* different (checks 3/4/5 assert that difference explicitly, so the
+byte-identity result cannot pass vacuously).
+
+| # | Assertion |
+|---|---|
+| 1 | Independent canonical metrics computed from the fixture (not from the writer) |
+| 2 + 11 | `open_count` is canonical |
+| 3 / 4 / 5 | `?timeframe=7 / 30 / 90` leaves the canonical snapshot **byte-identical** — and the filtered projection is materially different |
+| 6 | The writer's public API accepts no filter/aggregate — arity is exactly `(db, orgId)`; no third parameter exists through which view state could reach the snapshot |
+| 7 | Five repeated renders cause **zero** snapshot content movement |
+| 8 | Returning to the unfiltered view repairs nothing, **because nothing was damaged** |
+| 9 | **Negative control:** the PRE-FIX flow, replicated literally, **does** poison the canonical row with 7-day totals — and the fixed writer restores canonical values and cannot reproduce that mutation |
+| 10 | Six concurrent requests cannot leave a filtered value persisted — all writers agree |
+| 12 | `open_usd` is canonical |
+| 13 | `weighted_usd` is canonical (against the canonical `STAGE_PROBABILITY` curve) |
+| 14 | `crm_usd` is canonical and derived **inside** the writer — the page passes none |
+| 15 | Org A cannot modify org B's snapshot under `app_rw`; org B's row is unchanged |
+| 16 | `app_rw` sees exactly its own org's snapshot under tenant context |
+| 17 | Prior-date rows remain byte-identical through repeated writes |
+| 18 | Today's row still equals the **independent** canonical recomputation |
+| 19 | **CFR-1.1** — at most one row per org/date, and today's equals an unfiltered canonical recomputation |
+| 20 | **Static call-site guard:** `/pipeline` holds no `insert into` / `update pipeline_snapshots` of its own, has exactly one call site, and passes exactly two arguments, none of which is a rendered aggregate or view-state identifier |
+| 21 | Send activity — `0 / 0 / 0 / 0 / 0` and unchanged |
+
+Check 20 was added after the first pass because arity alone cannot prove the *page* stopped computing the
+values; its regexes were negative-controlled and correctly reject `(db, orgId, total)`, `(db, orgId, weighted)`,
+a second call site and an inline `insert into pipeline_snapshots`.
+
+**One first-failure captured and recorded, not overwritten.** The first suite run was **24/25** —
+`13: weighted_usd is canonical — 447500.00 vs 462500`. The failure was captured before any re-run.
+Diagnosis: **the test was wrong, not the writer.** The suite's hardcoded default curve used
+`qualification 0.25` / `negotiation 0.8`, but the canonical `STAGE_PROBABILITY`
+(`src/lib/opportunities/lifecycle.ts`) is `qualification 0.2` / `negotiation 0.75`. The correct arithmetic
+— `400000×0.6 + 250000×0.75 + 100000×0.1 + 50000×0.2 = 447500` — is exactly what the writer produced.
+The suite now reads the canonical constant instead of guessing it, which keeps the expectation independent
+of the writer while making it agree with the product's documented curve.
+
+### Full local certification
+
+`tsc` clean · `npm test` **429/429** · `npm run build` clean · **`dp1-snapshot-boundary` 26/0** ·
+`dg85-determinism` 19/0 · `persisted-determinism` 17/0 · `semantic-determinism` 50/0 ·
+`partnership-app-rw` 117/0 · `tenant-isolation` 205/0 · `search-path` 39/0 ·
+catalogue guard **31 protected / 0 unsafe** · `app-rw-rehearsal` **38/38 rooms + 6/6 consent** ·
+**`certify-world --runs 2`: 90 clean / 0 failures, CERTIFICATION INTEGRITY PASS, digest
+`e98b43254f98d5ec` identical at start, after run 1 and after run 2.**
+
+**Canonical local world unchanged.** `world-fingerprint` **`e98b43254f98d5ec` · 154 tables · 1051 rows** —
+the pre-registered value. Local `pipeline_snapshots` still holds its single canonical row
+(`2026-09-14 · 11 · 8040000.00 · 3361500.00 · crm null`), **untouched**; every fixture write in this work
+happened inside disposable seeded clones, and the catalogue probe committed nothing
+(`txid_current_if_assigned()` null). Send counters `0 / 0 / 0 / 0 / 0`.
+
+**No migration.** `supabase/migrations` holds **108** files, highest `0108_dg85_shared_in_evidence_determinism.sql`
+— nothing was added. No schema, RLS, grant, policy, role or function change; the local security-catalogue
+hash is steady at `698c56c7abc41908`. *(The local seeded world has no `schema_migrations` ledger table —
+that is the known 154-vs-155 table difference against hosted, not a new condition.)*
+
+**Hosted untouched, exactly as instructed.** No push, no deploy, no hosted read or write, no Vercel env
+change, no `DATABASE_URL` / `DATABASE_URL_OWNER` change, no Production, no `qifatlqxfuhwrwvpbwsc` contact.
+The hosted record of record therefore stands unchanged: migrations **108** · business-data
+**`c56a1d229e483f2b`** · whole-world **`933a5e30d79297a4`** · security **`2a5ea0509145ee81`** ·
+protected **31 / 0**. Hosted `pipeline_snapshots` was **not** modified: no repair routine was added, and
+**2026-09-15 and 2026-09-16 were not rewritten** — those rows record what the defect actually did and
+remain as evidence pending a separate owner decision.
+
+**Not in scope, not done:** no Pipeline UX redesign, no UI cleanup, no D-G8 reopening, no Gate 9 work.
+
+**DISPOSITION: D-P1 — FIXED LOCALLY, NOT PUSHED.** Hosted acceptance is a separate gate requiring its own
+approval, because a push auto-deploys the branch Preview.

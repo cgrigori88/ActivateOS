@@ -112,6 +112,12 @@ export const SUITES: SuiteSpec[] = [
     isolation: "SEEDED_CLONE",
   },
   {
+    name: "dp1-snapshot-boundary",
+    cls: "SEEDED",
+    why: "D-P1: /pipeline computed open/total/weighted from its RENDERED set — narrowed by ?timeframe= and by the ecosystem scope — and wrote them into the canonical pipeline_snapshots (org_id, taken_on) row, so merely LOOKING at a 7-day view overwrote canonical history with filtered totals. This plants a disposable org whose deals close far out (so a 7-day view is materially different from canonical), independently recomputes the canonical metrics without calling the writer, and proves the writer persists exactly those; that repeated and filtered renders move the row not at all; that the PRE-FIX flow genuinely poisons the same row and the fixed writer cannot reproduce it; that concurrent writers all agree; that org A cannot touch org B under app_rw; that prior-date rows stay byte-identical; and that CFR-1.1 still holds. It COMMITS its fixtures, so it runs on a disposable seeded clone",
+    isolation: "SEEDED_CLONE",
+  },
+  {
     name: "dg85-determinism",
     cls: "SEEDED",
     why: "D-G8-5: shared_in_evidence() ended `order by e.observed_at desc limit 20`, which is not total — with >20 eligible rows and several sharing an exact observed_at across the 20/21 boundary, heap/planner order decided which tied rows survived the CAP, and the one consumer (context/timeline.ts) re-sorts and re-slices, so a dropped row simply never reaches the timeline. This plants 30 eligible shares — 12 strictly newer, 12 sharing one observed_at spanning positions 13..24, 6 strictly older — and proves the selected 20 share ids are identical across five planner configurations, two heap layouts, owner and the real app_rw login, and forward / reverse / shuffled insertion; that the final key is s.id (evidence_shares PK) because one evidence object shared on two partnerships makes e.id non-unique; that a non-party sees zero, revoking a share or deactivating the partnership removes rows, and a ≤20 population is unchanged pre-fix and post-fix. It COMMITS its fixtures, so it runs on a disposable seeded clone",
