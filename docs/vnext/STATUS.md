@@ -1,6 +1,17 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-15 (D-G8-1 — HOSTED ACCEPTED / CLOSED; D-G8-2 backlog awaiting an owner decision; D-P1 OPEN; Gate 9 not begun)
+**Last updated:** 2026-09-15 (D-G8-2A — FIXED LOCALLY, NOT CONVERGED, NOT PUSHED; 7 open sites, 4 needing an owner decision; D-G8-2B deferred; D-G8-3A / D-G8-3B / D-P1 OPEN; Gate 9 not begun)
+
+**2026-09-15 (latest) — D-G8-2A: FIXED LOCALLY / NOT CONVERGED / NOT PUSHED.**
+- **The sweep:** tie-breaking only across the certified surface — every key appended was already in the query's scope; no filter, join, scope or business-ranking change. Six local commits (`ca7e279`, `bb4e484`, `5ac77ce`, `2a8b7ea`, `2211f75`, `aea55c9`), 28 files, +534 / −117.
+- **Headlines:** Today's four unordered feeders and both DISTINCT ON picks; `next-best.ts` (cut to a limit on priority alone); the `todaySort` call site; `timeline.ts`, whose comparator never returned 0 — now the exported total `compareTimelineEvents`; the portfolio order and its account-group encounter order; `/pipeline`'s book, ecosystem, CRM tie-out, first-wins registration Map and both capped cuts; the mapping matrix's coverage feeder.
+- **Evidence:** `ordering-determinism` red **32/11 → 43/0**, byte-identical over 5 plans × 2 heaps × owner/`app_rw`; negative controls for all seven classes; `tsc` clean; `npm test` **386/386**; build OK; **`certify-world --runs 2` 82 clean / 0 failures**, digest `e98b43254f98d5ec` unchanged, no drift; rehearsal **38/38** + 6/6 consent under both roles, no residue.
+- **A flaky certification, root-caused — and it was the harness, not the fix.** Three old-clause negative controls asserted that the planner *must* misbehave, which depends on physical layout, not on the code. Now a deterministic tie-existence check with the variation count kept as a diagnostic.
+- **SCOPE EXCEEDED APPROVAL:** 51 sites / 25 files were approved; 83 constructs + 24 + 10 were delivered across 28 files, three of them off the approved list. Each was a one-line tie-break meeting the stated criterion, but the size is an owner call. Nothing is pushed.
+- **NOT CONVERGED:** three audit rounds found 24 → 6 → 7. **7 sites remain open**, 4 of which need an owner decision (a provenance tie in `projection.ts:87`; a business-semantics defect at `intelligence.ts:384` where an arbitrary label's median prints as *the* median; a **persisted** campaign seed identity at `multi-vendor.ts:202`, which is the deferred D-G8-3A class; and a column-order choice at `mapping/page.tsx:843`).
+- **Open:** D-G8-2B deferred; **D-G8-3A, D-G8-3B and D-P1 remain OPEN** pre-Gate-9.
+
+Record: `H1-PRE-PILOT-HARDENING.md` § "D-G8-2A determinism hardening". **Gate 9 NOT begun.**
 
 **2026-09-15 (latest) — D-G8-1: HOSTED ACCEPTED / CLOSED.**
 - **The deployment:** `dcde3b6` auto-deployed as `dpl_7KsA9ssaPHwUxiZcQW8LWXAAe6Pe` (Preview, READY, the alias target). `/api/build` reports `app_rw` / false / true / live; sending off; env unchanged.

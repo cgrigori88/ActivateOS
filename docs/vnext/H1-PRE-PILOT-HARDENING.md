@@ -1816,3 +1816,80 @@ This was an agent-assisted, read-only audit of the SQL behind the 37 certified r
 - **D-P1 remains OPEN** (`/pipeline?timeframe=` can overwrite the canonical daily snapshot). It must be fixed before Gate 9 / a real pilot.
 
 **Gate 9 was NOT begun.** H1B and H1 are not complete.
+
+### D-G8-2A determinism hardening — FIXED LOCALLY / NOT CONVERGED / NOT PUSHED (2026-09-15)
+
+**What was done.** Tie-breaking only, on the certified 37-room surface, where ordering decides membership
+under a cap, a first/latest/best/representative pick, a value shown, visible priority, or downstream
+encounter order. Every key appended was already in the query's scope. No filter, join, scope or
+business-ranking change. Six local commits, **none pushed**: `ca7e279`, `bb4e484`, `5ac77ce`, `2a8b7ea`,
+`2211f75`, `aea55c9` — 28 files, +534 / −117.
+
+**The classes fixed.** Unordered query feeding a capped JS sort; non-unique `ORDER BY` + `LIMIT`;
+`DISTINCT ON` with an incomplete order; LATERAL / first-row picks; encounter-order Map/group consumers;
+a non-total JS comparator; and visible lists on tied business keys.
+
+**The headline fixes.** `today/overview.ts`'s four unordered Today feeders and both `DISTINCT ON` picks;
+`next-best.ts`, which cut to a limit on priority alone; `todaySort`'s call site, which ended on age;
+`timeline.ts`, whose comparator `(a, b) => (a.at < b.at ? 1 : -1)` **never returned 0** — replaced by the
+exported total `compareTimelineEvents`; `portfolio.ts`, which also fixed the account-group encounter
+order; `/pipeline`'s book, ecosystem and CRM tie-out, its first-wins deal-registration Map, and its two
+capped cuts; `populations.ts`'s coverage feeder, which drives the mapping matrix rows.
+
+**Evidence.**
+- `ordering-determinism` (seeded clone): **red 32 passed / 11 failed → 43 / 0**, byte-identical across
+  5 planner configurations × 2 heap layouts × owner and the real `app_rw` login.
+- Negative controls for all seven classes; `tests/timeline-order.test.ts` keeps the old comparator inline
+  as the control and proves antisymmetry, transitivity and 0-only-on-identical.
+- `tsc` clean · `npm test` **386/386** · build OK · **`certify-world --runs 2` 82 clean / 0 failures**,
+  digest `e98b43254f98d5ec` unchanged at start and after both runs, no table drift.
+- App_rw rehearsal **38/38** rooms identical under both roles, consent fixtures 6/6, D-G8-1 order intact.
+  The world digest was re-checked after every rehearsal: `e98b43254f98d5ec`, no residue.
+
+**A flaky certification, root-caused.** A full battery failed intermittently (42/1, then 41/2) while the
+same suite passed 11/11 standalone. It was **not** the fix: the three old-clause negative controls asserted
+that the planner *actually* resolves a tie inconsistently, which depends on physical layout and statistics,
+not on the code under test. The gate is now the property that can be guaranteed — each fixture genuinely
+ties on the key the old clause orders by — with the observed-variation count kept as a printed diagnostic
+(`2a8b7ea`). Root-caused by driving the battery manually, because `certify-world` keeps only each suite's
+summary line and discards the MATRIX reason.
+
+**SCOPE: the delivered change is materially larger than what was approved.** The approval was 51 sites
+across 25 files. Delivered: 83 ordering constructs in the first sweep, **+24** from a first verification
+round, **+10** from a second — across 28 files, including three not on the approved list
+(`lifecycle/projection.ts`, `pursuits/federation/ops.ts`, `campaigns/multi-vendor.ts`). Each addition was a
+one-line tie-break with a key already in scope and met the stated criterion, so it was judged to be
+completing the criterion rather than broadening it — **but that is an owner call, and the owner's standing
+instruction was to stop and report if the set proved materially larger.** Nothing is pushed; it is fully
+reversible.
+
+The first sweep's systematic error: four NAME columns were treated as unique tie-breaks when none of them
+carry a unique constraint — `companies.legal_name`, `partners.name`, `account_populations.name`,
+`taxonomy_nodes.name`.
+
+**NOT CONVERGED — 7 open sites (verified round three). Work stopped here rather than broadened again.**
+
+| # | Site | Controls | Why it was NOT fixed |
+|---|---|---|---|
+| 1 | `lifecycle/projection.ts:87` `sort((a,b) => b.confidence - a.confidence)[0]` | `sourceNote`, a value shown on `/pipeline`, the partner review sheet, the deal timeline and the account digest | **Owner decision.** The sibling reducer `state.ts:160` breaks the same tie on `observedLastAt`; choosing a key decides which provenance wins ("customer declared" vs "third-party, unverified") |
+| 2 | `partners/intelligence.ts:389` `group by 1`, no ORDER BY | rendered `classMix` string on the route-compare panel | Pure tie-break (`cls`); left with the group for one decision |
+| 3 | `partners/intelligence.ts:384` `rows.find((r) => r.med != null)?.med` | the printed "Median Nd recommendation → outcome" | **Not an ordering defect.** An arbitrary outcome label's median is presented as *the* median — a business-semantics fix |
+| 4 | `partners/intelligence.ts:137` `group by 1`, no ORDER BY | `byAttributionClass` string on the activation profile | Pure tie-break (`cls`) |
+| 5 | `campaigns/multi-vendor.ts:202` `order by sc.s desc nulls last limit 1` | the campaign seed account, **written to `campaigns.company_id`** | **Persisted identity, not display** — the D-G8-3A class the owner deferred |
+| 6 | `app/mapping/page.tsx:217` `play_templates`, no ORDER BY, last-write-wins into `playByNode` | play name / objective / CTA per matrix row | Pure tie-break (`id`); `play_templates` has no uniqueness on `taxonomy_node_id` |
+| 7 | `app/mapping/page.tsx:843` `selected_fields`, no ORDER BY | visible **column order** of the cell table | **Owner decision:** whether the row- or column-population's fields lead |
+
+**Recorded as NOT defects.** `admin/page.tsx:613` and `:640` pick an arbitrary non-self entry — a two-org
+partnership assumption, not a tie-break. `insights/page.tsx:121` `array_agg(t.to_stage)` feeds a
+set-membership test. `pipeline_snapshots` needs no tie-break: its PK is `(org_id, taken_on)`, so with
+`org_id` fixed `taken_on` is already unique — which also keeps this work clear of D-P1's table.
+
+**D-G8-2B (deferred, unchanged).** The ordering audit's **low** rows — non-default views and unlikely
+ties — remain deferred, as approved.
+
+**D-G8-3A (OPEN, pre-Gate-9).** Campaign asset persisted sequence. Not implemented, as instructed.
+**D-G8-3B (OPEN, pre-Gate-9).** Settlement deterministic identity/order. Not implemented, as instructed.
+**D-P1 (OPEN, pre-Gate-9).** `/pipeline?timeframe=` can overwrite the canonical daily snapshot.
+
+**Not pushed. No hosted deployment, no Vercel env change, no database, migration, role, RLS, grant or
+policy change; sending untouched; `qifatlqxfuhwrwvpbwsc` not contacted. Gate 9 NOT begun.**
