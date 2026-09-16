@@ -1,8 +1,10 @@
 import { withTenant } from "@/lib/db/tenant";
+import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { vnextEnvEnabled } from "@/lib/env/vnext-flags";
 import type { PoolClient } from "pg";
 import { currentRole } from "@/lib/auth/org";
 import { resumeRun, startRun, pauseRun, resumeAfterPause, cancelRun, type ExecuteResult, type RunRow, type StartRunArgs } from "./runtime";
+import { decideApproval, pendingApprovals, type DecisionOutcome, type PendingApproval } from "./approvals";
 
 /**
  * The request-triggered entry point for the governed Pursuit Runtime (P45-1, Slice 1).
@@ -89,4 +91,70 @@ export async function resume(runId: string, reason?: string, userId?: string | n
 }
 export async function cancel(runId: string, reason: string, userId?: string | null) {
   return withTenant(async (db, orgId) => { await assertEnabled(db, orgId); return cancelRun(db, orgId, runId, reason, userId); });
+}
+
+
+/**
+ * P45-2 — the approval decision boundary.
+ *
+ * THE IDENTITY RULE (owner ruling 1). These entry points NEVER accept a client-supplied approver.
+ * The principal is resolved server-side, and if it cannot be resolved the call FAILS CLOSED. That
+ * matters more here than anywhere else in the runtime: an approver identity that a caller can assert
+ * is not an approval, it is a request to be trusted.
+ *
+ * Where this leaves us, stated plainly rather than papered over:
+ *   • RUNTIME AUTHORIZATION is provable today — governed actor, ACTIVE lifecycle, same org,
+ *     principal match, live grant for the decision capability, tenant/RLS — all enforced server-side.
+ *   • PRODUCTION HUMAN IDENTITY is NOT proven, because application auth is not configured in this
+ *     deployment: `currentRole()` returns "owner" for every caller and no principal resolves. The
+ *     server model is therefore deliberately stricter than the demo can exercise, and a harness may
+ *     prove the workflow with explicitly constructed governed actors.
+ * Nothing below is weakened to accommodate that gap.
+ */
+export class NoTrustedPrincipalError extends Error {
+  constructor() { super("no trusted principal could be resolved — refusing to record an approval decision"); }
+}
+
+/** The server's own answer to "who is acting", never the caller's. Null means: fail closed. */
+async function trustedPrincipal(db: PoolClient): Promise<string | null> {
+  if (!authConfigured()) return null;          // demo/Basic-Auth: there is no human identity to trust
+  try {
+    const supabase = await supabaseServer();
+    return (await supabase.auth.getUser()).data.user?.id ?? null;
+  } catch { return null; }
+}
+
+/** Pending approvals for the caller's org. Read-only; INVALIDATED and decided requests never appear. */
+export async function listPendingApprovals(limit = 50): Promise<PendingApproval[]> {
+  return withTenant(async (db, orgId) => {
+    if (!(await runtimeEnabled(db, orgId))) throw new RuntimeDisabledError();
+    return pendingApprovals(db, orgId, limit);
+  });
+}
+
+/**
+ * Approve or reject a pending request from the interactive surface.
+ *
+ * The deciding governed actor is resolved from the TRUSTED principal — a caller cannot nominate one.
+ * With no trusted principal this refuses rather than guessing, which is why the interactive path is
+ * currently unusable in the demo posture and the harness path exists for acceptance.
+ */
+export async function decide(
+  requestId: string, decision: "APPROVED" | "REJECTED", reason?: string,
+): Promise<DecisionOutcome> {
+  return withTenant(async (db, orgId) => {
+    if (!(await runtimeEnabled(db, orgId))) throw new RuntimeDisabledError();
+    const principal = await trustedPrincipal(db);
+    if (!principal) throw new NoTrustedPrincipalError();
+    // The actor is looked up BY the trusted principal. There is no parameter through which a caller
+    // could name a different one.
+    const { rows } = await db.query<{ id: string }>(
+      `select id from governed_actors
+        where org_id = $1 and principal_user_id = $2 and actor_type = 'USER' and lifecycle = 'ACTIVE'`,
+      [orgId, principal]);
+    if (!rows[0]) throw new NoTrustedPrincipalError();
+    const role = await currentRole(db);
+    return decideApproval(db, orgId, requestId, decision,
+      { governedActorId: rows[0].id, principal, actor: { type: "USER", id: principal, orgId, role } }, reason);
+  });
 }

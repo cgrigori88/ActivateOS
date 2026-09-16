@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { createHash } from "node:crypto";
-import { dispatchSkill, type Actor } from "@/lib/pursuits/federation/skills";
+import { dispatchSkill, effectiveApprovalRequired, type Actor } from "@/lib/pursuits/federation/skills";
+import { requestApproval } from "./approvals";
 import { recordChange, type ChangeType } from "@/lib/pursuits/ledger";
 import type { DataEnvironment } from "@/lib/pursuits/lineage";
 
@@ -180,8 +181,9 @@ async function loadRun(db: PoolClient, orgId: string, runId: string) {
     id: string; pursuit_id: string; plan_id: string; plan_revision_id: string; governed_actor_id: string;
     initiated_by_user_id: string | null; status: RunStatus; current_step_id: string | null;
     correlation_id: string; basis_fingerprint: string; data_environment: DataEnvironment; reason: string | null;
+    continuation: Record<string, unknown> | null;
   }>(`select id, pursuit_id, plan_id, plan_revision_id, governed_actor_id, initiated_by_user_id, status,
-             current_step_id, correlation_id, basis_fingerprint, data_environment, reason
+             current_step_id, correlation_id, basis_fingerprint, data_environment, reason, continuation
         from pursuit_runs where id = $1 and org_id = $2`, [runId, orgId]);
   return rows[0] ?? null;
 }
@@ -268,6 +270,11 @@ export async function resumeRun(db: PoolClient, orgId: string, runId: string, ac
   if (!run) throw new Error("run not found in this org");
   if (TERMINAL.has(run.status)) return { runStatus: run.status, stepStatus: "—", invocationId: null, reason: run.reason, dispatched: false };
   if (run.status === "PAUSED") return { runStatus: "PAUSED", stepStatus: "PAUSED", invocationId: null, reason: "paused — resume first", dispatched: false };
+  // A pending approval is released by a DECISION, never by calling resume again. Anything else would
+  // make "waiting for a human" bypassable by retry.
+  if (run.status === "WAITING_FOR_APPROVAL")
+    return { runStatus: "WAITING_FOR_APPROVAL", stepStatus: "WAITING_FOR_APPROVAL", invocationId: null,
+             reason: "awaiting a human decision", dispatched: false };
   if (!RESUMABLE.has(run.status)) return { runStatus: run.status, stepStatus: "—", invocationId: null, reason: `not resumable from ${run.status}`, dispatched: false };
 
   if (await cancelIfSuperseded(db, orgId, run))
@@ -298,6 +305,39 @@ export async function resumeRun(db: PoolClient, orgId: string, runId: string, ac
     await transitionRun(db, orgId, runId, run.pursuit_id, run.status, "TERMINAL_FAILURE",
       { reason: "retry budget exhausted", changeType: "RUN_FAILED", stepId: step.id, governedActorId: run.governed_actor_id, env: run.data_environment });
     return { runStatus: "TERMINAL_FAILURE", stepStatus: "TERMINAL_FAILURE", invocationId: null, reason: "retry budget exhausted", dispatched: false };
+  }
+
+  // ── APPROVAL GATE (P45-2) ──────────────────────────────────────────────────────────────────────
+  // Policy is resolved from the canonical skill plus this actor's grant override, immediately before
+  // anything consequential happens. A required approval parks the run and step in
+  // WAITING_FOR_APPROVAL and returns; execution resumes only through a decided request.
+  const { rows: policy } = await db.query<{ approval_required: boolean; override: boolean | null }>(
+    `select gs.approval_required,
+            (select g.approval_required_override from actor_capability_grants g
+              where g.org_id = $1 and g.actor_id = $2 and g.skill_id = $3 and g.status = 'ACTIVE'
+              limit 1) as override
+       from governed_skills gs where gs.skill_id = $3 and gs.version = $4`,
+    [orgId, run.governed_actor_id, step.skill_id, step.skill_version]);
+  const needsApproval = policy[0]
+    ? effectiveApprovalRequired(step.skill_id, policy[0].approval_required === true, policy[0].override)
+    : false;
+  // `continuation.approvedRequestId` is set only by a committed APPROVED decision, so an approved
+  // run passes straight through rather than re-requesting on every resume.
+  const alreadyApproved = (run.continuation as { approvedRequestId?: string } | null)?.approvedRequestId != null;
+  if (needsApproval && !alreadyApproved) {
+    const requestId = await requestApproval(db, orgId, {
+      pursuitId: run.pursuit_id, planRevisionId: run.plan_revision_id, runId, runStepId: step.id,
+      skillId: step.skill_id, skillVersion: step.skill_version,
+      requestedByActorId: run.governed_actor_id, env: run.data_environment,
+      why: `${step.skill_id} requires a human decision before it may execute`,
+    });
+    await db.query(`update pursuit_run_steps set status = 'WAITING_FOR_APPROVAL', updated_at = now() where id = $1 and org_id = $2`, [step.id, orgId]);
+    await db.query(
+      `update pursuit_runs set status = 'WAITING_FOR_APPROVAL', current_step_id = $2, reason = $3,
+              last_transition_at = now(), updated_at = now()
+        where id = $1 and org_id = $4`, [runId, step.id, `awaiting approval (${requestId})`, orgId]);
+    return { runStatus: "WAITING_FOR_APPROVAL", stepStatus: "WAITING_FOR_APPROVAL", invocationId: null,
+             reason: `awaiting approval (${requestId})`, dispatched: false };
   }
 
   // ── BEFORE DISPATCH: persist RUNNING with this attempt's identity ──────────────────────────────

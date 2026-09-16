@@ -48,6 +48,31 @@ export interface DispatchCtx {
 }
 export interface DispatchResult { status: string; invocationId: string | null; reason?: string; result?: unknown; queued?: boolean }
 
+/** The capability that authorises deciding a pending governed action (P45-2). */
+export const DECIDE_SKILL = "decide_governed_action";
+
+/**
+ * Does this action require a human decision before it may execute?
+ *
+ *   override TRUE  → REQUIRED — a grant may always NARROW policy by demanding approval.
+ *   override NULL  → the canonical skill policy.
+ *   override FALSE → only ever "not required" when the SKILL itself does not require it. A grant can
+ *                    never relax a canonical requirement: in Slice 2 every `approval_required = true`
+ *                    is HARD. A future soft-approval policy would need its own schema/policy change,
+ *                    and that abstraction is deliberately not invented here.
+ *
+ * The decision capability itself can never require approval — the base case that stops the
+ * governance model recursing.
+ */
+export function effectiveApprovalRequired(
+  skillId: string, skillApprovalRequired: boolean, override: boolean | null | undefined,
+): boolean {
+  if (skillId === DECIDE_SKILL) return false;
+  if (override === true) return true;
+  if (override === false) return skillApprovalRequired === true;   // FALSE cannot weaken a hard rule
+  return skillApprovalRequired === true;
+}
+
 interface SkillDef {
   skillId: string; version: number; description: string;
   effectClass: EffectClass; eligibleActors: ActorType[]; requiredPermission: keyof typeof ROLE_RANK;
@@ -159,6 +184,15 @@ export const SKILL_REGISTRY: SkillDef[] = [
     precheck: async (db, actor, ctx) => (await import("../../stakeholders/assert")).stakeholderInOrg(db, actor.orgId, ctx.args),
     handler: async (db, actor, ctx) => (await import("../../stakeholders/assert")).assertStakeholderRole(
       db, actor, ctx.args ?? {}, (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION") },
+  // P45-2. The capability that authorises DECIDING a pending governed action — both outcomes, with
+  // APPROVED | REJECTED carried as the decision, which is why it is not named "approve_*".
+  //
+  // ITS OWN approval_required MUST REMAIN FALSE, FOREVER. If deciding could itself require a
+  // decision, the governance model recurses without a base case. `effectiveApprovalRequired` refuses
+  // to return true for this skill no matter what a grant override says, so the invariant cannot be
+  // undone by data.
+  { skillId: DECIDE_SKILL, version: 1, description: "Decide a pending governed action (approve or reject)", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER"], requiredPermission: "operator" },
   // Canonical economic assertion (P2B §7): the ONLY authoritative path for an economic driver.
   // Migration 0099's trigger rejects a trusted-provenance economic fact written outside it.
   { skillId: "assert_economic_fact", version: 1, description: "Assert an economic driver (point or range) with provenance, source and evidence", effectClass: "INTERNAL_WRITE",

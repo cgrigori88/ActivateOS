@@ -5,7 +5,7 @@ flag default **OFF** · runtime tables **empty** · no external sending.
 **P45-D1 — HOSTED CORRECTED / CLOSED.** **P45-1 — HOSTED ACCEPTED / CLOSED (2026-09-16).**
 P4's first governed actor + explicit capability grant and P5's first durable Pursuit execution are
 both **PROVEN HOSTED** through the real `app_rw` runtime. Fixture removed; **159/159 fingerprints
-restored exactly**. Slice 2 **not started**.
+restored exactly**. **Slice 2 (P45-2) IMPLEMENTED LOCALLY / NOT PUSHED** — migration **0110**, `p45-approvals` **56/56**.
 
 This is the architecture record for the amended roadmap's P4 (AI Control Plane) and P5 (Pursuit
 Runtime). It begins after H1 closed and Gate 9 accepted pilot readiness.
@@ -584,3 +584,135 @@ partnership-app-rw 117/0 · tenant-isolation 205/0 · search-path 39/0 · catalo
 **P5:** first durable Pursuit runtime execution **proven hosted**.
 Migration **109 unchanged**. Permanent Preview `controlPlane` remained **OFF** throughout.
 **Slice 2 — NOT STARTED.**
+
+
+---
+
+## 17. P45-2 — the approval lifecycle (Slice 2), implemented locally 2026-09-16
+
+### The one rule
+
+> **Approval authorizes continuation. It does not confer authority.**
+
+Nothing in the approval path creates a capability, restores a revoked grant, reactivates a suspended
+actor, bypasses principal matching, tenancy, feature gates or the send posture, or retargets a stale
+run. A decision only unblocks work that was *already* governed.
+
+### What was missing
+
+`WAITING_FOR_APPROVAL` was schema-legal on runs and steps since 0109 but **unreachable**:
+`governed_skills.approval_required` was read **nowhere** in `src/`, so nothing could produce it. There
+was no Approvals surface and no application surface read the runtime at all.
+
+### Migration 0110 — additive, append-only
+
+`pursuit_run_approvals` with `REQUESTED | APPROVED | REJECTED | INVALIDATED`, plus the four ledger
+values `APPROVAL_REQUESTED / GRANTED / REJECTED / INVALIDATED` (0103 §5 append pattern), plus a
+`(org_id, id)` key on `pursuit_run_steps` so approvals can reference them tenant-consistently.
+
+**Explicit request identity** (owner amendment): the `REQUESTED` row has its own id and a terminal row
+**names** it via `request_id` — the request is never mutated. Enforced relationally:
+
+- `pursuit_run_approvals_one_request` — one open `REQUESTED` per step;
+- `pursuit_run_approvals_one_terminal` — **at most one terminal decision per request**;
+- a composite self-FK `(request_id, org_id, run_id, run_step_id)` → `(id, org_id, run_id, run_step_id)`
+  so a terminal decision **provably shares its request's org / run / step**;
+- a shape CHECK giving each decision kind exactly the attribution it is entitled to — `INVALIDATED`
+  carries **no deciding actor and a mandatory reason**, because it is system-governed, never a human act.
+
+**`app_rw` receives `INSERT, SELECT` only.** UPDATE/DELETE are revoked and never re-granted. RLS
+ENABLE + FORCE with `is_org_member(org_id)`. **No SECURITY DEFINER, no RLS weakening, no change to
+`change_ledger` privileges, protected class still 31 / 0.**
+
+### Policy — `approval_required_override`
+
+```
+TRUE  → REQUIRED (a grant may always NARROW policy)
+NULL  → the canonical skill policy
+FALSE → "not required" ONLY when the skill itself does not require it
+```
+
+**`FALSE` can never weaken a canonical requirement.** In Slice 2 every `approval_required = true` is
+**hard**; a future soft-approval policy would need its own schema/policy change, and that abstraction
+is deliberately not invented here.
+
+### The recursion base case
+
+The decision capability is **`decide_governed_action`** — neutrally named because one capability
+authorises *both* outcomes, with `APPROVED | REJECTED` carried as the decision.
+`effectiveApprovalRequired()` returns **false for it unconditionally**, so no grant override can force
+an approval-of-an-approval. Without that base case the governance model recurses forever.
+
+### Authority model
+
+Approval is **itself a governed action**: the decider must be an ACTIVE `governed_actor` in the same
+org, with a matching principal, holding a live grant for `decide_governed_action`, passing every
+existing `dispatchSkill` check. **A governed actor cannot decide its own request.** Authority is
+therefore explicit and grantable rather than inferred from UI visibility.
+
+### The stale-authority rule
+
+Authority at request time proves nothing about authority now, so it is re-evaluated **immediately
+before continuation**. If the grant was revoked, the actor suspended, or the revision superseded while
+the request waited, the request is **INVALIDATED** with that reason — a human must never be able to
+approve an action that can no longer legally execute. `INVALIDATED` requests are **never** offered as
+pending.
+
+### The race — three independent arbiters, one transaction
+
+1. **`pursuit_run_approvals_one_terminal`** — the *race arbiter*: exactly one terminal row commits.
+2. **Compare-and-set** on the run and step out of `WAITING_FOR_APPROVAL` — the *runtime arbiter*.
+3. **Step idempotency** (P45-1) — the backstop: even a double resume replays one invocation.
+
+All inside **one transaction**, and the transition rowCount is checked: a durable `APPROVED` decision
+can never commit while the run is stranded in `WAITING_FOR_APPROVAL` — it rolls back instead.
+
+> **A defect found and fixed by the suite:** the decision's dispatch idempotency key originally omitted
+> the decider, so a second approver was handed a **replayed** result instead of being evaluated on
+> their own merits — a viewer could have inherited an operator's dispatch. The key now includes the
+> deciding actor, so the unique index arbitrates the race rather than dispatch idempotency.
+
+### The identity boundary — stated, not papered over
+
+`decide()` resolves the principal **server-side** and **fails closed** if it cannot. A caller can
+never nominate an approver.
+
+- **Runtime authorization is provable today** — governed actor, lifecycle, org, principal match, live
+  grant, tenant/RLS, all enforced server-side.
+- **Production human identity is NOT proven**, because application auth is unconfigured here:
+  `currentRole()` returns `"owner"` for every caller and no principal resolves. The interactive
+  buttons therefore legitimately refuse in this posture, and say so.
+
+The server model is **deliberately stricter than the demo can exercise**, and nothing was weakened to
+accommodate it.
+
+### Surface
+
+`/approvals` — what is waiting, on which pursuit/account, what it would do, who asked, why a person
+decides, and Approve / Reject, with a link through to the pursuit. Narrow by design; not a workflow
+builder. **`WAITING_FOR_APPROVAL` is derived from the lifecycle, never stored twice** — the page and
+Pursuit detail read the same `pendingApprovals` model, so there is one representation of the state.
+
+### Local acceptance — `p45-approvals` 56/56
+
+Every scenario runs through **`withTenantOrg` on the real `app_rw` login**. Policy resolution
+(TRUE/NULL/FALSE + the recursion base case) · park with **no** invocation and **no** draft · resume
+alone cannot release a pending approval · APPROVE resumes the **same persisted run** and **exactly one**
+execution follows · append-only history with the terminal row naming its request and the request row
+unchanged · `app_rw` can neither UPDATE nor DELETE approval rows · replayed APPROVE cannot duplicate
+execution · a late REJECT cannot overturn a committed APPROVE · REJECT terminates durably as
+`CANCELLED / APPROVAL_REJECTED` **without overloading the invocation vocabulary** · wrong principal,
+ordinary viewer, self-approval and another tenant all refused with nothing executed · **grant revoked
+→ INVALIDATED**, **actor suspended → INVALIDATED**, **revision superseded → INVALIDATED /
+PLAN_SUPERSEDED** still pinned to the original revision · INVALIDATED never offered as pending · **all
+three races** (approve/approve, approve/reject, reject/reject) yield exactly one terminal decision, one
+winner, the loser told *already decided*, and at most one consequential execution · both feature gates
+· the decision capability never enters an approval workflow · **send 0/0/0/0/0**.
+
+**Certification:** tsc clean · 429/429 · build clean · p45-approvals **56/0** · p45-runtime 50/0 ·
+persisted 17/0 · semantic 50/0 · dg85 19/0 · dp1 26/0 · partnership-app-rw 117/0 · tenant-isolation
+205/0 · search-path 39/0 · catalogue guard 12/0 (**31 / 0**) · rehearsal 38/38 + 6/6 ·
+**`certify-world --runs 2` 94 clean / 0 failures, digest `f72d1ff0d6b07b42` stable**. Local world 160
+tables / 1051 rows; **zero fixture residue**; canonical `approval_required` still false on all skills.
+
+**Hosted untouched.** Not pushed, not deployed, 0110 applied **locally only**.

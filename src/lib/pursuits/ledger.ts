@@ -40,7 +40,10 @@ export type ChangeType =
   // P45-1 governed runtime (0109). A run transition is a change to the pursuit's execution state,
   // so it belongs in the universal ledger rather than a parallel runtime log.
   | "RUN_STARTED" | "RUN_PAUSED" | "RUN_RESUMED" | "RUN_COMPLETED" | "RUN_FAILED"
-  | "RUN_BLOCKED" | "RUN_CANCELLED";
+  | "RUN_BLOCKED" | "RUN_CANCELLED"
+  // P45-2 approval lifecycle (0110). REQUESTED/GRANTED/REJECTED are the human path; INVALIDATED is
+  // system-governed — authority lapsed while the request waited.
+  | "APPROVAL_REQUESTED" | "APPROVAL_GRANTED" | "APPROVAL_REJECTED" | "APPROVAL_INVALIDATED";
 
 export type ActorType = "USER" | "AGENT" | "WORKER" | "SYSTEM" | "IMPORT" | "API";
 export type TriggerType =
