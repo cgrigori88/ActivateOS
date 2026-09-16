@@ -103,13 +103,79 @@ async function main(): Promise<void> {
 
   // Fuzzy: one candidate resolves, two do not.
   const fuzz1 = await company(db, "Helios Manufacturing Group");
+  // "Helios Manufacturing Group" normalizes to "helios manufacturing" (trailing legal suffix), so the
+  // typed name is an exact NORMALIZED match — rung 4, ahead of fuzzy. This is the corrected ladder.
   const rFuzz = await resolveCompanyIdentity(db, "Helios Manufacturing");
-  check("4C: a UNIQUE supported fuzzy match resolves",
-    rFuzz.kind === "RESOLVED" && rFuzz.companyId === fuzz1 && rFuzz.via === "UNIQUE_FUZZY", JSON.stringify(rFuzz));
+  check("4C: an exact normalized canonical match resolves at rung 4, ahead of fuzzy",
+    rFuzz.kind === "RESOLVED" && rFuzz.companyId === fuzz1 && rFuzz.via === "NORMALIZED_NAME", JSON.stringify(rFuzz));
   const fuzz2 = await company(db, "Helios Manufacturing Partners");
-  const rFuzz2 = await resolveCompanyIdentity(db, "Helios Manufacturing");
+  const rStill = await resolveCompanyIdentity(db, "Helios Manufacturing");
+  check("4C: adding a longer fuzzy sibling does NOT make the normalized-exact match ambiguous",
+    rStill.kind === "RESOLVED" && rStill.companyId === fuzz1 && rStill.via === "NORMALIZED_NAME", JSON.stringify(rStill));
+  // A typed value with ZERO normalized-exact matches and two fuzzy candidates stays unresolved.
+  const rFuzz2 = await resolveCompanyIdentity(db, "Helios Manufact");
   check("4C: TWO fuzzy candidates resolve to UNRESOLVED, never the shorter/first one",
-    rFuzz2.kind === "AMBIGUOUS" && rFuzz2.candidates === 2, JSON.stringify(rFuzz2));
+    rFuzz2.kind === "AMBIGUOUS" && rFuzz2.via === "UNIQUE_FUZZY" && rFuzz2.candidates === 2, JSON.stringify(rFuzz2));
+
+  // ── rung 4: exact normalized canonical match (D-G8-4C correction) ───────────────────────────
+  // The hosted defect, as a regression: the exact legal name used to reach the fuzzy rung and come
+  // back AMBIGUOUS because a longer sibling also matched the substring.
+  // The canonical world already carries the exact hosted fixture — "Initech Financial" and
+  // "Initech Financial (expansion)", with normalized_name stored RAW. Resolve against those rather
+  // than planting duplicates, so this is the hosted defect itself, reproduced.
+  const initech = (await db.query<{ id: string }>(`select id from companies where legal_name = 'Initech Financial'`)).rows[0].id;
+  const initechX = (await db.query<{ id: string }>(`select id from companies where legal_name = 'Initech Financial (expansion)'`)).rows[0].id;
+  const rIni = await resolveCompanyIdentity(db, "Initech Financial");
+  check("4C rung 4: the exact name resolves via NORMALIZED_NAME even though a longer sibling fuzzy-matches",
+    rIni.kind === "RESOLVED" && rIni.companyId === initech && rIni.via === "NORMALIZED_NAME", JSON.stringify(rIni));
+  const fuzzyN = (await db.query<{ n: string }>(
+    `select count(*)::text n from companies where legal_name ilike $1`, ["%Initech Financial%"])).rows[0].n;
+  check("4C rung 4: and the fuzzy rung alone would have been ambiguous (the defect reproduction)",
+    Number(fuzzyN) >= 2, `${fuzzyN} fuzzy candidates`);
+  check("4C rung 4: it does NOT rely on companies.normalized_name (stored raw here, as on hosted)",
+    (await db.query<{ n: string }>(`select count(*)::text n from companies where id = $1 and normalized_name = 'initech financial'`, [initech])).rows[0].n === "0");
+
+  // Suffix-stripped canonical names resolve at rung 4 too.
+  const globexCo = await company(db, "Globex Worldwide Inc.", "Globex Worldwide Inc.");
+  const rGlobex = await resolveCompanyIdentity(db, "Globex Worldwide Inc.");
+  check("4C rung 4: a suffixed canonical name ('Inc.') resolves via NORMALIZED_NAME",
+    rGlobex.kind === "RESOLVED" && rGlobex.companyId === globexCo && rGlobex.via === "NORMALIZED_NAME", JSON.stringify(rGlobex));
+  const starkCo = await company(db, "Stark Dynamics LLC", "Stark Dynamics LLC");
+  const rStark = await resolveCompanyIdentity(db, "Stark Dynamics LLC");
+  check("4C rung 4: an 'LLC' canonical name resolves via NORMALIZED_NAME",
+    rStark.kind === "RESOLVED" && rStark.companyId === starkCo && rStark.via === "NORMALIZED_NAME", JSON.stringify(rStark));
+
+  // Two canonical names that normalize to the SAME value are genuinely indistinguishable.
+  await company(db, "Quasar Dynamics Inc", "Quasar Dynamics Inc");
+  await company(db, "Quasar Dynamics LLC", "Quasar Dynamics LLC");
+  const rQuasar = await resolveCompanyIdentity(db, "Quasar Dynamics");
+  check("4C rung 4: two canonical names normalizing to the same value are AMBIGUOUS, never picked",
+    rQuasar.kind === "AMBIGUOUS" && rQuasar.via === "NORMALIZED_NAME" && rQuasar.candidates === 2, JSON.stringify(rQuasar));
+
+  // An alphabetically-EARLIER company that also fuzzy-matches must not win.
+  await company(db, "Aaa Initech Financial Co", "Aaa Initech Financial Co");
+  const rIni2 = await resolveCompanyIdentity(db, "Initech Financial");
+  check("4C rung 4: an alphabetically-earlier fuzzy-matching decoy does not change the resolution",
+    rIni2.kind === "RESOLVED" && rIni2.companyId === initech, JSON.stringify(rIni2));
+
+  // uuid order and heap order are irrelevant to a normalized-exact match.
+  const uuidOutcomes = new Set<string>();
+  for (const _ of [0, 1]) {
+    await db.query(`update companies set legal_name = legal_name where id = any($1)`, [[initech, initechX]]);
+    uuidOutcomes.add(JSON.stringify(await resolveCompanyIdentity(db, "Initech Financial")));
+  }
+  check("4C rung 4: heap/tuple rewrites cannot change a normalized-exact resolution", uuidOutcomes.size === 1);
+  const lowId = "00000000-0000-4000-8000-0000000000aa";
+  await db.query(`insert into companies (id, legal_name, normalized_name) values ($1,'Initech Financial Overseas','Initech Financial Overseas')`, [lowId]);
+  const rIni3 = await resolveCompanyIdentity(db, "Initech Financial");
+  check("4C rung 4: a lower-uuid fuzzy-matching decoy does not change the resolution",
+    rIni3.kind === "RESOLVED" && rIni3.companyId === initech, JSON.stringify(rIni3));
+
+  // Zero normalized-exact matches still proceeds to the unique fuzzy rung.
+  const only = await company(db, "Peregrine Instruments Worldwide", "Peregrine Instruments Worldwide");
+  const rFall = await resolveCompanyIdentity(db, "Peregrine Instruments W");
+  check("4C: zero normalized-exact matches falls through to UNIQUE_FUZZY",
+    rFall.kind === "RESOLVED" && rFall.companyId === only && rFall.via === "UNIQUE_FUZZY", JSON.stringify(rFall));
 
   // Negative controls: none of the forbidden signals can change the answer.
   const permutations = [[fuzz1, fuzz2], [fuzz2, fuzz1]];
@@ -124,7 +190,7 @@ async function main(): Promise<void> {
   console.log("\nD-G8-4C — ask-scope security");
   const tool = { name: "account_brief" } as Parameters<typeof decideToolScope>[2];
   const scopeIds = [fuzz1, fuzz2];
-  const amb = await decideToolScope(db, ORG, tool, { account: "Helios Manufacturing" }, scopeIds);
+  const amb = await decideToolScope(db, ORG, tool, { account: "Helios Manufact" }, scopeIds);
   check("ask-scope: an AMBIGUOUS account blocks execution (allowed = false)", amb.allowed === false);
   check("ask-scope: ambiguity is reported as its own outcome, not as out-of-scope",
     amb.ambiguous?.ambiguous_account === true && amb.refusal === undefined, JSON.stringify(amb.ambiguous ?? amb.refusal));

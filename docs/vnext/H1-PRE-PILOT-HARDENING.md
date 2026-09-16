@@ -2658,3 +2658,57 @@ INFERRED_WINDOW (2).
 
 **Still open:** **D-G8-4C** · D-G8-5 (`shared_in_evidence()`, migration-gated) · **D-P1**. All
 PRE-GATE-9. **Gate 9 NOT started.**
+
+### D-G8-4C CORRECTION — rung 4 normalizes BOTH sides (local, 2026-09-16)
+
+**Owner ruling: normalization at comparison time.** No backfill of `companies.normalized_name`, no
+migration, no hosted data rewrite, no separate raw-`legal_name` rung, no weakening of ambiguity.
+
+**Root cause.** Rung 4 compared `normalizeCompanyName(typed)` against the **stored**
+`companies.normalized_name`. On this world that column holds the RAW legal name, so the rung was inert
+(**0 / 14** agreement) and every exact name fell through to the fuzzy rung.
+
+**The fix.** Rung 4 now applies **the same application normalizer to both sides** —
+`normalizeCompanyName(typed)` vs `normalizeCompanyName(legal_name)` — over the authorized set when the
+caller supplies one, otherwise the company catalogue. Exactly one match resolves; two or more are
+**AMBIGUOUS**; zero falls through to the unique-fuzzy rung, which can never override a normalized-exact
+match. `companies.normalized_name` is **neither read by this resolver nor modified**: `ingest/staged.ts`,
+`motions/page.tsx` and `identity/resolve.ts` keep their own contract with that column. The comparison is
+not pushed into SQL because a second normalizer that drifts from the first is precisely the defect being
+fixed. No shortest-name, alphabetical, uuid, encounter- or heap-order fallback exists anywhere in it.
+
+**The hosted defect, verified fixed against the REAL hosted data (read-only, `txid` null):**
+
+| typed | before | after | fuzzy candidates |
+|---|---|---|---|
+| `Initech Financial` | **AMBIGUOUS (2)** | **RESOLVED via NORMALIZED_NAME** → Initech Financial | 2 |
+| `Globex Manufacturing Inc.` | RESOLVED via UNIQUE_FUZZY | **RESOLVED via NORMALIZED_NAME** | 1 |
+| `Stark Industries LLC` | RESOLVED via UNIQUE_FUZZY | **RESOLVED via NORMALIZED_NAME** | 1 |
+| `Acme Robotics` / `Tyrell Corp` | RESOLVED via UNIQUE_FUZZY | **RESOLVED via NORMALIZED_NAME** | 1 |
+| `o` | AMBIGUOUS (7) | **AMBIGUOUS (7)** — ambiguity handling unweakened | 7 |
+
+**Regression tests added** (`semantic-determinism`, now **50/0**): the Initech pair is resolved against
+the canonical world's own rows, not a planted duplicate, so it is the hosted defect itself; the fuzzy
+rung alone is confirmed ambiguous (2 candidates); the resolver is proven not to rely on the stored
+`normalized_name`; suffixed canonical names (`Inc.`, `LLC`) resolve at rung 4; **two names normalizing to
+the same value are AMBIGUOUS, never picked**; an alphabetically-earlier fuzzy-matching decoy, a
+lower-uuid decoy and heap/tuple rewrites all leave the resolution unchanged; zero normalized-exact
+matches falls through to UNIQUE_FUZZY; two fuzzy candidates stay UNRESOLVED; ask-scope still fails closed
+with no candidate leakage.
+
+**Two earlier expectations were corrected, not the code:** `"Helios Manufacturing"` now resolves at rung
+4 (its `Group` sibling strips a trailing legal suffix to the same value), where the old test expected
+`UNIQUE_FUZZY`. That is the corrected ladder behaving as ruled.
+
+**Alias semantics unchanged:** ID-type alias above name/domain; conflicting ID-type aliases without a
+namespace UNRESOLVED; an explicit namespace resolves within it.
+
+**Certification (local).** `tsc` clean · `npm test` **421/421** · build OK · **`certify-world --runs 2`
+86 clean / 0 failures**, digest **`e98b43254f98d5ec`** unchanged · rehearsal **38/38 + 6/6** ·
+`partnership-app-rw` **117/0** · `tenant-isolation` **205/0** · `persisted-determinism` **17/0** ·
+`semantic-determinism` **50/0** · `search-path` **31 protected / 0 unsafe** · canonical fingerprint
+**IDENTICAL** · send rows **0/0/0/0/0** · **migrations still 107** · `companies` still **14 rows** (no
+data repair). No D-G8-4A/B/D regression.
+
+**Status: D-G8-4C corrected LOCALLY, NOT PUSHED.** Hosted still runs `982a01f`, which carries the
+defect in its fail-safe form. D-G8-5 and **D-P1** remain OPEN / PRE-GATE-9. **Gate 9 NOT started.**

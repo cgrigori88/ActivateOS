@@ -16,10 +16,11 @@ import { normalizeCompanyName } from "./normalize";
  *
  * THE LADDER (owner ruling):
  *   1. explicit canonical `companies.id`
- *   2. explicit alias / mapped identity — ID-type aliases outrank name/domain aliases
- *   3. exact `companies.normalized_name`
- *   4. a UNIQUE supported fuzzy match
- *   5. UNRESOLVED
+ *   2. exact ID-type alias
+ *   3. exact name/domain alias
+ *   4. exact normalized canonical company-name match (both sides normalized by the SAME function)
+ *   5. a UNIQUE supported fuzzy match
+ *   6. UNRESOLVED
  *
  * Name length, alphabetical order, uuid order and row order are NOT identity signals and appear
  * nowhere below. Anything the ladder cannot decide is AMBIGUOUS — never a guess.
@@ -70,7 +71,7 @@ export async function resolveCompanyIdentity(
     return { kind: "NONE" };
   }
 
-  // ── 2. explicit alias / mapped identity ─────────────────────────────────────────────────────
+  // ── 2-3. explicit alias / mapped identity (ID-type alias, then name/domain alias) ─────────────────────────────────────────────────────
   const aliasRows = (await db.query<{ company_id: string; alias_type: string }>(
     `select company_id, alias_type from company_aliases where lower(alias) = lower($1)`, [text])).rows;
   const typed_ns = opts.aliasType ?? null;
@@ -87,16 +88,37 @@ export async function resolveCompanyIdentity(
   if (labelHits.length === 1) return { kind: "RESOLVED", companyId: labelHits[0], via: "NAME_ALIAS" };
   if (labelHits.length > 1) return { kind: "AMBIGUOUS", via: "NAME_ALIAS", candidates: labelHits.length };
 
-  // ── 3. exact normalized canonical match ─────────────────────────────────────────────────────
-  const normalized = normalizeCompanyName(text);
-  if (normalized) {
-    const ids = distinct(inScope((await db.query<{ id: string }>(
-      `select id from companies where normalized_name = $1`, [normalized])).rows.map((r) => r.id)));
-    if (ids.length === 1) return { kind: "RESOLVED", companyId: ids[0], via: "NORMALIZED_NAME" };
-    if (ids.length > 1) return { kind: "AMBIGUOUS", via: "NORMALIZED_NAME", candidates: ids.length };
+  // ── 4. exact normalized canonical match ─────────────────────────────────────────────────────
+  //
+  // BOTH SIDES are normalized by the SAME application function. This rung used to compare the
+  // normalized input against the stored `companies.normalized_name`, which silently made it inert:
+  // on the hosted world that column holds the RAW legal name, so 0 of 14 companies satisfied
+  // `normalized_name = normalizeCompanyName(legal_name)` and every exact name fell through to the
+  // fuzzy rung. The visible consequence was that typing the exact name "Initech Financial" came back
+  // AMBIGUOUS, because the substring match also caught "Initech Financial (expansion)".
+  //
+  // `companies.normalized_name` is deliberately NOT read here and NOT modified: other callers
+  // (ingest/staged.ts, motions/page.tsx, identity/resolve.ts) have their own contract with that
+  // column, and repairing it is data work, not identity-lookup semantics.
+  //
+  // The comparison cannot be pushed into SQL without re-implementing the normalizer there, and two
+  // normalizers that drift are exactly the defect being fixed — so the candidate rows are normalized
+  // in application code. The scan is bounded by the authorized set when the caller supplies one, and
+  // otherwise by the company catalogue; this runs once per typed lookup, not in a loop.
+  const wanted = normalizeCompanyName(text);
+  if (wanted) {
+    const candidates = scoped
+      ? (await db.query<{ id: string; legal_name: string }>(
+          `select id, legal_name from companies where id = any($1)`, [scope])).rows
+      : (await db.query<{ id: string; legal_name: string }>(`select id, legal_name from companies`)).rows;
+    const hits = distinct(candidates.filter((r) => normalizeCompanyName(r.legal_name) === wanted).map((r) => r.id));
+    // Exactly one canonical name normalizes to the input: that IS the answer, and the fuzzy rung
+    // below never gets to override it. Two or more are genuinely indistinguishable by name.
+    if (hits.length === 1) return { kind: "RESOLVED", companyId: hits[0], via: "NORMALIZED_NAME" };
+    if (hits.length > 1) return { kind: "AMBIGUOUS", via: "NORMALIZED_NAME", candidates: hits.length };
   }
 
-  // ── 4. a UNIQUE supported fuzzy match (5. otherwise unresolved) ─────────────────────────────
+  // ── 5. a UNIQUE supported fuzzy match (6. otherwise unresolved) ─────────────────────────────
   const pat = `%${text.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
   const ids = distinct(inScope((await db.query<{ id: string }>(
     `select id from companies where legal_name ilike $1`, [pat])).rows.map((r) => r.id)));
