@@ -302,8 +302,11 @@ async function main(): Promise<void> {
   const decideRows = Number((await db.query<{ n: string }>(
     `select count(*)::text n from pursuit_run_approvals a join pursuit_run_steps s on s.id=a.run_step_id where s.skill_id=$1`, [DECIDE_SKILL])).rows[0].n);
   check("48: decide_governed_action never itself enters an approval workflow", decideRows === 0, `${decideRows} approval rows for the decision capability`);
-  check("49: its canonical policy is approval_required = false",
-    (await db.query<{ a: boolean }>(`select approval_required a from governed_skills where skill_id=$1`, [DECIDE_SKILL])).rows[0]?.a === false);
+  // Coordination skills are deliberately NOT mirrored into governed_skills (they are dispatchable but
+  // not listed as Federation actions), so there is no policy row — and therefore no row an operator
+  // could edit into requiring an approval-of-an-approval. The base case is structural, not data.
+  check("49: the decision capability has NO governed_skills policy row to be edited into requiring approval",
+    (await db.query<{ n: string }>(`select count(*)::text n from governed_skills where skill_id=$1`, [DECIDE_SKILL])).rows[0].n === "0");
 
   const sendAfter = (await db.query(
     `select (select count(*) from messages)::int m, (select count(*) from action_outbox)::int o,

@@ -184,15 +184,6 @@ export const SKILL_REGISTRY: SkillDef[] = [
     precheck: async (db, actor, ctx) => (await import("../../stakeholders/assert")).stakeholderInOrg(db, actor.orgId, ctx.args),
     handler: async (db, actor, ctx) => (await import("../../stakeholders/assert")).assertStakeholderRole(
       db, actor, ctx.args ?? {}, (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION") },
-  // P45-2. The capability that authorises DECIDING a pending governed action — both outcomes, with
-  // APPROVED | REJECTED carried as the decision, which is why it is not named "approve_*".
-  //
-  // ITS OWN approval_required MUST REMAIN FALSE, FOREVER. If deciding could itself require a
-  // decision, the governance model recurses without a base case. `effectiveApprovalRequired` refuses
-  // to return true for this skill no matter what a grant override says, so the invariant cannot be
-  // undone by data.
-  { skillId: DECIDE_SKILL, version: 1, description: "Decide a pending governed action (approve or reject)", effectClass: "INTERNAL_WRITE",
-    eligibleActors: ["USER"], requiredPermission: "operator" },
   // Canonical economic assertion (P2B §7): the ONLY authoritative path for an economic driver.
   // Migration 0099's trigger rejects a trusted-provenance economic fact written outside it.
   { skillId: "assert_economic_fact", version: 1, description: "Assert an economic driver (point or range) with provenance, source and evidence", effectClass: "INTERNAL_WRITE",
@@ -211,6 +202,23 @@ export const SKILL_REGISTRY: SkillDef[] = [
  * plan surface, not the Federation panel. They join the registry when the capability graduates.
  */
 export const COORDINATION_SKILLS: SkillDef[] = [
+  // P45-2. The capability that authorises DECIDING a pending governed action — both outcomes, with
+  // APPROVED | REJECTED carried as the decision, which is why it is not named "approve_*".
+  //
+  // IT LIVES HERE, NOT IN SKILL_REGISTRY, for the reason this array exists: the Federation panel
+  // lists every registry skill as "actions you can take", so registering it there added a line to
+  // the flag-OFF Pursuit page — a user-visible pilot change from a capability that is switched off.
+  // `defFor` resolves both arrays, so dispatch is unaffected; only the listing is. Caught by the
+  // CFR-1.2 STRICT crawl class.
+  //
+  // ITS OWN approval_required MUST REMAIN FALSE, FOREVER. If deciding could itself require a
+  // decision, the governance model recurses without a base case. `effectiveApprovalRequired` refuses
+  // to return true for this skill no matter what a grant override says, so the invariant cannot be
+  // undone by data — and because coordination skills are not mirrored by `seedGovernedSkills`, no
+  // policy row exists to be edited into requiring one.
+  { skillId: DECIDE_SKILL, version: 1, description: "Decide a pending governed action (approve or reject)", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER"], requiredPermission: "operator" },
+
   // vNext Slice 2A — Pursuit Coordination. Two INTERNAL_WRITE skills and nothing else: a
   // recommendation is a proposal (system, agent or person may record one), and only a PERSON
   // decides. Neither can reach the outbox or a provider — the plan may stage an action onto the
