@@ -5,7 +5,7 @@ flag default **OFF** · runtime tables **empty** · no external sending.
 **P45-D1 — HOSTED CORRECTED / CLOSED.** **P45-1 — HOSTED ACCEPTED / CLOSED (2026-09-16).**
 P4's first governed actor + explicit capability grant and P5's first durable Pursuit execution are
 both **PROVEN HOSTED** through the real `app_rw` runtime. Fixture removed; **159/159 fingerprints
-restored exactly**. **Slice 2 (P45-2) IMPLEMENTED LOCALLY / NOT PUSHED** — migration **0110**, `p45-approvals` **56/56**.
+restored exactly**. **P45-2 (Slice 2) — HOSTED ACCEPTED / CLOSED** (2026-09-17) · hosted migration **110** · approval runtime and authorization substrate **proven hosted**. **Production human approval identity remains NOT PROVEN** — tracked separately. Slice 3 **not started**.
 
 This is the architecture record for the amended roadmap's P4 (AI Control Plane) and P5 (Pursuit
 Runtime). It begins after H1 closed and Gate 9 accepted pilot readiness.
@@ -716,3 +716,111 @@ persisted 17/0 · semantic 50/0 · dg85 19/0 · dp1 26/0 · partnership-app-rw 1
 tables / 1051 rows; **zero fixture residue**; canonical `approval_required` still false on all skills.
 
 **Hosted untouched.** Not pushed, not deployed, 0110 applied **locally only**.
+
+
+---
+
+## 18. P45-2 — HOSTED ACCEPTED / CLOSED
+
+### Phase 1 — migration gate, 24/24 + 11/11 reconciliation
+
+0110 applied alone under the identity guard → level **110**. Every claim proven: 109→110 with nothing
+else executed · table count 159→**160** solely from `pursuit_run_approvals` · RLS **ENABLED + FORCED**
+· `app_rw` **exactly `INSERT, SELECT`**, no UPDATE, no DELETE, no column-level UPDATE · **no SECURITY
+DEFINER** (26 definer functions unchanged) · `change_ledger` privileges unchanged · every CHECK / FK /
+unique / partial-unique present as designed, including the **composite self-FK proving a terminal row
+shares its request's org/run/step** and both the **one-request** and **one-terminal** invariants at the
+database layer · the four approval values are the **only** ledger vocabulary change.
+
+**Every movement classified against a declaration made BEFORE mutation:**
+
+| moved | cause |
+|---|---|
+| `schema_migrations` 109→110 rows | the ledger row — the **only** shared table whose content moved |
+| +1 table, 0 rows | `pursuit_run_approvals` |
+| business-data `6abe424f43bff901` → **`9e1fbd166fe06450`** | the metric hashes the whole table map minus `schema_migrations`, so it moves **solely** because the new empty table joined it |
+| whole-world `c299c6e372c686c4` → **`f27321cd8803f04b`** | new table entry + the ledger row |
+| security `569e5497a7622048` → **`092a20af64a0444e`** | +1 policy and grants **on the new table only**; 0 removed; functions/triggers/roles/protected identical |
+
+**Unmoved, as declared:** `change_ledger` content (the CHECK extension adds no column) ·
+`pursuit_run_steps` content (the new key is catalogue-only) · **`governed_skills` at 18 rows**.
+
+> **`decide_governed_action` was inserted by neither the migration nor the deploy.** `seedGovernedSkills`
+> is called only by seed/verify **scripts**, `defFor` resolves from the **code registry**, and there is
+> **no FK** from invocations to `governed_skills` — so the workflow needs no hosted policy row, and none
+> was created. Approval was required for the fixture via the synthetic grant's
+> `approval_required_override = TRUE`, so **canonical `governed_skills` was never touched**.
+
+### Phase 2 — hosted functional acceptance, 60/60
+
+Synthetic Option-A world; every execution and decision through **`withTenantOrg` on the real hosted
+`app_rw` login**; owner authority only for fixtures and cleanup.
+
+**Request** — parks in `WAITING_FOR_APPROVAL` with one immutable `REQUESTED` record, **no consequential
+invocation, no draft**; ordinary `resumeRun` cannot release it; visible only in the correct tenant.
+**Approve** — self-approval refused; an authorized decider passes the full P4 path with a
+server-resolved principal; the terminal row **references the original request** and names its decider;
+the **REQUESTED row is unchanged**; the **same persisted run** resumes; **exactly one** consequential
+execution; replay cannot duplicate. **Reject** — a terminal human-decision record, run/step
+`CANCELLED / APPROVAL_REJECTED`, **invocation policy-REJECTED semantics untouched**, no execution,
+replay safe, a later APPROVE cannot overturn it. **Invalidation** — grant revoked, actor suspended and
+revision superseded each yield **INVALIDATED** with the right reason, the run **CANCELLED still pinned
+to the original revision**, never retargeted, and the request **disappears from the pending read
+model**. **Authority failures** — wrong principal, ordinary viewer, self-approval, wrong tenant,
+**suspended decider**, **revoked decision capability** — all refused, none mutating the pending approval
+or executing anything. **Concurrency** — all three races on the real hosted transaction path give
+**exactly one terminal row, one winning transition, the loser `already decided`, no stranded
+APPROVED+WAITING, at most one consequential execution and exactly one approval ledger transition**.
+**Append-only under real `app_rw`** — CAN insert and select, **CANNOT update a request, CANNOT update a
+terminal decision, CANNOT delete either**, linkage present at INSERT. **Audit chain** — P3 revision →
+run → step → request → requester → decider/principal → invocation → effect, with
+`RUN_STARTED → APPROVAL_REQUESTED → APPROVAL_GRANTED → RUN_COMPLETED` in one ledger, no parallel model.
+**Send 0/0/0/0/0** throughout.
+
+### Two defects the hosted gate found in my own implementation
+
+1. **A cached governance refusal.** The decision dispatch carried an idempotency key, so a retry after
+   authority *changed* replayed the stale refusal — an approver refused for permission, then granted
+   it, would still be refused. The key is **removed**: governance is re-evaluated every attempt, and
+   duplicate effects remain impossible because `pursuit_run_approvals_one_terminal` is the designated
+   arbiter. Dispatch idempotency was never load-bearing here.
+2. **A user-visible change from a flag-OFF feature.** `decide_governed_action` was registered in
+   `SKILL_REGISTRY`, which the Pursuit detail Federation panel lists as "actions you can take" — adding
+   two lines to that page with the capability switched off. Caught by the **CFR-1.2 STRICT class**.
+   Moved to `COORDINATION_SKILLS`, which `defFor` resolves but the panel does not list and
+   `seedGovernedSkills` does not mirror. This also makes the recursion base case **structural**: with no
+   policy row, there is nothing an operator could edit into requiring an approval-of-an-approval.
+
+### Cleanup and restoration
+
+Every acceptance row removed in dependency order by exact id: 28 ledger · 17 invocations · 2 touches ·
+9 steps · 9 runs · 40 grants · 40 actors · 10 campaigns · 22 revisions · 10 plans · 10 goals ·
+10 pursuits · 10 `org_features` · 10 organizations · 10 companies.
+
+> **160/160 per-table fingerprints EXACTLY restored** to the post-0110 baseline, re-verified again after
+> the crawls: **0 of 160 moved**. business-data `9e1fbd166fe06450` · whole-world `f27321cd8803f04b` ·
+> security `092a20af64a0444e` · protected **31 / 0** · `governed_skills` still 18 · organizations 3.
+> **No canonical residue. No rebaseline.**
+
+**Flag-off crawl (CFR-1.2):** 37/37, 4/4 deterministic, **STRICT class 0**, line counts match,
+**normalized digest identical `107b17e3f5f1b24d`**; the 3 clock-derived differences are validated
+elapsed/age counters. **Regression:** p45-approvals 56/0 · p45-runtime 50/0 · persisted 17/0 · semantic
+50/0 · dg85 19/0 · dp1 26/0 · partnership 117/0 · tenant-isolation 205/0 · search-path 39/0 · catalogue
+12/0 (**31/0**) · rehearsal 38/38+6/6 · **`certify-world --runs 2` 94 clean / 0 failures, digest
+`f72d1ff0d6b07b42` stable**. Env **38 / 18 / 33** byte-identical; **`VNEXT_CONTROL_PLANE_ENABLED`
+remained ABSENT (OFF)** throughout.
+
+### DISPOSITION
+
+**P45-2 approval runtime — HOSTED ACCEPTED / CLOSED.**
+**P4 approval authority — proven hosted.** **P5 `WAITING_FOR_APPROVAL` continuation — proven hosted.**
+
+> **What this does NOT claim.** The interactive decision path resolves the principal server-side and
+> **fails closed**; application auth is unconfigured, so **production human approval identity is NOT
+> proven** and the hosted Approvals buttons legitimately refuse. This is a **remaining
+> production-readiness boundary**, tracked separately — not a Slice 2 defect, and nothing was weakened
+> to make it appear satisfied.
+
+**HOSTED RECORD OF RECORD:** migrations **110** · business-data **`9e1fbd166fe06450`** · whole-world
+**`f27321cd8803f04b`** · security **`092a20af64a0444e`** · protected **31 / 0** · `app_rw` LOGIN true /
+BYPASSRLS false · serving `25c62db`. **Slice 3 NOT STARTED.**
