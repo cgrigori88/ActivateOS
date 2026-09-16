@@ -123,6 +123,35 @@ test("visible ranked lists end in a stable key (portfolio, pipeline book, ecosys
     "c.legal_name, pm.company_id, p.name, p.id, ap.category");
 });
 
+test("cross-partner opportunities: the 200-row cut is a total order (D-G8-2A convergence)", () => {
+  const raw = src("src/lib/mapping/insights.ts");
+  // The latest-propensity pick feeds `rank`, so it needs the full key like every sibling pick.
+  const q = sqlBlocks(raw).find((s) => s.includes("from partner_cov pc"));
+  assert.ok(q, "crossPartnerOpportunities query not found");
+  assert.match(q!, /order by computed_at desc, id desc limit 1/, "latest-score pick must end in the row key");
+  assert.match(q!, /order by c\.legal_name, c\.id$/, "the feeder itself must be ordered");
+  // The comparator is the decisive fix: the caller slices to 200, and rank ties are the common case.
+  assert.match(raw, /b\.rank - a\.rank \|\| a\.name\.localeCompare\(b\.name\) \|\| a\.companyId\.localeCompare\(b\.companyId\)/,
+    "the rank sort must be total before the 200-row cut");
+});
+
+test("group-key aggregates and the play-template pick are deterministic (D-G8-2A convergence)", () => {
+  // Class 5 (encounter-order group reaching the UI): both attribution aggregates are rendered as a
+  // joined "N class" string, so the group iteration order is visible text.
+  const intel = sqlBlocks(src("src/lib/partners/intelligence.ts"));
+  const attribution = intel.filter((s) => s.includes("from attribution a"));
+  assert.equal(attribution.length, 2, `both attribution class-mix aggregates, found ${attribution.length}`);
+  for (const q of attribution) {
+    assert.match(q, /group by 1 order by 1$/, `group-key aggregate is not ordered: ${q.slice(0, 100)}`);
+  }
+
+  // `play_templates` is consumed by a LAST-WRITE-WINS Map keyed on taxonomy_node_id, which carries no
+  // uniqueness on that table (PK id, unique (slug, version)) — two active templates can share a node.
+  const plays = sqlBlocks(src("src/app/mapping/page.tsx")).find((s) => s.includes("from play_templates"));
+  assert.ok(plays, "play_templates query not found");
+  assert.match(plays!, /order by name, id$/, "the play shown per node must be a deterministic pick");
+});
+
 test("motions draft candidates: both the DISTINCT ON and the capped outer select are deterministic", () => {
   const q = sqlBlocks(src("src/app/motions/page.tsx")).find((s) => s.includes("from account_suppressions sl"))!;
   assert.match(q, /order by p\.company_id, p\.computed_at desc, p\.id desc/);

@@ -199,7 +199,7 @@ export async function overlapLadder(db: Db, orgId: string, partnershipId: string
     results: CountsResults | BandsResults | NamedResults | null;
   }>(
     `select id, requested_by_org, level, status, decided_at, created_at, results
-     from overlap_probes where partnership_id = $1 order by created_at desc`,
+     from overlap_probes where partnership_id = $1 order by created_at desc, id desc`,
     [partnershipId],
   );
 

@@ -137,7 +137,7 @@ export async function getPartnerActivationProfile(
   const classes = (await db.query<{ cls: string; n: string }>(
     `select coalesce(a.human_override_class, a.attribution_class) cls, count(*)::text n
        from attribution a where a.org_id = $1 and a.subject_kind = 'PARTNER' and a.subject_id = $2
-      group by 1`, [orgId, partnerId])).rows;
+      group by 1 order by 1`, [orgId, partnerId])).rows;
   const byCategory = (await db.query<{ node_id: string; name: string; won: string; lost: string }>(
     `select n.id node_id, n.name,
             count(*) filter (where po.outcome_label = 'CLOSED_WON')::text won,
@@ -391,7 +391,7 @@ export async function getExecutionEvidence(
        from attribution a join pursuits pu on pu.id = a.pursuit_id
       where a.org_id = $1 and a.subject_kind = 'PARTNER' and a.subject_id = $2
         and ($3::uuid is null or pu.product_category_id = $3)
-      group by 1`, [orgId, partnerId, taxonomyNodeId])).rows.map((r) => [r.cls, Number(r.n)]));
+      group by 1 order by 1`, [orgId, partnerId, taxonomyNodeId])).rows.map((r) => [r.cls, Number(r.n)]));
 
   const lines: ExecutionEvidence["lines"] = [];
   if (sample === 0) {

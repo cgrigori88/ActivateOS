@@ -485,7 +485,7 @@ export type AuditEntry = {
 export async function auditEntries(db: Db, orgId: string, limit = 30): Promise<AuditEntry[]> {
   const { rows } = await db.query<{ actor: string; event: string; detail: Record<string, unknown>; created_at: Date }>(
     `select actor, event, detail, created_at from audit_log
-     where org_id = $1 order by created_at desc limit $2`,
+     where org_id = $1 order by created_at desc, id desc limit $2`,
     [orgId, limit],
   );
   return rows.map((r) => ({

@@ -1893,3 +1893,60 @@ ties — remain deferred, as approved.
 
 **Not pushed. No hosted deployment, no Vercel env change, no database, migration, role, RLS, grant or
 policy change; sending untouched; `qifatlqxfuhwrwvpbwsc` not contacted. Gate 9 NOT begun.**
+
+### D-G8-2A final convergence attempt — STOPPED, NOT CONVERGED (C = 44) (2026-09-15)
+
+The owner accepted the scope overrun, directed the three remaining pure tie-breaks be closed, reclassified
+the four judgement items, and set the rule: declare convergence only at **C = 0**.
+
+**Fixed (16 sites, 8 files, all local).** `intelligence.ts` ×2 attribution aggregates (`group by 1 order by 1`);
+`mapping/page.tsx` `play_templates` (`order by name, id`); `insights.ts` ×3 (propensity lateral `, id desc`,
+outer `order by c.legal_name, c.id`, and the rank comparator before the 200-row cut); `funnel.ts` ×5 (thesis
+lateral, hypotheses list, evaluated `DISTINCT ON`, latest outcomes, and the `ACCOUNT_CAP` sort where every
+pursuit-less account collapses to −1); `value/aggregate.ts`; `partnerships/overlap.ts`;
+`partnerships/partnerships.ts` (`auditEntries`); `quotes.ts` ×2 (expose `m.id`, order the `array_agg`).
+
+**Reclassified as the owner directed.** `projection.ts:87` → **D-G8-4A** (provenance precedence);
+`intelligence.ts:384` → **D-G8-4B** (outcome-summary semantics); `multi-vendor.ts:202` → **D-G8-3C**
+(persisted campaign seed identity); `mapping/page.tsx:843` → **D-G8-2B** (display-only).
+
+**Round five: C = 44 — NOT CONVERGED. The sweep was STOPPED here, deliberately.**
+- 44 pure tie-break defects across **27 root files, none of them examined in rounds 1–4**, including
+  `src/app/layout.tsx` — the shell on every room.
+- The transitive closure from `src/app/**` is **109 lib modules**; rounds 1–4 examined ~15 (~14%).
+- Decisive signal: fixes were applied per SITE as reported, not per PATTERN across the closure, so
+  round-four fixes have unfixed twins that were reachable the whole time — `value/aggregate.ts:53` fixed
+  while `value/intents.ts:60` was not; `funnel.ts:262` fixed while `outcome-summary.ts:28` was not;
+  `horizon.ts:70` carries `, p.id` while `intents.ts:78` does not.
+- Four patterns recur across all 44: latest-per-group `DISTINCT ON`; `array_agg(order by ts desc)[1]`;
+  capped `limit N` on a non-unique key; lateral `limit 1` pick.
+
+**Why it stopped rather than continued.** The D-G8-2A criterion — every ordering site reachable from the
+certified surface that affects membership, a pick, or a value shown — has **no bounded file set**. Each
+round's fixes were correct and certified, yet the count went 24 → 6 → 7 → 9 → 44 because most of the
+reachable closure had never been looked at. Fixing 44 more sites one at a time would repeat the scope
+overrun the owner has just had to adjudicate and would still not converge. **The remaining work should be a
+bounded, mechanical sweep of the four patterns over the full 109-module closure, approved as its own
+workstream with an explicit file list — not another fix-and-re-audit cycle.**
+
+**New findings recorded, NOT implemented.**
+- **D-G8-3D — persisted selections.** A nondeterministic pick is written to the database:
+  `comms/authoring.ts:45` and `agents/campaign-email.ts:69,135` (brand → `campaigns`); `comms/send.ts:60`
+  (thread → `messages`); `scoring/score.ts:112` (prev score → `propensity_scores.changes`);
+  `agents/motion-designer.ts:70,79,111` and `app/motions/actions.ts:73-78` (→ a new revenue motion);
+  `routines/routines.ts:115,123,131,254,290,297` (→ `routine_runs.summary` / `account_digests.items`).
+- **D-G8-4C — entity resolution by `order by length(name) limit 1`**: `value/intents.ts:151`,
+  `agents/ask-scope.ts:78,82`, `interpret/entities.ts:45,54`, `mcp-tools.ts:116,326`; plus
+  `plan-loaders.ts:110` (timing-event pick over projected events with no stable key).
+- **D-G8-5 — MIGRATION-GATED.** `shared_in_evidence()` (migration 0104) ends `order by e.observed_at desc
+  limit 20` and decides which 20 shared claims enter the deal timeline. The fix requires a new migration,
+  which is out of scope for this task and needs separate owner approval.
+
+**Evidence for the 16 fixes.** SQL smoke test: every changed statement executes (the only gate that could
+catch the new `hit.id` reference inside an `array_agg` ORDER BY — `tsc`, tests and build all pass regardless).
+`tsc` clean · `npm test` 388/388 · `ordering-determinism` 43/43 · build OK · `certify-world --runs 2`
+**82 clean / 0 failures**, digest `e98b43254f98d5ec` unchanged at start and after both runs, no drift ·
+app_rw rehearsal **38/38** rooms + 6/6 consent under both roles · world digest MATCH, no residue ·
+send rows 0/0/0.
+
+**Status: D-G8-2A — FIXED LOCALLY / NOT CONVERGED (C = 44) / NOT PUSHED. Gate 9 NOT begun.**

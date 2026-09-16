@@ -50,7 +50,7 @@ export async function aggregateValue(
        from pursuits p
       where p.org_id = $1 and p.status not in ('CLOSED','ARCHIVED')
         and ($3::boolean is false or p.account_id = any($2))
-      order by p.expected_value_weighted desc nulls last
+      order by p.expected_value_weighted desc nulls last, p.id
       limit $4`,
     [orgId, companyIds ?? [], scoped, limit]);
 

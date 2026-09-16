@@ -32,11 +32,11 @@ export async function quoteSignals(db: Db, orgId: string, opportunityIds: string
   }>(
     `select t.opportunity_id,
             bool_or(hit.is_quote) as delivered,
-            (array_agg(hit.subject order by hit.sent_at desc nulls last) filter (where hit.is_quote))[1] as note,
+            (array_agg(hit.subject order by hit.sent_at desc nulls last, hit.id desc) filter (where hit.is_quote))[1] as note,
             max(hit.sent_at) filter (where hit.is_quote) as at
      from communication_threads t
      join lateral (
-       select m.subject, coalesce(m.sent_at, m.created_at) as sent_at,
+       select m.id, m.subject, coalesce(m.sent_at, m.created_at) as sent_at,
               (
                 coalesce(m.direction, 'outbound') <> 'inbound'
                 and (

@@ -68,8 +68,9 @@ export async function crossPartnerOpportunities(db: pg.PoolClient, orgId: string
      join org_pop op on op.company_id = pc.company_id
      join companies c on c.id = pc.company_id
      left join lateral (
-       select score, band from propensity_scores p where p.company_id = c.id and p.org_id = $1 order by computed_at desc limit 1
-     ) ps on true`,
+       select score, band from propensity_scores p where p.company_id = c.id and p.org_id = $1 order by computed_at desc, id desc limit 1
+     ) ps on true
+     order by c.legal_name, c.id`,
     [orgId],
   );
 
@@ -91,7 +92,10 @@ export async function crossPartnerOpportunities(db: pg.PoolClient, orgId: string
       rank: (score ?? 0) + (r.partner_count - 1) * 8,
     };
   });
-  accounts.sort((a, b) => b.rank - a.rank);
+  // `rank` ties are the COMMON case — every unscored single-partner account scores 0 — and the caller cuts
+  // this list to 200, which decides which accounts are selectable and therefore persistable into a target
+  // population. End on the displayed name, then the company id (D-G8-2A).
+  accounts.sort((a, b) => b.rank - a.rank || a.name.localeCompare(b.name) || a.companyId.localeCompare(b.companyId));
   return accounts;
 }
 

@@ -1,6 +1,17 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-15 (D-G8-2A — FIXED LOCALLY, NOT CONVERGED, NOT PUSHED; 7 open sites, 4 needing an owner decision; D-G8-2B deferred; D-G8-3A / D-G8-3B / D-P1 OPEN; Gate 9 not begun)
+**Last updated:** 2026-09-15 (D-G8-2A — FIXED LOCALLY, **NOT CONVERGED (C = 44)**, NOT PUSHED; the sweep was stopped and needs a bounded pattern-sweep decision; D-G8-2B deferred; D-G8-3A/B/C/D, D-G8-4A/B/C, D-G8-5, D-P1 OPEN; Gate 9 not begun)
+
+**2026-09-15 (latest) — D-G8-2A final convergence attempt: STOPPED, NOT CONVERGED.**
+- **Fixed (16 sites, 8 files, local only):** the three remaining pure tie-breaks (`intelligence.ts` ×2, `mapping/page.tsx` play templates), `insights.ts` ×3 (including the rank comparator before a 200-row cut that decides which accounts are selectable and therefore persistable), `funnel.ts` ×5, `value/aggregate.ts`, `overlap.ts`, `partnerships.ts`, `quotes.ts` ×2.
+- **Reclassified as directed:** `projection.ts:87` → D-G8-4A · `intelligence.ts:384` → D-G8-4B · `multi-vendor.ts:202` → D-G8-3C · `mapping/page.tsx:843` → D-G8-2B.
+- **Round five found C = 44 across 27 root files, none audited in rounds 1–4** — so convergence (C = 0) is NOT met and the sweep was stopped rather than expanded a fifth time.
+- **The structural finding:** the closure reachable from `src/app/**` is 109 lib modules; rounds 1–4 examined ~15. Fixes were applied per SITE, not per PATTERN, so round-four fixes have unfixed twins (`value/aggregate.ts:53` fixed / `value/intents.ts:60` not; `funnel.ts:262` fixed / `outcome-summary.ts:28` not). Four patterns account for all 44.
+- **Recommendation:** approve a bounded, mechanical sweep of those four patterns across the full closure as its own workstream, with an explicit file list — not another fix-and-re-audit cycle.
+- **Evidence for the 16 fixes:** SQL smoke test (all changed statements execute), `tsc` clean, `npm test` 388/388, `ordering-determinism` 43/43, build OK, **`certify-world --runs 2` 82 clean / 0 failures**, digest `e98b43254f98d5ec` unchanged, no drift, rehearsal **38/38** + 6/6, no residue, send rows 0/0/0.
+- **New, recorded not implemented:** D-G8-3D (persisted brand/thread/score/motion/routine selections), D-G8-4C (entity resolution by `length(name)`), D-G8-5 (migration-gated `shared_in_evidence()`).
+
+Record: `H1-PRE-PILOT-HARDENING.md` § "D-G8-2A final convergence attempt". **Gate 9 NOT begun.**
 
 **2026-09-15 (latest) — D-G8-2A: FIXED LOCALLY / NOT CONVERGED / NOT PUSHED.**
 - **The sweep:** tie-breaking only across the certified surface — every key appended was already in the query's scope; no filter, join, scope or business-ranking change. Six local commits (`ca7e279`, `bb4e484`, `5ac77ce`, `2a8b7ea`, `2211f75`, `aea55c9`), 28 files, +534 / −117.

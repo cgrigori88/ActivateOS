@@ -216,7 +216,7 @@ export default async function MappingPage({
       {
         const { rows: plays } = await db.query<{ taxonomy_node_id: string | null; name: string; objective: string | null; offer: string | null }>(
           `select taxonomy_node_id, name, definition->>'objective' as objective, definition->'cta'->>'offer' as offer
-           from play_templates where status = 'active'`,
+           from play_templates where status = 'active' order by name, id`,
         );
         for (const p of plays) if (p.taxonomy_node_id) playByNode.set(p.taxonomy_node_id, { name: p.name, objective: p.objective, offer: p.offer });
       }

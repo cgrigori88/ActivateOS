@@ -159,10 +159,10 @@ export async function getMotionFunnels(
   const hyps = await db.query<{ id: string; slug: string; name: string; thesis: string | null; statuses: string[] }>(
     `select n.id, n.slug, n.name,
             (select m2.thesis from revenue_motions m2 where m2.taxonomy_node_id = n.id and m2.org_id = $1
-              order by (m2.status = 'active') desc, (m2.status = 'approved') desc, m2.created_at desc limit 1) thesis,
+              order by (m2.status = 'active') desc, (m2.status = 'approved') desc, m2.created_at desc, m2.id desc limit 1) thesis,
             array_agg(m.status) statuses
        from revenue_motions m join taxonomy_nodes n on n.id = m.taxonomy_node_id
-      where m.org_id = $1 group by n.id, n.slug, n.name order by n.name`, [orgId]);
+      where m.org_id = $1 group by n.id, n.slug, n.name order by n.name, n.id`, [orgId]);
   const out: MotionFunnelView[] = [];
   for (const h of hyps.rows) {
     const counts: Record<string, number> = {};
@@ -196,7 +196,7 @@ async function buildFunnel(
        from propensity_scores p join companies c on c.id = p.company_id
       where p.taxonomy_node_id = $1 and (p.org_id is null or p.org_id = $2)
         and ($4::boolean is false or p.company_id = any($3))
-      order by p.company_id, p.computed_at desc`, [hyp.id, orgId, ids, scoped]);
+      order by p.company_id, p.computed_at desc, p.id desc`, [hyp.id, orgId, ids, scoped]);
   const companyIds = evaluated.rows.map((r) => r.company_id);
 
   const rows: GateRow[] = evaluated.rows.map((r) => ({
@@ -259,7 +259,7 @@ async function buildFunnel(
     const latestOutcomes = pursuitIds.length
       ? await db.query<{ pursuit_id: string; outcome_label: string }>(
           `select distinct on (pursuit_id) pursuit_id, outcome_label from pursuit_outcomes
-            where pursuit_id = any($1) and is_terminal order by pursuit_id, occurred_at desc`, [pursuitIds])
+            where pursuit_id = any($1) and is_terminal order by pursuit_id, occurred_at desc, id desc`, [pursuitIds])
       : { rows: [] as { pursuit_id: string; outcome_label: string }[] };
     const outcomeBy = new Map(latestOutcomes.rows.map((o) => [o.pursuit_id, o.outcome_label]));
 
@@ -327,7 +327,10 @@ async function buildFunnel(
       latestOutcome: r.latestOutcome,
     };
   });
-  accounts.sort((a, b) => (b.expectedValue ?? -1) - (a.expectedValue ?? -1));
+  // Every account with no pursuit has a null expectedValue and collapses to -1, so the tie set is most of
+  // the list — and the caller cuts to ACCOUNT_CAP, so a tie decides WHICH accounts render (D-G8-2A).
+  accounts.sort((a, b) => (b.expectedValue ?? -1) - (a.expectedValue ?? -1)
+    || a.name.localeCompare(b.name) || a.companyId.localeCompare(b.companyId));
 
   const qualified = accounts.filter((a) => QUALIFYING_BANDS.has(a.band));
   const has = (a: FunnelAccount, code: string) => a.constraints.some((c) => c.gating && (c.code === code || c.code.startsWith(code + ":")));
