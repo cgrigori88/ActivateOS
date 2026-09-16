@@ -149,7 +149,34 @@ Session 0 to keep the diff reviewable.
 
 ## 6. Preview data-access classification
 
-### Classification: **UNKNOWN** — re-confirmed 2026-09-12, still not resolvable from here
+### Classification: **ISOLATED_SYNTHETIC_LEAST_PRIVILEGE** — RESOLVED 2026-09-16 (Gate 9)
+
+> **FACTUAL CORRECTION, 2026-09-16.** This section read **UNKNOWN** and warned that the Preview might
+> share `DATABASE_URL` with the Monday demo and therefore be `UNSAFE_SHARED_WRITE`. **That is no longer
+> the state of the world, and the warning below is retained only as the historical record of how it was
+> reasoned about before credentials were available.** H1B Gates 1–8, D-G5-1, D-G8-1 → D-G8-5 and D-P1
+> resolved it with direct, credentialed, read-only evidence:
+>
+> - The branch `roadmap/pursuitos-vnext` has its **own branch-scoped** `DATABASE_URL` (one of 18
+>   branch-scoped Preview entries), pointing at Supabase **`mejokqxriwyawfhawuxu`** — **not**
+>   `qifatlqxfuhwrwvpbwsc`, the demo project. The two are different databases.
+> - That database's `environment_identity` singleton reads `environment='demo'`,
+>   `is_synthetic=true`, label **"pursuitos-vnext — isolated synthetic preview"**.
+> - The Preview runtime connects as **`app_rw`**, a least-privilege LOGIN role with **BYPASSRLS false**,
+>   so RLS binds on all 155 tables (FORCE RLS on, 380 policies). `DATABASE_URL_OWNER` holds the owner
+>   string separately for owner-only paths. `/api/build` reports role `app_rw`, `bypassRls false`,
+>   `tenantEnforcement true`, `probe live`.
+> - Tenant isolation is certified (`tenant-isolation` 205/0, `partnership-app-rw` 117/0, app_rw
+>   rehearsal 38/38 + 6/6) and repeatedly re-proven by hosted 37-room crawls.
+>
+> **Consequence for `B-a`–`B-c` below:** they remain literally true as statements about the
+> *application layer*, but the risk they bounded no longer exists, because isolation is enforced at the
+> **database and credential layer** instead — a separate project, a separate credential, and RLS that
+> binds. `B-d` (a build performs no database access) and `B-e` are unchanged.
+
+<details><summary>Historical reasoning, superseded 2026-09-16 — kept for the record</summary>
+
+### Classification (superseded): **UNKNOWN** — re-confirmed 2026-09-12, not resolvable from there
 
 Per the Session 0 instruction not to infer environment mappings, this cannot be
 upgraded from the repository alone. The 2026-09-12 preview-isolation session
@@ -192,7 +219,16 @@ the current environment, and `vercel.json` does not exist, so the repository can
 answer it. Recording an unverified inference as a fact is exactly what this file
 forbids.
 
-### Operating rule until this is resolved
+</details>
+
+### Operating rule — SUPERSEDED 2026-09-16
+
+The rule below governed the period when the classification was UNKNOWN. It is **superseded** by the
+certified posture above: the Preview writes only to the isolated synthetic project
+`mejokqxriwyawfhawuxu`, as `app_rw` under binding RLS. The *forbidden* target is
+`qifatlqxfuhwrwvpbwsc`, which every hosted tool guards against by identity check before connecting.
+
+<details><summary>Superseded operating rule — kept for the record</summary>
 
 - **No writes from any preview deployment.** Read-only exploration only.
 - **Do not create or point at a new database**, and do not change any credential.
@@ -201,7 +237,9 @@ forbids.
   established, already isolated, and already guarded by `assertSyntheticDatabase`.
 - Preview is for **visual review of read-only surfaces**, not for exercising writes.
 
-### To resolve it — read-only, from a context holding credentials
+</details>
+
+### How it was resolved — read-only, from a context holding credentials
 
 ```sh
 # 1. What DATABASE_URL does the Preview scope actually have?

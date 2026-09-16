@@ -1,6 +1,6 @@
 # H1 — Pre-Pilot Hardening Gate
 
-**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · **Gate 6 PASS** (2026-09-15; read-only; serving `766cb13` `dpl_JD8DtC8…`; live `/api/build` probe reports `app_rw`, bypassRls false, tenantEnforcement true, probe live; routing and smoke verified; DB 0/155 changed) · **D-G5-1 HOSTED ACCEPTED / CLOSED** (2026-09-15; deterministic tiebreakers in `divergence.ts` and `projection.ts`, certified locally (`ordering-determinism` 17/0, `certify-world --runs 2` 82/82), then deployed as `1c4fb5e` on the `app_rw` Preview. Two full hosted crawls (4 passes) are identical in order; Today "stage vs engagement" and the CDW list label are deterministic; DB 0/155 changed) · **Gate 7 PASS** (2026-09-15; hosted tenant/RLS certification on the `app_rw` Preview. Exact-RLS probe as `app_rw` 80/0 across 3 orgs × 155 tables; 37-room crawl identical to the accepted D-G5-1 crawl; `partnership-app-rw` on hosted, rolled back, 117/0; blind probe accepted as a substitution; supplemental owner-backed suites recorded; owner human review PASS; DB 0/155 changed) · **CFR-1.1 adopted** (`days_since_activity` validated by recomputation from source; all else strict) · **Gate 8 Phase 1 PASS** (2026-09-15; emergency rollback to `owner/postgres` proven: value-only branch Preview `DATABASE_URL` update, `/api/build` reports `postgres` / bypassRls true / tenantEnforcement false / live, crawls equivalent apart from time-derived text, DB 0/155; pre-existing ordering tie **D-G8-1** recorded; **the Preview is paused in the owner posture**) · **Gate 8 PASS** (2026-09-15; Phase 2 restored `app_rw`, value-only, as `dpl_7UEXPHAU63VqEAuDZja4Ba99iEtu`; `/api/build` reports `app_rw` / bypassRls false / tenantEnforcement true / live; crawls equal the Gate 7 `app_rw` crawl apart from clock text validated against source; isolation smoke PASS; DB 0/155; rollback and restoration both proven) · **D-G8-1 HOSTED ACCEPTED / CLOSED** (`/pipeline` stakeholders `order by s.opportunity_id, coalesce(ct.name, ct.email), s.contact_id`; certified locally with `ordering-determinism` red 20/3 → 23/0, rehearsal 38/38 and `certify-world` 82/82; deployed as `dcde3b6` on the `app_rw` Preview; two hosted crawls render the rule order identically; only the rule-driven row reorder differs from Gate 8; DB 0/155) · **D-G8-2 latent ordering backlog recorded** (owner decision) · **D-G8-2A HOSTED ACCEPTED / CLOSED** (2026-09-15 local / 2026-09-16Z; `a5da3b2` as `dpl_BcKULAScmeWVZaQYkakWbCRiZw7w` on the `app_rw` Preview; 37/37 rooms 200 and all 4 passes byte-identical; against the accepted D-G8-1 crawl 32/37 rooms identical, 5 pure reorders, **0 membership changes**, each explained by a committed tie-break; DB 154/155 per-table fingerprints identical with only the documented `pipeline_snapshots` new-date look-to-write row, NOT re-baselined; tenant/consent smoke and send safety clean; closure `94491ea1…` re-verified, audit not reopened) · **D-G8-3A/B/D FIXED LOCALLY** (2026-09-15; migrations 0106 `campaign_assets.position` and 0107 settlement `opportunity_id` + total order, applied LOCALLY only; 31 protected / 0 unsafe preserved through the DROP+CREATE; `certify-world --runs 2` 84 clean / 0 failures, digest `e98b43254f98d5ec` unchanged; rehearsal 38/38 + 6/6; new `persisted-determinism` suite 17/0; canonical fingerprint identical before and after; NOT pushed) · **D-G8-3 HOSTED MIGRATION GATE PASS** (2026-09-16Z; 0106 then 0107 applied separately to `mejokqxriwyawfhawuxu` while the accepted app kept serving; level 107; only `schema_migrations` moved of 155 per-table fingerprints; business-data `c56a1d229e483f2b` UNCHANGED; security `30772757ebd4688c` → `f31e51d50e9dec49`, accepted only after 31/0, grants, search_path and drift checks all passed; old app healthy 10/10; tenant-isolation 205/0 ×3; app code NOT pushed) · **D-G8-3A/B/D HOSTED ACCEPTED / CLOSED** (2026-09-16Z; `21326e5` as `dpl_K88acSQbydWTU4UjthhCEuT4GXsC`; 37/37 rooms and 4/4 passes byte-identical AND 37/37 identical to the accepted D-G8-2A crawl — zero rendered change; 3A proven by a rollback-safe hosted round trip with no residue; 3B non-party zero and no raw id in visible text; 3D deployed tie-breaks verified read-only; DB 0/155 per-table fingerprints changed; security `f31e51d50e9dec49` steady; 31/0) · **D-G8-3C RECLASSIFIED → D-G8-4D** (campaign seed selection semantics — no existing business rule resolves a score tie) · **D-G8-4A/B/C/D FIXED LOCALLY** (2026-09-16; CODE-ONLY, **no migration** — repo stays at 107; PROVENANCE_STRENGTH canonical for source-truth with HUMAN_ASSERTED/SECOND_PARTY deliberately UNRESOLVED; median corrected to the whole terminal population plus a categorical mode that surfaces ties; identity ladder replaces every name-length/alphabetical pick and ask-scope fails closed on ambiguity; in-force facts gain an explicit as-of validity window; campaign seed is deliberate or null; `certify-world --runs 2` 86 clean / 0 failures, digest `e98b43254f98d5ec` unchanged, new `semantic-determinism` suite 38/0; NOT pushed) · **D-G8-4A/B/D HOSTED ACCEPTED / CLOSED** (2026-09-16; `982a01f` as `dpl_29srUo2LNtc6FW7dm12K3ZVxRGo5`; 37/37 rooms and 4/4 passes byte-identical, 34/37 identical to the accepted D-G8-3 crawl with 3 explained differences — the pre-registered Stark disclosure on two consumers and 4B's new most-common-outcome line; DB 0/155 per-table fingerprints changed, migrations 107, security `f31e51d50e9dec49` steady, 31/0) · **D-G8-4C HOSTED ACCEPTED / CLOSED** (2026-09-16; `48a6157` as `dpl_Ey7DdPDSWzsk5dJ3ASMbqbLmtxf7`; rung 4 now normalizes BOTH sides, so `Initech Financial` resolves via NORMALIZED_NAME on the real hosted data instead of returning AMBIGUOUS; `companies` untouched at 14 rows with an identical content hash; crawl 37/37 identical to the accepted D-G8-4 crawl — no new rendered difference) · **D-G8-4 OVERALL HOSTED ACCEPTED / CLOSED** · **D-G8-5 HOSTED ACCEPTED / CLOSED** (2026-09-16; migration 0108 applied to `mejokqxriwyawfhawuxu`; level 108; exactly 1 of 155 fingerprints moved — the ledger; business-data `c56a1d229e483f2b` UNCHANGED; new whole-world `933a5e30d79297a4`; new security `2a5ea0509145ee81` accepted only after 31/0 and a catalogue diff showing exactly one changed function) · **D-P1 FIXED LOCALLY / NOT PUSHED** (2026-09-16; CODE-ONLY, **no migration** — repo stays at 108. `/pipeline` no longer writes `pipeline_snapshots` at all: the new `upsertCanonicalPipelineSnapshot(db, orgId)` accepts no caller-computed value and derives `open_count`, `open_usd`, `weighted_usd` and `crm_usd` itself from the org's full unfiltered set, so no caller-side narrowing — `?timeframe=`, the ecosystem scope, or any future filtered projection — can reach canonical history. The defect class **FILTERED-VIEW SNAPSHOT POISONING** was widened at implementation to include the scope selector and ACCEPTED by owner decision, with no new workstream opened. Read-triggered write KEPT. New `dp1-snapshot-boundary` suite 26/0 including a negative control that reproduces the pre-fix poisoning; `certify-world --runs 2` 90 clean / 0 failures, digest `e98b43254f98d5ec` unchanged; hosted untouched) · **D-P1 HOSTED ACCEPTED / CLOSED** (2026-09-16; `f936fbe` as `dpl_FnUKb4vWHMQkpAKAbxtDxCKeyyYp`; pre-push hosted snapshots verified CLEAN against independent recomputation before any push; the deployed writer takes `(db, orgId)` only; `?timeframe=7/30/90`, a real narrower `?scope=` and the two combined each render the correct independently-recomputed projection while the canonical row stays byte-identical at `9b2c3c6ce81d9f12`; 8 repeated filtered reads produce ONE content hash; 8 concurrent mixed requests leave the row equal to independent recomputation; CFR-1.1 holds and is STRENGTHENED; RLS/FORCE RLS true with 380 policies byte-identical and cross-org writes refused under real `app_rw` with zero residue; crawl 37/37 ×4 byte-identical AND 37/37 identical to the accepted D-G8-5 crawl — zero rendered difference; **0 of 155 per-table fingerprints moved**, `pipeline_snapshots` content hash unmoved; migrations 108, business `c56a1d229e483f2b`, world `933a5e30d79297a4`, security `2a5ea0509145ee81`, 31/0 all unchanged; send 0/0/0/0/0; env byte-identical) · **PRE-GATE-9 HARDENING COMPLETE** · **Gate 9 is the exact next step, NOT begun.** **H1 is not complete until H1B passes hosted certification.**
+**Status:** **H1A COMPLETE (local)** · certification baseline **completely green** (76/76, 2026-09-14) · H1B: **Gate 1 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `2678f34d4fc7b0a2`) · **H1B-0 COMPLETE (local)** — consent flows work under `app_rw` (D-049), `/api/build` posture proof, 78/78 certification · **Gate 1b PASS** (2026-09-15; 0104 applied to `mejokqxriwyawfhawuxu` only; post-1b hosted baseline manifest `db1f78f7a11bbacb` / fingerprint `0288ae73bb385a1c`) · **Gate 2 BLOCKED / NOT EXECUTED** · **H1B-0.1 COMPLETE (local)** — migration 0105 closes `pg_temp` shadowing on 31 authorization-sensitive functions (D-050) · **Gate 1b.1 PASS** (2026-09-15; 0105 applied to `mejokqxriwyawfhawuxu` only; 31/31 hardened, 0 unsafe; post-1b.1 hosted baseline: migrations 105, manifest `db1f78f7a11bbacb`, business-data fingerprint `79321d9130d1dc94`, whole-world fingerprint `de05e204801988d1`) · **Gate 2 PASS** (re-run, 2026-09-15; `app_rw` given LOGIN and its operator credential on `mejokqxriwyawfhawuxu` only — `rolcanlogin` false → true, nothing else changed) · **Gate 3 PASS** (2026-09-15; `app_rw.<ref>` pooler login proven; RLS / tenant context exact on all 155 tables for no-context and three orgs; no cross-transaction context leak; foreign writes refused; zero residue) · **Gate 4 PASS AFTER DOCUMENTED RE-BASELINE** (2026-09-15; `DATABASE_URL_OWNER` on Preview branch `roadmap/pursuitos-vnext` only; `DATABASE_URL` unchanged; runtime still `postgres`; owner paths and the 37-room signed-in crawl identical; re-baselined for the crawl's one-time render materialization, which a repeat crawl proved stable. Baseline of record: migrations 105, manifest `db1f78f7a11bbacb`, business-data `c9623fb5abe2f9bc`, whole-world `dce27935d88743fb`, security hash `30772757ebd4688c`. Certification fingerprint rule **CFR-1** adopted) · **Gate 5 PASS** (2026-09-15; branch Preview `DATABASE_URL` → `app_rw`, value only; `DATABASE_URL_OWNER` still the owner; `/api/build` reports `app_rw`, bypassRls false, tenantEnforcement true; owner paths intact; 37/37 rooms healthy, with 4 order-only differences from untied ORDER BYs (D-G5-1); DB 0/155 tables changed under CFR-1; sending off) · **Gate 6 PASS** (2026-09-15; read-only; serving `766cb13` `dpl_JD8DtC8…`; live `/api/build` probe reports `app_rw`, bypassRls false, tenantEnforcement true, probe live; routing and smoke verified; DB 0/155 changed) · **D-G5-1 HOSTED ACCEPTED / CLOSED** (2026-09-15; deterministic tiebreakers in `divergence.ts` and `projection.ts`, certified locally (`ordering-determinism` 17/0, `certify-world --runs 2` 82/82), then deployed as `1c4fb5e` on the `app_rw` Preview. Two full hosted crawls (4 passes) are identical in order; Today "stage vs engagement" and the CDW list label are deterministic; DB 0/155 changed) · **Gate 7 PASS** (2026-09-15; hosted tenant/RLS certification on the `app_rw` Preview. Exact-RLS probe as `app_rw` 80/0 across 3 orgs × 155 tables; 37-room crawl identical to the accepted D-G5-1 crawl; `partnership-app-rw` on hosted, rolled back, 117/0; blind probe accepted as a substitution; supplemental owner-backed suites recorded; owner human review PASS; DB 0/155 changed) · **CFR-1.1 adopted** (`days_since_activity` validated by recomputation from source; all else strict) · **Gate 8 Phase 1 PASS** (2026-09-15; emergency rollback to `owner/postgres` proven: value-only branch Preview `DATABASE_URL` update, `/api/build` reports `postgres` / bypassRls true / tenantEnforcement false / live, crawls equivalent apart from time-derived text, DB 0/155; pre-existing ordering tie **D-G8-1** recorded; **the Preview is paused in the owner posture**) · **Gate 8 PASS** (2026-09-15; Phase 2 restored `app_rw`, value-only, as `dpl_7UEXPHAU63VqEAuDZja4Ba99iEtu`; `/api/build` reports `app_rw` / bypassRls false / tenantEnforcement true / live; crawls equal the Gate 7 `app_rw` crawl apart from clock text validated against source; isolation smoke PASS; DB 0/155; rollback and restoration both proven) · **D-G8-1 HOSTED ACCEPTED / CLOSED** (`/pipeline` stakeholders `order by s.opportunity_id, coalesce(ct.name, ct.email), s.contact_id`; certified locally with `ordering-determinism` red 20/3 → 23/0, rehearsal 38/38 and `certify-world` 82/82; deployed as `dcde3b6` on the `app_rw` Preview; two hosted crawls render the rule order identically; only the rule-driven row reorder differs from Gate 8; DB 0/155) · **D-G8-2 latent ordering backlog recorded** (owner decision) · **D-G8-2A HOSTED ACCEPTED / CLOSED** (2026-09-15 local / 2026-09-16Z; `a5da3b2` as `dpl_BcKULAScmeWVZaQYkakWbCRiZw7w` on the `app_rw` Preview; 37/37 rooms 200 and all 4 passes byte-identical; against the accepted D-G8-1 crawl 32/37 rooms identical, 5 pure reorders, **0 membership changes**, each explained by a committed tie-break; DB 154/155 per-table fingerprints identical with only the documented `pipeline_snapshots` new-date look-to-write row, NOT re-baselined; tenant/consent smoke and send safety clean; closure `94491ea1…` re-verified, audit not reopened) · **D-G8-3A/B/D FIXED LOCALLY** (2026-09-15; migrations 0106 `campaign_assets.position` and 0107 settlement `opportunity_id` + total order, applied LOCALLY only; 31 protected / 0 unsafe preserved through the DROP+CREATE; `certify-world --runs 2` 84 clean / 0 failures, digest `e98b43254f98d5ec` unchanged; rehearsal 38/38 + 6/6; new `persisted-determinism` suite 17/0; canonical fingerprint identical before and after; NOT pushed) · **D-G8-3 HOSTED MIGRATION GATE PASS** (2026-09-16Z; 0106 then 0107 applied separately to `mejokqxriwyawfhawuxu` while the accepted app kept serving; level 107; only `schema_migrations` moved of 155 per-table fingerprints; business-data `c56a1d229e483f2b` UNCHANGED; security `30772757ebd4688c` → `f31e51d50e9dec49`, accepted only after 31/0, grants, search_path and drift checks all passed; old app healthy 10/10; tenant-isolation 205/0 ×3; app code NOT pushed) · **D-G8-3A/B/D HOSTED ACCEPTED / CLOSED** (2026-09-16Z; `21326e5` as `dpl_K88acSQbydWTU4UjthhCEuT4GXsC`; 37/37 rooms and 4/4 passes byte-identical AND 37/37 identical to the accepted D-G8-2A crawl — zero rendered change; 3A proven by a rollback-safe hosted round trip with no residue; 3B non-party zero and no raw id in visible text; 3D deployed tie-breaks verified read-only; DB 0/155 per-table fingerprints changed; security `f31e51d50e9dec49` steady; 31/0) · **D-G8-3C RECLASSIFIED → D-G8-4D** (campaign seed selection semantics — no existing business rule resolves a score tie) · **D-G8-4A/B/C/D FIXED LOCALLY** (2026-09-16; CODE-ONLY, **no migration** — repo stays at 107; PROVENANCE_STRENGTH canonical for source-truth with HUMAN_ASSERTED/SECOND_PARTY deliberately UNRESOLVED; median corrected to the whole terminal population plus a categorical mode that surfaces ties; identity ladder replaces every name-length/alphabetical pick and ask-scope fails closed on ambiguity; in-force facts gain an explicit as-of validity window; campaign seed is deliberate or null; `certify-world --runs 2` 86 clean / 0 failures, digest `e98b43254f98d5ec` unchanged, new `semantic-determinism` suite 38/0; NOT pushed) · **D-G8-4A/B/D HOSTED ACCEPTED / CLOSED** (2026-09-16; `982a01f` as `dpl_29srUo2LNtc6FW7dm12K3ZVxRGo5`; 37/37 rooms and 4/4 passes byte-identical, 34/37 identical to the accepted D-G8-3 crawl with 3 explained differences — the pre-registered Stark disclosure on two consumers and 4B's new most-common-outcome line; DB 0/155 per-table fingerprints changed, migrations 107, security `f31e51d50e9dec49` steady, 31/0) · **D-G8-4C HOSTED ACCEPTED / CLOSED** (2026-09-16; `48a6157` as `dpl_Ey7DdPDSWzsk5dJ3ASMbqbLmtxf7`; rung 4 now normalizes BOTH sides, so `Initech Financial` resolves via NORMALIZED_NAME on the real hosted data instead of returning AMBIGUOUS; `companies` untouched at 14 rows with an identical content hash; crawl 37/37 identical to the accepted D-G8-4 crawl — no new rendered difference) · **D-G8-4 OVERALL HOSTED ACCEPTED / CLOSED** · **D-G8-5 HOSTED ACCEPTED / CLOSED** (2026-09-16; migration 0108 applied to `mejokqxriwyawfhawuxu`; level 108; exactly 1 of 155 fingerprints moved — the ledger; business-data `c56a1d229e483f2b` UNCHANGED; new whole-world `933a5e30d79297a4`; new security `2a5ea0509145ee81` accepted only after 31/0 and a catalogue diff showing exactly one changed function) · **D-P1 FIXED LOCALLY / NOT PUSHED** (2026-09-16; CODE-ONLY, **no migration** — repo stays at 108. `/pipeline` no longer writes `pipeline_snapshots` at all: the new `upsertCanonicalPipelineSnapshot(db, orgId)` accepts no caller-computed value and derives `open_count`, `open_usd`, `weighted_usd` and `crm_usd` itself from the org's full unfiltered set, so no caller-side narrowing — `?timeframe=`, the ecosystem scope, or any future filtered projection — can reach canonical history. The defect class **FILTERED-VIEW SNAPSHOT POISONING** was widened at implementation to include the scope selector and ACCEPTED by owner decision, with no new workstream opened. Read-triggered write KEPT. New `dp1-snapshot-boundary` suite 26/0 including a negative control that reproduces the pre-fix poisoning; `certify-world --runs 2` 90 clean / 0 failures, digest `e98b43254f98d5ec` unchanged; hosted untouched) · **D-P1 HOSTED ACCEPTED / CLOSED** (2026-09-16; `f936fbe` as `dpl_FnUKb4vWHMQkpAKAbxtDxCKeyyYp`; pre-push hosted snapshots verified CLEAN against independent recomputation before any push; the deployed writer takes `(db, orgId)` only; `?timeframe=7/30/90`, a real narrower `?scope=` and the two combined each render the correct independently-recomputed projection while the canonical row stays byte-identical at `9b2c3c6ce81d9f12`; 8 repeated filtered reads produce ONE content hash; 8 concurrent mixed requests leave the row equal to independent recomputation; CFR-1.1 holds and is STRENGTHENED; RLS/FORCE RLS true with 380 policies byte-identical and cross-org writes refused under real `app_rw` with zero residue; crawl 37/37 ×4 byte-identical AND 37/37 identical to the accepted D-G8-5 crawl — zero rendered difference; **0 of 155 per-table fingerprints moved**, `pipeline_snapshots` content hash unmoved; migrations 108, business `c56a1d229e483f2b`, world `933a5e30d79297a4`, security `2a5ea0509145ee81`, 31/0 all unchanged; send 0/0/0/0/0; env byte-identical) · **PRE-GATE-9 HARDENING COMPLETE** · **GATE 9 — PASS (2026-09-16): PILOT READY WITH CURRENT OPERATING BOUNDARIES** (evidence/decision gate; baseline re-verified read-only with **0 of 155 per-table fingerprints moved** and every record-of-record value matching; final regression tenant-isolation 205/0, partnership-app-rw 117/0, search-path 39/0 with 31/0, rehearsal 38/38+6/6, dg85 19/0, persisted 17/0, semantic 50/0, dp1 26/0; crawl 37/37 ×4 byte-identical AND identical to both the accepted D-P1 and D-G8-5 crawls; harness fixes confirmed scratchpad-only with **no vacuous check in the repository**; env reconciled as **38 total / 18 branch-scoped / 33 Preview-visible**, byte-identical to every accepted baseline; send 0/0/0/0/0 behind two independent fail-closed gates; **PILOT BLOCKERS: NONE**) · **H1 PRE-PILOT HARDENING — COMPLETE** · **PILOT READINESS — ACCEPTED** · Next work returns to the amended P0–P10 roadmap (P4/P5 transition, continued P3 depth). **H1 is closed.** **H1 is not complete until H1B passes hosted certification.**
 **Lane:** `roadmap/pursuitos-vnext`. No hosted database, Vercel, Supabase role/grant or Production change is part of H1A.
 
 H1 exists because Slice 2B's security review found a systemic risk: the application connects as a role that bypasses Row Level Security, and code had relied on RLS without explicit org scoping. Before any real pilot:
@@ -3299,3 +3299,212 @@ whole-world **`933a5e30d79297a4`** · security **`2a5ea0509145ee81`** · protect
 LOGIN true / BYPASSRLS false · serving `f936fbe` as `dpl_FnUKb4vWHMQkpAKAbxtDxCKeyyYp`.
 
 **Gate 9 is the exact next step. Gate 9 NOT started.**
+
+
+---
+
+# GATE 9 — PILOT READINESS DECISION GATE · **PASS** (2026-09-16)
+
+## GATE 9 — PASS · PILOT READY WITH CURRENT OPERATING BOUNDARIES
+
+An evidence and decision gate, not another audit. No product functionality was implemented, no
+hardening sweep was run, no D-G8 or D-P item was opened, no UI was redesigned, no P4/P5 work began,
+Production was not touched and sending was not enabled.
+
+## A — Final baseline identity
+
+Branch `roadmap/pursuitos-vnext`; local HEAD **`46e9258`** = `origin` (0 ahead / 0 behind); working tree
+**clean**. Serving Preview **`dpl_8Mh8XDCVph5hpLgGRd8xX5MrWgnD`** (commit `46e9258`, READY).
+`/api/build`: projectRef `mejokqxriwyawfhawuxu` · role **`app_rw`** · bypassRls **false** ·
+tenantEnforcement **true** · probe **live** · externalSendingArmed **false**. `DATABASE_URL` → `app_rw`,
+`DATABASE_URL_OWNER` → owner. Production untouched. **No new deployment was made to run Gate 9.**
+
+## B — Database / security record: 26/26, ZERO movement
+
+migrations **108** · business-data **`c56a1d229e483f2b`** · whole-world **`933a5e30d79297a4`** ·
+security **`2a5ea0509145ee81`** · manifest `14e2e97f8453fb75` · protected **31 / 0** · `app_rw` LOGIN
+true / BYPASSRLS false — every value matches the record of record exactly. **Nothing was rebaselined.**
+
+Against the accepted D-P1 closeout snapshot: policies (380), RLS (155), roles (4 + all 32 compared),
+role membership, table grants (620), column grants (11), protected functions (31), schema privileges,
+CREATE-on-public, functions (149), triggers (12), applied migrations (108) and business counts are all
+**identical**, and **0 of 155 per-table fingerprints moved**. Snapshot read-only, `txid` NULL.
+
+## C — Closed-gate evidence matrix
+
+| Gate / defect | Invariant established | Local acceptance | Hosted acceptance | Disposition | Current regression evidence |
+|---|---|---|---|---|---|
+| **D-G5-1** | Untied `ORDER BY`s on Today's divergences and the renewal projection made render order planner-dependent — now a documented total order | `ordering-determinism` 17/0; `certify-world --runs 2` 82/82 | `1c4fb5e`; two 4-pass crawls identical; DB 0/155 | **CLOSED** | `ordering-determinism` in `certify-world`; Gate 9 crawl 37/37 identical |
+| **D-G8-1** | `/pipeline` stakeholder order is `s.opportunity_id, coalesce(ct.name, ct.email), s.contact_id` — not heap order | red 20/3 → 23/0; rehearsal 38/38; `certify-world` 82/82 | `dcde3b6`; hosted crawls render the rule order; DB 0/155 | **CLOSED** | Gate 9 crawl: **Dana → Mike → Priya → Sarah** in all 4 passes |
+| **D-G8-2A** | Ordering totality across the certified surface: 173 sites dispositioned, in-boundary unresolved **0**; a `LIMIT`/`DISTINCT ON` may never let heap order decide membership | closure `94491ea1…`, 333 files, scanner ordering-scan v1.1.0 | `a5da3b2`; 37/37 and 4/4 byte-identical; vs D-G8-1 crawl 32/37 identical, 5 pure reorders, **0 membership changes** | **CLOSED** | Gate 9 crawl 37/37 identical to both prior accepted crawls |
+| **D-G8-3A/B/D** | **Persisted** choice is deterministic: campaign asset sequence (0106) and settlement opportunity identity + total order (0107) | `persisted-determinism` 17/0; `certify-world --runs 2` 84 clean; 31/0 preserved through DROP+CREATE | migration gate then `21326e5`; 37/37 **zero rendered change**; DB 0/155 | **CLOSED** | `persisted-determinism` 17/0 in Gate 9 battery |
+| **D-G8-4A/B/C/D** | **Semantic** correctness, not mere repeatability: PROVENANCE_STRENGTH precedence with HUMAN_ASSERTED vs SECOND_PARTY deliberately **UNRESOLVED**; median over the whole terminal population + categorical mode that surfaces ties; identity ladder normalizing **both** sides; ask-scope fails **CLOSED** on ambiguity without leaking candidates; campaign seed deliberate or **null** | `semantic-determinism` 38/0 → 50/0; `certify-world --runs 2` 86 clean | `982a01f` (4A/4B/4D) + `48a6157` (4C correction); Stark disclosure and most-common-outcome pre-registered and observed | **CLOSED** | `semantic-determinism` 50/0; Gate 9 crawl shows both accepted lines stable |
+| **D-G8-5** | Capped shared-evidence read has a **total** order — `order by e.observed_at desc, s.id desc limit 20` — so ties cannot decide **membership** of the cap; final key is `s.id` because `e.id` is non-unique across partnerships | `dg85-determinism` 19/0 incl. a negative control (pre-fix clause gave 3 distinct sets over 20 runs) | 0108 applied alone; exactly 1 of 155 fingerprints moved (the ledger); catalogue diff proved **exactly one** function changed | **CLOSED** | `dg85-determinism` 19/0 in Gate 9 battery |
+| **D-P1** | **Canonical pipeline snapshots are immune to filtered-view poisoning.** `upsertCanonicalPipelineSnapshot(db, orgId)` accepts no caller-computed value and derives `open_count`, `open_usd`, `weighted_usd`, `crm_usd` itself from the org's full unfiltered set | `dp1-snapshot-boundary` 26/0 incl. a negative control reproducing the pre-fix poisoning; `certify-world --runs 2` 90 clean, digest `e98b43254f98d5ec` | `f936fbe`; pre-push snapshots verified canonical; timeframe 7/30/90, narrowed scope and the combination all leave the row byte-identical; **0 of 155** fingerprints moved | **CLOSED** | `dp1-snapshot-boundary` 26/0; Part B shows the canonical row unmoved |
+
+**Semantic decisions explicitly preserved:** deterministic ordering **versus** semantic *unresolved*
+(a tie the business rules cannot break is disclosed, never invented) · normalized canonical identity
+resolution (both sides normalized at comparison time; `companies.normalized_name` is never trusted) ·
+**nullable unresolved** campaign seed · canonical shared-evidence **LIMIT membership** · canonical
+pipeline snapshots immune to filtered-view poisoning.
+
+## D — Final minimum regression
+
+`tenant-isolation` **205/0** · `partnership-app-rw` **117/0** · `search-path` **39/0** · catalogue guard
+**12/0, 31 protected / 0 unsafe** · `app-rw-rehearsal` **38/38 rooms + 6/6 consent** ·
+`dg85-determinism` **19/0** · `persisted-determinism` **17/0** · `semantic-determinism` **50/0** ·
+`dp1-snapshot-boundary` **26/0**.
+
+**Crawl (twice, 4 passes): 12/12 assertions PASS.** 37/37 rooms 200 in all 4 passes · all 4 passes
+byte-identical · **37/37 identical to the accepted D-P1 crawl AND 37/37 identical to the accepted
+D-G8-5 crawl** · Meridian **0 occurrences** under Vertex · owner-only rooms healthy · joint boundaries
+intact · palette healthy · CDW label intact · Stark ambiguity disclosure intact · most-common-outcome
+line intact · D-G8-1 stakeholder ordering intact. **No new rendered difference.**
+
+## E — D-P1 final invariant
+
+Verified from the accepted D-P1 record rather than re-run: pre-deploy snapshots were canonical
+(independently recomputed before any push) · timeframe **7**, **30** and **90** each leave canonical
+state byte-identical at `9b2c3c6ce81d9f12` · a real narrowed ecosystem scope (`?scope=PARTNER:WWT`,
+10 companies/19 opportunities → 6/11) cannot move it · the **combined** scope + timeframe cannot move it
+· 8 repeated filtered reads produce **one** canonical hash · 8 concurrent mixed reads leave canonical
+values equal to independent recomputation · historical rows immutable · **CFR-1.1 preserved and
+strengthened** (enforced by the writer boundary, not the page caller) · tenant / `app_rw` boundary
+intact (RLS + FORCE RLS, cross-org writes refused with a positive control, zero residue).
+
+**D-P1 is recorded as the final closed pre-Gate-9 blocker.**
+
+## F — Evidence reconciliation #1: harness fixes
+
+**Answer: (C), with a clarification — they were acceptance-only tooling that never entered the
+repository, so there was nothing to revert.**
+
+The two harness defects fixed during D-P1 hosted acceptance were in **session-scratchpad** files at
+`/private/tmp/.../scratchpad/g4/`, not in the repo: `dp1-parts-m-n.mts` (the RLS-refusal-aborts-the-
+transaction defect, fixed with savepoints plus a positive control) and an **inline `node -e` script**
+that never existed as a file (the two wrong JSON keys). Verified: none of
+`dp1-parts-m-n.mts`, `dp1-parts-e-l.mts`, `dp1-fgh-correct.mts`, `dp1-part0.mts`, `gate2.ts`,
+`gate2-common.ts` is git-tracked or present anywhere under the repository, and **no tracked file
+references any of them**. The three D-P1 commits touched only
+`scripts/dp1-snapshot-boundary-verify.ts`, `scripts/verify-classes.ts`, `src/app/pipeline/page.tsx`,
+`src/lib/pipeline/snapshot.ts` and the docs.
+
+**Does the repository retain a vacuous or broken certification check? NO.** Four independent lines of
+evidence: (1) the repo suite contains no `Object.keys`-style vacuous comparison — the defect class that
+produced the scratchpad's `0 of 0 tables`; (2) its check 9 is a **negative control** that asserts the
+pre-fix flow *does* poison the row, which a vacuous harness cannot satisfy; (3) check 20's regexes were
+separately negative-controlled and correctly reject `(db, orgId, total)`, `(db, orgId, weighted)`, a
+second call site and an inline insert; (4) the suite **empirically produced a genuine red** during local
+implementation (24/25 on `weighted_usd`, correctly identifying a real discrepancy) — a vacuous suite
+cannot do that. No Gate-9 blocker, and nothing was patched.
+
+> Separately, `gate2.ts assert-same` (scratchpad) still compares against hardcoded **Gate 1b.1**
+> constants (migrations 105, business `79321d9130d1dc94`, world `de05e204801988d1`, security
+> `30772757ebd4688c`). That is a superseded static baseline in acceptance-only tooling, not repository
+> code and not drift; every **live** pre→post comparison it performs passes. Recorded, not changed.
+
+## G — Evidence reconciliation #2: Vercel env count
+
+**Both numbers are correct; they count different things. There is no contradiction and no unexplained
+addition or removal.**
+
+| count | what it is |
+|---|---|
+| **18** | entries **branch-scoped** to `roadmap/pursuitos-vnext` (`gitBranch = roadmap/pursuitos-vnext`), all `target = preview`. This is what earlier gates meant by "branch-scoped Preview variables". |
+| **38** | the **whole project inventory** across every target and scope — 18 branch-scoped + 20 unscoped. By target set: 18 `preview` (the branch-scoped ones) · 13 `preview+production` · 5 `production` · 2 `development+preview+production`. By type: 29 sensitive, 9 encrypted. |
+| **33** | (derived) entries **visible to a Preview build on this branch** — the 18 branch-scoped plus 15 unscoped `preview` entries. |
+
+The 18 branch-scoped keys are: `DATABASE_URL`, `DATABASE_URL_OWNER`, `FACTS_ENABLED`,
+`FEDERATION_ENABLED`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_URL`,
+`OPS_FINGERPRINT_TOKEN`, `PURSUITOS_ENV`, `PURSUITS_ENABLED`, `PURSUIT_EXPERIENCE_ENABLED`,
+`ROUTING_ENABLED`, `SUPABASE_SERVICE_ROLE_KEY`, `VNEXT_CONTEXT_HEALTH_ENABLED`,
+`VNEXT_PURSUIT_ATTENTION_ENABLED`, `VNEXT_PURSUIT_COORDINATION_ENABLED`,
+`VNEXT_PURSUIT_INTELLIGENCE_ENABLED`, `VNEXT_PURSUIT_MEMORY_ENABLED`, `VNEXT_PURSUIT_STATE_ENABLED`.
+No values were read or printed.
+
+**AUTHORITATIVE COUNTING RULE, adopted here.** Future records state it as
+**"N total project entries / M branch-scoped to `<branch>` / K visible to a Preview build"** —
+currently **38 / 18 / 33** — and the byte-identity comparison is always over **all 38**, because a
+change to an unscoped entry can still reach the Preview.
+
+**No unexplained env movement.** The 38-entry inventory is **byte-identical** to the accepted
+`D-G8-1`-era, `D-P1`-pre and `D-P1`-post snapshots. Nothing was mutated.
+
+## H — Send / outreach safety
+
+`messages` 0 · `action_outbox` 0 · `email_events` 0 · `sending_identities` 0 · `sent_touches` 0 ·
+`externalSendingArmed` **false**. `OUTREACH_AUTOSEND` and `RESEND_API_KEY` are **absent from the entire
+Vercel project** — not merely unset at runtime, which is the stronger statement.
+
+**Synthetic data cannot create an external-send condition under the accepted posture**, because two
+**independent** gates both fail closed:
+
+1. `externalSendingArmed()` returns false unless `OUTREACH_AUTOSEND` is exactly `"on"` — "anything other
+   than the exact string `on` is off" — and the public site can never send at all. The worker gates real
+   provider execution on the same variable.
+2. Even if a message row existed, `send.ts` checks `resendConfigured()` first and, with `RESEND_API_KEY`
+   absent, marks the message `failed` and **throws before any provider call**; `ResendProvider` itself
+   throws on key lookup.
+
+There are zero message rows, so neither gate is even reached. No external delivery, no webhook delivery.
+**Sending was not enabled or configured.**
+
+## I — Pre-pilot operating envelope (existing documentation, status only)
+
+| Safeguard | Status | Evidence |
+|---|---|---|
+| Explicit tenant targeting | **PASS** | `withTenant` pins transaction-local `app.org_id`; `tenant-isolation` 205/0; Meridian 0 under Vertex across 4 crawl passes |
+| `app_rw` / owner credential separation | **PASS** | Branch-scoped `DATABASE_URL` → `app_rw`, `DATABASE_URL_OWNER` → owner, distinct and unchanged; `/api/build` reports `app_rw` |
+| RLS / tenant enforcement | **PASS** | 155 tables RLS + FORCE RLS; 380 policies byte-identical; `app_rw` BYPASSRLS **false**; `tenantEnforcement true`; cross-org writes refused with a positive control |
+| Autosend OFF | **PASS** | `OUTREACH_AUTOSEND` absent project-wide; fail-closed gate |
+| Synthetic-send prohibition | **PASS** | Two independent fail-closed gates; 0 message rows; `RESEND_API_KEY` absent project-wide |
+| Rollback ownership | **PASS** | `DEMO-PROMOTION-GATE.md` § Rollback; **rehearsed** at Gate 8 Phase 1 (`app_rw` → owner) and restored at Phase 2, both clean; "the repository owner decides — not the agent, not a passing test suite" |
+| Backup / snapshot expectations | **NOT APPLICABLE YET** | `ENVIRONMENT-MAP.md` §5.5 records **no managed backups on this Supabase plan**; backup depends on the application's own nightly job (task #70). Not a blocker for the current **isolated synthetic** posture — the world is reproducible from seed and certified by fingerprint — but it **becomes applicable the moment non-synthetic data enters**. Flagged, not expanded. |
+| Environment identity | **PASS** | `environment_identity` singleton: `environment='demo'`, `is_synthetic=true`, "pursuitos-vnext — isolated synthetic preview"; `assertSyntheticDatabase` guard present |
+| Production-target guardrails | **PASS** | Forbidden project `qifatlqxfuhwrwvpbwsc` never contacted; every hosted tool proves the parsed project ref **before connecting** and exits otherwise; Production scope untouched throughout |
+
+**One factual documentation correction was required and made** (permitted by this gate, and nothing
+else was expanded): `ENVIRONMENT-MAP.md` §6 still classified Preview data access as **UNKNOWN** and
+warned it might be `UNSAFE_SHARED_WRITE`. Gates 1–8 resolved that with credentialed evidence. It now
+reads **ISOLATED_SYNTHETIC_LEAST_PRIVILEGE**, with the superseded reasoning and operating rule retained
+verbatim under collapsed "historical record" sections rather than deleted.
+
+## J — Open / deferred inventory
+
+### PILOT BLOCKERS: NONE
+
+Every pre-pilot invariant has a traceable accepted evidence chain (§C). No concrete correctness,
+governance, determinism or containment failure is outstanding.
+
+### Known deferred / post-pilot / roadmap work — explicitly NOT blockers
+
+| Item | Why it is not a pilot blocker |
+|---|---|
+| **D-G8-2B** — display-only ordering backlog (e.g. `mapping/page.tsx:843` column order) | Deferred by prior owner decision to the dedicated UI/UX cleanup. **Display-only**: no correctness, membership, persistence or governance effect. No concrete correctness/usability failure has been found that its deferred status does not already cover. Not reinterpreted as a blocker. |
+| **P4 — AI Control Plane**, **P5 — Pursuit Runtime**, continued **P3** depth | Roadmap work intentionally **not required** to finish H1 hardening. Roadmap incompleteness is not a pilot blocker. |
+| **P6–P10** (governance depth, analysis, learning, ecosystem intelligence, settlement) | Later roadmap phases; partially delivered where H1 needed them. |
+| **Backup job (task #70)** confirmation | Not applicable to the isolated synthetic posture; becomes a live requirement when non-synthetic data enters. Recorded above. |
+| **Production demo serving-SHA reconciliation** (`ENVIRONMENT-MAP.md` §5.4, UNRESOLVED) | Concerns the **Production demo** target `qifatlqxfuhwrwvpbwsc`, which is deliberately out of scope and never contacted. It does not affect the certified Preview baseline. |
+| Final broad **UI/UX cleanup** | By standing owner decision this follows completion of the broader amended roadmap, except for specific correctness/usability blockers — of which there are none. |
+
+## K — PILOT-READINESS DECISION
+
+# GATE 9 — PASS · PILOT READY WITH CURRENT OPERATING BOUNDARIES
+
+- **PRE-GATE-9 HARDENING — COMPLETE**
+- **H1 PRE-PILOT HARDENING — COMPLETE**
+- **PILOT READINESS — ACCEPTED**
+
+**CERTIFIED BASELINE, PRESERVED EXACTLY:** branch `roadmap/pursuitos-vnext` · serving commit
+**`46e9258`** as **`dpl_8Mh8XDCVph5hpLgGRd8xX5MrWgnD`** · project `mejokqxriwyawfhawuxu` · isolated
+synthetic Preview · migrations **108** · business-data **`c56a1d229e483f2b`** · whole-world
+**`933a5e30d79297a4`** · security **`2a5ea0509145ee81`** · protected **31 / 0** · `app_rw` LOGIN true /
+BYPASSRLS false · `externalSendingArmed` **false** · env **38 / 18 / 33**.
+
+**Operating boundaries the pilot runs inside:** isolated synthetic Preview only; `app_rw` least
+privilege with RLS binding; owner credential separate and owner-path-only; sending off at two
+independent fail-closed gates; Production and `qifatlqxfuhwrwvpbwsc` out of scope; rollback owned by the
+repository owner and already rehearsed; backup expectations to be revisited **before** any non-synthetic
+data is introduced.
+
+**No new hardening phase is opened.** Next product work returns to the amended P0–P10 roadmap.
