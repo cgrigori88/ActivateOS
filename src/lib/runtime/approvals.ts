@@ -186,11 +186,15 @@ export async function decideApproval(
   const gate = await dispatchSkill(db, DECIDE_SKILL, decider.actor, {
     pursuitId: c.pursuit_id, args: { requestId, decision }, governedActorId: decider.governedActorId,
     runStepId: c.run_step_id, dataEnvironment: c.data_environment,
-    // The DECIDER is part of the key. Without it two approvers deciding the same request collide,
-    // and the second is handed a REPLAYED result instead of being evaluated on its own governance
-    // merits — so a viewer could inherit an operator's dispatch. The race must be arbitrated by the
-    // unique terminal index, never by dispatch idempotency.
-    idempotencyKey: `decide:${requestId}:${decision}:${decider.governedActorId}`,
+    // NO idempotency key, deliberately. A governance evaluation must be FRESH every attempt: if an
+    // approver is refused for insufficient permission and an admin then grants it, the retry has to
+    // be re-evaluated, not handed the cached refusal. Keying this dispatch would make a refusal
+    // stale-by-construction — found by the hosted gate, where a suspended-decider attempt replayed
+    // an earlier wrong-principal refusal.
+    //
+    // Nothing is lost: duplicate EFFECTS are prevented by `pursuit_run_approvals_one_terminal`,
+    // which is the designated race arbiter, plus the compare-and-set transition and step
+    // idempotency behind it. Dispatch idempotency was never load-bearing here.
   });
   if (gate.status !== "EXECUTED")
     return { status: "REFUSED", decision: null, requestId, reason: gate.reason ?? gate.status };
