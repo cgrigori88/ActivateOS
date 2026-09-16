@@ -2797,5 +2797,95 @@ absent · no external or webhook delivery.
 - **D-G8-4D — HOSTED ACCEPTED / CLOSED**
 - **D-G8-4 OVERALL — HOSTED ACCEPTED / CLOSED.** Not to be reopened absent a new concrete defect.
 
-**Still open:** D-G8-5 (`shared_in_evidence()`, migration-gated) · **D-P1**. Both PRE-GATE-9.
+**Still open:** D-G8-5 (`shared_in_evidence()`, migration-gated — now FIXED LOCALLY, see below) · **D-P1**. Both PRE-GATE-9.
 **Gate 9 NOT started.** H1B and H1 are not complete.
+
+### D-G8-5 — FIXED LOCALLY / NOT PUSHED · migration 0108, no application-code change (2026-09-16)
+
+**The defect.** `public.shared_in_evidence()` (0104) ended `order by e.observed_at desc limit 20`, which
+is not a total order. With more than 20 eligible rows and several sharing an exact `observed_at` across
+the 20/21 boundary, heap / planner order decided which tied rows survived the cap.
+
+**The damage was MEMBERSHIP, not presentation.** The one consumer —
+`src/lib/partnerships/evidence-shares.ts:149` → `src/lib/context/timeline.ts:289` — re-sorts every event
+with `compareTimelineEvents` and re-slices at line 311, so this function's output ORDER is irrelevant
+downstream. What mattered is that a row the cap dropped never reached the timeline at all: a shared
+claim could appear or vanish between runs on identical data, with no user-visible cause.
+
+**The final key is `s.id`, NOT `e.id`.** `evidence_shares` (0053) is `unique (evidence_id,
+partnership_id)`, so one evidence object may be shared on several partnerships; a caller who is a party
+to more than one receives the **same `e.id` twice**, so `e.id` cannot total-order the result. `s.id` is
+the primary key of the row the function returns — exactly one result row per share — and is therefore
+unique by construction. It is consulted only after `observed_at` has tied and carries no ranking
+meaning. `desc` follows the repository convention for a descending primary key.
+
+**Deliberately unchanged (owner ruling).** The same evidence shared through two eligible partnerships
+still returns **two** rows and still consumes two of the 20 slots. That is current product behaviour;
+de-duplicating would alter membership semantics and is out of scope. Asserted by the suite so it cannot
+drift silently.
+
+**Migration `0108_dg85_shared_in_evidence_determinism.sql` — `CREATE OR REPLACE`, never `DROP`.** The
+returned shape and argument signature are unchanged (`s.id` appears only in `ORDER BY`, which is legal
+for a non-projected column of a `FROM` relation), so PostgreSQL's "cannot change return type"
+restriction — the one that forced DROP+CREATE in D-G8-3B — does not apply. Nothing is dropped, so the
+owner, ACL and hardened `search_path` survive; the header restates them. **No CASCADE, no
+revoke/grant churn.** Every consent, filter and join clause is carried over verbatim; only the ORDER BY
+differs. A `-- ROLLBACK:` block restores the 0104 clause while keeping the hardened posture, and states
+plainly that reverting **reintroduces the nondeterminism and is not an acceptable steady state**.
+
+**Verified after applying 0108 to the LOCAL canonical world:** exactly **one** definition · signature
+`shared_in_evidence(p_company uuid)` · returns the same 4 columns · **SECURITY DEFINER** · **STABLE** ·
+`search_path = pg_catalog, public, pg_temp` · owner **postgres** · ACL
+**`{postgres=X/postgres,app_rw=X/postgres}`** (PUBLIC, anon, authenticated, service_role all revoked) ·
+`order by e.observed_at desc, s.id desc limit 20`. **31 protected / 0 unsafe.**
+
+**SQL smoke:** the replaced function was applied and **executed** inside a transaction and rolled back,
+returning the expected four columns — the only gate that catches a bad column reference inside the
+replaced body.
+
+**The new `dg85-determinism` suite (SEEDED_CLONE): 19 / 0.** Fixture: 30 eligible accepted shares — 12
+strictly newer, **12 sharing one exact `observed_at` spanning positions 13..24**, 6 strictly older, so
+the cap must choose 8 of the 12 tied rows.
+
+- `observed_at DESC` authoritative: all 12 newer rows selected, no older row ever selected
+- `s.id DESC` totalizes the tie: the 8 remaining slots are exactly the highest share ids of the band
+- identical selected set across **5 planner configurations × 2 heap layouts**
+- the deployed FUNCTION returns identical membership and order under **owner and the REAL `app_rw`
+  login** across 5 plans × 2 heaps (the raw clause cannot be compared across roles — `app_rw` has no RLS
+  grant on the sharer's evidence, which is exactly why the function is SECURITY DEFINER)
+- **forward, reverse and shuffled insertion** select the same 20 ids, equal to the original selection
+- **negative control, empirical:** the pre-fix clause produced **3 distinct selected sets over 20 runs**
+  on the identical fixture — the defect reproduced, not merely argued
+- rows strictly newer than the tie band are identical pre-fix and post-fix; every membership difference
+  lies **inside** the equal-`observed_at` boundary set
+- with **≤20** eligible rows the returned multiset is identical pre-fix and post-fix
+- a **non-party receives zero rows**; revoking a share removes it; deactivating the partnership removes
+  every row
+- one evidence shared through two partnerships still returns **two** rows, distinguished by `s.id`
+
+**Application-code impact: NONE.** `git status src/` is empty. The sole caller still selects the same
+four columns by name, so the running application is unaffected by the new ORDER BY — asserted by a
+static guard.
+
+**Certification (local).** SQL smoke · `tsc` clean · `npm test` **429/429** · build OK ·
+**`certify-world --runs 2` 88 clean / 0 failures**, digest **`e98b43254f98d5ec`** unchanged at start and
+after both runs · `dg85-determinism` **19/0** · `persisted-determinism` **17/0** ·
+`semantic-determinism` **50/0** · `partnership-app-rw` **117/0** · `tenant-isolation` **205/0** ·
+`search-path-verify` 12/12, **31 protected / 0 unsafe** · canonical world fingerprint **IDENTICAL**
+(`e98b43254f98d5ec`, 154 tables, 1051 rows) · **zero fixture residue** (`evidence_shares` back to 0) ·
+send rows **0/0/0/0/0** · `app_rw` LOGIN true / BYPASSRLS false · local migration level **108**.
+
+> **One unclassified rehearsal observation.** The first `app-rw-rehearsal` run after 0108 reported
+> **37/38** rooms identical instead of 38/38. I did not capture which room differed before re-running,
+> which is a gap in the evidence. It has not recurred: **three consecutive subsequent runs were 38/38**
+> with 6/6 consent and no failure lines. Recorded as unclassified rather than dismissed — the same
+> discipline applied to the D-G8-3 `tenant-isolation` transient.
+
+**Expected hosted security-hash movement.** 0108 changes a protected function body, so the hosted
+`securityHash` **will** move off `f31e51d50e9dec49`. No value is pre-authorized: hosted acceptance must
+record the new hash only after 31 protected / 0 unsafe, correct owner, `search_path`, ACL, `app_rw`
+least privilege, and no policy / RLS / role / grant / CREATE-on-public drift, with **exactly one**
+protected-function definition changed — `shared_in_evidence(uuid)`.
+
+**Status: D-G8-5 FIXED LOCALLY, NOT PUSHED.** Hosted remains at migration **107** and
+`f31e51d50e9dec49`. **D-P1 is now the final pre-Gate-9 blocker. Gate 9 NOT started.**

@@ -112,6 +112,12 @@ export const SUITES: SuiteSpec[] = [
     isolation: "SEEDED_CLONE",
   },
   {
+    name: "dg85-determinism",
+    cls: "SEEDED",
+    why: "D-G8-5: shared_in_evidence() ended `order by e.observed_at desc limit 20`, which is not total — with >20 eligible rows and several sharing an exact observed_at across the 20/21 boundary, heap/planner order decided which tied rows survived the CAP, and the one consumer (context/timeline.ts) re-sorts and re-slices, so a dropped row simply never reaches the timeline. This plants 30 eligible shares — 12 strictly newer, 12 sharing one observed_at spanning positions 13..24, 6 strictly older — and proves the selected 20 share ids are identical across five planner configurations, two heap layouts, owner and the real app_rw login, and forward / reverse / shuffled insertion; that the final key is s.id (evidence_shares PK) because one evidence object shared on two partnerships makes e.id non-unique; that a non-party sees zero, revoking a share or deactivating the partnership removes rows, and a ≤20 population is unchanged pre-fix and post-fix. It COMMITS its fixtures, so it runs on a disposable seeded clone",
+    isolation: "SEEDED_CLONE",
+  },
+  {
     name: "semantic-determinism",
     cls: "SEEDED",
     why: "D-G8-4: proves the SEMANTICS, not merely stable ordering — provenance precedence on an exact confidence+recency tie (with HUMAN_ASSERTED vs SECOND_PARTY deliberately UNRESOLVED), a median over the whole eligible population plus a categorical mode that surfaces ties, identity resolved by canonical id / alias / normalized name / unique fuzzy with shorter-name, alphabetical, uuid and heap order all proven unable to decide it, ambiguity failing CLOSED at the ask-scope boundary without leaking candidates, in-force facts judged against an explicit asOf, and a campaign seed that is deliberate or null. It COMMITS its fixtures, so it runs on a disposable seeded clone",
