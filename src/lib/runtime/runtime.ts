@@ -160,19 +160,19 @@ async function ledger(
 ): Promise<void> {
   // GOVERNED_ACTION is the existing trigger vocabulary and is exactly what a runtime transition is.
   // Inventing a RUNTIME trigger would add a second word for one concept (0109 §5b).
-  const ledgerId = await recordChange(db, {
+  //
+  // The runtime linkage goes IN the insert. An earlier implementation appended the row and then
+  // UPDATEd it to attach run/step/invocation/actor; that succeeds as the owner and is refused as
+  // `app_rw`, which holds INSERT and SELECT on change_ledger and nothing else — so no run could
+  // complete under the real runtime identity (defect P45-D1, found by the hosted functional gate).
+  // One statement is also atomic: there is no window in which a ledger row exists unlinked.
+  await recordChange(db, {
     orgId, pursuitId, entityType: "pursuit_run", entityId: runId,
     changeType: changeType as ChangeType, materiality: "MEDIUM", reason: o.reason,
     actorType: "USER", actorId: o.actorId ?? null, triggerType: "GOVERNED_ACTION",
     dataEnvironment: o.env, before: o.before ?? undefined, after: o.after ?? undefined,
+    runId, runStepId: stepId, invocationId, governedActorId: o.governedActorId ?? null,
   });
-  // The runtime linkage columns (0109) are additive and outside recordChange's contract, so they
-  // are set on the row it just wrote — addressed by the id it RETURNED, never by re-querying for
-  // "the most recent matching row", which would pick the wrong one under concurrency.
-  await db.query(
-    `update change_ledger set run_id = $2, run_step_id = $3, invocation_id = $4, governed_actor_id = $5
-      where id = $1 and org_id = $6`,
-    [ledgerId, runId, stepId, invocationId, o.governedActorId ?? null, orgId]);
 }
 
 async function loadRun(db: PoolClient, orgId: string, runId: string) {

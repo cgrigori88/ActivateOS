@@ -1,8 +1,10 @@
 # PursuitOS vNext — P4 / P5 Governed Pursuit Runtime
 
 **Status:** **P45-1 MIGRATION 0109 — HOSTED ACCEPTED** (2026-09-16) · hosted migration level **109** ·
-flag default **OFF** · runtime tables **empty** · 45/45 local slice proof · no external sending.
-**P45-1 functional/runtime acceptance remains OPEN** — hosted execution has not been exercised.
+flag default **OFF** · runtime tables **empty** · no external sending.
+**Defect P45-D1 found by the hosted functional gate and CORRECTED LOCALLY** (not pushed) — the
+runtime could not execute under `app_rw`. Local suite now **50/50 executing as `app_rw`**.
+**P45-1 functional/runtime acceptance remains OPEN** — the hosted rerun is separately authorised.
 Slice 2 **not started**.
 
 This is the architecture record for the amended roadmap's P4 (AI Control Plane) and P5 (Pursuit
@@ -344,3 +346,77 @@ serving `2f16091` as `dpl_8MDMbJwHiKePAExe6xRifxhfsASh`.
 **P45-1 MIGRATION 0109 — HOSTED ACCEPTED.** The schema/security substrate is accepted.
 **P45-1 functional/runtime acceptance remains OPEN** — no hosted run, actor, grant or step has been
 created, and the runtime has never executed hosted. **Slice 2 NOT STARTED.**
+
+
+---
+
+## 12. DEFECT P45-D1 — the runtime could not execute under `app_rw` (found hosted, corrected locally)
+
+### What was wrong
+
+`runtime.ts` appended its ledger event with `recordChange` and then **UPDATEd that row** to attach
+`run_id` / `run_step_id` / `invocation_id` / `governed_actor_id`:
+
+```
+ERROR 42501: permission denied for table change_ledger
+```
+
+`change_ledger` is **append-only for `app_rw`** — `INSERT, SELECT`, zero column-level UPDATE — a
+deliberate certified invariant ("history is corrected by appending", 0094 / 0103 §4). The follow-up
+UPDATE succeeds as the owner and is refused as `app_rw`, so the enclosing `withTenantOrg`
+transaction rolled back and **no run could ever reach `COMPLETED` under the real runtime identity.**
+
+### Why 45/45 locally did not catch it — a defect in the TEST, not only in the code
+
+`scripts/p45-runtime-verify.ts` executed `startRun` / `resumeRun` on `owner.connect()` (BYPASSRLS,
+full DML) and used `app_rw` **only** to assert RLS visibility. It was therefore *structurally unable*
+to detect a privilege defect. The hosted gate found it precisely because it ran the product's own
+`withTenantOrg` against the real `app_rw` login.
+
+### The correction
+
+`recordChange` now accepts the four linkage fields and writes them **in the original INSERT**; the
+follow-up UPDATE is deleted. The append-only invariant is **strengthened, not relaxed** — no caller
+needs UPDATE on `change_ledger` and none has it — and the write is now atomic, so there is no window
+in which a ledger row exists unlinked.
+
+**No migration. No grant, permission or RLS change.** `app_rw` on `change_ledger` remains exactly
+`INSERT, SELECT` with **0** column-level UPDATE grants. The alternative — granting `app_rw` UPDATE —
+was rejected: it would weaken a certified invariant to accommodate a fixable implementation error.
+
+### Proven, not assumed
+
+The corrected suite executes the runtime through **`withTenantOrg` on the real `app_rw` login** and
+passes **50/50**. A **negative control** reintroduced P45-D1 verbatim and the corrected suite went
+**FATAL with the exact hosted error** (`permission denied for table change_ledger`) — so the test gap
+is genuinely closed, not merely stepped around. Four new assertions cover the invariant directly:
+`app_rw` executed with BYPASSRLS false; it can SELECT the rows it wrote; it **cannot** UPDATE a prior
+ledger row; it **cannot** DELETE one; and the linkage is present on every row without any UPDATE
+having occurred.
+
+---
+
+## 13. PERMANENT ACCEPTANCE REQUIREMENT — real runtime identity
+
+> **Every P45 gate, now and in future slices, must exercise runtime execution through the REAL
+> `app_rw` identity and the product's own tenant-binding path (`withTenantOrg` / `withTenant`).
+> Executing the runtime on the owner pool is not acceptance evidence.**
+
+Rules, binding from here:
+
+1. **Execution identity.** `startRun`, `resumeRun`, `pauseRun`, `resumeAfterPause` and any future
+   runtime entry point are invoked through `withTenantOrg(orgId, …)` with `DATABASE_URL` pointed at
+   the `app_rw` login. A suite that executes them as the owner does not certify the runtime.
+2. **Owner authority is scoped.** The owner connection may be used **only** for fixture setup,
+   cleanup, and cross-org assertions that must see past RLS. It may never be the execution identity.
+3. **Privilege assertions are mandatory.** Each gate asserts, under the real login, that `app_rw`
+   reports `BYPASSRLS false`, and that the append-only tables reject UPDATE and DELETE.
+4. **Local green is not sufficient on its own.** Any behaviour proven only as the owner is recorded
+   as *unproven under the runtime identity* until a gate demonstrates it as `app_rw`.
+5. **New privilege surfaces.** When a slice adds a table or column the runtime writes, the gate must
+   state the exact `app_rw` grant it relies on and prove the runtime works within it — rather than
+   discovering the gap in production.
+
+Retry/backoff, budget exhaustion, crash recovery, pause/resume, supersession and replay are all now
+exercised under `app_rw` in the 50/50 suite, so the earlier caveat that they were "owner-only proven"
+no longer applies.

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { assertSeededClone } from "./seeded-clone";
 import { startRun, resumeRun, pauseRun, resumeAfterPause, stepIdempotencyKey } from "../src/lib/runtime/runtime";
+import { withTenantOrg } from "../src/lib/db/tenant";
 import { dispatchSkill, type Actor } from "../src/lib/pursuits/federation/skills";
 import { runtimeEnabled } from "../src/lib/runtime/entry";
 
@@ -28,6 +29,22 @@ const rwUrl = (() => { const u = new URL(CONN); u.username = "app_rw"; u.passwor
 const owner = new Pool({ connectionString: CONN, max: 4 });
 const rw = new Pool({ connectionString: rwUrl, max: 2 });
 
+/**
+ * EXECUTION IDENTITY — a permanent acceptance requirement, not a detail.
+ *
+ * This suite once executed the runtime on the OWNER connection and used app_rw only to assert RLS
+ * visibility. That is structurally unable to detect a privilege defect, and it missed one: the
+ * runtime appended a ledger row and then UPDATEd it, which the owner may do and `app_rw` may not
+ * (change_ledger is INSERT/SELECT only). No run could complete under the real runtime identity, and
+ * only the hosted gate caught it (defect P45-D1).
+ *
+ * So the product pool is pointed at the REAL app_rw login before the first getPool() call, and every
+ * runtime invocation below goes through the product's own `withTenantOrg` — the same tenant binding
+ * a request uses. Owner authority remains for fixture setup and for assertions that must see across
+ * orgs. getPool() is lazy, so assigning here (after imports, before any runtime call) is sufficient.
+ */
+process.env.DATABASE_URL = rwUrl;
+
 let passed = 0, failed = 0; const failures: string[] = [];
 const check = (n: string, ok: boolean, d = ""): void => {
   if (ok) { passed++; console.log(`  ✓ ${n}${d ? ` — ${d}` : ""}`); }
@@ -37,21 +54,26 @@ const check = (n: string, ok: boolean, d = ""): void => {
 const SKILL = "draft_campaign_touch";
 
 /**
- * Every runtime entry point runs inside ONE transaction, exactly as production does: the real entry
- * point is `withTenant`, which opens a transaction per request, and `dispatchSkill` relies on that
- * to run handlers inside a SAVEPOINT. Calling the runtime on an autocommit connection would test a
- * shape the application never uses.
+ * Every runtime entry point runs through the product's own `withTenantOrg`: one app_rw connection,
+ * one transaction, `app.org_id` set — exactly the shape a request produces, and the shape
+ * `dispatchSkill` needs for its SAVEPOINT-isolated handlers. The `db` argument these helpers ignore
+ * is the owner client used elsewhere in the suite; it is deliberately NOT the execution identity.
  */
-async function tx<T>(db: PoolClient, fn: () => Promise<T>): Promise<T> {
+const txStart = (_db: PoolClient, orgId: string, a: Parameters<typeof startRun>[2]) =>
+  withTenantOrg(orgId, (rwDb) => startRun(rwDb, orgId, a));
+const txResume = (_db: PoolClient, orgId: string, runId: string, actor: Actor) =>
+  withTenantOrg(orgId, (rwDb) => resumeRun(rwDb, orgId, runId, actor));
+const txPause = (_db: PoolClient, orgId: string, runId: string, reason: string, uid: string) =>
+  withTenantOrg(orgId, (rwDb) => pauseRun(rwDb, orgId, runId, reason, uid));
+const txUnpause = (_db: PoolClient, orgId: string, runId: string, reason: string, uid: string) =>
+  withTenantOrg(orgId, (rwDb) => resumeAfterPause(rwDb, orgId, runId, reason, uid));
+/** Fixture setup stays on the OWNER: there is no product path for planting an org, and RLS would
+ *  refuse an app_rw insert for an org that does not yet exist in its context. */
+async function txPlant(db: PoolClient, label: string): Promise<Fixture> {
   await db.query("begin");
-  try { const r = await fn(); await db.query("commit"); return r; }
+  try { const r = await plantOrg(db, label); await db.query("commit"); return r; }
   catch (e) { await db.query("rollback"); throw e; }
 }
-const txStart = (db: PoolClient, orgId: string, a: Parameters<typeof startRun>[2]) => tx(db, () => startRun(db, orgId, a));
-const txResume = (db: PoolClient, orgId: string, runId: string, actor: Actor) => tx(db, () => resumeRun(db, orgId, runId, actor));
-const txPause = (db: PoolClient, orgId: string, runId: string, reason: string, uid: string) => tx(db, () => pauseRun(db, orgId, runId, reason, uid));
-const txUnpause = (db: PoolClient, orgId: string, runId: string, reason: string, uid: string) => tx(db, () => resumeAfterPause(db, orgId, runId, reason, uid));
-const txPlant = (db: PoolClient, label: string) => tx(db, () => plantOrg(db, label));
 
 interface Fixture { orgId: string; pursuitId: string; planId: string; revisionId: string; actorId: string; campaignName: string; principal: string }
 
@@ -198,7 +220,8 @@ async function main(): Promise<void> {
   check("16: and NO draft was created", (await touchCount(db, s.orgId)) === sBefore);
 
   // A grant cannot rescue an actor the registry refuses: viewer < operator.
-  const vExec = await tx(db, () => dispatchSkill(db, SKILL, { type: "USER", id: f.principal, orgId: f.orgId, role: "viewer" },
+  const vExec = await withTenantOrg(f.orgId, (rwDb) => dispatchSkill(rwDb, SKILL,
+    { type: "USER", id: f.principal, orgId: f.orgId, role: "viewer" },
     { governedActorId: f.actorId, args: { campaign: f.campaignName }, idempotencyKey: `viewer-${randomUUID()}` }));
   check("17: a grant does NOT override required_permission — viewer is still refused",
     vExec.status === "REJECTED" && /insufficient permission/i.test(vExec.reason ?? ""), `${vExec.status}: ${vExec.reason}`);
@@ -339,6 +362,42 @@ async function main(): Promise<void> {
     check("39: and no foreign governed actors or grants are visible", actors === "0", `${actors} foreign actors`);
     await rwc.query("rollback");
   } finally { rwc.release(); }
+
+  // ── 11b. APPEND-ONLY LEDGER under the REAL execution identity (defect P45-D1) ───────────────────
+  // The two halves of this must both hold, and the first one is what the old owner-executed suite
+  // could never test: app_rw must be able to RUN the runtime end to end, and must still be unable
+  // to rewrite a ledger row it already wrote.
+  const rwLedger = await rw.connect();
+  try {
+    await rwLedger.query("begin");
+    await rwLedger.query(`select set_config('app.org_id',$1,true)`, [f.orgId]);
+    const who = (await rwLedger.query<{ u: string; b: boolean }>(
+      `select current_user u, (select rolbypassrls from pg_roles where rolname=current_user) b`)).rows[0];
+    check("11b: the runtime above executed as app_rw with BYPASSRLS false — not the owner",
+      who.u === "app_rw" && who.b === false, `${who.u} / bypassrls=${who.b}`);
+    const ledRow = (await rwLedger.query<{ id: string }>(
+      `select id from change_ledger where run_id = $1 order by occurred_at, id limit 1`, [run.id])).rows[0];
+    check("11c: app_rw can SELECT the runtime ledger rows it wrote", !!ledRow);
+    let denied = "";
+    await rwLedger.query("savepoint ao");
+    try { await rwLedger.query(`update change_ledger set reason = 'tampered' where id = $1`, [ledRow.id]);
+          await rwLedger.query("release savepoint ao"); }
+    catch (e) { denied = (e as Error).message; await rwLedger.query("rollback to savepoint ao"); }
+    check("11d: app_rw CANNOT update a prior ledger row — append-only holds",
+      /permission denied/i.test(denied), denied.split("\n")[0].slice(0, 80) || "NOT REFUSED");
+    let delDenied = "";
+    await rwLedger.query("savepoint ad");
+    try { await rwLedger.query(`delete from change_ledger where id = $1`, [ledRow.id]);
+          await rwLedger.query("release savepoint ad"); }
+    catch (e) { delDenied = (e as Error).message; await rwLedger.query("rollback to savepoint ad"); }
+    check("11e: app_rw CANNOT delete a ledger row either", /permission denied/i.test(delDenied),
+      delDenied.split("\n")[0].slice(0, 80) || "NOT REFUSED");
+    await rwLedger.query("rollback");
+    // The linkage was written by the INSERT, so it is present without any UPDATE ever occurring.
+    const linked = (await db.query<{ n: string }>(
+      `select count(*)::text n from change_ledger where run_id = $1 and run_step_id is not null and governed_actor_id is not null`, [run.id])).rows[0].n;
+    check("11f: runtime linkage is present on every row, written atomically in the INSERT", linked === "2", `${linked} linked rows`);
+  } finally { rwLedger.release(); }
 
   // ── 12b. The FEATURE GATE itself — both flags, default OFF ──────────────────────────────────────
   // The runtime is inert unless BOTH the deployment flag and the per-org feature are on. This is

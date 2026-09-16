@@ -66,6 +66,23 @@ export interface ChangeEvent {
   agentRunId?: string | null;
   dataEnvironment?: DataEnvironment;
   occurredAt?: Date;
+  /**
+   * P45-1 governed-runtime linkage (migration 0109), all optional and all written IN THE INSERT.
+   *
+   * WHY THEY LIVE HERE AND NOT IN A FOLLOW-UP UPDATE. `change_ledger` is APPEND-ONLY: `app_rw`
+   * holds INSERT and SELECT and nothing else, deliberately, so that history is corrected by
+   * appending rather than by rewriting. The runtime's first implementation inserted the row and
+   * then UPDATEd it to attach this linkage, which works as the owner and is refused as `app_rw`
+   * ("permission denied for table change_ledger", SQLSTATE 42501) — so no run could complete under
+   * the real runtime identity. Defect P45-D1, found by the hosted functional gate.
+   *
+   * The fix is to carry the linkage into the original INSERT. The append-only invariant is
+   * therefore strengthened, not relaxed: no caller needs UPDATE on this table, and none has it.
+   */
+  runId?: string | null;
+  runStepId?: string | null;
+  invocationId?: string | null;
+  governedActorId?: string | null;
 }
 
 /** Append one change event. Assumes an open withTenant transaction. */
@@ -74,8 +91,10 @@ export async function recordChange(db: PoolClient, e: ChangeEvent): Promise<stri
     `insert into change_ledger (
        org_id, pursuit_id, entity_type, entity_id, change_type, before_state, after_state,
        materiality, reason, actor_type, actor_id, trigger_type, trigger_id, model_version,
-       agent_run_id, data_environment, occurred_at
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, coalesce($17, now()))
+       agent_run_id, data_environment, occurred_at,
+       run_id, run_step_id, invocation_id, governed_actor_id
+     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, coalesce($17, now()),
+       $18,$19,$20,$21)
      returning id`,
     [
       e.orgId, e.pursuitId ?? null, e.entityType, e.entityId ?? null, e.changeType,
@@ -84,6 +103,8 @@ export async function recordChange(db: PoolClient, e: ChangeEvent): Promise<stri
       e.materiality ?? "MEDIUM", e.reason ?? null, e.actorType ?? "SYSTEM", e.actorId ?? null,
       e.triggerType ?? null, e.triggerId ?? null, e.modelVersion ?? null, e.agentRunId ?? null,
       e.dataEnvironment ?? "PRODUCTION", e.occurredAt ?? null,
+      // Absent for every pre-existing caller, which is exactly the pre-P45 behaviour.
+      e.runId ?? null, e.runStepId ?? null, e.invocationId ?? null, e.governedActorId ?? null,
     ],
   );
   return rows[0].id;
