@@ -57,7 +57,9 @@ export async function ensureThread(
   if (args.motionId) {
     const { rows } = await db.query<{ id: string; thread_alias: string }>(
       `select id, thread_alias from communication_threads
-       where motion_id = $1 and status = 'open' order by created_at desc limit 1`,
+       -- D-G8-3D: newest open thread stays the rule; id closes a same-timestamp tie so a message
+       -- cannot be attached to a different thread run to run.
+       where motion_id = $1 and status = 'open' order by created_at desc, id desc limit 1`,
       [args.motionId],
     );
     if (rows.length > 0) return { threadId: rows[0].id, alias: rows[0].thread_alias };

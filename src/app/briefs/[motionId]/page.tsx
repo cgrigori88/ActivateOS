@@ -57,7 +57,7 @@ export default async function BriefPage({
     const { rows: assets } = await db.query(
       `select a.asset_type, a.title, a.content
      from campaign_assets a join campaigns cp on cp.id = a.campaign_id
-     where cp.motion_id = $1 order by a.created_at`,
+     where cp.motion_id = $1 order by a.position asc nulls last, a.id`,
       [motionId],
     );
 

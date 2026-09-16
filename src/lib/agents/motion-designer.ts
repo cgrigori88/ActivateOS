@@ -67,7 +67,8 @@ export async function designMotion(
     `select p.id, p.score, p.band, p.taxonomy_node_id as node_id
      from propensity_scores p join taxonomy_nodes n on n.id = p.taxonomy_node_id
      where p.company_id = $1 and n.slug = $2 and p.org_id = $3
-     order by p.computed_at desc limit 1`,
+     -- D-G8-3D: latest score stays the rule; id closes a same-instant tie.
+     order by p.computed_at desc, p.id desc limit 1`,
     [args.companyId, args.targetSlug, args.orgId],
   );
   if (scores.length === 0) throw new Error(`no score for ${args.targetSlug} — run scoring first`);
@@ -76,7 +77,8 @@ export async function designMotion(
   const { rows: plays } = await db.query<{ id: string; definition: unknown }>(
     `select pt.id, pt.definition from play_templates pt
      join taxonomy_nodes n on n.id = pt.taxonomy_node_id
-     where n.slug = $1 and pt.status = 'active' order by pt.version desc limit 1`,
+     -- D-G8-3D: highest active version stays the rule; id closes a duplicate-version tie.
+     where n.slug = $1 and pt.status = 'active' order by pt.version desc, pt.id limit 1`,
     [args.targetSlug],
   );
   if (plays.length === 0) throw new Error(`no active play template for ${args.targetSlug}`);
@@ -108,7 +110,8 @@ export async function designMotion(
      left join sellers s on s.id = t.seller_id
      where t.company_id = $1 and t.taxonomy_node_id = $2 and t.org_id = $3
        and t.status in ('recommended','accepted')
-     order by t.created_at desc limit 1`,
+     -- D-G8-3D: newest team stays the rule; id closes a same-timestamp tie.
+     order by t.created_at desc, t.id desc limit 1`,
     [args.companyId, score.node_id, args.orgId],
   );
   const team = teams[0] ?? null;

@@ -42,7 +42,9 @@ export async function resolveBrand(
   }>(
     `select id, wordmark, primary_color, accent_color, footer_html, address_line, unsubscribe_url
      from brand_profiles where org_id is not distinct from $1
-     order by is_default desc, created_at asc limit 1`,
+     -- D-G8-3D: is_default then created_at is the business rule; profiles seeded in one transaction
+     -- share created_at, so id closes the tie. Identity only, never business meaning.
+     order by is_default desc, created_at asc, id limit 1`,
     [orgId],
   );
   const b = rows[0];

@@ -109,7 +109,9 @@ export async function scoreOrg(
           where f.score_id = p.id), '{}') as evidence_ids
        from propensity_scores p
        where p.org_id = $1 and p.company_id = $2 and p.taxonomy_node_id = $3
-       order by p.computed_at desc limit 1`,
+       -- D-G8-3D: most recent evaluation stays the rule; id closes a same-instant tie so the persisted
+       -- changes delta is computed against one determinate predecessor.
+       order by p.computed_at desc, p.id desc limit 1`,
       [orgId, companyId, targetNodeId],
     );
     const prevScore = prevRows[0] ? Number(prevRows[0].score) : null;

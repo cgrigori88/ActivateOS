@@ -182,7 +182,7 @@ export default async function AccountPage({
     const result = await db.query(
       `select a.asset_type, a.title, a.content
        from campaign_assets a join campaigns cp on cp.id = a.campaign_id
-       where cp.motion_id = $1 and cp.org_id = $2 order by a.created_at`,
+       where cp.motion_id = $1 and cp.org_id = $2 order by a.position asc nulls last, a.id`,
       [motions[0].id, orgId],
     );
     assets = result.rows;

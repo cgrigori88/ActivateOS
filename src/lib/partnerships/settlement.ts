@@ -37,6 +37,10 @@ export interface SettlementEntry {
   closerOrgId: string; // whose tenant closed / holds the opportunity
   account: string;
   companyId: string;
+  // D-G8-3B: the opportunity's own id. company_id is NOT unique here — one company can carry several
+  // opportunities in the same book — so this is the only stable identity for an entry, and the only
+  // safe render key. Internal identity; not shown in the UI.
+  opportunityId: string;
   attribution: "sourced" | "influenced";
   amountUsd: number | null;
   stage: string;
@@ -87,8 +91,9 @@ export async function settlementStatement(db: Db, partnershipId: string): Promis
     amount_usd: string | null;
     updated_at: Date;
     registered: boolean;
+    opportunity_id: string;
   }>(
-    `select org_id, company_id, legal_name, stage, amount_usd, updated_at, registered
+    `select org_id, company_id, legal_name, stage, amount_usd, updated_at, registered, opportunity_id
        from partnership_settlement_rows($1)`,
     [partnershipId],
   );
@@ -103,6 +108,7 @@ export async function settlementStatement(db: Db, partnershipId: string): Promis
       closerOrgId: r.org_id,
       account: r.legal_name,
       companyId: r.company_id,
+      opportunityId: r.opportunity_id,
       attribution: r.registered ? "sourced" : "influenced",
       amountUsd: r.amount_usd == null ? null : Number(r.amount_usd),
       stage: r.stage,

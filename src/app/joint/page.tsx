@@ -151,8 +151,8 @@ export default async function JointPage({
                 <table className="data-table">
                   <thead><tr><th>Account</th><th>Closed by</th><th>Attribution</th><th>Stage</th><th className="text-right">Amount</th><th>Quarter</th></tr></thead>
                   <tbody>
-                    {[...s.settled, ...s.inFlight].map((e, i) => (
-                      <tr key={i}>
+                    {[...s.settled, ...s.inFlight].map((e) => (
+                      <tr key={e.opportunityId}>
                         <td className="font-medium">{e.account}</td>
                         <td className="text-body text-neutral-500">{s.orgNames[e.closerOrgId] ?? "—"}</td>
                         <td>

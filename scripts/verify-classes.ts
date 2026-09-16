@@ -112,6 +112,12 @@ export const SUITES: SuiteSpec[] = [
     isolation: "SEEDED_CLONE",
   },
   {
+    name: "persisted-determinism",
+    cls: "SEEDED",
+    why: "D-G8-3: plants ties on every scoped PERSISTED-choice path — a campaign's assets inserted in REVERSE with one created_at, two settlement opportunities sharing updated_at, tied brand profiles, tied propensity scores and equal-amount opportunities under the routines cap — then proves the persisted sequence round-trips to the composer's authored order, the settlement function returns a stable total order with a unique opportunity identity (and a non-party still sees nothing), and every selection is identical across five planner configurations, two heap layouts and both roles, with the pre-existing business ranking still dominating and the old untied clause as a negative control. It COMMITS its fixtures, so it runs on a disposable seeded clone",
+    isolation: "SEEDED_CLONE",
+  },
+  {
     name: "partnership-app-rw",
     cls: "SEEDED",
     why: "H1B-0: every partnership / consent flow as the REAL app_rw login (RLS binding) — invite→redeem, context and list grants, the overlap ladder, evidence and skill shares, warm intros, joint pursuits, settlement, revoke — plus third-party, forged-row, self-approval, post-revoke and no-context refusals. One transaction, ROLLED BACK, on a disposable seeded clone",

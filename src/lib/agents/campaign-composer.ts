@@ -148,10 +148,14 @@ Compose the campaign assets.`;
       content: draft.objection_cards.map((o) => `**${o.objection}**\n${o.response}`).join("\n\n"),
     },
   ];
-  for (const a of assets) {
+  // D-G8-3A: the array index above IS the composed sequence. It used to be discarded, leaving every row
+  // with the same transaction-timestamp created_at and letting heap order decide what the brief rendered.
+  // Persist it explicitly; readers order by position, with id only as a uniqueness tie-breaker.
+  for (const [position, a] of assets.entries()) {
     await db.query(
-      `insert into campaign_assets (campaign_id, asset_type, title, content) values ($1, $2, $3, $4)`,
-      [campaignId, a.type, a.title, a.content],
+      `insert into campaign_assets (campaign_id, asset_type, title, content, position)
+       values ($1, $2, $3, $4, $5)`,
+      [campaignId, a.type, a.title, a.content, position],
     );
   }
 

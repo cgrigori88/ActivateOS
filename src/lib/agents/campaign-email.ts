@@ -55,8 +55,21 @@ export const sequenceSchema = z.object({
 
 export type CampaignSequence = z.infer<typeof sequenceSchema>;
 
-async function resolveBrand(db: pg.PoolClient, orgId: string | null): Promise<EmailBrand> {
+/**
+ * D-G8-3D: ONE brand resolution, returning the id alongside the rendered fields.
+ *
+ * This used to be two independent statements — this one for the rendered brand and a second lookup for
+ * the persisted `brandId` — with the same untied `order by is_default desc, created_at asc`. Under a tie
+ * the two could select DIFFERENT profiles, so the email a seller saw and the brand recorded against the
+ * campaign could diverge. Resolving once removes the divergence structurally; the `id` tie-break makes
+ * the choice itself deterministic.
+ */
+async function resolveBrand(
+  db: pg.PoolClient,
+  orgId: string | null,
+): Promise<{ brand: EmailBrand; brandId: string | null }> {
   const { rows } = await db.query<{
+    id: string;
     wordmark: string;
     primary_color: string;
     accent_color: string;
@@ -64,19 +77,22 @@ async function resolveBrand(db: pg.PoolClient, orgId: string | null): Promise<Em
     address_line: string | null;
     unsubscribe_url: string | null;
   }>(
-    `select wordmark, primary_color, accent_color, footer_html, address_line, unsubscribe_url
+    `select id, wordmark, primary_color, accent_color, footer_html, address_line, unsubscribe_url
      from brand_profiles where org_id is not distinct from $1
-     order by is_default desc, created_at asc limit 1`,
+     order by is_default desc, created_at asc, id limit 1`,
     [orgId],
   );
   const b = rows[0];
   return {
-    wordmark: b?.wordmark ?? "PursuitOS",
-    primaryColor: b?.primary_color ?? "#1d4ed8",
-    accentColor: b?.accent_color ?? "#0f172a",
-    footerHtml: b?.footer_html ?? null,
-    addressLine: b?.address_line ?? null,
-    unsubscribeUrl: b?.unsubscribe_url ?? null,
+    brand: {
+      wordmark: b?.wordmark ?? "PursuitOS",
+      primaryColor: b?.primary_color ?? "#1d4ed8",
+      accentColor: b?.accent_color ?? "#0f172a",
+      footerHtml: b?.footer_html ?? null,
+      addressLine: b?.address_line ?? null,
+      unsubscribeUrl: b?.unsubscribe_url ?? null,
+    },
+    brandId: b?.id ?? null,
   };
 }
 
@@ -105,7 +121,7 @@ interface MotionRow {
 async function draftSequenceForMotion(
   db: pg.PoolClient,
   args: { orgId: string; motionId: string; senderName: string; touchCount?: number },
-): Promise<{ sequence: CampaignSequence; motion: MotionRow; brand: Awaited<ReturnType<typeof resolveBrand>>; brandId: string | null }> {
+): Promise<{ sequence: CampaignSequence; motion: MotionRow; brand: EmailBrand; brandId: string | null }> {
   const { rows: motions } = await db.query<MotionRow>(
     `select m.id, m.org_id, m.company_id, m.thesis, m.trigger_summary,
             m.primary_persona, m.secondary_persona, m.cta, m.status, m.operator_notes,
@@ -130,12 +146,7 @@ async function draftSequenceForMotion(
   );
 
   const touchCount = Math.min(Math.max(args.touchCount ?? 3, 1), 5);
-  const brand = await resolveBrand(db, args.orgId);
-  const { rows: brandRows } = await db.query<{ id: string }>(
-    `select id from brand_profiles where org_id is not distinct from $1 order by is_default desc, created_at asc limit 1`,
-    [args.orgId],
-  );
-  const brandId = brandRows[0]?.id ?? null;
+  const { brand, brandId } = await resolveBrand(db, args.orgId);
 
   const { output: sequence, meta } = await completeStructuredMeta({
     tier: "frontier",

@@ -112,7 +112,10 @@ async function gatherBrief(db: Db, orgId: string): Promise<BriefData> {
 
   const { rows: topOpps } = await db.query<{ name: string; stage: string; amount: string | null }>(
     `select o.name, o.stage, o.amount_usd as amount from opportunities o
-     where o.org_id = $1 and o.stage not in ('closed_won','closed_lost') order by o.amount_usd desc nulls last limit 3`,
+     -- D-G8-3D: amount stays the ranking; id closes an equal-amount tie so the capped top-3 MEMBERSHIP
+     -- written into routine_runs.summary is determinate, not heap-dependent.
+     where o.org_id = $1 and o.stage not in ('closed_won','closed_lost')
+     order by o.amount_usd desc nulls last, o.id limit 3`,
     [orgId],
   );
 
@@ -120,7 +123,8 @@ async function gatherBrief(db: Db, orgId: string): Promise<BriefData> {
     `select c.legal_name as account, jsonb_array_length(d.items) as items
      from account_digests d join companies c on c.id = d.company_id
      where d.org_id = $1 and d.created_at > now() - interval '7 days' and jsonb_array_length(d.items) > 0
-     order by d.created_at desc limit 5`,
+     -- D-G8-3D: id closes a same-timestamp tie
+     order by d.created_at desc, d.id desc limit 5`,
     [orgId],
   );
 
@@ -131,7 +135,8 @@ async function gatherBrief(db: Db, orgId: string): Promise<BriefData> {
        select distinct on (r.id) r.kind, rr.status
        from routines r join routine_runs rr on rr.routine_id = r.id
        where r.org_id = $1 and r.enabled
-       order by r.id, rr.ran_at desc
+       -- D-G8-3D: last run wins; rr.id closes a same-instant tie so DISTINCT ON picks one determinate run.
+       order by r.id, rr.ran_at desc, rr.id desc
      ) x where x.status = 'failed'`,
     [orgId],
   );
@@ -251,7 +256,8 @@ export async function runAccountDigests(
     const { rows: ev } = await db.query<{ claim: string; observed_at: Date }>(
       `select claim, observed_at from evidence
        where company_id = $1 and (org_id = $3 or org_id is null) and status = 'verified' and collected_at > $2
-       order by observed_at desc limit 5`,
+       -- D-G8-3D: id closes a same-instant tie
+       order by observed_at desc, id desc limit 5`,
       [acct.company_id, since, orgId],
     );
     for (const e of ev) items.push({ type: "evidence", text: e.claim.slice(0, 160), at: new Date(e.observed_at).toISOString().slice(0, 10) });
@@ -287,14 +293,17 @@ export async function runAccountDigests(
     const { rows: meetings } = await db.query<{ met_at: string; title: string | null }>(
       `select met_at::text, title from meeting_notes
        where company_id = $1 and org_id = $2 and created_at > $3
-       order by met_at desc limit 3`,
+       -- D-G8-3D: id closes a same-date tie
+       order by met_at desc, id desc limit 3`,
       [acct.company_id, orgId, since],
     );
     for (const m of meetings) items.push({ type: "meeting", text: `Meeting recorded${m.title ? ` — ${m.title}` : ""}`, at: m.met_at });
 
     const { rows: sends } = await db.query<{ subject: string; sent_at: Date }>(
       `select t.subject, t.sent_at from campaign_touches t join campaigns ca on ca.id = t.campaign_id
-       where ca.company_id = $1 and ca.org_id = $3 and t.status = 'sent' and t.sent_at > $2 order by t.sent_at desc limit 3`,
+       where ca.company_id = $1 and ca.org_id = $3 and t.status = 'sent' and t.sent_at > $2
+       -- D-G8-3D: id closes a same-instant tie
+       order by t.sent_at desc, t.id desc limit 3`,
       [acct.company_id, since, orgId],
     );
     for (const s of sends) items.push({ type: "send", text: `Sent: "${s.subject}"`, at: new Date(s.sent_at).toISOString().slice(0, 10) });
