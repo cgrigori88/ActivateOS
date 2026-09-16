@@ -2887,5 +2887,101 @@ record the new hash only after 31 protected / 0 unsafe, correct owner, `search_p
 least privilege, and no policy / RLS / role / grant / CREATE-on-public drift, with **exactly one**
 protected-function definition changed — `shared_in_evidence(uuid)`.
 
-**Status: D-G8-5 FIXED LOCALLY, NOT PUSHED.** Hosted remains at migration **107** and
-`f31e51d50e9dec49`. **D-P1 is now the final pre-Gate-9 blocker. Gate 9 NOT started.**
+**Status: D-G8-5 FIXED LOCALLY** — subsequently **HOSTED ACCEPTED / CLOSED**, see the next section.
+
+### D-G8-5 — HOSTED ACCEPTED / CLOSED (migration 0108, 2026-09-16)
+
+`b991b0b` was pushed (fast-forward `bf85f35..b991b0b`, no force/rewrite/tags) and deployed as
+**`dpl_4UPcJFWfxxExqd1MxAXP6WCVR8HW`** (`pursuitos-demo-ol1komm4t-…`), Preview, branch
+`roadmap/pursuitos-vnext`, **READY**. **`src/` is unchanged in that commit**, so the deployment is
+application-code equivalent to the previously accepted build; the commit carries migration 0108, the
+verifier, its suite registration and documentation only.
+
+**Pre-migration baseline matched exactly:** migrations **107** · business-data **`c56a1d229e483f2b`** ·
+whole-world **`ff4a3f28c4940a9d`** · security **`f31e51d50e9dec49`** · protected **31 / 0 unsafe** ·
+`app_rw` LOGIN true / BYPASSRLS false · `evidence_shares` **0 rows** · send **0/0/0/0/0**. Against the
+accepted D-G8-4C snapshot only `pendingVsRepo` (0108 now in the repo) and live session count differed —
+**no unexplained drift**. CFR-1.1 did not apply.
+
+**The pushed 0108 file is byte-identical to the locally certified version** (`diff` clean against
+`origin`). Verified before applying: `CREATE OR REPLACE`, **no `DROP FUNCTION`**, **no `CASCADE`**,
+signature and 4-column return shape unchanged, the security header
+`language plpgsql stable security definer set search_path to pg_catalog, public, pg_temp`, every consent
+and filter clause carried over (`app_current_org()`, null-caller return, `p.status='active'`,
+`e.company_id = p_company`, the evidence-ownership pin, `s.status='accepted' and s.offered_by_org <>
+caller`), the new `order by e.observed_at desc, s.id desc limit 20`, and a ROLLBACK block restoring the
+old ordering while preserving the hardened posture.
+
+**0108 applied alone**, identity hard-guarded before connecting, one transaction: level **108**,
+pending `[]`, not-in-repo `[]`, no backfill, no business-row mutation.
+
+**Function catalogue: PASS.** Exactly **one** definition · `shared_in_evidence(p_company uuid)` ·
+**4 columns** unchanged · SECURITY DEFINER **true** · STABLE **true** · `search_path`
+**`pg_catalog, public, pg_temp`** · owner **postgres** · ACL **`{postgres=X/postgres,app_rw=X/postgres}`**
+(PUBLIC, anon, authenticated, service_role revoked) · `order by e.observed_at desc, s.id desc limit 20` ·
+**no DROP/CASCADE side effects** (every 0104 protected function still present).
+
+**Security: PASS, and the new hash is earned, not assumed.** Hosted `search-path-verify` **12/12**:
+**31 protected / 0 unsafe**, no role can CREATE in `public`, every protected function owned by
+`postgres`, H1B-0 runtime functions EXECUTE for `app_rw` only. The snapshot diff shows **policies, RLS,
+table grants, column grants, triggers, roles, `protectedFns`, CREATE-on-public, `app_rw` attributes and
+memberships all IDENTICAL**, and **exactly ONE function body changed — `shared_in_evidence(uuid)`**.
+
+> **NEW SECURITY HASH: `f31e51d50e9dec49` → `2a5ea0509145ee81`** (excl. login
+> `b7b716cf8a2a1a3b` → `b8323a224bd77728`). Recorded only after every requirement above passed.
+
+**Functional acceptance on the REAL hosted function (rollback-only, zero residue): 9/9.** Hosted
+`evidence_shares` is empty, so a fixture was planted **inside a transaction and rolled back**: 30 eligible
+accepted shares — 12 strictly newer, **12 sharing one exact `observed_at` spanning positions 13..24**,
+6 strictly older. The hosted function returned exactly **20** rows; all 12 strictly-newer claims present;
+no strictly-older row ever returned; **`s.id DESC` selected exactly the 8 highest share ids of the tied
+band**; identical across **5 planner configurations**; a **non-party received zero rows**. Afterwards
+`evidence_shares`/`evidence`/`partnerships`/`companies` returned exactly to baseline
+(`0 / 20 / 1 / 14`). The certified local `dg85-determinism` suite (**19/0**, including the empirical
+negative control where the pre-fix clause produced **3 distinct selected sets over 20 runs**) remains
+authoritative for the planner/heap/insertion-order controls.
+
+**Consent / tenant: PASS.** The consent path is unchanged. Vertex sees exactly its 13 pursuits; the
+**Meridian pursuit stays hidden**; joint 1 / active partnership 1 / context grants 2; **no
+cross-transaction `app.org_id` leak**; settlement non-party zero. The only context-less visible tables
+remain the two already accepted — `environment_identity` (1) and `pursuit_team_requirements` (5, **all
+`org_id IS NULL` templates, 0 org-owned**). Full output was captured before any re-run, per the gate's
+instruction; the snapshot diff independently proves `policies` and `rls` are byte-identical pre→post, so
+0108 cannot have caused it. **No new isolation failure.**
+
+**Crawl: PASS, no new rendered difference.** Two signed-in 37-room crawls, 4 passes: **37/37 rooms 200,
+all 4 passes byte-identical**, and **37/37 byte-identical to the accepted D-G8-4C crawl**. No missing
+authorized data, **"Meridian" 0 occurrences**, owner-only rooms healthy, palette healthy, joint
+boundaries unchanged, **CDW label unchanged**. **D-G5-1, D-G8-1 (Dana → Mike → Priya → Sarah), D-G8-2A,
+D-G8-3 and D-G8-4 all remain closed**, with the accepted Stark disclosure and most-common-outcome lines
+present in all 4 passes.
+
+**Database / fingerprints: PASS.** **Exactly 1 of 155 per-table fingerprints moved — `schema_migrations`
+107 → 108 rows**, the ledger itself. All 154 others byte-identical, including `evidence_shares` (**0
+rows**), `evidence` (20), `companies` (14) and `pipeline_snapshots` (2 — **CFR-1.1 did not apply**).
+Canonical counts identical. **business-data UNCHANGED at `c56a1d229e483f2b`** — proof that no canonical
+business row was rewritten. Manifest unchanged at `14e2e97f8453fb75`.
+
+> **NEW WHOLE-WORLD FINGERPRINT: `ff4a3f28c4940a9d` → `933a5e30d79297a4`**, moving **only** because that
+> digest includes the migration ledger. A final snapshot taken after the crawl is identical to the
+> post-migration one apart from live session count, so the crawl and the rolled-back fixture left no trace.
+
+**Send safety: PASS.** `externalSendingArmed` false · messages / action_outbox / email_events /
+sending_identities / sent_touches = **0 / 0 / 0 / 0 / 0** · `OUTREACH_AUTOSEND` and `RESEND_API_KEY`
+absent · no external or webhook delivery. Vercel env unchanged (**18** variables); `DATABASE_URL` still
+`app_rw`, `DATABASE_URL_OWNER` still the owner. Production untouched; `qifatlqxfuhwrwvpbwsc` never
+contacted.
+
+**Duplicate-share behaviour intentionally unchanged:** one evidence shared through two eligible
+partnerships still returns two rows and still consumes two of the 20 slots, distinguished by `s.id`.
+
+**DISPOSITION: D-G8-5 — HOSTED ACCEPTED / CLOSED.** No separate application-acceptance phase was
+required: no application code changed, the signature and return shape are unchanged, current-app
+compatibility was proven after the migration, and the full hosted crawl passed. Not to be reopened
+absent a new concrete defect.
+
+**HOSTED RECORD OF RECORD, updated:** migrations **108** · business-data **`c56a1d229e483f2b`** ·
+whole-world **`933a5e30d79297a4`** · security **`2a5ea0509145ee81`** · protected **31 / 0** · `app_rw`
+LOGIN true / BYPASSRLS false.
+
+**D-P1 is now the FINAL pre-Gate-9 blocker. Gate 9 NOT started.**
