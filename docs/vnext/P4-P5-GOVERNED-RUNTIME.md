@@ -1,7 +1,9 @@
 # PursuitOS vNext — P4 / P5 Governed Pursuit Runtime
 
-**Status:** **P45-1 IMPLEMENTED LOCALLY / NOT PUSHED** (2026-09-16) · migration **0109** · flag default **OFF** ·
-45/45 slice proof · no external sending · Slice 2 **not started**.
+**Status:** **P45-1 MIGRATION 0109 — HOSTED ACCEPTED** (2026-09-16) · hosted migration level **109** ·
+flag default **OFF** · runtime tables **empty** · 45/45 local slice proof · no external sending.
+**P45-1 functional/runtime acceptance remains OPEN** — hosted execution has not been exercised.
+Slice 2 **not started**.
 
 This is the architecture record for the amended roadmap's P4 (AI Control Plane) and P5 (Pursuit
 Runtime). It begins after H1 closed and Gate 9 accepted pilot readiness.
@@ -210,3 +212,135 @@ Surfaces · broad UI redesign.
 `actor_capability_grants.approval_required_override` exists **nullable and unused**, solely so Slice 2
 needs no migration against a table that will already hold live grants. Slice 1 reads
 `approval_required` from `governed_skills` and ignores the column entirely.
+
+
+---
+
+## 11. Hosted migration gate — 0109 ACCEPTED (2026-09-16)
+
+**Serving `2f16091` as `dpl_8MDMbJwHiKePAExe6xRifxhfsASh`** (Preview, READY) · `mejokqxriwyawfhawuxu` ·
+`app_rw` / bypassRls false / tenantEnforcement true / probe live / sending off. The pre-migration
+Preview (`d1f6023`, `dpl_5Gy8Dnm4jXDaNuNY7WSXzzQvtsnP`) was verified healthy against migration level
+**108** first, proving the new application code is compatible with the un-migrated database.
+
+### A defect caught at the gate, before applying
+
+0109 was the **only** migration in the repository carrying its own `begin;`/`commit;`. Every other
+migration lets the **applier** own the transaction — `scripts/migrate.ts` and the gate's
+single-migration applier both wrap the file *and* the `schema_migrations` insert in one
+`begin`/`commit`. An inner `commit;` would have ended that transaction early, leaving the ledger
+insert un-atomic with the DDL it records: a failure between the two would have produced applied DDL
+with no ledger row. Fixed in `2f16091` and re-verified before application.
+
+### Structure, RLS and ACLs — 42/0
+
+Four tables created; RLS **ENABLE + FORCE** on all four with exactly one `app_rw` policy each,
+`is_org_member(org_id)` for both USING and WITH CHECK. `governed_actors` carries the
+`USER/AGENT/WORKER/SYSTEM` vocabulary, `unique(org_id, key)`, the ACTIVE-USER-requires-principal
+CHECK, and **no foreign key on `principal_user_id` or `owner_user_id`**. Grants carry the composite
+`(org_id, actor_id)` reference and partial-unique live-grant index. Runs carry the plan/revision/
+basis pin, composite actor reference, `unique(org_id, idempotency_key)` and the one-non-terminal-run
+partial index. Steps carry the composite run reference, `unique(run_id, seq)`,
+`unique(org_id, idempotency_key)`, **no DAG column**, and no worker-only required field.
+
+**ACL finding, investigated rather than assumed.** `anon`, `authenticated` and `service_role` hold
+`REFERENCES, TRIGGER, TRUNCATE` on the four new tables. This is **not** something 0109 introduced —
+0109 grants only to `app_rw`. **155 of 155 pre-existing tables carry exactly the same grant set**,
+which is the Supabase project-wide default already covered by every accepted security hash since
+Gate 1b.1. None of the three roles can log in. The new tables are therefore **identical to the
+certified baseline**, with no DML and no `PUBLIC` grant at all. `app_rw` holds `SELECT, INSERT` at
+table level and column-level UPDATE on exactly the intended columns — **4 / 2 / 7 / 10**.
+
+*(Tightening that platform default is a project-wide question affecting all 159 tables, not a P45-1
+matter; it is recorded here, not acted on.)*
+
+### Tenant consistency — 9/0, rollback-only, zero residue
+
+A Vertex grant **cannot** reference a Meridian actor; a Vertex run **cannot** reference a Meridian
+actor; a Meridian step **cannot** reference a Vertex run — each refused by the **composite foreign
+key**, relationally, before RLS is consulted. Under the real `app_rw` login (BYPASSRLS false): no
+tenant context sees **zero** rows on all four; Org A context sees only Org A; and Org A **cannot**
+insert a row for Org B (RLS `WITH CHECK`). Every write was rolled back; all four tables remain empty.
+
+### Existing contracts preserved — Parts J/K
+
+`change_ledger.actor_id`, `governed_action_invocations.actor_id`, `pursuit_plan_revisions.actor_id`
+and `pursuit_goals.proposed_by_actor_id` are **all still uuid, still nullable, still without a
+foreign key** — unchanged type, meaning and behaviour. The runtime uses distinct
+`governed_actor_id` / `run_id` / `run_step_id` / `invocation_id` columns, all nullable, and **zero
+existing rows were backfilled**.
+
+### Fingerprints — every movement explained
+
+| | before | after |
+|---|---|---|
+| migrations | 108 | **109** |
+| tables | 155 | **159** |
+| policies | 380 | **384** (exactly the 4 new) |
+| table grants | 620 | **636** (0 existing changed) |
+| column grants | 11 | **34** (+23 = 4+2+7+10) |
+| functions / triggers / roles / protected | 149 / 12 / 32 / 31 | **identical** |
+| security hash | `2a5ea0509145ee81` | **`569e5497a7622048`** |
+| whole-world | `933a5e30d79297a4` | **`c299c6e372c686c4`** |
+| business-data | `c56a1d229e483f2b` | **`6abe424f43bff901`** |
+
+**business-data moved, and the gate required this to be explained rather than accepted.** It is a
+definitional property of the metric, not a data change: `businessFingerprint` hashes the *entire*
+table→`rows:hash` map (excluding only `schema_migrations`), so four new tables necessarily move it.
+Three shared tables also moved — `schema_migrations` (108→109 rows, the ledger itself) and, with
+**identical row counts**, `change_ledger` (68→68) and `governed_action_invocations` (28→28), because
+the per-table hash is `md5(row::text)` and the new nullable columns change every row's serialisation.
+
+> **Proven, not asserted:** recomputing each of those two tables' hash over **only its original
+> columns** reproduces the pre-migration value **exactly** —
+> `change_ledger` `68:c955c9fcdc14a043ed8591e73a1fc3af` and
+> `governed_action_invocations` `28:aadc6e1c0ec2b6d19b98fa153c677d0a` — and every new column is NULL
+> on every existing row. Canonical counts are unchanged (3 orgs / 14 companies / 19 opportunities /
+> 14 pursuits / 2 snapshots). **No business row changed.**
+
+### Flag-OFF compatibility — 16/0
+
+Two signed-in 37-room crawls, 4 passes: **37/37 rooms 200, all passes byte-identical, and 37/37
+BYTE-IDENTICAL to the accepted Gate-9 baseline.** Meridian 0 under Vertex; owner rooms, joint
+boundaries, palette, CDW label, Stark disclosure, most-common-outcome and the D-G8-1 order all
+intact; Today, Queue, Pipeline, Partners, Joint and Admin unchanged. **No runtime table acquired a
+row.**
+
+### Regression and safety
+
+persisted 17/0 · semantic 50/0 · dg85 19/0 · dp1 26/0 · partnership-app-rw 117/0 · tenant-isolation
+205/0 · search-path 39/0 · catalogue guard 12/0 (**31 protected / 0 unsafe**) · rehearsal 38/38 + 6/6.
+**Zero failures — the gate's STOP condition was never triggered.**
+
+Runtime tables **0/0/0/0**; no fixture orgs; no new invocation or ledger row; **0 of 159 per-table
+fingerprints moved** across all gate probing. Send **0/0/0/0/0**; `OUTREACH_AUTOSEND` and
+`RESEND_API_KEY` absent; Vercel env **38 total / 18 branch-scoped / 33 Preview-visible**,
+byte-identical to the Gate-9 inventory. Production untouched; `qifatlqxfuhwrwvpbwsc` never contacted.
+
+### Owner rulings recorded
+
+**1 — `principal_user_id` without an FK is APPROVED FOR SLICE 1**, on the stated boundary: an ACTIVE
+USER actor still requires a non-null principal (DB CHECK, verified hosted), `owner_user_id` never
+substitutes for identity, and runtime principal matching stays enforced. **This is NOT the final
+production identity model.**
+
+> **RECORDED REQUIREMENT:** before non-synthetic / real-user operation, principal identity binding
+> **must be revisited and strengthened** — through an additive migration adding the foreign key once
+> `auth.users` is populated, or an equivalent validated identity model.
+
+**2 — the runtime MAY read `org_features.governed_action` directly**, and must not route through
+`governedActionEnabledFor()` while that helper imports the experience/federation chain. The effective
+gate remains **both** `VNEXT_CONTROL_PLANE_ENABLED` **and** the per-org column, with the global flag
+authoritative.
+
+### HOSTED RECORD OF RECORD, updated
+
+migrations **109** · business-data **`6abe424f43bff901`** · whole-world **`c299c6e372c686c4`** ·
+security **`569e5497a7622048`** · protected **31 / 0** · `app_rw` LOGIN true / BYPASSRLS false ·
+serving `2f16091` as `dpl_8MDMbJwHiKePAExe6xRifxhfsASh`.
+
+### DISPOSITION
+
+**P45-1 MIGRATION 0109 — HOSTED ACCEPTED.** The schema/security substrate is accepted.
+**P45-1 functional/runtime acceptance remains OPEN** — no hosted run, actor, grant or step has been
+created, and the runtime has never executed hosted. **Slice 2 NOT STARTED.**
