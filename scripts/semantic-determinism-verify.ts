@@ -277,6 +277,17 @@ async function main(): Promise<void> {
   check("4D: an unresolved-seed campaign still appears through the readers' LEFT JOIN",
     Number(unresolvedVisible) >= 2, `${unresolvedVisible} unresolved campaigns visible`);
 
+  // ══ SEND SAFETY — the same five persisted surfaces every prior gate reports ═════════════════
+  console.log("\nSend safety");
+  const send = (await db.query<Record<string, number>>(
+    `select (select count(*) from messages)::int messages,
+            (select count(*) from action_outbox)::int action_outbox,
+            (select count(*) from email_events)::int email_events,
+            (select count(*) from sending_identities)::int sending_identities,
+            (select count(*) from campaign_touches where status = 'sent')::int sent_touches`)).rows[0];
+  check("send safety: messages / action_outbox / email_events / sending_identities / sent_touches = 0/0/0/0/0",
+    Object.values(send).every((v) => Number(v) === 0), JSON.stringify(send));
+
   db.release();
   console.log(`\n${failed === 0 ? "PASS" : "FAIL"} — ${passed} passed, ${failed} failed${failed ? `: ${failures.join(" | ")}` : ""}`);
   process.exitCode = failed === 0 ? 0 : 1;

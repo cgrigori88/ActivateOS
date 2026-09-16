@@ -84,8 +84,11 @@ async function main(): Promise<void> {
   console.log(`[persisted-determinism-verify] ${CONN.replace(/:[^:@/]*@/, ":***@")}`);
 
   const sendBefore = (await owner.query(
-    `select (select count(*) from messages) m, (select count(*) from action_outbox) o,
-            (select count(*) from email_events) e, (select count(*) from campaign_touches where status = 'sent') s`)).rows[0];
+    `select (select count(*) from messages)::int messages,
+            (select count(*) from action_outbox)::int action_outbox,
+            (select count(*) from email_events)::int email_events,
+            (select count(*) from sending_identities)::int sending_identities,
+            (select count(*) from campaign_touches where status = 'sent')::int sent_touches`)).rows[0];
 
   const V = (await owner.query<{ id: string }>(`select id from organizations where name = 'Vertex Systems'`)).rows[0].id;
   const other = (await owner.query<{ id: string }>(`select id from organizations where name <> 'Vertex Systems' order by name limit 1`)).rows[0].id;
@@ -250,10 +253,15 @@ async function main(): Promise<void> {
     pickDefault === brandIds[0], `picked ${pickDefault.slice(0, 8)}`);
 
   const sendAfter = (await owner.query(
-    `select (select count(*) from messages) m, (select count(*) from action_outbox) o,
-            (select count(*) from email_events) e, (select count(*) from campaign_touches where status = 'sent') s`)).rows[0];
-  check("no send activity (messages / outbox / email events / sent touches unchanged)",
-    JSON.stringify(sendBefore) === JSON.stringify(sendAfter), JSON.stringify(sendAfter));
+    `select (select count(*) from messages)::int messages,
+            (select count(*) from action_outbox)::int action_outbox,
+            (select count(*) from email_events)::int email_events,
+            (select count(*) from sending_identities)::int sending_identities,
+            (select count(*) from campaign_touches where status = 'sent')::int sent_touches`)).rows[0];
+  check("send safety: messages / action_outbox / email_events / sending_identities / sent_touches all 0 and unchanged",
+    JSON.stringify(sendBefore) === JSON.stringify(sendAfter)
+    && Object.values(sendAfter as Record<string, number>).every((v) => Number(v) === 0),
+    JSON.stringify(sendAfter));
 
   console.log(`\n${failed === 0 ? "PASS" : "FAIL"} — ${passed} passed, ${failed} failed${failed ? `: ${failures.join(" | ")}` : ""}`);
   process.exitCode = failed === 0 ? 0 : 1;

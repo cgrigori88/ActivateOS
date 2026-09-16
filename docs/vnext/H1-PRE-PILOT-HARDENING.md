@@ -2528,5 +2528,17 @@ stay unresolved; CUSTOMER_DECLARED beats THIRD_PARTY_VERIFIED on an exact tie wh
 SECOND_PARTY returns UNRESOLVED; and a campaign seed is the unique top scorer, or explicit, or null —
 unchanged by input order.
 
+**Pre-push correction (2026-09-16).** The first version of the static guard asserted the repository
+held *exactly* 107 migrations and that nothing above `0107` existed. That invariant was too broad and
+would have failed the moment **D-G8-5 — which is explicitly migration-gated — added its own `0108`**.
+It was rewritten to assert the claim D-G8-4 actually makes: **this workstream added no migration of its
+own** (no `dg8-4`-named migration file, and no migration anywhere carrying the rejected
+`seed_company_id` column or `needs_seed` status), plus a code guard that 4D took the
+already-nullable-`company_id` route. **No global migration ceiling remains**, so future 0108+ work is
+unaffected. Verified against a simulated future listing including `0108_dg85_…` and `0112_…`: the old
+predicate fails it, the corrected one passes. Send safety was also made explicit across the same five
+persisted surfaces prior gates report — messages / action_outbox / email_events / sending_identities /
+sent_touches — in both determinism suites.
+
 **Status: D-G8-4A/B/C/D FIXED LOCALLY, NOT PUSHED.** D-G8-5 and **D-P1** remain OPEN / PRE-GATE-9.
 **Gate 9 NOT started.**

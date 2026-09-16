@@ -20,11 +20,36 @@ const code = (p: string) =>
 
 // ── the workstream's own boundary ────────────────────────────────────────────────────────────────
 
-test("D-G8-4 is CODE-ONLY: no migration above the 0107 hosted level exists", () => {
-  const migrations = readdirSync(join(process.cwd(), "supabase/migrations")).filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(migrations.length, 107, `expected 107 migrations, found ${migrations.length}`);
-  assert.equal(migrations.at(-1), "0107_dg83b_settlement_opportunity_identity.sql");
-  assert.ok(!migrations.some((m) => /^01(0[89]|[1-9]\d)/.test(m)), "a migration above 0107 was created");
+/**
+ * D-G8-4 introduced no migration and no schema-dependent behaviour.
+ *
+ * This deliberately does NOT cap the repository at 0107. D-G8-5 is explicitly migration-gated and is
+ * the next pre-Gate-9 workstream, so a legitimate future 0108+ migration must not fail D-G8-4's
+ * tests. The claim under test is "D-G8-4 itself added nothing to the schema", which is asserted by
+ * the ABSENCE of this workstream's own artefacts — not by a global ceiling. That D-G8-4 was code-only
+ * on the day it shipped is recorded by its commit scope and certification run.
+ */
+test("D-G8-4 introduced no migration of its own", () => {
+  const dir = join(process.cwd(), "supabase/migrations");
+  const migrations = readdirSync(dir).filter((f) => f.endsWith(".sql"));
+  const mine = migrations.filter((f) => /dg8[-_]?4/i.test(f));
+  assert.deepEqual(mine, [], `D-G8-4 must not add a migration; found ${mine.join(", ")}`);
+  // Nor may any migration, present or future, carry this workstream's rejected schema options.
+  for (const f of migrations) {
+    const sql = readFileSync(join(dir, f), "utf8");
+    assert.doesNotMatch(sql, /seed_company_id/i, `${f}: 4D uses the already-nullable company_id, not a new column`);
+    assert.doesNotMatch(sql, /'needs_seed'/i, `${f}: 4D adds no campaign status`);
+  }
+});
+
+test("D-G8-4D took the nullable-company_id route: no seed_company_id, no needs_seed status", () => {
+  for (const f of ["src/lib/campaigns/multi-vendor.ts", "src/app/mapping/actions.ts",
+                   "src/app/campaigns/page.tsx", "src/app/campaigns/[id]/actions.ts"]) {
+    assert.doesNotMatch(code(f), /seed_company_id/i, `${f}: no separate seed column`);
+    assert.doesNotMatch(code(f), /needs_seed/i, `${f}: no new campaign status`);
+  }
+  // Unresolved is expressed as a null company_id on the EXISTING column.
+  assert.match(code("src/lib/campaigns/multi-vendor.ts"), /let seedCompanyId: string \| null = null;/);
 });
 
 // ── 4A ───────────────────────────────────────────────────────────────────────────────────────────
