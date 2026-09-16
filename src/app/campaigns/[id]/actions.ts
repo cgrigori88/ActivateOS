@@ -236,6 +236,14 @@ export async function launchCampaignAction(campaignId: string, formData: FormDat
   if (!args.recipientEmail) throw new Error("a recipient is required to launch");
   await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
+    // D-G8-4D: launching needs a real anchor account. A campaign whose seed is UNRESOLVED may exist
+    // as a draft and stay visible, but it cannot execute until a human chooses one — the whole point
+    // of not fabricating a seed is that nothing downstream acts on a fabricated one.
+    const { rows: seed } = await db.query<{ company_id: string | null }>(
+      `select company_id from campaigns where id = $1 and org_id = $2`, [campaignId, orgId]);
+    if (seed[0] && seed[0].company_id == null) {
+      throw new Error("This campaign has no seed account selected. Choose its anchor account before launching.");
+    }
     await launchCampaign(db, { orgId, campaignId, ...args });
   });
   revalidatePath(`/campaigns/${campaignId}`);

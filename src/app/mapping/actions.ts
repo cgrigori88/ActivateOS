@@ -90,6 +90,9 @@ export async function createTargetListAction(formData: FormData): Promise<void> 
 export async function createMultiVendorCampaignAction(formData: FormData): Promise<void> {
   const name = String(formData.get("name") ?? "").trim() || "Multi-vendor play";
   const companyIds = String(formData.get("companyIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  // D-G8-4D: an OPTIONAL explicit anchor account. When absent, the seed is the unique
+  // highest-scoring member or — on a tie, or with nothing scored — deliberately left unresolved.
+  const seedCompanyId = String(formData.get("seedCompanyId") ?? "").trim() || null;
   // partners field: "id:role,id:role"
   const partners = String(formData.get("partners") ?? "")
     .split(",")
@@ -103,7 +106,7 @@ export async function createMultiVendorCampaignAction(formData: FormData): Promi
 
   const campaignId = await withTenant(async (db, orgId) => {
     await requireWrite(db);  // viewers are read-only (multi-tenant slice 3)
-    const res = await createMultiVendorCampaign(db, { orgId, name, companyIds, partners });
+    const res = await createMultiVendorCampaign(db, { orgId, name, companyIds, partners, seedCompanyId });
     return res.campaignId;
   });
   revalidatePath("/mapping");

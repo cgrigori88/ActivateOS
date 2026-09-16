@@ -109,7 +109,7 @@ export default async function CampaignDetailPage({
         objective: string | null;
         audience: string | null;
         company_id: string;
-        legal_name: string;
+        legal_name: string | null;   // D-G8-4D: null when the seed account is UNRESOLVED
         primary_domain: string | null;
         motion_id: string;
         initiative_id: string | null;
@@ -124,7 +124,10 @@ export default async function CampaignDetailPage({
             bp.wordmark, ca.recipient_email, ca.launched_at, ca.send_tz
      from campaigns ca
      left join revenue_motions m on m.id = ca.motion_id
-     join companies c on c.id = coalesce(ca.company_id, m.company_id)
+     -- D-G8-4D: LEFT JOIN. A multi-vendor campaign whose seed account is UNRESOLVED carries a null
+     -- company_id (and has no motion), and an inner join here made it vanish from this surface
+     -- entirely. An unresolved campaign must stay visible so a human can choose its anchor.
+     left join companies c on c.id = coalesce(ca.company_id, m.company_id)
      left join brand_profiles bp on bp.id = ca.brand_id
      where ca.id = $1 and ca.org_id = $2`,
         [id, orgId],
@@ -209,7 +212,7 @@ export default async function CampaignDetailPage({
     <main>
       <div className="pos-crumb">
         <Link href="/campaigns">Campaigns</Link> ›{" "}
-        <Link href={`/accounts/${ca.company_id}`}>{ca.legal_name}</Link>
+        {ca.company_id && ca.legal_name ? <Link href={`/accounts/${ca.company_id}`}>{ca.legal_name}</Link> : <span className="text-neutral-400">Seed account not selected</span>}
       </div>
       <PageHeader title={ca.name} subtitle={ca.objective ?? undefined} />
 

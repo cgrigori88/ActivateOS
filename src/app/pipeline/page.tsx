@@ -3,7 +3,7 @@ import { withTenant } from "@/lib/db/tenant";
 import { loadStageWeights } from "@/lib/opportunities/stage-weights";
 import { enabledTriggers } from "@/lib/triggers/catalog";
 import { renewalProjection } from "@/lib/lifecycle/projection";
-import { loadLifecycleFacts, eventsForAccount, primaryLifecycleEvent, STATE_LABEL, type LifecycleEvent } from "@/lib/lifecycle/state";
+import { loadLifecycleFacts, eventsForAccount, primaryLifecycleDisclosed, STATE_LABEL, type LifecycleEvent } from "@/lib/lifecycle/state";
 import {
   STAGE_PROBABILITY,
   STAGES,
@@ -242,7 +242,7 @@ export default async function PipelinePage({
   const lifeIds = [...new Set(opps.map((o) => o.company_id).filter(Boolean))] as string[];
   if (lifeIds.length) {
     for (const [cid, rows] of await loadLifecycleFacts(db, orgId, lifeIds)) {
-      const primary = primaryLifecycleEvent(eventsForAccount(rows));
+      const primary = primaryLifecycleDisclosed(eventsForAccount(rows));
       if (primary && primary.state !== "UNKNOWN") lifecycleByCompany.set(cid, primary);
     }
   }

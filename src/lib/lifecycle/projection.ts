@@ -1,8 +1,9 @@
 import type { Pool, PoolClient } from "pg";
 import {
-  loadLifecycleFacts, eventsForAccount, primaryLifecycleEvent,
+  loadLifecycleFacts, eventsForAccount, primaryLifecycleDisclosed,
   type LifecycleState, type LifecycleEvent,
 } from "./state";
+import { compareProvenance, resolveTie } from "@/lib/facts/provenance-precedence";
 
 /**
  * The renewal-radar compatibility projection (P2A §5).
@@ -77,6 +78,8 @@ const PROVENANCE_WORD: Record<string, string> = {
   HUMAN_ASSERTED: "asserted by a person",
 };
 
+const wordOf = (cls: string): string => PROVENANCE_WORD[cls] ?? "unknown source";
+
 /** The date's own provenance — never the list the account happens to sit on. */
 function sourceNoteOf(e: LifecycleEvent): string {
   if (e.state === "CONFLICTING_DATE" && e.competing.length > 0) {
@@ -84,8 +87,19 @@ function sourceNoteOf(e: LifecycleEvent): string {
     return words.join(" vs ");
   }
   const live = e.facts.filter((f) => f.supersededBy == null && f.status !== "SUPERSEDED" && f.status !== "REJECTED");
-  const best = [...live].sort((a, b) => b.confidence - a.confidence)[0];
-  return best ? (PROVENANCE_WORD[best.provenanceClass] ?? "unknown source") : "unknown source";
+  // D-G8-4A: the same semantics state.ts uses, so the two selectors cannot disagree merely because
+  // one ignored recency — confidence, then recency, then canonical provenance precedence. A tie the
+  // existing semantics genuinely cannot break is DISCLOSED, never decided by row order.
+  const picked = resolveTie(
+    live,
+    (a, b) => b.confidence - a.confidence
+      || b.observedLastAt.getTime() - a.observedLastAt.getTime()
+      || compareProvenance(a.provenanceClass, b.provenanceClass),
+    (a, b) => wordOf(a.provenanceClass) === wordOf(b.provenanceClass),
+  );
+  if (picked.kind === "NONE") return "unknown source";
+  if (picked.kind === "RESOLVED") return wordOf(picked.value.provenanceClass);
+  return [...new Set(picked.tied.map((f) => wordOf(f.provenanceClass)))].join(" vs ");
 }
 
 function phraseOf(e: LifecycleEvent, clock: string): string {
@@ -152,7 +166,7 @@ export async function renewalProjection(
   const partials: Partial_[] = [];
 
   for (const [companyId, facts] of byCompany) {
-    const primary = primaryLifecycleEvent(eventsForAccount(facts));
+    const primary = primaryLifecycleDisclosed(eventsForAccount(facts));
     if (!primary || primary.state === "UNKNOWN") continue;
     const clock = clockOf(primary);
     if (!clock) continue;

@@ -23,6 +23,9 @@ import { getPursuitDetail } from "../src/lib/pursuits/read-models/detail";
 import { getTodayQueue } from "../src/lib/pursuits/read-models/today";
 import { assessMeddpicc } from "../src/lib/opportunities/meddpicc";
 
+/** D-G8-4C: one captured as-of for the whole verification run. */
+const AS_OF = new Date();
+
 const URL = process.env.DEMO_URL ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
 const pool = new Pool({ connectionString: URL });
 let pass = 0, fail = 0;
@@ -326,7 +329,7 @@ async function main() {
       `select before_state, after_state from change_ledger where entity_id = $1`, [second.factId]);
     ok("the audit entry carries the prior value and the resulting ladder rung",
       ledBody.before_state != null && ledBody.after_state.ladder === "CUSTOMER_CONFIRMED");
-    const drvAfter = await loadDrivers(db, org, cyber);
+    const drvAfter = await loadDrivers(db, org, cyber, AS_OF);
     const labor = drvAfter.find((d) => d.predicateKey === "labor_cost");
     ok("the superseded value is history, not current truth",
       labor != null && labor.values.length === 1 && labor.history.length === 1 && labor.value!.low === 620_000);
@@ -592,7 +595,7 @@ async function main() {
 
     // ═══ §16/§20 · TENANT ISOLATION ═══════════════════════════════════════════════════════════
     console.log("\nP2B — isolation");
-    const foreignDrivers = await loadDrivers(db, foreign.id, await cid("Globex"));
+    const foreignDrivers = await loadDrivers(db, foreign.id, await cid("Globex"), AS_OF);
     ok("a foreign tenant reads ZERO economic drivers of this org's account", foreignDrivers.length === 0);
     const foreignCase = await getValueCase(db, foreign.id, globexP);
     ok("a foreign tenant cannot read this org's Value Case at all", foreignCase === null);

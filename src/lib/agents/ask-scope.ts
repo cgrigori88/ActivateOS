@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import type { McpToolDef } from "./mcp-tools";
+import { resolveCompanyIdentity } from "@/lib/identity/lookup";
 
 /**
  * Tool-boundary scope guard (P2C-0 §2, relocated by P2C-1).
@@ -44,6 +45,12 @@ export interface ScopeDecision {
   allowed: boolean;
   /** The payload to return instead, when refused. */
   refusal?: { scoped_out: true; reason: string };
+  /**
+   * D-G8-4C: an AMBIGUOUS account is NOT the same thing as an out-of-scope one, and must not be
+   * reported as one. Execution still fails closed, but the caller is asked to disambiguate rather
+   * than told the account is outside their scope.
+   */
+  ambiguous?: { ambiguous_account: true; reason: string };
 }
 
 /**
@@ -67,22 +74,39 @@ export async function decideToolScope(
     if (!account) {
       return { allowed: false, refusal: { scoped_out: true, reason: "This tool needs a named account while an ecosystem scope is active." } };
     }
-    // Resolve WITHIN the authorized set first. Account names are not unique, and a global
-    // shortest-match can bind "Globex" to a look-alike the operator cannot see and then refuse the
-    // one they can — a scope check that fails closed on the wrong record is still a wrong answer.
-    // This cannot widen access: the in-scope lookup is a strict subset of `companyIds`, which is
-    // itself the already-authorized set. Only when nothing in scope matches do we resolve globally,
-    // and that path can only ever produce a refusal.
-    const inScope = await pool.query<{ id: string }>(
-      `select id from companies where legal_name ilike $1 and id = any($2)
-        order by length(legal_name) limit 1`, [`%${account}%`, companyIds]);
-    if (inScope.rows[0]) return { allowed: true };
+    // Resolve WITHIN the authorized set first. Account names are not unique, and the old
+    // shortest-name match could bind "Globex" to a look-alike the operator cannot see and then
+    // refuse the one they can — a scope check that fails closed on the wrong record is still a wrong
+    // answer. This cannot widen access: the in-scope lookup is a strict subset of `companyIds`,
+    // which is itself the already-authorized set. Only when nothing in scope matches do we resolve
+    // globally, and that path can only ever produce a refusal.
+    //
+    // D-G8-4C: identity now comes from the canonical ladder (id → alias → normalized name → UNIQUE
+    // fuzzy), never from name length. AMBIGUOUS FAILS CLOSED: execution does not proceed on the hope
+    // that something downstream will say "no such account", because at that point a tool has already
+    // run against a record nobody chose.
+    const inScope = await resolveCompanyIdentity(pool, account, { companyIds });
+    if (inScope.kind === "RESOLVED") return { allowed: true };
+    if (inScope.kind === "AMBIGUOUS") {
+      // Deliberately a COUNT and no names: explaining an ambiguity must not disclose accounts.
+      return {
+        allowed: false,
+        ambiguous: { ambiguous_account: true, reason: `"${account}" matches ${inScope.candidates} accounts in the active scope. Name the account exactly — it was not read.` },
+      };
+    }
 
-    const { rows } = await pool.query<{ id: string }>(
-      `select id from companies where legal_name ilike $1 order by length(legal_name) limit 1`, [`%${account}%`]);
+    // Nothing in scope matched. Resolve globally ONLY to tell a scope violation apart from a
+    // genuinely unknown name; this path can never allow a read.
+    const global = await resolveCompanyIdentity(pool, account, { companyIds: null });
+    if (global.kind === "AMBIGUOUS") {
+      return {
+        allowed: false,
+        ambiguous: { ambiguous_account: true, reason: `"${account}" is ambiguous. Name the account exactly — it was not read.` },
+      };
+    }
     // An unresolvable name is not a scope violation — let the tool answer "no such account".
-    if (!rows[0]) return { allowed: true };
-    if (!companyIds.includes(rows[0].id)) {
+    if (global.kind === "NONE") return { allowed: true };
+    if (!companyIds.includes(global.companyId)) {
       return {
         allowed: false,
         refusal: { scoped_out: true, reason: `"${account}" is outside the active ecosystem scope, so it was not read.` },

@@ -177,6 +177,8 @@ export async function createMultiVendorCampaign(
     name: string;
     companyIds: string[];
     partners: { id: string; role: PartnerRole }[];
+    /** D-G8-4D: an explicit, deliberately chosen anchor account. Must be in the eligible population. */
+    seedCompanyId?: string | null;
   },
 ): Promise<{ campaignId: string }> {
   // Partner ids arrive from the form: every one must be a partner of the caller's org.
@@ -198,18 +200,44 @@ export async function createMultiVendorCampaign(
     [pop[0].id, args.companyIds],
   );
 
-  // Seed account = the list's best-scoring member (reach comes from the list).
-  const { rows: seed } = await db.query<{ company_id: string }>(
-    `select pm.company_id from population_members pm
-     left join lateral (select max(score) as s from propensity_scores ps where ps.company_id = pm.company_id and ps.org_id = $2) sc on true
-     where pm.population_id = $1 order by sc.s desc nulls last limit 1`,
-    [pop[0].id, args.orgId],
-  );
+  // ── D-G8-4D: the seed account is a DELIBERATE choice, or it is not made at all ────────────────
+  //
+  // `campaigns.company_id` is the campaign's anchor account. The old rule took the list's
+  // best-scoring member with an untied `limit 1`, and fell back to `companyIds[0]` — so when scores
+  // tied, heap order picked the anchor, and when NOTHING was scored, the caller's array order did.
+  // Neither is a business rule. The precedence now is: an explicit caller-chosen seed → the UNIQUE
+  // highest-scoring member → UNRESOLVED (null). A tie or an unscored population is left unresolved
+  // for a human, never resolved by name, input order, created_at, uuid or query plan.
+  let seedCompanyId: string | null = null;
+  if (args.seedCompanyId) {
+    // An explicit seed only counts if it is genuinely in the eligible population.
+    const { rows: ok } = await db.query<{ company_id: string }>(
+      `select company_id from population_members where population_id = $1 and company_id = $2`,
+      [pop[0].id, args.seedCompanyId],
+    );
+    if (ok.length === 0) throw new Error("the chosen seed account is not in this play's account list");
+    seedCompanyId = ok[0].company_id;
+  } else {
+    // The top score, and how many members share it. Two rows back means a tie, which is unresolved.
+    const { rows: top } = await db.query<{ company_id: string; s: string | null }>(
+      `select pm.company_id, sc.s::text s from population_members pm
+       left join lateral (select max(score) as s from propensity_scores ps
+                           where ps.company_id = pm.company_id and ps.org_id = $2) sc on true
+       where pm.population_id = $1 and sc.s is not null
+         and sc.s = (select max(s2.s) from population_members pm2
+                     left join lateral (select max(score) as s from propensity_scores ps2
+                                         where ps2.company_id = pm2.company_id and ps2.org_id = $2) s2 on true
+                     where pm2.population_id = $1)
+       limit 2`,
+      [pop[0].id, args.orgId],
+    );
+    seedCompanyId = top.length === 1 ? top[0].company_id : null;
+  }
 
   const { rows: ca } = await db.query<{ id: string }>(
     `insert into campaigns (org_id, company_id, name, status, source)
      values ($1, $2, $3, 'draft', 'user') returning id`,
-    [args.orgId, seed[0]?.company_id ?? args.companyIds[0], args.name],
+    [args.orgId, seedCompanyId, args.name],
   );
   const campaignId = ca[0].id;
 

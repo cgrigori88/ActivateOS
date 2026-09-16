@@ -31,8 +31,8 @@ interface CampaignRow {
   name: string;
   status: string;
   objective: string | null;
-  company_id: string;
-  legal_name: string;
+  company_id: string | null;   // D-G8-4D: null when the seed account is UNRESOLVED
+  legal_name: string | null;
   touches: string;
   approved: string;
   sent: string;
@@ -86,7 +86,10 @@ export default async function CampaignsPage({
               order by es.computed_at desc, es.id desc limit 1) as engagement
      from campaigns ca
      left join revenue_motions m on m.id = ca.motion_id
-     join companies c on c.id = coalesce(ca.company_id, m.company_id)
+     -- D-G8-4D: LEFT JOIN. A multi-vendor campaign whose seed account is UNRESOLVED carries a null
+     -- company_id (and has no motion), and an inner join here made it vanish from this surface
+     -- entirely. An unresolved campaign must stay visible so a human can choose its anchor.
+     left join companies c on c.id = coalesce(ca.company_id, m.company_id)
      left join partners pa on pa.id = m.partner_id
      left join taxonomy_nodes n on n.id = m.taxonomy_node_id
      left join goals g on g.id = ca.goal_id
@@ -293,7 +296,9 @@ export default async function CampaignsPage({
               <div key={ca.id} className="flex flex-wrap items-center gap-3 rounded-inner border border-blue-200 bg-white px-3 py-2 dark:border-blue-900 dark:bg-neutral-900">
                 <span className="rounded-inner bg-blue-100 px-1.5 py-0.5 text-micro font-bold uppercase tracking-wide text-accent dark:bg-blue-900 dark:text-blue-300">AI</span>
                 <Link href={`/campaigns/${ca.id}`} className="font-medium hover:underline">{ca.name}</Link>
-                <Link href={`/accounts/${ca.company_id}`} className="text-body text-neutral-500 hover:underline">{ca.legal_name}</Link>
+                {ca.company_id && ca.legal_name
+                  ? <Link href={`/accounts/${ca.company_id}`} className="text-body text-neutral-500 hover:underline">{ca.legal_name}</Link>
+                  : <span className="text-neutral-400">Seed account not selected</span>}
                 <span className="text-body text-neutral-400">{ca.touches} touch{Number(ca.touches) === 1 ? "" : "es"}</span>
                 <span className="ml-auto flex items-center gap-2">
                   <Link href={`/campaigns/${ca.id}`} className="rounded-control bg-blue-700 px-3 py-1 text-body font-medium text-white hover:bg-blue-800">Review</Link>
@@ -353,7 +358,9 @@ export default async function CampaignsPage({
                     {ca.objective && <div className="text-label text-neutral-400">{ca.objective}</div>}
                   </td>
                   <td>
-                    <Link href={`/accounts/${ca.company_id}`} className="hover:underline">{ca.legal_name}</Link>
+                    {ca.company_id && ca.legal_name
+                  ? <Link href={`/accounts/${ca.company_id}`} className="hover:underline">{ca.legal_name}</Link>
+                  : <span className="text-neutral-400">Seed account not selected</span>}
                   </td>
                   <td>
                     {Number(ca.lists) > 0 ? (

@@ -98,7 +98,10 @@ async function handleMessage(msg: RpcRequest, key: ResolvedKey): Promise<Record<
         // caller so a scoped key cannot be introduced without the check already standing.
         const result = await withTenantOrg(orgId, async (db) => {
           const decision = await decideToolScope(db, orgId, tool, args, keyScopeCompanyIds());
-          if (!decision.allowed) return decision.refusal;
+          // D-G8-4C: ambiguity fails closed, and is reported as ITS OWN outcome. Returning the
+          // scope refusal here would tell the caller the account is outside their scope, which is a
+          // different — and false — statement.
+          if (!decision.allowed) return decision.ambiguous ?? decision.refusal;
           return tool.run(db, orgId, args);
         });
         return rpcResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], isError: false });

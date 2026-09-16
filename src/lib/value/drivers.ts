@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { resolveTie } from "@/lib/facts/provenance-precedence";
 
 /**
  * Value Case economic drivers (P2B §1, §3, §4).
@@ -132,6 +133,7 @@ interface FactRow {
   provenance_class: string; status: string; disclosure_class: string | null;
   subject_label: string | null; observed_last_at: Date; confidence: string;
   superseded_by: string | null; supersedes: string | null;
+  valid_from: Date | null; valid_until: Date | null;
   evidence_count: string; contradiction_open: boolean;
 }
 
@@ -158,13 +160,14 @@ function boundsOf(r: FactRow): { low: number; high: number; currency: string } |
  * was replaced is part of the audit trail, not part of the current model.
  */
 export async function loadDrivers(
-  db: Pool | PoolClient, orgId: string, companyId: string,
+  db: Pool | PoolClient, orgId: string, companyId: string, asOf: Date,
 ): Promise<Driver[]> {
   const { rows } = await db.query<FactRow>(
     `select f.id, f.predicate_key, p.signal_type,
             f.money_amount, f.money_currency, f.number_value,
             f.object_type, f.object_value, f.provenance_class, f.status, f.disclosure_class,
             f.subject_label, f.observed_last_at, f.confidence, f.superseded_by, f.supersedes,
+            f.valid_from, f.valid_until,
             (select count(*) from fact_evidence fe where fe.fact_id = f.id)::text evidence_count,
             exists (select 1 from fact_contradictions fc
                      where fc.status = 'open' and (fc.fact_id_a = f.id or fc.fact_id_b = f.id)) contradiction_open
@@ -199,7 +202,14 @@ export async function loadDrivers(
       };
     };
 
-    const live = all.filter((r) => r.superseded_by == null && r.status !== "SUPERSEDED" && r.status !== "REJECTED");
+    // D-G8-4C: eligibility is supersession AND the fact's own validity window, evaluated against an
+    // EXPLICIT asOf the caller captured once. The window used to be ignored entirely, so a fact whose
+    // validity had closed could still be "in force" as long as nothing superseded it.
+    const inForceAt = (r: FactRow): boolean =>
+      r.superseded_by == null && r.status !== "SUPERSEDED" && r.status !== "REJECTED"
+      && (r.valid_from == null || r.valid_from.getTime() <= asOf.getTime())
+      && (r.valid_until == null || r.valid_until.getTime() > asOf.getTime());
+    const live = all.filter(inForceAt);
     const values = live.map(toValue).filter((v): v is DriverValue => v != null);
     const history = all.filter((r) => !live.includes(r)).map(toValue).filter((v): v is DriverValue => v != null);
     if (values.length === 0) continue;
@@ -208,12 +218,18 @@ export async function loadDrivers(
     const distinct = new Set(values.map((v) => `${v.low}:${v.high}`));
     const conflicting = contradicted || distinct.size > 1;
 
-    // The value in force: highest ladder rung, then most evidence, then freshest. Never chosen
-    // when conflicting — a disagreement is resolved by evidence, not by ranking.
-    const inForce = conflicting ? null : [...values].sort((a, b) =>
-      LADDER_RANK[a.ladder] - LADDER_RANK[b.ladder] ||
-      b.evidenceCount - a.evidenceCount ||
-      b.observedLastAt.getTime() - a.observedLastAt.getTime())[0];
+    // The value in force: highest ladder rung, then most evidence, then freshest. Never chosen when
+    // conflicting — a disagreement is resolved by evidence, not by ranking. D-G8-4C: anything still
+    // tied after those three keys is collapsed only when it would report the SAME value and rung;
+    // otherwise it is UNRESOLVED (null), exactly like a conflict, rather than decided by row order.
+    const picked = conflicting ? null : resolveTie(
+      values,
+      (a, b) => LADDER_RANK[a.ladder] - LADDER_RANK[b.ladder] ||
+        b.evidenceCount - a.evidenceCount ||
+        b.observedLastAt.getTime() - a.observedLastAt.getTime(),
+      (a, b) => a.low === b.low && a.high === b.high && a.ladder === b.ladder && a.currency === b.currency,
+    );
+    const inForce = picked?.kind === "RESOLVED" ? picked.value : null;
 
     // Spread: the width this driver contributes to the modeled range. Under interval addition a
     // driver's own width IS its exact contribution to the total, which is what makes the

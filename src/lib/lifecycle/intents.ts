@@ -1,7 +1,7 @@
 import type { ResolveContext, IntentResult, Slots } from "@/lib/search/registry";
 import { money } from "@/lib/search/significance";
 import { getLifecycleHorizon } from "./horizon";
-import { loadLifecycleFacts, eventsForAccount, primaryLifecycleEvent, STATE_LABEL } from "./state";
+import { loadLifecycleFacts, eventsForAccount, primaryLifecycleDisclosed, STATE_LABEL } from "./state";
 import { formatMoney } from "@/lib/format/money";
 
 /**
@@ -83,7 +83,7 @@ export async function resolveLifecycleShowMe(
   const hits: IntentResult["hits"] = [];
   for (const a of accounts) {
     const events = eventsForAccount(factsBy.get(a.company_id) ?? []);
-    const primary = primaryLifecycleEvent(events);
+    const primary = primaryLifecycleDisclosed(events);
     const ev = a.ev == null ? null : Number(a.ev);
 
     if (mode === "conflicting") {
@@ -140,7 +140,12 @@ export async function resolveLifecycleExplain(ctx: ResolveContext, accountName: 
   if (events.length === 0) {
     return { note: `No lifecycle evidence on record for ${co.legal_name} — UNKNOWN, not zero. A customer-confirmed renewal date or a first-party contract record would establish it.` };
   }
-  const primary = primaryLifecycleEvent(events)!;
+  // D-G8-4A: where two events tie on state AND timing, the tie is DISCLOSED (shared state and
+  // timing, both labels, the union of competing dates) rather than resolved by array order.
+  const primary = primaryLifecycleDisclosed(events);
+  if (!primary) {
+    return { note: `No lifecycle evidence on record for ${co.legal_name} — UNKNOWN, not zero.` };
+  }
   const lines: { label: string; value: string }[] = [
     { label: primary.label, value: STATE_LABEL[primary.state].toUpperCase() },
   ];

@@ -135,10 +135,26 @@ test("D-G8-3: the site closed under D-G8-2A stays closed and untouched", () => {
   assert.match(src("src/app/motions/actions.ts"), /a\.localeCompare\(b\)/);
 });
 
-test("D-G8-3C is NOT implemented — it is reclassified to D-G8-4D", () => {
-  const q = sqlBlocks(src("src/lib/campaigns/multi-vendor.ts"))
-    .find((s) => /from population_members pm/i.test(s) && /max\(score\)/i.test(s))!;
-  assert.ok(q, "the multi-vendor seed selection was not found");
-  assert.equal(orderByOf(q), "sc.s desc nulls last limit 1".replace(" limit 1", ""),
-    "multi-vendor's seed selection must be left exactly as it was: D-G8-4D owns it");
+test("D-G8-4D: the campaign seed is never fabricated by name, input order or uuid", () => {
+  const s = src("src/lib/campaigns/multi-vendor.ts");
+  // The two forbidden fallbacks that used to decide the anchor account are gone.
+  assert.doesNotMatch(s, /\?\?\s*args\.companyIds\[0\]/, "input order must not seed a campaign");
+  assert.doesNotMatch(s, /order by sc\.s desc nulls last limit 1/, "the untied limit-1 pick must be gone");
+  // Scope the check to the seed-selection block: `legal_name` is used legitimately elsewhere in this
+  // file by the separate multi-vendor display listing.
+  // Strip comments first: the block's own prose NAMES the forbidden fallbacks in order to rule
+  // them out, and matching that prose would be a false positive.
+  const seedBlock = s
+    .slice(s.indexOf("D-G8-4D: the seed account"), s.indexOf("insert into campaigns"))
+    .split("\n").map((l) => l.replace(/\/\/.*$/, "").replace(/--.*$/, "")).join("\n");
+  assert.ok(seedBlock.length > 0, "seed-selection block not found");
+  for (const forbidden of [/legal_name/, /order by [^\n]*name/, /created_at/, /companyIds\[/]) {
+    assert.doesNotMatch(seedBlock, forbidden, `forbidden seed fallback in the seed block: ${forbidden}`);
+  }
+  // Unresolved is represented as a null company_id, and an explicit seed is validated.
+  assert.match(s, /let seedCompanyId: string \| null = null;/);
+  assert.match(s, /seedCompanyId = top\.length === 1 \? top\[0\]\.company_id : null;/,
+    "a tie for top score must resolve to null, not to a row");
+  assert.match(s, /the chosen seed account is not in this play's account list/);
+  assert.match(s, /\[args\.orgId, seedCompanyId, args\.name\]/);
 });

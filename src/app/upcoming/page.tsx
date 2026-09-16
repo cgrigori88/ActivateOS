@@ -23,7 +23,7 @@ interface Row {
   campaign_id: string;
   campaign_name: string;
   company_id: string;
-  legal_name: string;
+  legal_name: string | null;   // D-G8-4D: null when the campaign's seed is UNRESOLVED
 }
 
 export default async function UpcomingPage() {
@@ -36,7 +36,10 @@ export default async function UpcomingPage() {
      from campaign_touches t
      join campaigns ca on ca.id = t.campaign_id
      left join revenue_motions m on m.id = ca.motion_id
-     join companies c on c.id = coalesce(ca.company_id, m.company_id)
+     -- D-G8-4D: LEFT JOIN. A multi-vendor campaign whose seed account is UNRESOLVED carries a null
+     -- company_id (and has no motion), and an inner join here made it vanish from this surface
+     -- entirely. An unresolved campaign must stay visible so a human can choose its anchor.
+     left join companies c on c.id = coalesce(ca.company_id, m.company_id)
      where t.status = 'scheduled' and ca.org_id = $1
      order by t.scheduled_at asc nulls last`,
         [orgId],
@@ -101,7 +104,9 @@ export default async function UpcomingPage() {
                       {due && <span className="ml-1">· due</span>}
                     </td>
                     <td>
-                      <Link href={`/accounts/${r.company_id}`} className="hover:underline">{r.legal_name}</Link>
+                      {r.company_id && r.legal_name
+                        ? <Link href={`/accounts/${r.company_id}`} className="hover:underline">{r.legal_name}</Link>
+                        : <span className="text-neutral-400">Seed account not selected</span>}
                     </td>
                     <td>
                       <Link href={`/campaigns/${r.campaign_id}`} className="hover:underline">{r.campaign_name}</Link>

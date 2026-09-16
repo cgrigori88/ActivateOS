@@ -17,6 +17,7 @@ import {
   type RevisionRecord,
 } from "./pursuit-plan";
 import { getRouteComparison } from "./route";
+import { LIFECYCLE_STATE_RANK, type LifecycleState } from "@/lib/lifecycle/state";
 
 /**
  * Loaders for Pursuit Coordination (vNext Slice 2A).
@@ -104,10 +105,13 @@ export async function loadPlanState(db: PoolClient, caller: Caller, pursuitId: s
   const internal = caller.canSeeInternal;
 
   const whyNow = missingInput?.whyNow ?? null;
+  // D-G8-4C: soonest date stays the rule; on an EQUAL date the already-documented lifecycle-state
+  // precedence decides, so a VERIFIED_DATE outranks an INFERRED_WINDOW. Never id, name or row order.
   const timingEvent = (whyNow?.lifecycle ?? [])
     .map((e) => ({ e, date: e.date ?? e.window?.from ?? null }))
     .filter((x) => x.date != null && (x.e.state === "VERIFIED_DATE" || x.e.state === "INFERRED_WINDOW"))
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)))[0] ?? null;
+    .sort((a, b) => String(a.date).localeCompare(String(b.date))
+      || (LIFECYCLE_STATE_RANK[a.e.state as LifecycleState] - LIFECYCLE_STATE_RANK[b.e.state as LifecycleState]))[0] ?? null;
 
   const o = opp.rows[0];
   const m = motion.rows[0];

@@ -42,7 +42,14 @@ const ACCOUNT_SQL = `
                     join account_populations ap on ap.id = pm.population_id
                    where pm.company_id = c.id and ap.org_id = $1)
      )
-   order by (lower(c.legal_name) = lower($5)) desc, length(c.legal_name) asc
+   -- D-G8-4C: identity evidence orders this DISAMBIGUATION window, never name length. An exact
+   -- name, then an exact normalized name, then an alias-backed candidate. This order cannot by
+   -- itself select an identity: resolveEntity only RESOLVES on a unique exact match or a single
+   -- candidate, and returns AMBIGUOUS otherwise.
+   order by (lower(c.legal_name) = lower($5)) desc,
+            (c.normalized_name = lower($5)) desc,
+            exists (select 1 from company_aliases a where a.company_id = c.id and lower(a.alias) = lower($5)) desc,
+            c.legal_name asc
    limit 6`;
 
 // Partners are org-owned, not account-scoped: the ecosystem scope narrows which ACCOUNTS are
@@ -51,7 +58,9 @@ const ACCOUNT_SQL = `
 const PARTNER_SQL = `
   select p.id, p.name label from partners p
    where p.org_id = $1 and p.name ilike $2
-   order by (lower(p.name) = lower($3)) desc, length(p.name) asc
+   -- D-G8-4C: exact name first, then a stable presentation order. Not an identity decision —
+   -- resolveEntity resolves only when the match is unique.
+   order by (lower(p.name) = lower($3)) desc, p.name asc
    limit 6`;
 
 export async function resolveEntity(

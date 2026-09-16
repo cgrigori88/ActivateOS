@@ -26,7 +26,7 @@ import { routeIntent, resolveUtterance, resolveStructured, listIntents, getInten
 import "../src/lib/search/intents";
 import { classifyIntent } from "../src/lib/search/query";
 import {
-  deriveLifecycleEvent, loadLifecycleFacts, eventsForAccount, primaryLifecycleEvent,
+  deriveLifecycleEvent, loadLifecycleFacts, eventsForAccount, primaryLifecycleEvent, primaryLifecycleDisclosed,
   type LifecycleFactRow,
 } from "../src/lib/lifecycle/state";
 import { getLifecycleHorizon, lifecycleConstraint } from "../src/lib/lifecycle/horizon";
@@ -177,7 +177,9 @@ async function main() {
     const state = async (name: string) => {
       const id = await cid(name);
       const ev = eventsForAccount((await loadLifecycleFacts(db, org, [id])).get(id) ?? []);
-      return primaryLifecycleEvent(ev)?.state ?? "UNKNOWN";
+      // D-G8-4A: a STATE-level question. Where two events tie, they tie ON the state, so the
+      // disclosed primary answers it without choosing between them.
+      return primaryLifecycleDisclosed(ev)?.state ?? "UNKNOWN";
     };
     ok("demo: Globex is VERIFIED_DATE", (await state("Globex")) === "VERIFIED_DATE");
     ok("demo: Umbrella is INFERRED_WINDOW", (await state("Umbrella")) === "INFERRED_WINDOW");
@@ -227,7 +229,11 @@ async function main() {
 
     // ═══ P2A · constraint language ═════════════════════════════════════════════════════════════
     const starkEvents = eventsForAccount((await loadLifecycleFacts(db, org, [starkId])).get(starkId) ?? []);
-    const cv = lifecycleConstraint(primaryLifecycleEvent(starkEvents)!, 1_450_000, "p1")!;
+    // D-G8-4A: Stark genuinely has TWO conflicting lifecycle events tied on state AND timing, so
+    // there is no single primary — the old code returned whichever the array held first. The
+    // constraint below is a STATE-level claim, which every tied event shares, so it is asserted
+    // against the disclosed primary (shared state + timing, both labels, union of competing dates).
+    const cv = lifecycleConstraint(primaryLifecycleDisclosed(starkEvents)!, 1_450_000, "p1")!;
     ok("lifecycle speaks the shared constraint language (blocked-by / why / exposure / what-changes-it)",
       /conflicting/i.test(cv.blockedBy) && !!cv.why && cv.exposureUsd === 1_450_000 && !!cv.action);
     ok("a VERIFIED date produces NO constraint (nothing to resolve)",

@@ -127,8 +127,12 @@ export const EXPECTED_BENEFIT_DRIVERS = ["avoided_cost", "productivity_impact", 
 export const EXPECTED_BASELINE_DRIVERS = ["current_operating_cost", "infrastructure_cost", "license_subscription_cost", "labor_cost"];
 
 export async function getValueCase(
-  db: Pool | PoolClient, orgId: string, pursuitId: string,
+  db: Pool | PoolClient, orgId: string, pursuitId: string, asOf?: Date,
 ): Promise<ValueCase | null> {
+  // D-G8-4C: ONE as-of instant for the whole evaluation. Captured here, at the read-model boundary,
+  // and threaded down — never re-read as now() inside the selector, so a single read cannot
+  // straddle two instants and a historical as-of can be passed in later.
+  const at = asOf ?? new Date();
   const p = (await db.query<{ id: string; account_id: string; legal_name: string; evw: string | null }>(
     `select p.id, p.account_id, c.legal_name, p.expected_value_weighted evw
        from pursuits p join companies c on c.id = p.account_id
@@ -142,7 +146,7 @@ export async function getValueCase(
       where company_id = $1 and org_id = $2 and stage not in ('closed_won','closed_lost')`,
     [p.account_id, orgId])).rows[0];
 
-  const drivers = await loadDrivers(db, orgId, p.account_id);
+  const drivers = await loadDrivers(db, orgId, p.account_id, at);
   return assembleCase(p.id, p.account_id, p.legal_name,
     opp?.amount != null ? Number(opp.amount) : null,
     p.evw != null ? Number(p.evw) : null,

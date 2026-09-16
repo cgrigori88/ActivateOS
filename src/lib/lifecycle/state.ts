@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { compareProvenance, resolveTie, type Resolution } from "@/lib/facts/provenance-precedence";
 
 /**
  * Lifecycle date states (P2A). DERIVED from the existing canonical fact columns — no new stored
@@ -91,6 +92,10 @@ export interface LifecycleEvent {
 }
 
 const DAY = 86_400_000;
+
+/** Two nullable instants are the same instant (or both absent). */
+const sameInstant = (a: Date | null, b: Date | null): boolean =>
+  a == null || b == null ? a === b : a.getTime() === b.getTime();
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 const daysBetween = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / DAY);
 
@@ -156,11 +161,38 @@ export function deriveLifecycleEvent(
     };
   }
 
-  // ── The single live fact that speaks for this predicate (highest confidence, freshest) ───────
-  const best = [...live].sort((a, b) => b.confidence - a.confidence || b.observedLastAt.getTime() - a.observedLastAt.getTime())[0];
-  const stale = isStale(best, now);
-  const trusted = TRUSTED_FOR_PRECISE_DATE.has(best.provenanceClass);
-  const window = best.validFrom || best.validUntil ? { from: iso(best.validFrom), to: iso(best.validUntil) } : null;
+  // ── The single live fact that speaks for this predicate ──────────────────────────────────────
+  // D-G8-4A: confidence, then recency, then the canonical provenance precedence
+  // (PROVENANCE_STRENGTH). Every surviving row here already agrees on the DATE — the CONFLICTING
+  // branch above returned when they did not — so a residual tie can only move the window, the
+  // provenance word and the precise-date trust flag. Where those agree the rows are genuinely
+  // equivalent and collapse; where they differ the tie is UNRESOLVED, and it is disclosed and
+  // resolved CONSERVATIVELY rather than decided by row order.
+  const pick = resolveTie(
+    live,
+    (a, b) => b.confidence - a.confidence
+      || b.observedLastAt.getTime() - a.observedLastAt.getTime()
+      || compareProvenance(a.provenanceClass, b.provenanceClass),
+    (a, b) => a.provenanceClass === b.provenanceClass
+      && sameInstant(a.dateValue, b.dateValue) && sameInstant(a.validFrom, b.validFrom)
+      && sameInstant(a.validUntil, b.validUntil) && a.freshnessPolicy === b.freshnessPolicy
+      && a.halfLifeDays === b.halfLifeDays,
+  );
+  const tiedGroup = pick.kind === "UNRESOLVED" ? pick.tied : null;
+  const best = pick.kind === "RESOLVED" ? pick.value : pick.kind === "UNRESOLVED" ? pick.tied[0] : live[0];
+  const stale = tiedGroup ? tiedGroup.every((f) => isStale(f, now)) : isStale(best, now);
+  // Conservative on an unresolved tie: "trusted for a precise date" only if EVERY tied source is.
+  const trusted = tiedGroup
+    ? tiedGroup.every((f) => TRUSTED_FOR_PRECISE_DATE.has(f.provenanceClass))
+    : TRUSTED_FOR_PRECISE_DATE.has(best.provenanceClass);
+  // ... and the window is only asserted when every tied source asserts the same one.
+  const windowAgrees = !tiedGroup || tiedGroup.every((f) =>
+    sameInstant(f.validFrom, best.validFrom) && sameInstant(f.validUntil, best.validUntil));
+  const window = windowAgrees && (best.validFrom || best.validUntil)
+    ? { from: iso(best.validFrom), to: iso(best.validUntil) } : null;
+  const tieNote = tiedGroup
+    ? ` Equally-strong sources support this date (${[...new Set(tiedGroup.map((f) => f.provenanceClass))].join(", ")}); none outranks the other.`
+    : "";
 
   // ── STALE: we knew this once. Distinct from UNKNOWN, and the date is still shown as history. ─
   if (stale) {
@@ -169,8 +201,8 @@ export function deriveLifecycleEvent(
       ...base, state: "STALE_DATE", date: iso(best.dateValue), window,
       daysUntil: d ? daysBetween(d, now) : null,
       because: best.freshnessPolicy === "VALID_UNTIL"
-        ? "The date this was valid until has already passed."
-        : `Last observed ${daysBetween(now, best.observedLastAt)} days ago — beyond this predicate's freshness policy.`,
+        ? `The date this was valid until has already passed.${tieNote}`
+        : `Last observed ${daysBetween(now, best.observedLastAt)} days ago — beyond this predicate's freshness policy.${tieNote}`,
       whatWouldChangeIt: "Re-confirm the date; the previous value is kept as history either way.",
     };
   }
@@ -184,8 +216,8 @@ export function deriveLifecycleEvent(
       window: window ?? (best.dateValue ? { from: iso(best.dateValue), to: iso(best.dateValue) } : null),
       daysUntil: near ? daysBetween(near, now) : null,
       because: best.dateValue == null
-        ? "Evidence supports a period, not a specific date."
-        : `The source (${best.provenanceClass.replace(/_/g, " ").toLowerCase()}) is not trusted for a precise date.`,
+        ? `Evidence supports a period, not a specific date.${tieNote}`
+        : `The source (${best.provenanceClass.replace(/_/g, " ").toLowerCase()}) is not trusted for a precise date.${tieNote}`,
       whatWouldChangeIt: "A customer-confirmed renewal date, or a first-party contract record.",
     };
   }
@@ -194,7 +226,7 @@ export function deriveLifecycleEvent(
   return {
     ...base, state: "VERIFIED_DATE", date: iso(best.dateValue), window,
     daysUntil: daysBetween(best.dateValue, now),
-    because: `${best.provenanceClass.replace(/_/g, " ").toLowerCase()} evidence supports this date.`,
+    because: `${best.provenanceClass.replace(/_/g, " ").toLowerCase()} evidence supports this date.${tieNote}`,
     whatWouldChangeIt: null,
   };
 }
@@ -202,15 +234,61 @@ export function deriveLifecycleEvent(
 /** Tiny helper kept separate so the CONFLICTING branch reads as one condition. */
 function r0(rows: LifecycleFactRow[]): LifecycleFactRow[] { return rows; }
 
-/** The single most commercially relevant event for an account (soonest actionable, conflicts first). */
+/** The documented lifecycle-state precedence (see the module header): conflicts first. */
+export const LIFECYCLE_STATE_RANK: Record<LifecycleState, number> = {
+  CONFLICTING_DATE: 0, VERIFIED_DATE: 1, INFERRED_WINDOW: 2, STALE_DATE: 3, UNKNOWN: 4,
+};
+
+/**
+ * The single most commercially relevant event for an account (soonest actionable, conflicts first).
+ *
+ * D-G8-4A: this is NOT a provenance question and PROVENANCE_STRENGTH is deliberately not used here.
+ * The existing semantics are the lifecycle-state rank, then timing. Anything still tied after those
+ * shares BOTH its state and its daysUntil; where the tied events would also render identically they
+ * collapse, and where they would not, the answer is UNRESOLVED rather than whichever event the array
+ * happened to hold first.
+ */
+export function primaryLifecycleOutcome(events: LifecycleEvent[]): Resolution<LifecycleEvent> {
+  return resolveTie(
+    events,
+    (a, b) => LIFECYCLE_STATE_RANK[a.state] - LIFECYCLE_STATE_RANK[b.state] ||
+      (a.daysUntil ?? Number.MAX_SAFE_INTEGER) - (b.daysUntil ?? Number.MAX_SAFE_INTEGER),
+    (a, b) => a.label === b.label && a.state === b.state && a.date === b.date
+      && a.daysUntil === b.daysUntil && JSON.stringify(a.window) === JSON.stringify(b.window),
+  );
+}
+
+/** The resolved primary event, or null when there is none OR when it is genuinely undecidable. */
 export function primaryLifecycleEvent(events: LifecycleEvent[]): LifecycleEvent | null {
-  if (events.length === 0) return null;
-  const rank: Record<LifecycleState, number> = {
-    CONFLICTING_DATE: 0, VERIFIED_DATE: 1, INFERRED_WINDOW: 2, STALE_DATE: 3, UNKNOWN: 4,
+  const r = primaryLifecycleOutcome(events);
+  return r.kind === "RESOLVED" ? r.value : null;
+}
+
+/**
+ * The primary event for a surface that must show SOMETHING (D-G8-4A).
+ *
+ * A tie here is always on BOTH the lifecycle state and the timing — those are the keys it survived —
+ * so the state, date, window and daysUntil are already common to every tied event. Only the
+ * predicate label and the competing set differ. Rather than pick one (the old row-order behaviour)
+ * or drop the account entirely, this DISCLOSES the tie: the shared state and timing, both labels,
+ * and the union of the competing dates. Nothing is chosen, and nothing is hidden.
+ */
+export function primaryLifecycleDisclosed(events: LifecycleEvent[]): LifecycleEvent | null {
+  const r = primaryLifecycleOutcome(events);
+  if (r.kind === "NONE") return null;
+  if (r.kind === "RESOLVED") return r.value;
+  const seen = new Set<string>();
+  const competing = r.tied.flatMap((t) => t.competing)
+    .filter((c) => (seen.has(c.factId) ? false : (seen.add(c.factId), true)))
+    .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.factId.localeCompare(b.factId));
+  return {
+    ...r.tied[0],
+    label: r.tied.map((t) => t.label).join(" / "),
+    competing,
+    facts: r.tied.flatMap((t) => t.facts),
+    evidenceCount: r.tied.reduce((s, t) => s + t.evidenceCount, 0),
+    because: `${r.tied.length} lifecycle events tie on state and timing (${r.tied.map((t) => t.label).join(", ")}); none outranks the other.`,
   };
-  return [...events].sort((a, b) =>
-    rank[a.state] - rank[b.state] ||
-    (a.daysUntil ?? Number.MAX_SAFE_INTEGER) - (b.daysUntil ?? Number.MAX_SAFE_INTEGER))[0];
 }
 
 /** Load the lifecycle facts for a set of accounts. RLS-scoped; company narrowing is caller-supplied. */

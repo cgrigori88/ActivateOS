@@ -115,7 +115,9 @@ export async function upsertElement(
  * on real signals we hold (no external model needed), so it works in every
  * environment; every proposal is a draft (source='ai_assist') the human tunes.
  */
-export async function assessMeddpicc(db: Db, orgId: string, opportunityId: string): Promise<{ updated: number }> {
+export async function assessMeddpicc(db: Db, orgId: string, opportunityId: string, asOf?: Date): Promise<{ updated: number }> {
+  // D-G8-4C: one captured as-of for this whole assessment (see getValueCase).
+  const at = asOf ?? new Date();
   const { rows: oppRows } = await db.query<{ company_id: string; amount_usd: string | null; motion_id: string | null }>(
     `select company_id, amount_usd, motion_id from opportunities where id = $1 and org_id = $2`,
     [opportunityId, orgId],
@@ -158,7 +160,7 @@ export async function assessMeddpicc(db: Db, orgId: string, opportunityId: strin
   // BUYER tracks, which is exactly what the Value Case models.
   const { loadDrivers } = await import("../value/drivers");
   const { assembleCase, bounds: fmtBounds } = await import("../value/case");
-  const drivers = await loadDrivers(db, orgId, opp.company_id);
+  const drivers = await loadDrivers(db, orgId, opp.company_id, at);
   const vc = assembleCase("", opp.company_id, "", opp.amount_usd ? Number(opp.amount_usd) : null, null, drivers);
 
   const has = (n: number) => ev.length >= n;

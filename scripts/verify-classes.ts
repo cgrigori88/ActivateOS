@@ -112,6 +112,12 @@ export const SUITES: SuiteSpec[] = [
     isolation: "SEEDED_CLONE",
   },
   {
+    name: "semantic-determinism",
+    cls: "SEEDED",
+    why: "D-G8-4: proves the SEMANTICS, not merely stable ordering — provenance precedence on an exact confidence+recency tie (with HUMAN_ASSERTED vs SECOND_PARTY deliberately UNRESOLVED), a median over the whole eligible population plus a categorical mode that surfaces ties, identity resolved by canonical id / alias / normalized name / unique fuzzy with shorter-name, alphabetical, uuid and heap order all proven unable to decide it, ambiguity failing CLOSED at the ask-scope boundary without leaking candidates, in-force facts judged against an explicit asOf, and a campaign seed that is deliberate or null. It COMMITS its fixtures, so it runs on a disposable seeded clone",
+    isolation: "SEEDED_CLONE",
+  },
+  {
     name: "persisted-determinism",
     cls: "SEEDED",
     why: "D-G8-3: plants ties on every scoped PERSISTED-choice path — a campaign's assets inserted in REVERSE with one created_at, two settlement opportunities sharing updated_at, tied brand profiles, tied propensity scores and equal-amount opportunities under the routines cap — then proves the persisted sequence round-trips to the composer's authored order, the settlement function returns a stable total order with a unique opportunity identity (and a non-party still sees nothing), and every selection is identical across five planner configurations, two heap layouts and both roles, with the pre-existing business ranking still dominating and the old untied clause as a negative control. It COMMITS its fixtures, so it runs on a disposable seeded clone",

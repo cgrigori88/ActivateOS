@@ -368,24 +368,51 @@ export async function getObservedActivationPattern(
  */
 export interface ExecutionEvidence {
   won: number; lost: number; noDecision: number; sample: number;
+  /** Median days recommendation → outcome over ALL eligible terminal timestamped outcomes.
+   *  null = UNKNOWN (no timestamped rows) — never coerced to zero. */
   medianDaysToOutcome: number | null;
+  /** D-G8-4B: the MOST COMMON terminal outcome — a categorical mode, never called a median.
+   *  null when there is no history; `mostCommonOutcomeTied` lists every label sharing the top
+   *  count when more than one does, so a tie is surfaced instead of silently broken. */
+  mostCommonOutcome: string | null;
+  mostCommonOutcomeCount: number;
+  mostCommonOutcomeShare: number | null;
+  mostCommonOutcomeTied: string[];
   classMix: Record<string, number>;
   lines: { text: string; polarity: 1 | -1 | 0; refType: string; refId: string | null }[];
 }
 export async function getExecutionEvidence(
   db: PoolClient, orgId: string, partnerId: string, taxonomyNodeId: string | null,
 ): Promise<ExecutionEvidence> {
-  const { rows } = await db.query<{ label: string; n: string; med: string | null }>(
-    `select po.outcome_label label, count(*)::text n,
-            (percentile_cont(0.5) within group (order by po.seconds_since_recommended / 86400.0))::text med
+  // D-G8-4B: counts stay grouped by label, but the MEDIAN is computed over the WHOLE eligible
+  // terminal population. It used to be a per-label percentile followed by `rows.find(...)`, which
+  // reported one arbitrarily-chosen category's median as if it were the partner's overall median —
+  // a wrong statistic for the population it named, not merely an unstable one.
+  const { rows } = await db.query<{ label: string; n: string }>(
+    `select po.outcome_label label, count(*)::text n
        from pursuit_outcomes po join pursuits pu on pu.id = po.pursuit_id
       where pu.org_id = $1 and pu.selected_partner_id = $2 and po.is_terminal
         and ($3::uuid is null or pu.product_category_id = $3)
-      group by 1`, [orgId, partnerId, taxonomyNodeId]);
+      group by 1 order by 1`, [orgId, partnerId, taxonomyNodeId]);
+  const { rows: medRows } = await db.query<{ med: string | null }>(
+    `select (percentile_cont(0.5) within group (order by po.seconds_since_recommended / 86400.0))::text med
+       from pursuit_outcomes po join pursuits pu on pu.id = po.pursuit_id
+      where pu.org_id = $1 and pu.selected_partner_id = $2 and po.is_terminal
+        and po.seconds_since_recommended is not null
+        and ($3::uuid is null or pu.product_category_id = $3)`, [orgId, partnerId, taxonomyNodeId]);
   const g = (k: string) => Number(rows.find((r) => r.label === k)?.n ?? 0);
   const won = g("CLOSED_WON"), lost = g("CLOSED_LOST"), noDecision = g("NO_DECISION");
   const sample = rows.reduce((s, r) => s + Number(r.n), 0);
-  const medRaw = rows.find((r) => r.med != null)?.med;
+  const medRaw = medRows[0]?.med ?? null;   // null = UNKNOWN, never zero
+
+  // The categorical summary: the mode, with its count and share. Every label sharing the top count
+  // is reported — a tie is a real answer, and picking one of them by query order is not.
+  const topCount = rows.reduce((m, r) => Math.max(m, Number(r.n)), 0);
+  const modes = rows.filter((r) => Number(r.n) === topCount).map((r) => r.label).sort();
+  const mostCommonOutcome = sample === 0 ? null : modes.length === 1 ? modes[0] : null;
+  const mostCommonOutcomeTied = sample === 0 || modes.length === 1 ? [] : modes;
+  const mostCommonOutcomeCount = sample === 0 ? 0 : topCount;
+  const mostCommonOutcomeShare = sample === 0 ? null : topCount / sample;
   const classMix = Object.fromEntries((await db.query<{ cls: string; n: string }>(
     `select coalesce(a.human_override_class, a.attribution_class) cls, count(*)::text n
        from attribution a join pursuits pu on pu.id = a.pursuit_id
@@ -403,7 +430,19 @@ export async function getExecutionEvidence(
       polarity: won > lost ? 1 : won < lost ? -1 : 0, refType: "pursuit_outcomes", refId: null,
     });
     if (medRaw != null) lines.push({ text: `Median ${Math.round(Number(medRaw))}d recommendation → outcome`, polarity: 0, refType: "pursuit_outcomes", refId: null });
+    // Categorical: labelled "Most common outcome", never "median".
+    const pct = (v: number) => `${Math.round(v * 100)}%`;
+    if (mostCommonOutcome != null) {
+      lines.push({ text: `Most common outcome ${mostCommonOutcome} (${mostCommonOutcomeCount} of ${sample} · ${pct(mostCommonOutcomeShare!)})`, polarity: 0, refType: "pursuit_outcomes", refId: null });
+    } else if (mostCommonOutcomeTied.length > 1) {
+      lines.push({ text: `Most common outcome tied — ${mostCommonOutcomeTied.join(" / ")} (${mostCommonOutcomeCount} each of ${sample} · ${pct(mostCommonOutcomeShare!)} each)`, polarity: 0, refType: "pursuit_outcomes", refId: null });
+    }
     if (sample < 5) lines.push({ text: `Sample of ${sample} — too small for calibrated conclusions`, polarity: 0, refType: "outcome", refId: null });
   }
-  return { won, lost, noDecision, sample, medianDaysToOutcome: medRaw == null ? null : Math.round(Number(medRaw)), classMix, lines };
+  return {
+    won, lost, noDecision, sample,
+    medianDaysToOutcome: medRaw == null ? null : Math.round(Number(medRaw)),
+    mostCommonOutcome, mostCommonOutcomeCount, mostCommonOutcomeShare, mostCommonOutcomeTied,
+    classMix, lines,
+  };
 }

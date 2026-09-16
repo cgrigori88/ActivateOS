@@ -8,6 +8,9 @@ import { getValueCase } from "../src/lib/value/case";
 import { toPartnerValueCase } from "../src/lib/value/projection";
 import { aggregateValue } from "../src/lib/value/aggregate";
 
+/** D-G8-4C: one captured as-of for the whole verification run. */
+const AS_OF = new Date();
+
 const URL = process.env.DEMO_URL ?? "postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo";
 const RUNS = 20;
 async function timed(label: string, fn: () => Promise<unknown>) {
@@ -30,7 +33,7 @@ async function main() {
       `select count(*)::text n from facts f join fact_predicates fp on fp.key=f.predicate_key
         where f.org_id=$1 and fp.family='economic'`, [org])).rows[0].n;
     console.log(`\nValue Case read path — ${n} economic facts, ${RUNS} runs each (RLS on)\n`);
-    await timed("loadDrivers (one account)", () => loadDrivers(db, org, p.account_id));
+    await timed("loadDrivers (one account)", () => loadDrivers(db, org, p.account_id, AS_OF));
     await timed("getValueCase (drivers + 3 truths + sensitivity)", () => getValueCase(db, org, p.id));
     await timed("toPartnerValueCase (recompute from disclosable)", async () => {
       const vc = await getValueCase(db, org, p.id); return vc && toPartnerValueCase(vc);

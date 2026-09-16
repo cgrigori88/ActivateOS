@@ -2,6 +2,7 @@ import type { ResolveContext, IntentResult } from "@/lib/search/registry";
 import { getValueCase, bounds, usd, qualityLine, STATE_LABEL, type ValueCase } from "./case";
 import { LADDER_LABEL } from "./drivers";
 import { money } from "@/lib/search/significance";
+import { resolveCompanyIdentity } from "@/lib/identity/lookup";
 
 /** Build the canonical Explanation object every EXPLAIN intent returns. */
 const expl = (title: string, subtitle: string, lines: { label: string; value: string }[]) => ({
@@ -144,12 +145,19 @@ export async function resolveValueExplain(
   ctx: ResolveContext, account: string, strengthen: boolean,
 ): Promise<IntentResult> {
   const scoped = ctx.companyIds != null;
-  const { rows } = await ctx.db.query<{ id: string; legal_name: string }>(
-    `select p.id, c.legal_name from pursuits p join companies c on c.id = p.account_id
-      where p.org_id = $1 and c.legal_name ilike $2
-        and ($4::boolean is false or p.account_id = any($3))
-      order by length(c.legal_name) limit 1`,
-    [ctx.orgId, `%${account}%`, ctx.companyIds ?? [], scoped]);
+  // D-G8-4C: identity comes from the canonical ladder, never from name length. An ambiguous name is
+  // answered with a request to disambiguate — not by explaining whichever account sorted shortest.
+  const ident = await resolveCompanyIdentity(ctx.db, account, { companyIds: ctx.companyIds ?? null });
+  if (ident.kind === "AMBIGUOUS") {
+    return { explanation: expl("Which account?", `"${account}" matches ${ident.candidates} accounts. Name it exactly and I'll explain that one.`, []) };
+  }
+  const { rows } = ident.kind === "RESOLVED"
+    ? await ctx.db.query<{ id: string; legal_name: string }>(
+        `select p.id, c.legal_name from pursuits p join companies c on c.id = p.account_id
+          where p.org_id = $1 and p.account_id = $2
+          order by p.created_at asc, p.id asc limit 1`,
+        [ctx.orgId, ident.companyId])
+    : { rows: [] as { id: string; legal_name: string }[] };
 
   if (!rows[0]) {
     // Distinguish "outside scope" from "does not exist" — a scoped-out account is not a nonexistent one.

@@ -11,6 +11,7 @@ import { listSkills, sharedInSkills } from "../skills/skills";
 import { listInitiatives } from "../partnerships/initiatives";
 import { listEvidenceShares } from "../partnerships/evidence-shares";
 import { settlementStatement } from "../partnerships/settlement";
+import { resolveCompanyIdentity } from "@/lib/identity/lookup";
 
 /**
  * BYO-bot tool surface (task #76). The tools a personal agent may call
@@ -112,10 +113,13 @@ export const MCP_TOOLS: McpToolDef[] = [
     async run(pool, orgId, args) {
       const q = String(args.account ?? "").trim();
       if (!q) throw new Error("account is required");
-      const { rows: companies } = await pool.query<{ id: string; legal_name: string; industry: string | null }>(
-        `select id, legal_name, industry from companies where legal_name ilike $1 order by legal_name limit 1`,
-        [`%${q}%`],
-      );
+      // D-G8-4C: canonical identity ladder — never alphabetical or shortest-name order.
+      const ident = await resolveCompanyIdentity(pool, q);
+      if (ident.kind === "AMBIGUOUS") return { found: false, ambiguous: true, message: `"${q}" matches ${ident.candidates} accounts. Name it exactly.` };
+      const { rows: companies } = ident.kind === "RESOLVED"
+        ? await pool.query<{ id: string; legal_name: string; industry: string | null }>(
+            `select id, legal_name, industry from companies where id = $1`, [ident.companyId])
+        : { rows: [] as { id: string; legal_name: string; industry: string | null }[] };
       const c = companies[0];
       if (!c) return { found: false, message: `No account matching "${q}".` };
       const [{ rows: scores }, { rows: opps }, { rows: digests }, { rows: evidence }] = [
@@ -322,10 +326,13 @@ export const MCP_TOOLS: McpToolDef[] = [
       const q = String(args.account ?? "").trim();
       if (!q) throw new Error("account is required");
       const limit = Math.min(Math.max(Number(args.limit) || 40, 1), 80);
-      const { rows: companies } = await pool.query<{ id: string; legal_name: string }>(
-        `select id, legal_name from companies where legal_name ilike $1 order by legal_name limit 1`,
-        [`%${q}%`],
-      );
+      // D-G8-4C: canonical identity ladder — never alphabetical or shortest-name order.
+      const ident = await resolveCompanyIdentity(pool, q);
+      if (ident.kind === "AMBIGUOUS") return { found: false, ambiguous: true, message: `"${q}" matches ${ident.candidates} accounts. Name it exactly.` };
+      const { rows: companies } = ident.kind === "RESOLVED"
+        ? await pool.query<{ id: string; legal_name: string }>(
+            `select id, legal_name from companies where id = $1`, [ident.companyId])
+        : { rows: [] as { id: string; legal_name: string }[] };
       const c = companies[0];
       if (!c) return { found: false, message: `No account matching "${q}".` };
       const [timeline, allDivergences] = await Promise.all([

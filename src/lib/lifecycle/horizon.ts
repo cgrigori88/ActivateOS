@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { loadLifecycleFacts, eventsForAccount, primaryLifecycleEvent, type LifecycleEvent, type LifecycleState } from "./state";
+import { loadLifecycleFacts, eventsForAccount, primaryLifecycleOutcome, type LifecycleEvent, type LifecycleState } from "./state";
 import type { ConstraintView } from "@/components/intel/constraint-language";
 import { formatMoney } from "@/lib/format/money";
 
@@ -84,14 +84,20 @@ export async function getLifecycleHorizon(
     const events = eventsForAccount(rows, now);
     if (events.length === 0) { unknownAccounts++; counts.UNKNOWN++; continue; }
 
-    const primary = primaryLifecycleEvent(events)!;
+    // D-G8-4A: an UNRESOLVED primary is still tied on BOTH the lifecycle state and daysUntil — those
+    // are the keys it survived — so the horizon can count and window it without choosing between the
+    // tied events. The competing-date test takes the UNION, never one side.
+    const outcome = primaryLifecycleOutcome(events);
+    const tied = outcome.kind === "RESOLVED" ? [outcome.value] : outcome.kind === "UNRESOLVED" ? outcome.tied : [];
+    if (tied.length === 0) { unknownAccounts++; counts.UNKNOWN++; continue; }
+    const primary = tied[0];
     counts[primary.state]++;
 
     // In-window test. A CONFLICTING event is in-window if ANY competing date falls inside it —
     // a disagreement about a near date is exactly what the operator needs to see.
     const inWindow = (() => {
       if (primary.state === "CONFLICTING_DATE") {
-        return primary.competing.some((c) => c.date != null && withinDays(new Date(c.date), now, days));
+        return tied.some((t) => t.competing.some((c) => c.date != null && withinDays(new Date(c.date), now, days)));
       }
       if (primary.daysUntil == null) return false;
       return primary.daysUntil >= 0 && primary.daysUntil <= days;
