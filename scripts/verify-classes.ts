@@ -112,6 +112,12 @@ export const SUITES: SuiteSpec[] = [
     isolation: "SEEDED_CLONE",
   },
   {
+    name: "p45-runtime",
+    cls: "SEEDED",
+    why: "P45-1: the governed Pursuit Runtime, Slice 1. A decided plan action executes through a P4 governed actor holding a capability grant and a P5 run/step, with dispatchSkill still the only consequential-action boundary. The canonical world has one plan, a single RECOMMENDATION revision, zero DECISIONs and zero campaigns, so there is nothing here to execute against — the suite plants its own org, pursuit, goal, plan, DECISION revision, campaign, actor and grant. It proves the happy path end to end (run -> step -> invocation -> ONE draft touch -> ledger -> COMPLETED); that a missing or revoked grant and a SUSPENDED actor both refuse to execute and create nothing; that a grant cannot override required_permission; that cross-org actor and run references are refused RELATIONALLY by the composite keys; that pause genuinely stops execution and resume continues from durable state; that retry is bounded, reuses the same step identity and produces one effect rather than one per attempt; that a run interrupted mid-dispatch recovers from the database alone; that a run pinned to a superseded revision is CANCELLED as PLAN_SUPERSEDED and never retargeted; and that every send surface stays at zero. It COMMITS its fixtures, so it runs on a disposable seeded clone",
+    isolation: "SEEDED_CLONE",
+  },
+  {
     name: "dp1-snapshot-boundary",
     cls: "SEEDED",
     why: "D-P1: /pipeline computed open/total/weighted from its RENDERED set — narrowed by ?timeframe= and by the ecosystem scope — and wrote them into the canonical pipeline_snapshots (org_id, taken_on) row, so merely LOOKING at a 7-day view overwrote canonical history with filtered totals. This plants a disposable org whose deals close far out (so a 7-day view is materially different from canonical), independently recomputes the canonical metrics without calling the writer, and proves the writer persists exactly those; that repeated and filtered renders move the row not at all; that the PRE-FIX flow genuinely poisons the same row and the fixed writer cannot reproduce it; that concurrent writers all agree; that org A cannot touch org B under app_rw; that prior-date rows stay byte-identical; and that CFR-1.1 still holds. It COMMITS its fixtures, so it runs on a disposable seeded clone",

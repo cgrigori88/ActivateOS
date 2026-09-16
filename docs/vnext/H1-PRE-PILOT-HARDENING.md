@@ -3508,3 +3508,21 @@ repository owner and already rehearsed; backup expectations to be revisited **be
 data is introduced.
 
 **No new hardening phase is opened.** Next product work returns to the amended P0–P10 roadmap.
+
+
+---
+
+## POST-H1 — pointer only (H1 remains CLOSED)
+
+H1 pre-pilot hardening is **complete and closed**; Gate 9 accepted pilot readiness. Work after that
+point belongs to the amended P0–P10 roadmap and is recorded elsewhere — it does **not** reopen H1.
+
+**P45-1 — the governed Pursuit Runtime (first P4/P5 slice), implemented locally 2026-09-16.**
+Migration **0109** (additive, no SECURITY DEFINER, protected class unchanged at **31 / 0**),
+flag-gated **OFF** by default, `p45-runtime` **45/0**, `certify-world --runs 2` stable at
+`d1f970a533dbee1a`, send `0/0/0/0/0`, hosted untouched. The H1 certified posture is unchanged by it:
+`app_rw` least privilege with RLS binding, no owner-pool shortcut (the worker drain is deliberately
+**not** wired for exactly that reason), and `dispatchSkill` still the single consequential-action
+boundary.
+
+Full record: **`P4-P5-GOVERNED-RUNTIME.md`**.

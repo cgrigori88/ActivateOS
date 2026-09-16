@@ -34,6 +34,17 @@ export interface DispatchCtx {
   correlationId?: string | null;
   causationId?: string | null;
   dataEnvironment?: string;
+  /**
+   * P45-1. The registered governed actor (P4) on whose authority this dispatch is made, and the
+   * runtime step that requested it. BOTH ARE OPTIONAL AND ADDITIVE: every pre-existing caller omits
+   * them and is evaluated exactly as before. When `governedActorId` IS supplied, the actor must
+   * exist in this org, be ACTIVE, match the acting principal, and hold a live capability grant for
+   * the skill — checks that run IN ADDITION TO, never instead of, eligibility, permission, the loop
+   * guard, preconditions, cross-tenant authority and the send gates. A grant permits consideration;
+   * it does not override policy.
+   */
+  governedActorId?: string | null;
+  runStepId?: string | null;
 }
 export interface DispatchResult { status: string; invocationId: string | null; reason?: string; result?: unknown; queued?: boolean }
 
@@ -279,6 +290,33 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
   if (ROLE_RANK[actor.role ?? "any"] < ROLE_RANK[def.requiredPermission])
     return record(db, def, actor, ctx, "REJECTED", { reason: `insufficient permission (needs ${def.requiredPermission})` });
 
+  // P45-1 governed-actor gate (ADDITIVE). Only engages when a caller names a governed actor; it
+  // can reject, never permit. Ordered after eligibility/permission on purpose — a grant must not be
+  // able to rescue an actor type or role the registry already refused.
+  if (ctx.governedActorId) {
+    const { rows: ga } = await db.query<{ actor_type: string; lifecycle: string; principal_user_id: string | null }>(
+      `select actor_type, lifecycle, principal_user_id from governed_actors where id = $1 and org_id = $2`,
+      [ctx.governedActorId, actor.orgId]);
+    // Same-org is enforced by the predicate above, so a foreign actor id simply does not resolve —
+    // it is reported as unknown rather than as a permission failure, which would leak its existence.
+    if (!ga[0]) return record(db, def, actor, ctx, "REJECTED", { reason: "unknown governed actor" });
+    if (ga[0].lifecycle !== "ACTIVE")
+      return record(db, def, actor, ctx, "REJECTED", { reason: `governed actor is ${ga[0].lifecycle}` });
+    if (ga[0].actor_type !== actor.type)
+      return record(db, def, actor, ctx, "REJECTED", { reason: "governed actor type does not match the acting actor" });
+    // A USER actor must be acting for its own principal. `actor.id` is the caller's user identity;
+    // where the deployment has no user identity at all (demo/Basic-Auth, where auth.users is empty)
+    // both sides are null and this is vacuously satisfied — it can never pass a MISMATCH.
+    if (ga[0].actor_type === "USER" && (ga[0].principal_user_id ?? null) !== (actor.id ?? null))
+      return record(db, def, actor, ctx, "REJECTED", { reason: "governed actor principal does not match the acting user" });
+    const { rows: grant } = await db.query<{ id: string }>(
+      `select id from actor_capability_grants
+        where org_id = $1 and actor_id = $2 and skill_id = $3 and status = 'ACTIVE'
+          and (skill_version is null or skill_version = $4)`,
+      [actor.orgId, ctx.governedActorId, skillId, def.version]);
+    if (!grant[0]) return record(db, def, actor, ctx, "REJECTED", { reason: "no active capability grant for this skill" });
+  }
+
   // Loop guard (R23).
   if (ctx.correlationId && (await chainDepth(db, ctx.correlationId)) >= MAX_CHAIN)
     return record(db, def, actor, ctx, "REJECTED", { reason: "loop guard: action chain too deep" });
@@ -379,13 +417,14 @@ async function record(db: PoolClient, def: SkillDef, actor: Actor, ctx: Dispatch
     `insert into governed_action_invocations
        (org_id, skill_id, skill_version, effect_class, actor_type, actor_id, actor_role, pursuit_id,
         target_kind, target_id, args, idempotency_key, status, reason, causation_id, correlation_id,
-        executed_at, result, error, data_environment)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, case when $13 in ('EXECUTED','EXECUTING') then now() else null end, $17,$18,$19)
+        executed_at, result, error, data_environment, governed_actor_id, run_step_id)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, case when $13 in ('EXECUTED','EXECUTING') then now() else null end, $17,$18,$19,$20,$21)
      returning id`,
     [actor.orgId, def.skillId, def.version, def.effectClass, actor.type, actor.id ?? null, actor.role,
      ctx.pursuitId ?? null, ctx.target?.kind ?? null, ctx.target?.id ?? null, JSON.stringify(ctx.args ?? {}),
      ctx.idempotencyKey ?? null, status, extra.reason ?? null, ctx.causationId ?? null, ctx.correlationId ?? null,
-     extra.result !== undefined ? JSON.stringify(extra.result) : null, extra.error ?? null, ctx.dataEnvironment ?? "PRODUCTION"],
+     extra.result !== undefined ? JSON.stringify(extra.result) : null, extra.error ?? null, ctx.dataEnvironment ?? "PRODUCTION",
+     ctx.governedActorId ?? null, ctx.runStepId ?? null],
   );
   void executed;
   // OR-3: surface governed-action rejections/failures. Cross-tenant authority denial is

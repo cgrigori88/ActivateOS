@@ -36,7 +36,11 @@ export type ChangeType =
   | "STAKEHOLDER_ROLE_ASSERTED"
   // vNext Slice 2A — Pursuit Coordination (0103). Human plan decisions and system-detected review
   // triggers only; a system recommendation is a proposal and lives in pursuit_plan_revisions.
-  | "PLAN_DECIDED" | "PLAN_REVIEW_REQUIRED" | "GOAL_REPLACED";
+  | "PLAN_DECIDED" | "PLAN_REVIEW_REQUIRED" | "GOAL_REPLACED"
+  // P45-1 governed runtime (0109). A run transition is a change to the pursuit's execution state,
+  // so it belongs in the universal ledger rather than a parallel runtime log.
+  | "RUN_STARTED" | "RUN_PAUSED" | "RUN_RESUMED" | "RUN_COMPLETED" | "RUN_FAILED"
+  | "RUN_BLOCKED" | "RUN_CANCELLED";
 
 export type ActorType = "USER" | "AGENT" | "WORKER" | "SYSTEM" | "IMPORT" | "API";
 export type TriggerType =
