@@ -175,7 +175,8 @@ export async function renewalProjection(
 
   // Names and list attribution are resolved only for the rows that actually survive the window and
   // the cap — at book scale most accounts carry a lifecycle fact that is nowhere near the horizon.
-  const ranked = partials.sort((a, b) => a.clockDate.localeCompare(b.clockDate)).slice(0, limit);
+  // The cap decides WHICH renewals survive, so a shared clockDate must not fall back to Map order (D-G8-2A).
+  const ranked = partials.sort((a, b) => a.clockDate.localeCompare(b.clockDate) || a.companyId.localeCompare(b.companyId)).slice(0, limit);
   if (ranked.length === 0) return [];
   const ids = ranked.map((r) => r.companyId);
 

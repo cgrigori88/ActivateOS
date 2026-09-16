@@ -77,7 +77,8 @@ export async function suggestMultiVendorPlays(db: Db, orgId: string): Promise<Mu
             (select max(ps.score) from propensity_scores ps where ps.company_id = cv.company_id and ps.org_id = $1) as score
      from covered cv
      join companies c on c.id = cv.company_id
-     join partners p on p.id = cv.partner_id`,
+     join partners p on p.id = cv.partner_id
+     order by c.legal_name, cv.company_id, p.name, p.id`,
     [orgId],
   );
 
@@ -104,11 +105,11 @@ export async function suggestMultiVendorPlays(db: Db, orgId: string): Promise<Mu
   // Top-fit solution's active play (shared across combos — one query).
   const { rows: playRows } = await db.query<{ name: string; objective: string | null; offer: string | null; node_id: string }>(
     `select pt.name, pt.definition->>'objective' as objective, pt.definition->'cta'->>'offer' as offer, pt.taxonomy_node_id as node_id
-     from play_templates pt where pt.status = 'active'`,
+     from play_templates pt where pt.status = 'active' order by pt.name, pt.id`,
   );
   const { rows: topNode } = await db.query<{ node_id: string }>(
     `select taxonomy_node_id as node_id from propensity_scores where org_id = $1
-     group by taxonomy_node_id order by avg(score) desc nulls last limit 1`,
+     group by taxonomy_node_id order by avg(score) desc nulls last, taxonomy_node_id limit 1`,
     [orgId],
   );
   const play = playRows.find((p) => p.node_id === topNode[0]?.node_id) ?? playRows[0] ?? null;
@@ -116,7 +117,7 @@ export async function suggestMultiVendorPlays(db: Db, orgId: string): Promise<Mu
   const out = [...combos.values()].map((c) => {
     const scores = c.accounts.map((a) => a.score).filter((s): s is number => s != null);
     const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
-    c.accounts.sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+    c.accounts.sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || a.name.localeCompare(b.name) || a.companyId.localeCompare(b.companyId));
     const roles = c.partners.map((p) => `${p.name} (${p.role.replace(/_/g, "-")})`).join(" + ");
     return {
       ...c,
@@ -126,7 +127,10 @@ export async function suggestMultiVendorPlays(db: Db, orgId: string): Promise<Mu
     };
   });
   // Rank: avg fit + breadth nudge — same spirit as crossPartnerOpportunities.
-  return out.sort((a, b) => (b.avgScore ?? 0) + b.accounts.length * 4 - ((a.avgScore ?? 0) + a.accounts.length * 4));
+  // The caller slices this to 4, so an equal rank must not decide WHICH plays are shown (D-G8-2A).
+  // `key` is the sorted partner-id list, unique per combo.
+  return out.sort((a, b) => (b.avgScore ?? 0) + b.accounts.length * 4 - ((a.avgScore ?? 0) + a.accounts.length * 4)
+    || a.key.localeCompare(b.key));
 }
 
 /**

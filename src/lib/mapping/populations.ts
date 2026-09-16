@@ -184,7 +184,7 @@ async function listColPopulations(db: pg.PoolClient, orgId: string, partnerId: s
      join partners p on p.id = ap.partner_id
      where ap.org_id = $1 and ap.status = 'approved'
        and ($2::uuid is null or ap.partner_id = $2)
-     order by p.name, ap.category, ap.name`,
+     order by p.name, p.id, ap.category, ap.name, ap.id`,
     [orgId, partnerId],
   );
   return rows;

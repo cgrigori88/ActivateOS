@@ -326,7 +326,7 @@ export async function getObservedActivationPattern(
      select n.id node_id, coalesce(n.name, 'Uncategorized') category,
             case when pr.strength >= 60 then 'ACTIVE_RELATIONSHIP'
                  when pr.strength > 0 then 'ACCOUNT_OVERLAP' else 'NONE' end rel,
-            array_agg(distinct c.industry) filter (where c.industry is not null) segs,
+            array_agg(distinct c.industry order by c.industry) filter (where c.industry is not null) segs,
             count(*)::text cand,
             count(*) filter (where pp.selected)::text sel,
             count(*) filter (where exists (select 1 from pursuit_team_members tm

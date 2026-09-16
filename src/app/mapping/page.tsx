@@ -171,7 +171,8 @@ export default async function MappingPage({
            from population_members pm
            join account_populations ap on ap.id = pm.population_id
              and ap.partner_id is not null and ap.status = 'approved' and ap.org_id = $1
-           where pm.company_id = any($2)`,
+           where pm.company_id = any($2)
+           order by pm.company_id, ap.partner_id, ap.category, ap.id`,
           [orgId, companyIds],
         );
         for (const r of pc) {
