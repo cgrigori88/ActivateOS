@@ -921,14 +921,17 @@ is a strictly stronger source, and the advance replaces the continuation wholesa
 never outlive its step. **Proven by checks 46–48: two steps, same skill, two independent parks, two
 separate `REQUESTED` records.**
 
-### Concurrency — serialization and compare-and-set, no lease
+### Concurrency — generation-bound, serialized, compare-and-set, no lease
 
-`loadRun` now takes `select … for update`, making read-decide-write a critical section per run.
+`loadRun` takes `select … for update`, making read-decide-write a critical section per run.
 `transitionRun` is a **genuine compare-and-set**: `from` was previously only the ledger's `before`
-value and is now a predicate with a checked `rowCount`. The step's own idempotency key remains the
-third line of defence, so even a lost race yields a duplicate *attempt*, never a duplicate *effect*.
-**`locked_at` was deliberately NOT activated** — no lease, no expiry, no crash-recovery protocol,
-because a request-triggered INTERNAL_WRITE runtime needs none.
+value and is now a predicate with a checked `rowCount`. The step's own idempotency key remains a
+further line of defence, so even a lost race yields a duplicate *attempt*, never a duplicate
+*effect*. **`locked_at` was deliberately NOT activated** — no lease, no expiry, no crash-recovery
+protocol, because a request-triggered INTERNAL_WRITE runtime needs none.
+
+**But serialization alone was not sufficient — see §20, defect P45-3-D1.** A resume request may now
+advance only the **run-step generation it observed when the request began**.
 
 > **FUTURE BOUNDARY, recorded now:** do not generalize a long-held database transaction across an
 > external/provider action. That needs its own worker/claim design. EXTERNAL_ACTION steps are out of
@@ -960,19 +963,16 @@ check. The suite is structurally capable of catching the defect it exists to pre
 
 **Two suite corrections, both made from captured evidence rather than by adjusting an expectation:**
 
-1. **The concurrency assertion was mine and it was wrong.** I asserted "two concurrent resumes
-   dispatch at most once". A probe showed what actually happens: the second caller blocks on the row
-   lock and, once the first commits, finds the **next** step and advances **that** — one invocation
-   per step, two distinct effects (`s1`, `s2`), step 3 untouched, two `RUN_STEP_COMPLETED`. Nothing
-   executed twice. The original assertion demanded that a request-driven runtime refuse a second
-   request, which is not the rule. Replaced with the invariants that matter — no two calls land on
-   the same step, no step has more than one invocation, completion is a prefix — **plus a one-step
-   program where there is nothing to advance to, so exactly one dispatch is the only correct answer**.
+1. **My concurrency assertion was wrong — and so was the replacement. See §20.** I first asserted
+   "two concurrent resumes dispatch at most once", then, on probe evidence that the second caller
+   advances the *next* step, relaxed it. **The owner rejected the relaxation, correctly**: the
+   original assertion was expressing a real invariant I had mis-stated rather than an invariant that
+   did not exist. Recorded here only so the sequence is legible; the accepted semantic is §20.
 2. **`p45-runtime` check 10** presented a replay that omitted `milestoneKey`. Under the old key
    (skill + args only) that still replayed; under whole-program identity it is a materially different
    program — which is the point of the rule. The replay now presents the identical program.
 
-**Battery:** tsc clean · build clean · unit **429 / 429** · SEEDED class **1666 / 0** (including
+**Battery:** tsc clean · build clean · unit **429 / 429** · SEEDED class **1663 / 0** (including
 p45-program 69, p45-runtime 50, p45-approvals 56, dp1 26, tenant-isolation 205, partnership 117,
 search-path 39) · FRESH **238 / 0** · EITHER **215 / 0** · `certify-world --runs 2` **96 clean / 0
 failures**, digest **`f72d1ff0d6b07b42`** — *unchanged from P45-2*, because the world digest hashes
@@ -1009,3 +1009,95 @@ migrations **110 → 111** · **0 tables added** · **0 policies, 0 grants, 0 ro
 **business-data hash UNCHANGED** (no table joins or leaves the hashed map) · whole-world and security
 hashes move for the CHECK redefinition and are reconciled exactly · `governed_skills` **18**,
 unmoved · protected **31 / 0**.
+
+
+---
+
+## 20. P45-3-D1 — a stale resume could advance the NEXT step
+
+**Found by the owner at the local review gate. Corrected locally; P45-3 remained unpushed throughout.**
+
+### The defect
+
+Serializing on the run row made every step execute exactly once, and dispatch idempotency made every
+effect at-most-once. Both were true — **and neither was the invariant that mattered.** Two requests
+issued against step 1 queued on the lock and became:
+
+```
+request A → executes step 1
+request B → waits, then executes step 2      ← B never intended to advance step 2
+```
+
+So a double-click, a network retry, a duplicate job delivery or two callers acting at once would
+**authorize two sequential consequential actions from what was only ever one intent**. The second
+request is *stale with respect to the cursor it meant to advance*, and "every step ran once" cannot
+see that, because from the steps' point of view nothing is wrong.
+
+My own reasoning had drifted here. I probed the behaviour, saw one invocation per step and distinct
+effects, concluded the runtime was right and the test wrong, and rewrote the test. The evidence was
+accurate; the conclusion I drew from it was not. **Correctly reading a measurement is not the same as
+asking whether it measures the right thing.**
+
+### The correction — a generation token, no lease, no migration
+
+> **A resume request may advance only the run-step generation it observed when that request began.**
+
+`resumeRun` now reads the generation **without a lock, before** `loadRun` takes `for update`, then
+re-reads it **under** the lock and declines if it moved. Under READ COMMITTED the locking statement
+re-reads the row it waited for, so the loser sees the winner's committed generation.
+
+The token is built from state the runtime already owns:
+
+| component | what it ends a generation on |
+|---|---|
+| `current_step_id` | the program advancing to the next step |
+| run `status` | parking for approval, completing, failing, cancelling |
+| that step's `attempt` | a retry — so a stale request cannot silently spend another attempt |
+
+**Nothing is client-supplied.** The cursor is read from the database, never accepted from a caller.
+Recorded for the future: if an entry point ever exposes one, it may serve **only** as an
+optimistic-concurrency precondition — **never as authorization, and never as step selection**.
+
+### What this does and does not constrain
+
+- Two concurrent resumes against step 1 → **exactly one** advances; the loser is a clean no-op
+  carrying `stale: true`, dispatching nothing and **writing nothing to the ledger**.
+- A resume **issued after** step 1 committed observes the new generation and advances step 2
+  normally. **Request-driven progression is untouched** — this constrains duplicate and concurrent
+  requests, not progress.
+
+### Proof — `p45-program` 78 / 0
+
+Same-generation race: exactly one advance, loser `stale`, **one step-1 invocation and zero step-2
+invocations**, one effect, **steps 2 and 3 still PENDING**, one `RUN_STEP_COMPLETED` · fresh
+next-generation resume executes step 2 normally · **five** concurrent same-generation resumes still
+advance exactly once · concurrent resumes on an approval-required step raise **exactly one** request
+with no draft · **immediately after an approval releases a step**, concurrent resumes advance exactly
+once and step 2 does not execute on that approval · a one-step program dispatches exactly once · a
+stale resume leaves the ledger at `RUN_STARTED,RUN_COMPLETED` with no residue.
+
+**Negative control.** Disabling the generation check reproduces the defect verbatim — the two-racer
+case returns **`advanced(seq=1) · advanced(seq=2)`**, two effects, `seq1=1 seq2=1`, and the five-racer
+case advances **3 of 5**. Seven checks go red. (The approval-park checks pass either way: the
+`pursuit_run_approvals_one_request` index and the WAITING guard already covered that path — worth
+stating, so the generation check is not credited with work those two were already doing.)
+
+### Nothing else changed
+
+One step per successful fresh resume · no autonomous drain · no `locked_at` lease · whole-program
+identity · step-scoped approval · per-step authority re-evaluation · append-only audit ·
+**migration 0111 unchanged** — the correction needed no schema change at all.
+
+### Re-run clean
+
+tsc · build · unit **429/429** · `p45-program` **78/0** · `p45-runtime` **50/0** ·
+`p45-approvals` **56/0** · SEEDED **1663/0** · FRESH **238/0** · EITHER **215/0** ·
+`certify-world --runs 2` **96 clean / 0 failures**, digest **`f72d1ff0d6b07b42`** · world **160
+tables, 3 organizations**, no residue.
+
+> **A correction to my own earlier figure.** I reported the SEEDED class as **1666**. That total was
+> taken while the residue org from §19 was still present, and `today-tenant` and `vnext-attention`
+> enumerate `organizations`, so they emitted **9** and **3** extra checks respectively. The true
+> baseline at 3 organizations is **1654**, and **1654 + 9 new P45-3-D1 checks = 1663** — which is
+> exactly what runs now. The 1666 figure has been corrected wherever it appeared rather than left to
+> read as a drop.

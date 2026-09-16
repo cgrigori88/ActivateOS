@@ -462,7 +462,46 @@ export interface ExecuteResult {
   stepSeq?: number | null;
   /** Steps still not COMPLETED after this call. 0 means the program finished; null means unknown. */
   remainingSteps?: number | null;
+  /** True when the request was issued against a generation the run has since left (P45-3-D1). */
+  stale?: boolean;
 }
+
+/**
+ * THE RUN-STEP GENERATION (defect P45-3-D1).
+ *
+ * A resume request may advance only the generation it observed when the request BEGAN. Serializing
+ * on the run row is not sufficient on its own: two requests issued against step 1 would otherwise
+ * queue up and execute steps 1 AND 2, so a double-click, a network retry, a duplicate job delivery
+ * or two callers acting at once would authorize TWO sequential consequential actions from what was
+ * only ever one intent. Every step still executing exactly once does not repair that — the second
+ * request is STALE with respect to the cursor it meant to advance.
+ *
+ * The token is built from state the runtime already owns — no lease, no new column, no migration:
+ *
+ *   • `current_step_id` — which step the program is on;
+ *   • the run's `status`  — so parking for approval, completing or cancelling ends the generation;
+ *   • that step's `attempt` — so a retry is its own generation and a stale request cannot silently
+ *     spend another attempt from the retry budget.
+ *
+ * It is read WITHOUT a lock, before `loadRun` takes `for update`. Under READ COMMITTED the locking
+ * statement re-reads the row it waited for, so the loser sees the winner's committed generation and
+ * declines. Nothing here is client-supplied: the cursor is read from the database, never accepted
+ * from a caller. If an entry point ever exposes one it may serve ONLY as an optimistic-concurrency
+ * precondition — never as authorization and never as step selection.
+ */
+interface RunGeneration { stepId: string | null; status: string; attempt: number | null }
+
+async function observeGeneration(db: PoolClient, orgId: string, runId: string): Promise<RunGeneration | null> {
+  const { rows } = await db.query<RunGeneration>(
+    `select r.current_step_id as "stepId", r.status, st.attempt
+       from pursuit_runs r
+       left join pursuit_run_steps st on st.id = r.current_step_id and st.org_id = r.org_id
+      where r.id = $1 and r.org_id = $2`, [runId, orgId]);
+  return rows[0] ?? null;
+}
+
+const sameGeneration = (a: RunGeneration, b: RunGeneration): boolean =>
+  a.stepId === b.stepId && a.status === b.status && a.attempt === b.attempt;
 
 /** Statuses a step may legitimately be executed from. Anything else halts the program where it is. */
 const STEP_ELIGIBLE: ReadonlySet<string> = new Set(["PENDING", "READY", "RUNNING", "RETRYABLE_FAILURE"]);
@@ -474,8 +513,22 @@ const STEP_ELIGIBLE: ReadonlySet<string> = new Set(["PENDING", "READY", "RUNNING
  * three-day gap and it behaves identically, because there is no in-process state to lose.
  */
 export async function resumeRun(db: PoolClient, orgId: string, runId: string, actor: Actor): Promise<ExecuteResult> {
+  // Observed BEFORE the lock: this is the generation the request was issued against.
+  const observed = await observeGeneration(db, orgId, runId);
+  if (!observed) throw new Error("run not found in this org");
+
   const run = await loadRun(db, orgId, runId);
   if (!run) throw new Error("run not found in this org");
+
+  // Re-read under the lock. If the run left that generation while this request waited, the request
+  // is stale: it intended to advance a cursor that no longer exists, so it does nothing at all.
+  // A request ISSUED AFTER the advance observes the new generation and proceeds normally — this
+  // constrains duplicate and concurrent requests, not request-driven progression.
+  const current = await observeGeneration(db, orgId, runId);
+  if (!current || !sameGeneration(observed, current))
+    return { runStatus: run.status, stepStatus: "—", invocationId: null, dispatched: false, stale: true,
+             reason: "stale resume — the run left the generation this request was issued against",
+             stepSeq: null, remainingSteps: null };
   if (TERMINAL.has(run.status)) return { runStatus: run.status, stepStatus: "—", invocationId: null, reason: run.reason, dispatched: false };
   if (run.status === "PAUSED") return { runStatus: "PAUSED", stepStatus: "PAUSED", invocationId: null, reason: "paused — resume first", dispatched: false };
   // A pending approval is released by a DECISION, never by calling resume again. Anything else would

@@ -335,54 +335,97 @@ async function main(): Promise<void> {
   check("54: resuming continues at step 2 from durable state alone — not step 1, not step 3",
     ep2.stepSeq === 2 && (await touches(db, fp.orgId)) === 2);
 
-  // ══ 11. CONCURRENT ADVANCE — no step is ever executed or advanced twice ═══════════════════════
-  // What must NOT happen is two calls landing on the SAME step. What legitimately DOES happen is
-  // that the second caller blocks on the run's row lock and, once the first commits, finds the NEXT
-  // step and advances that — two independent requests, two steps, each still honouring "one call
-  // advances at most one consequential step". Asserting "at most one dispatch" would have been
-  // asserting that a request-driven runtime refuses a second request, which is not the rule.
+  // ══ 11. GENERATION-BOUND CONCURRENCY (defect P45-3-D1) ═══════════════════════════════════════
+  // The rule is NOT "every step executes once" — that was true of the defective behaviour too, and
+  // it was not enough. Two requests issued against step 1 must not serialize into "A runs step 1,
+  // B then runs step 2": B is STALE with respect to the cursor it meant to advance, and letting it
+  // through turns one double-click into TWO authorized consequential actions.
   const fr = await txPlant(db, "race");
   const rr = await start(fr, [draft(fr, 1), draft(fr, 2), draft(fr, 3)]);
   const both = await Promise.allSettled([resume(fr, rr.id), resume(fr, rr.id)]);
-  const seqs = both.flatMap((x) => (x.status === "fulfilled" && x.value.dispatched ? [x.value.stepSeq] : []));
-  check("55: two concurrent resumes never land on the SAME step", new Set(seqs).size === seqs.length,
-    `seqs dispatched: ${seqs.join(",") || "none"}`);
+  const won = both.filter((x) => x.status === "fulfilled" && x.value.dispatched);
+  const lost = both.filter((x) => x.status === "fulfilled" && !x.value.dispatched);
+  check("55: two same-generation resumes — EXACTLY ONE advances", won.length === 1 && lost.length === 1,
+    both.map((x) => x.status === "fulfilled" ? `${x.value.dispatched ? "advanced" : "no-op"}(seq=${x.value.stepSeq ?? "—"})` : "threw").join(" · "));
+  check("56: the loser is a clean no-op reported as STALE — it dispatched nothing",
+    lost.every((x) => x.status === "fulfilled" && x.value.stale === true && x.value.invocationId === null),
+    lost[0]?.status === "fulfilled" ? lost[0].value.reason ?? "—" : "—");
   const perStep = (await db.query<{ seq: number; n: string }>(
     `select st.seq, count(i.id)::text n from pursuit_run_steps st
        left join governed_action_invocations i on i.run_step_id = st.id
       where st.run_id = $1 group by st.seq order by st.seq`, [rr.id])).rows;
-  check("56: NO STEP HAS MORE THAN ONE INVOCATION — nothing executed twice",
-    perStep.every((x) => Number(x.n) <= 1), perStep.map((x) => `seq${x.seq}=${x.n}`).join(" "));
+  check("57: EXACTLY ONE step-1 invocation, and NO step-2 invocation",
+    perStep[0] && Number(perStep[0].n) === 1 && Number(perStep[1].n) === 0,
+    perStep.map((x) => `seq${x.seq}=${x.n}`).join(" "));
   const srr = await stepsOf(db, rr.id);
-  const doneSeqs = srr.filter((x) => x.status === "COMPLETED").map((x) => x.seq);
-  check("57: one advance transition per completed step, and no step attempted twice",
-    (await types(db, rr.id)).filter((t) => t === "RUN_STEP_COMPLETED").length === doneSeqs.length
-    && srr.every((x) => x.attempt <= 1), `${(await types(db, rr.id)).join(",")} · attempts=${srr.map((x) => x.attempt).join(",")}`);
-  check("58: effects match completed steps exactly, and completion is a PREFIX — nothing was skipped",
-    (await touches(db, fr.orgId)) === doneSeqs.length && doneSeqs.join(",") === doneSeqs.map((_, i) => i + 1).join(","),
+  check("58: exactly ONE effect, and STEP 2 IS STILL PENDING — the program did not run ahead",
+    (await touches(db, fr.orgId)) === 1 && srr[1].status === "PENDING" && srr[2].status === "PENDING",
     `${await touches(db, fr.orgId)} effects · ${srr.map((x) => `${x.seq}:${x.status}`).join(" ")}`);
+  check("59: the run advanced to step 2 and no further, with ONE advance transition",
+    (await runOf(db, rr.id)).current_step_id === srr[1].id
+    && (await types(db, rr.id)).filter((t) => t === "RUN_STEP_COMPLETED").length === 1, (await types(db, rr.id)).join(","));
 
-  // The sharp version: with only ONE step there is nothing to advance to, so a second concurrent
-  // caller must come away having executed nothing at all.
+  // A request ISSUED AFTER the advance observes the new generation and proceeds normally. This is
+  // what keeps the rule a constraint on duplicate requests rather than on progression itself.
+  const fresh = await resume(fr, rr.id);
+  check("60: a FRESH next-generation resume executes step 2 normally",
+    fresh.dispatched && fresh.stepSeq === 2 && !fresh.stale && (await touches(db, fr.orgId)) === 2,
+    `seq=${fresh.stepSeq} run=${fresh.runStatus}`);
+
+  // Five at once, so the invariant is not an artefact of exactly two racers.
+  const f5 = await txPlant(db, "race5");
+  const r5 = await start(f5, [draft(f5, 1), draft(f5, 2), draft(f5, 3)]);
+  const many = await Promise.allSettled([1, 2, 3, 4, 5].map(() => resume(f5, r5.id)));
+  const adv5 = many.filter((x) => x.status === "fulfilled" && x.value.dispatched).length;
+  check("61: FIVE same-generation resumes still advance exactly once", adv5 === 1, `${adv5} advanced of 5`);
+  check("62: one effect, one invocation, step 2 untouched",
+    (await touches(db, f5.orgId)) === 1 && (await execs(db, f5.orgId)) === 1
+    && (await stepsOf(db, r5.id))[1].status === "PENDING");
+
+  // Parking for approval ends the generation too, so duplicates cannot pile requests onto one step.
+  const fap = await txPlant(db, "raceapp");
+  await db.query(`update actor_capability_grants set approval_required_override = true where org_id=$1 and actor_id=$2 and skill_id=$3`,
+    [fap.orgId, fap.runner, SKILL]);
+  const rap = await start(fap, [draft(fap, 1), draft(fap, 2)]);
+  const parkRace = await Promise.allSettled([resume(fap, rap.id), resume(fap, rap.id), resume(fap, rap.id)]);
+  const parked = (await db.query<{ n: string }>(`select count(*)::text n from pursuit_run_approvals where run_id=$1 and decision='REQUESTED'`, [rap.id])).rows[0].n;
+  check("63: concurrent resumes on an approval-required step raise EXACTLY ONE request",
+    parked === "1" && (await runOf(db, rap.id)).status === "WAITING_FOR_APPROVAL", `${parked} REQUESTED rows`);
+  check("64: none of them dispatched, and no draft exists",
+    parkRace.every((x) => x.status === "fulfilled" && !x.value.dispatched) && (await touches(db, fap.orgId)) === 0);
+
+  // Immediately after an approval releases a step, duplicates must still not double-advance.
+  const rq = await withTenantOrg(fap.orgId, async (d) => (await pendingApprovals(d, fap.orgId))[0]);
+  await decide(fap, rq.requestId, "APPROVED");
+  const afterApproval = await Promise.allSettled([resume(fap, rap.id), resume(fap, rap.id)]);
+  const advA = afterApproval.filter((x) => x.status === "fulfilled" && x.value.dispatched).length;
+  check("65: right after an approval releases a step, concurrent resumes advance exactly once", advA === 1, `${advA} advanced`);
+  check("66: the released step ran once and step 2 did NOT execute on that approval",
+    (await touches(db, fap.orgId)) === 1 && (await stepsOf(db, rap.id))[1].status !== "COMPLETED",
+    `${await touches(db, fap.orgId)} effects · ${(await stepsOf(db, rap.id)).map((x) => `${x.seq}:${x.status}`).join(" ")}`);
+
+  // A one-step program: there is nothing to advance to, so exactly one dispatch is the only answer.
   const fr1 = await txPlant(db, "race1");
   const rr1 = await start(fr1, [draft(fr1, 1)]);
   const both1 = await Promise.allSettled([resume(fr1, rr1.id), resume(fr1, rr1.id)]);
   const disp1 = both1.filter((x) => x.status === "fulfilled" && x.value.dispatched).length;
-  check("59: on a ONE-step program, two concurrent resumes dispatch EXACTLY once", disp1 === 1, `${disp1} dispatched`);
-  check("60: exactly one effect and exactly one EXECUTED invocation",
+  check("67: on a ONE-step program, two concurrent resumes dispatch EXACTLY once", disp1 === 1, `${disp1} dispatched`);
+  check("68: exactly one effect and exactly one EXECUTED invocation",
     (await touches(db, fr1.orgId)) === 1 && (await execs(db, fr1.orgId)) === 1);
-  check("61: exactly one RUN_COMPLETED — the loser recorded no second completion",
+  check("69: exactly one RUN_COMPLETED — the loser recorded no second completion",
     (await types(db, rr1.id)).filter((t) => t === "RUN_COMPLETED").length === 1, (await types(db, rr1.id)).join(","));
+  check("70: a stale resume writes NOTHING to the ledger — no transition, no residue",
+    (await types(db, rr1.id)).join(",") === "RUN_STARTED,RUN_COMPLETED", (await types(db, rr1.id)).join(","));
 
   // ══ 12. TENANT ISOLATION UNDER REAL app_rw ════════════════════════════════════════════════════
   const other = await txPlant(db, "foreign");
   const foreign = await withTenantOrg(other.orgId, (d) => resumeRun(d, other.orgId, rr.id, actorOf(other.runnerPrincipal, other.orgId)).catch((e: Error) => e.message));
-  check("62: another tenant cannot advance this run", typeof foreign === "string" && /run not found/.test(foreign), String(foreign).slice(0, 60));
+  check("71: another tenant cannot advance this run", typeof foreign === "string" && /run not found/.test(foreign), String(foreign).slice(0, 60));
   const rwc = await rw.connect();
   try {
     await rwc.query("begin"); await rwc.query(`select set_config('app.org_id', $1, true)`, [other.orgId]);
     const seen = (await rwc.query<{ n: string }>(`select count(*)::text n from pursuit_run_steps where run_id=$1`, [rr.id])).rows[0].n;
-    check("63: app_rw in another org's context sees ZERO of this run's steps", seen === "0");
+    check("72: app_rw in another org's context sees ZERO of this run's steps", seen === "0");
     await rwc.query("rollback");
     // Step identity is immutable: the columns that make a replay provably the same step.
     await rwc.query("begin"); await rwc.query(`select set_config('app.org_id', $1, true)`, [fr.orgId]);
@@ -390,12 +433,12 @@ async function main(): Promise<void> {
     await rwc.query("savepoint s1");
     try { await rwc.query(`update pursuit_run_steps set skill_id='x' where run_id=$1`, [rr.id]); await rwc.query("release savepoint s1"); }
     catch (e) { denied = (e as Error).message; await rwc.query("rollback to savepoint s1"); }
-    check("64: app_rw CANNOT rewrite a step's skill_id", /permission denied/i.test(denied), denied.split("\n")[0].slice(0, 70));
+    check("73: app_rw CANNOT rewrite a step's skill_id", /permission denied/i.test(denied), denied.split("\n")[0].slice(0, 70));
     let denied2 = "";
     await rwc.query("savepoint s2");
     try { await rwc.query(`update pursuit_run_steps set args='{}'::jsonb where run_id=$1`, [rr.id]); await rwc.query("release savepoint s2"); }
     catch (e) { denied2 = (e as Error).message; await rwc.query("rollback to savepoint s2"); }
-    check("65: app_rw CANNOT rewrite a step's args either — identity is fixed at creation", /permission denied/i.test(denied2), denied2.split("\n")[0].slice(0, 70));
+    check("74: app_rw CANNOT rewrite a step's args either — identity is fixed at creation", /permission denied/i.test(denied2), denied2.split("\n")[0].slice(0, 70));
     await rwc.query("rollback");
   } finally { rwc.release(); }
 
@@ -406,22 +449,22 @@ async function main(): Promise<void> {
   const rn = await start(fn, [draft(fn, 1), draft(fn, 2), draft(fn, 3)]);
   const en = await resume(fn, rn.id);
   const oldAssumption = en.runStatus === "COMPLETED";
-  check("66: NEGATIVE CONTROL — the old `ok ? COMPLETED` assumption would be visible here and is NOT",
+  check("75: NEGATIVE CONTROL — the old `ok ? COMPLETED` assumption would be visible here and is NOT",
     oldAssumption === false && en.runStatus === "READY" && (await stepsOf(db, rn.id)).filter((s) => s.status === "PENDING").length === 2,
     `run=${en.runStatus}`);
 
   // ══ 14. NOTHING ELSE MOVED ════════════════════════════════════════════════════════════════════
-  check("67: governed_skills is unchanged — this slice registers no skill and mirrors nothing",
+  check("76: governed_skills is unchanged — this slice registers no skill and mirrors nothing",
     (await db.query<{ n: string }>(`select count(*)::text n from governed_skills`)).rows[0].n === skillsBefore, `${skillsBefore} rows`);
   const sendAfter = (await db.query(
     `select (select count(*) from messages)::int m, (select count(*) from action_outbox)::int o,
             (select count(*) from email_events)::int e, (select count(*) from sending_identities)::int s,
             (select count(*) from campaign_touches where status='sent')::int t`)).rows[0];
-  check("68: send surfaces 0/0/0/0/0 and unchanged — no step reached the outbox or a provider",
+  check("77: send surfaces 0/0/0/0/0 and unchanged — no step reached the outbox or a provider",
     JSON.stringify(sendBefore) === JSON.stringify(sendAfter)
     && Object.values(sendAfter as Record<string, number>).every((v) => Number(v) === 0), JSON.stringify(sendAfter));
   const outbox = (await db.query<{ n: string }>(`select count(*)::text n from action_outbox`)).rows[0].n;
-  check("69: the outbox is empty — no EXTERNAL_ACTION step exists in this slice", outbox === "0");
+  check("78: the outbox is empty — no EXTERNAL_ACTION step exists in this slice", outbox === "0");
 
   db.release();
   console.log(`\n${failed === 0 ? "PASS" : "FAIL"} — ${passed} passed, ${failed} failed${failed ? `: ${failures.join(" | ")}` : ""}`);
