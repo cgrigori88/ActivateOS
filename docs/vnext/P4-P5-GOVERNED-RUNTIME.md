@@ -2,10 +2,10 @@
 
 **Status:** **P45-1 MIGRATION 0109 — HOSTED ACCEPTED** (2026-09-16) · hosted migration level **109** ·
 flag default **OFF** · runtime tables **empty** · no external sending.
-**Defect P45-D1 found by the hosted functional gate and CORRECTED LOCALLY** (not pushed) — the
-runtime could not execute under `app_rw`. Local suite now **50/50 executing as `app_rw`**.
-**P45-1 functional/runtime acceptance remains OPEN** — the hosted rerun is separately authorised.
-Slice 2 **not started**.
+**P45-D1 — HOSTED CORRECTED / CLOSED.** **P45-1 — HOSTED ACCEPTED / CLOSED (2026-09-16).**
+P4's first governed actor + explicit capability grant and P5's first durable Pursuit execution are
+both **PROVEN HOSTED** through the real `app_rw` runtime. Fixture removed; **159/159 fingerprints
+restored exactly**. Slice 2 **not started**.
 
 This is the architecture record for the amended roadmap's P4 (AI Control Plane) and P5 (Pursuit
 Runtime). It begins after H1 closed and Gate 9 accepted pilot readiness.
@@ -420,3 +420,167 @@ Rules, binding from here:
 Retry/backoff, budget exhaustion, crash recovery, pause/resume, supersession and replay are all now
 exercised under `app_rw` in the 50/50 suite, so the earlier caveat that they were "owner-only proven"
 no longer applies.
+
+
+---
+
+## 14. CFR-1.2 — the clock-derived comparison rule (adopted 2026-09-16)
+
+`CFR-1.1` covered one field (`days_since_activity`). The P45-D1 hosted gate showed the pilot baseline
+is a **living synthetic world whose derived metrics move with the clock** — day counters, rolling
+windows, record ages — so a crawl captured at time *T* cannot be reproduced byte-for-byte at *T+Δ*,
+and will drift again at every future gate. `CFR-1.2` makes that explicit and narrow.
+
+> **Clock-derived output may differ from an accepted baseline ONLY when the difference is
+> deterministically recomputable from unchanged canonical source data and an explicitly identified
+> time-dependent expression. Everything else remains strict.**
+
+**This is not a tolerance for changing text, counts, ordering, membership or metrics.** A permitted
+difference must satisfy **all five**:
+
+1. The database fingerprints for the relevant canonical records are **unchanged**.
+2. The changed value traces to a **named time expression in product source** — `now() - <ts>`,
+   elapsed day/hour counters, rolling time windows, invite/record age, freshness/recency.
+3. The new value **recomputes exactly** from the source data and the current clock.
+4. **Nothing unrelated changed** — text, structure, ordering, permissions, tenant visibility,
+   disclosure behaviour or record identity.
+5. A window change that alters **cohort membership or an aggregate** must name the exact record(s)
+   entering or leaving and **reconcile the count/value mathematically**.
+
+**Any unexplained difference remains a STOP, even if it looks time-related.**
+
+### Reporting: two classes, reported separately
+
+| class | contents | tolerance |
+|---|---|---|
+| **STRICT** | structure, identities, ordering, non-time-derived text and metrics, permissions, visibility, disclosure, canonical membership, and all other deterministic output | **zero** |
+| **CLOCK-DERIVED** | only the validated expressions above, each with source-recomputation evidence | permitted, itemised |
+
+**The whole-world and per-table database fingerprints are NOT weakened — they remain exact.**
+CFR-1.2 governs *rendered output comparison only*.
+
+The gate tooling (`crawl-compare.mts`, session scratchpad — **no product source changed**) emits both
+the **raw digest**, preserved for audit and expected to move, and a **normalized digest** that masks
+only the approved clock-derived fields. Two crawls are equivalent under CFR-1.2 when the STRICT class
+is empty **and** the normalized digests match.
+
+---
+
+## 15. Crawl re-baseline — accepted 2026-09-16 (CFR-1.2, Option A applied)
+
+**`crawl-p45d1b` replaces `crawl-p45` as the accepted crawl baseline**, on this evidence:
+
+- **Determinism:** 37/37 rooms 200, **all 4 passes byte-identical**.
+- **STRICT class: 0 differences.** Line counts identical in every room.
+- **NORMALIZED digest identical: `107b17e3f5f1b24d`** on both sides. (Raw digests
+  `fe736e9a569f3493` → `8f33a5eff68fa481`, preserved for audit.)
+- **Database: 0 of 159 per-table fingerprints changed** across the whole phase — deploy, append-only
+  probe and both crawls. business-data `6abe424f43bff901`, whole-world `c299c6e372c686c4` and
+  security `569e5497a7622048` all **identical**.
+
+**The 30 observed differences, classified exactly:**
+
+| # | class | difference | validation |
+|---|---|---|---|
+| 23 | elapsed-day counters | `N days` → `N+1 days` | `extract(day from now() - <ts>)` — `divergence.ts:33`, `today.ts`, `projection.ts`. All 19 seeded opportunity timestamps cluster in **one hour**, so their 24-hour anniversaries coincide; `next increment in 1438 min` (≈23.97 h) confirmed the tick |
+| 6 | rolling 90-day aggregate | `$1.78M` → `$1.17M`, `4 deals` → `3 deals` (×3 rooms) | **`Hist · DR modernization` ($610,000)** crossed `closed_at >= now() - interval '90 days'` (`today.ts:297`). **1,780,000 − 610,000 = 1,170,000** exactly; **4 − 1 = 3**. The single record entering/leaving is named and the aggregate reconciles |
+| 1 | invite age | `"1d"` → `"2d"` (split across lines by the extractor) | `floor(extract(epoch from now() - coalesce(invited_at, created_at)) / 86400)` — `intelligence.ts:154`. **Recomputed hosted as exactly `2`**, matching the candidate, against an unchanged record |
+
+**No structural, ordering, membership, disclosure, tenant or canonical-data regression occurred**, with
+the one exception being the **expected membership change inside the explicitly time-bounded 90-day
+derived metric**, reconciled above. Meridian remains absent under Vertex; owner rooms healthy; joint
+boundaries, palette, CDW label, Stark disclosure, most-common-outcome and the **D-G8-1 order
+(Dana → Mike → Priya → Sarah)** all intact.
+
+**The manifest digest movement** (`14e2e97f8453fb75` → `cbddf5de9433b9fd`) is **fully attributable to
+`days_since_activity`** — `scripts/demo-manifest.ts:71`,
+`extract(day from now() - o.updated_at)::int` — the exact field CFR-1.1 was adopted for. No other
+manifest input changed.
+
+**Canonical demo data was NOT modified or reseeded.**
+
+
+---
+
+## 16. P45-1 — HOSTED ACCEPTED / CLOSED (2026-09-16)
+
+### Phase 1 — P45-D1 correction, hosted
+
+`d742a77` pushed fast-forward and deployed as **`dpl_2syZQr94SCB2kyPpCs1vJN594BNV`** (Preview,
+`app_rw` / bypassRls false / tenantEnforcement true / probe live / sending off). Env **38 / 18 / 33**,
+byte-identical; `VNEXT_CONTROL_PLANE_ENABLED` **absent (OFF)** throughout. **0 of 159 fingerprints
+moved merely because application code deployed.**
+
+**Append-only contract, proven hosted under the real `app_rw` login — 9/9.** ACL is exactly
+`INSERT, SELECT` with **0** column-level UPDATE grants. `app_rw` **CAN** insert through the corrected
+`recordChange`; **CAN** select what it wrote; the row is **born with** `run_id` / `run_step_id` /
+`invocation_id` / `governed_actor_id` (no follow-up UPDATE); and **CANNOT** update or delete it —
+both refused with `permission denied for table change_ledger`. Rolled back; `change_ledger`
+byte-identical at `68:d476182767fd6b54…`. **P45-D1 is corrected without adding a single permission.**
+
+### Phase 2 — synthetic hosted functional acceptance, 48/48
+
+Fully synthetic disposable world (Option A). **Globex was not used; no canonical stakeholder fact or
+P3 row was altered.** The approved action's semantic was authored FIRST and the skill bound second:
+
+```
+nextAction.key : draft_campaign_touch:first
+nextAction.text: "Draft the first campaign touch for … on the '… Renewal Outreach' campaign."
+milestone      : first_touch_drafted (rule TOUCH_DRAFTED)   kind/decision: DECISION / APPROVED
+```
+
+**Every runtime execution ran through `withTenantOrg` on the real `app_rw` login** — the product's own
+tenant binding — with owner authority confined to fixture setup and cleanup.
+
+| part | result |
+|---|---|
+| **Two-gate feature** | global OFF+org OFF → disabled · global ON+org OFF → **disabled** · global ON+org ON → **enabled only then** · global back OFF → disabled. No execution during any refusal |
+| **Governed USER actor** | ACTIVE, non-null principal distinct from `owner_user_id`, `PRODUCTION` |
+| **Principal matching** | a wrong acting principal is **REFUSED**, no draft |
+| **Capability grant** | no grant → **REFUSED**; and a grant does **NOT** override `required_permission` — `viewer` still refused |
+| **Successful run** | step **COMPLETED**, run **COMPLETED**, **exactly ONE EXECUTED invocation**, **exactly ONE draft touch**, status `draft`, **no outbox row**, no provider call |
+| **Audit chain** | P3 decision → run → step → actor → grant → invocation → draft → ledger, fully linked; `RUN_STARTED → RUN_COMPLETED`; every row carries run, step, governed actor, `GOVERNED_ACTION` and `data_environment`; generic `actor_id` semantics untouched |
+| **Idempotent replay** | same run returned, no re-dispatch, **no second draft, no second consequential invocation** |
+| **Pause / resume** | PAUSED is durable and does not dispatch; RESUME completes from persisted state on a fresh invocation; both are first-class ledger transitions |
+| **Plan supersession** | **CANCELLED, reason `PLAN_SUPERSEDED`**, still pinned to the ORIGINAL revision, never retargeted, no draft, no consequential invocation |
+| **Suspend / revoke** | SUSPENDED actor refused; REVOKED grant refused; neither created a draft or consequential invocation |
+
+**An important distinction proven, not assumed:** a refusal **also records an invocation, with status
+`REJECTED`** — that is the audit trail working. What must be unique is the **EXECUTED** one. Across the
+whole gate: `EXECUTED 28 → 29` for the single successful run, with the refusals audited separately.
+
+**Tenant / RLS:** execution `current_user = app_rw`, `BYPASSRLS false`, `app.org_id` = the synthetic
+org. **No owner pool anywhere in the runtime execution stack.**
+
+**Send safety:** `0 / 0 / 0 / 0 / 0` throughout; no outbox row; no provider call; `OUTREACH_AUTOSEND`
+and `RESEND_API_KEY` absent; `draft_campaign_touch` remains `INTERNAL_WRITE`.
+
+**Retry / failure paths** were not manufactured hosted — no product test hook was added and no hosted
+state was damaged. The local `p45-runtime` **50/50** remains authoritative for retry/backoff, budget
+exhaustion, crash recovery and failure classification, and those are now proven **under the real
+`app_rw` identity**, not owner authority.
+
+### Cleanup and restoration
+
+Every acceptance row enumerated by exact id and removed in dependency order: 18 ledger, 7 invocations,
+2 touches, 8 steps, 8 runs, 1 grant, 1 actor, 1 campaign, 18 revisions, 8 plans, 8 goals, 8 pursuits,
+1 `org_features`, 1 organization, 1 company. No wildcard deletes; nothing outside the manifest.
+
+> **159/159 per-table fingerprints EXACTLY match the pre-test baseline.** migrations **109** ·
+> business-data **`6abe424f43bff901`** · whole-world **`c299c6e372c686c4`** · security
+> **`569e5497a7622048`** · protected **31 / 0**. **No rebaseline.**
+
+**Post-cleanup flag-off crawl: RAW digest `8f33a5eff68fa481` — byte-identical to the accepted
+baseline.** STRICT 0, clock-derived 0. The acceptance left no trace whatsoever.
+
+**Regression:** p45-runtime **50/0** · persisted 17/0 · semantic 50/0 · dg85 19/0 · dp1 26/0 ·
+partnership-app-rw 117/0 · tenant-isolation 205/0 · search-path 39/0 · catalogue guard 12/0 (**31/0**)
+· rehearsal 38/38 + 6/6.
+
+### DISPOSITION
+
+**P45-D1 — HOSTED CORRECTED / CLOSED.** **P45-1 — HOSTED ACCEPTED / CLOSED.**
+**P4:** first governed actor + explicit capability grant **proven hosted**.
+**P5:** first durable Pursuit runtime execution **proven hosted**.
+Migration **109 unchanged**. Permanent Preview `controlPlane` remained **OFF** throughout.
+**Slice 2 — NOT STARTED.**
