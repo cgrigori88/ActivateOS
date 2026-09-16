@@ -1,8 +1,18 @@
 # PursuitOS vNext — Status
 
-**Last updated:** 2026-09-16 (**D-G8-4C CORRECTED LOCALLY, NOT PUSHED** — rung 4 now normalizes both sides; **D-G8-4A/B/D HOSTED ACCEPTED / CLOSED**; earlier **D-G8-3A/B/D — HOSTED ACCEPTED / CLOSED**; D-G8-3C → **D-G8-4D OPEN**; earlier the D-G8-3 migration gate PASSED; D-G8-3A/B/D — **FIXED LOCALLY, NOT PUSHED**; D-G8-3C → **D-G8-4D**; earlier the same day D-G8-2A — **HOSTED ACCEPTED / CLOSED** on the `app_rw` Preview; closure digest `94491ea1…`; D-G8-2B deferred; D-G8-3A/B/C/D, D-G8-4A/B/C, D-G8-5, D-P1 OPEN / PRE-GATE-9; Gate 9 NOT started)
+**Last updated:** 2026-09-16 (**D-G8-4 OVERALL — HOSTED ACCEPTED / CLOSED**; 4A/4B/4C/4D all closed; earlier **D-G8-3A/B/D — HOSTED ACCEPTED / CLOSED**; D-G8-3C → **D-G8-4D OPEN**; earlier the D-G8-3 migration gate PASSED; D-G8-3A/B/D — **FIXED LOCALLY, NOT PUSHED**; D-G8-3C → **D-G8-4D**; earlier the same day D-G8-2A — **HOSTED ACCEPTED / CLOSED** on the `app_rw` Preview; closure digest `94491ea1…`; D-G8-2B deferred; D-G8-3A/B/C/D, D-G8-4A/B/C, D-G8-5, D-P1 OPEN / PRE-GATE-9; Gate 9 NOT started)
 
-**2026-09-16 (latest) — D-G8-4C: CORRECTED LOCALLY, NOT PUSHED.**
+**2026-09-16 (latest) — D-G8-4C: HOSTED ACCEPTED / CLOSED. D-G8-4 OVERALL: HOSTED ACCEPTED / CLOSED.**
+- **Deployment:** `48a6157` pushed fast-forward, deployed as **`dpl_Ey7DdPDSWzsk5dJ3ASMbqbLmtxf7`** (Preview, READY, alias target). `app_rw` / bypassRls false / tenantEnforcement true / probe live / sending off. Env unchanged (18 vars). Code-only — no migration, no `normalized_name` repair.
+- **Deployed resolver:** rung 4 applies `normalizeCompanyName` to **both** sides; reads `companies.normalized_name` **zero** times; no `length(`, no `order by` in the module; ladder intact (canonical id → ID alias → name/domain alias → normalized exact → unique fuzzy → unresolved).
+- **Initech regression FIXED on real hosted data:** exactly 1 canonical name normalizes to the input while 2 fuzzy candidates remain, and `"Initech Financial"` now **RESOLVES via NORMALIZED_NAME** (was AMBIGUOUS). `Globex Manufacturing Inc.` and `Stark Industries LLC` likewise resolve at rung 4.
+- **Ambiguity intact:** two names normalizing alike → **AMBIGUOUS (2)**, proven in a **rolled-back** transaction with **zero residue** (`companies` 14 → 14); zero normalized-exact → fuzzy → **UNRESOLVED (2)**; `"o"` still AMBIGUOUS (7). ask-scope still **fails closed** with no candidate leakage — and the now-resolvable exact name is **allowed**.
+- **Crawl:** **37/37 rooms 200, all 4 passes byte-identical, and 37/37 identical to the accepted D-G8-4 crawl — no new rendered difference**, as predicted. D-G5-1, D-G8-1, D-G8-2A, D-G8-3A/B/D all remain closed; the Stark disclosure and most-common-outcome line persist.
+- **Database:** **0 of 155 per-table fingerprints changed**; **`companies` content hash identical at 14 rows** — no row rewritten, `normalized_name` untouched. migrations **107**, business-data `c56a1d229e483f2b`, whole-world `ff4a3f28c4940a9d`, security `f31e51d50e9dec49`, 31/0. CFR-1.1 not needed.
+- **Send safety:** 0 / 0 / 0 / 0 / 0.
+- **D-G8-4A, 4B, 4C and 4D are all CLOSED. D-G8-4 overall is HOSTED ACCEPTED / CLOSED** — not to be reopened absent a new concrete defect. Record: `H1-PRE-PILOT-HARDENING.md` § "D-G8-4C HOSTED ACCEPTED / CLOSED". **D-G8-5 and D-P1 remain OPEN. Gate 9 NOT started.**
+
+**2026-09-16 — D-G8-4C: CORRECTED LOCALLY, NOT PUSHED.**
 - **Ruling applied:** normalization at comparison time. No backfill, no migration, no hosted data rewrite, no raw-`legal_name` rung, no weakening of ambiguity.
 - **Root cause:** rung 4 compared the normalized input against the STORED `companies.normalized_name`, which holds raw legal names here (**0/14** agreement) — so the rung was inert and exact names fell through to fuzzy.
 - **Fix:** rung 4 applies `normalizeCompanyName` to **both** sides (typed input and `legal_name`), scoped to the authorized set when given. One match resolves · two or more AMBIGUOUS · zero falls through to unique-fuzzy, which can never override it. `normalized_name` is neither read by this resolver nor modified — other consumers keep their contract.
