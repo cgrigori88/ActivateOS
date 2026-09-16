@@ -669,8 +669,10 @@ can never commit while the run is stranded in `WAITING_FOR_APPROVAL` — it roll
 
 > **A defect found and fixed by the suite:** the decision's dispatch idempotency key originally omitted
 > the decider, so a second approver was handed a **replayed** result instead of being evaluated on
-> their own merits — a viewer could have inherited an operator's dispatch. The key now includes the
-> deciding actor, so the unique index arbitrates the race rather than dispatch idempotency.
+> their own merits — a viewer could have inherited an operator's dispatch. The key was first scoped to
+> the deciding actor, and then **removed entirely by the hosted gate** (§18, defect 1) because a
+> decider-scoped key still cached a *governance refusal*. The unique index arbitrates the race;
+> dispatch idempotency plays no part in a decision.
 
 ### The identity boundary — stated, not papered over
 
@@ -704,9 +706,10 @@ execution · a late REJECT cannot overturn a committed APPROVE · REJECT termina
 `CANCELLED / APPROVAL_REJECTED` **without overloading the invocation vocabulary** · wrong principal,
 ordinary viewer, self-approval and another tenant all refused with nothing executed · **grant revoked
 → INVALIDATED**, **actor suspended → INVALIDATED**, **revision superseded → INVALIDATED /
-PLAN_SUPERSEDED** still pinned to the original revision · INVALIDATED never offered as pending · **all
-three races** (approve/approve, approve/reject, reject/reject) yield exactly one terminal decision, one
-winner, the loser told *already decided*, and at most one consequential execution · both feature gates
+PLAN_SUPERSEDED** still pinned to the original revision · INVALIDATED never offered as pending · **the local
+race set** (approve/approve, approve/reject, reject/reject) yields exactly one terminal decision, one
+winner, the loser told *already decided*, and at most one consequential execution — note the hosted
+race set differs (§18): it substituted approve/invalidate for reject/reject · both feature gates
 · the decision capability never enters an approval workflow · **send 0/0/0/0/0**.
 
 **Certification:** tsc clean · 429/429 · build clean · p45-approvals **56/0** · p45-runtime 50/0 ·
@@ -768,9 +771,13 @@ revision superseded each yield **INVALIDATED** with the right reason, the run **
 to the original revision**, never retargeted, and the request **disappears from the pending read
 model**. **Authority failures** — wrong principal, ordinary viewer, self-approval, wrong tenant,
 **suspended decider**, **revoked decision capability** — all refused, none mutating the pending approval
-or executing anything. **Concurrency** — all three races on the real hosted transaction path give
-**exactly one terminal row, one winning transition, the loser `already decided`, no stranded
-APPROVED+WAITING, at most one consequential execution and exactly one approval ledger transition**.
+or executing anything. **Concurrency** — **APPROVE vs APPROVE — hosted · APPROVE vs REJECT — hosted · APPROVE vs
+INVALIDATE — hosted · REJECT vs REJECT — locally proven, NOT separately rerun hosted.** Each race
+executed gives **exactly one terminal row, one winning transition, the loser `already decided`, no
+stranded APPROVED+WAITING, at most one consequential execution and exactly one approval ledger
+transition**. REJECT-vs-REJECT is closed on the **generic** `pursuit_run_approvals_one_terminal`
+invariant — which is decision-value-agnostic and was proven hosted by the three races above — plus the
+local race proof. It was **not** rerun hosted, and this gate does not claim it was.
 **Append-only under real `app_rw`** — CAN insert and select, **CANNOT update a request, CANNOT update a
 terminal decision, CANNOT delete either**, linkage present at INSERT. **Audit chain** — P3 revision →
 run → step → request → requester → decider/principal → invocation → effect, with
