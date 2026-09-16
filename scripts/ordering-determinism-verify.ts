@@ -453,11 +453,14 @@ async function main(): Promise<void> {
   const tiedPortfolio = groupPursuits;
   const TOUCH_EVENT = `update outcome_events set event_type = event_type where id = $1`;
   const TOUCH_PURSUIT = `update pursuits set use_case = use_case where id = $1`;
-  for (const [name, sql, params, expected, touch, ids] of [
-    ["C2 non-unique LIMIT (activity rows)", OLD_ACTIVITY, [V], JSON.stringify(expectedActivity), TOUCH_EVENT, eventIds],
-    ["C4 first-row pick (drawer pursuit)", OLD_PURSUIT, [pickCo, V], JSON.stringify([expectedUseCase]), TOUCH_PURSUIT, pursuitIds],
-    ["C5 encounter-order group (portfolio)", OLD_PORTFOLIO, [V], null, TOUCH_PURSUIT, tiedPortfolio],
-  ] as [string, string, string[], string | null, string, string[]][]) {
+  for (const [name, sql, params, expected, touch, ids, tieSql] of [
+    ["C2 non-unique LIMIT (activity rows)", OLD_ACTIVITY, [V], JSON.stringify(expectedActivity), TOUCH_EVENT, eventIds,
+      `select count(*)::int n, count(distinct occurred_at)::int d from outcome_events where id = any($1)`],
+    ["C4 first-row pick (drawer pursuit)", OLD_PURSUIT, [pickCo, V], JSON.stringify([expectedUseCase]), TOUCH_PURSUIT, pursuitIds,
+      `select count(*)::int n, count(distinct created_at)::int d from pursuits where id = any($1)`],
+    ["C5 encounter-order group (portfolio)", OLD_PORTFOLIO, [V], null, TOUCH_PURSUIT, tiedPortfolio,
+      `select count(*)::int n, count(distinct current_priority_score)::int d from pursuits where id = any($1)`],
+  ] as [string, string, string[], string | null, string, string[], string][]) {
     const shapes: string[] = [];
     for (let r = 0; r < 3; r++) {
       for (let k = 0; k < ids.length; k++) await owner.query(touch, [ids[(k + r) % ids.length]]);
@@ -465,8 +468,18 @@ async function main(): Promise<void> {
     }
     const distinct = new Set(shapes).size;
     const wrong = expected == null ? 0 : shapes.filter((s) => s !== expected).length;
-    check(`negative control: the OLD clause for ${name} is underdetermined`, distinct > 1 || wrong > 0,
-      `${distinct} distinct result(s) over ${shapes.length} runs (${ids.length} tied rows × 3 layouts); ${wrong} differ from the documented order`);
+
+    // THE GATE is the property we can guarantee: the fixture really does tie on the key the OLD clause
+    // orders by, so the clause cannot determine its own answer and the fix below is load-bearing.
+    const { n, d } = (await owner.query<{ n: number; d: number }>(tieSql, [ids])).rows[0];
+    check(`negative control: the fixture for ${name} genuinely ties on the ordering key`, d < n,
+      `${n} rows share ${d} distinct value(s) of the key the OLD clause orders by`);
+
+    // DIAGNOSTIC, NOT A GATE. Whether the planner HAPPENS to expose a tie depends on physical layout and
+    // statistics, so asserting observed variation makes certification flaky — it did: a full-battery pass
+    // failed here on the C4 fixture (1 distinct over 30 runs) while 11 standalone runs passed. The red
+    // evidence for each class is the recorded pre-fix baseline (32 passed / 11 failed), not this number.
+    console.log(`  · diagnostic — OLD clause for ${name}: ${distinct} distinct result(s) over ${shapes.length} runs; ${wrong} differ from the documented order`);
   }
 
   const g82Diff = g82.filter((r) => r.json !== f.json).map((r) => r.label);
