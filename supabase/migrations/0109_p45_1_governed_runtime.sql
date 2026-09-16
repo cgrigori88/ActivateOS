@@ -44,7 +44,10 @@
 -- goal the gate stated: a Vertex row cannot reference a Meridian actor or run merely because
 -- someone knows the UUID — it is refused RELATIONALLY, before RLS is even consulted.
 
-begin;
+-- TRANSACTION OWNERSHIP. This file carries NO begin/commit, matching every other migration in the
+-- repository: the APPLIER owns the transaction (scripts/migrate.ts and the gate's single-migration
+-- applier both wrap the file and the schema_migrations insert in one `begin`/`commit`). A `commit;`
+-- inside the file would end that transaction early and leave the ledger insert un-atomic with the DDL.
 
 -- ── 1. P4 — governed_actors: WHO or WHAT may act ─────────────────────────────────────────────────
 -- An actor is not "an agent". USER, WORKER and SYSTEM must live in the same identity space or
@@ -306,8 +309,6 @@ alter table pursuit_run_steps force row level security;
 drop policy if exists pursuit_run_steps_rw on pursuit_run_steps;
 create policy pursuit_run_steps_rw on pursuit_run_steps for all to app_rw
   using (is_org_member(org_id)) with check (is_org_member(org_id));
-
-commit;
 
 -- ── ROLLBACK ────────────────────────────────────────────────────────────────────────────────────
 -- Additive only, so the reversal is a clean drop of what this file created. Reverting removes the
