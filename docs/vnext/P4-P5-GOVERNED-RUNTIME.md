@@ -5,7 +5,7 @@ flag default **OFF** · runtime tables **empty** · no external sending.
 **P45-D1 — HOSTED CORRECTED / CLOSED.** **P45-1 — HOSTED ACCEPTED / CLOSED (2026-09-16).**
 P4's first governed actor + explicit capability grant and P5's first durable Pursuit execution are
 both **PROVEN HOSTED** through the real `app_rw` runtime. Fixture removed; **159/159 fingerprints
-restored exactly**. **P45-2 (Slice 2) — HOSTED ACCEPTED / CLOSED** (2026-09-17) · hosted migration **110** · approval runtime and authorization substrate **proven hosted**. **Production human approval identity remains NOT PROVEN** — tracked separately. Slice 3 **not started**.
+restored exactly**. **P45-2 (Slice 2) — HOSTED ACCEPTED / CLOSED** (2026-09-17) · hosted migration **110** · approval runtime and authorization substrate **proven hosted**. **Production human approval identity remains NOT PROVEN** — tracked separately. **P45-3 — SEQUENTIAL MULTI-STEP RUNTIME: IMPLEMENTED LOCALLY / NOT PUSHED** (migration **0111**, local only). Hosted authorization **not yet given**.
 
 This is the architecture record for the amended roadmap's P4 (AI Control Plane) and P5 (Pursuit
 Runtime). It begins after H1 closed and Gate 9 accepted pilot readiness.
@@ -831,3 +831,181 @@ remained ABSENT (OFF)** throughout.
 **HOSTED RECORD OF RECORD:** migrations **110** · business-data **`9e1fbd166fe06450`** · whole-world
 **`f27321cd8803f04b`** · security **`092a20af64a0444e`** · protected **31 / 0** · `app_rw` LOGIN true /
 BYPASSRLS false · serving `25c62db`. **Slice 3 NOT STARTED.**
+
+
+---
+
+## 19. P45-3 — SEQUENTIAL MULTI-STEP RUNTIME (local implementation)
+
+**Status: implemented and certified LOCALLY. Migration 0111 applied to the local world only. Nothing
+pushed, nothing applied hosted.**
+
+### What this slice is, and what it deliberately is not
+
+A run now carries an **ordered program** of steps, `seq 1..N`, executed strictly in order, **one
+consequential step per `resumeRun` call**. That is the whole capability.
+
+> **It is NOT the roadmap item "multi-step plans / DAG".** P45-3 proves the **sequential runtime
+> substrate**. **Plan-derived program synthesis and DAG/parallel execution remain separate, unstarted
+> future work**, and closing P45-3 does not close that roadmap line. It is also unrelated to the
+> product roadmap's own **"SLICE 3 — Portfolio Pertinence (P2)"**, which is untouched and still
+> NOT STARTED.
+
+Precisely stated: **a run pinned to a P3 revision can durably execute a CALLER-SUPPLIED ordered
+governed program.** It does **not** prove the program was derived from, or semantically synthesized
+from, the decided plan. `PlanContent`, `nextAction`, plan fingerprints, milestone shape and every P3
+plan surface are **untouched** — the diff contains no file under `read-models/` or `coordination/`.
+The persisted ordered step rows are the durable program snapshot for this slice.
+
+### How little of this was actually new
+
+0109 already gave steps a `seq`, a `unique (run_id, seq)`, a position-bearing idempotency key,
+per-step retry state and `app_rw` INSERT on the table; `resumeRun` already selected the lowest-seq
+eligible step and already had a "no steps left → COMPLETED" branch. Slice 1 simply never created a
+second step, and **`ok ? "COMPLETED"` ended the run on the first success**. That one expression was
+the entire single-step assumption.
+
+### Migration 0111 — one word, and nothing else
+
+`change_ledger.change_type` **+ `RUN_STEP_COMPLETED`**, via the certified 0103 §5 read-append-never-
+rewrite pattern. **No table, no column, no privilege, no policy, no role, no RLS change, no
+SECURITY DEFINER, no grant.** Verified locally after applying: **160 tables → 160**, `change_ledger`
+privileges for `app_rw` still exactly **`INSERT,SELECT`**, and a second application is a **no-op**.
+
+**THE AUDIT CONTRACT, stated so consumers cannot misread it (ruling 2):**
+
+```
+RUN_STARTED → RUN_STEP_COMPLETED → RUN_STEP_COMPLETED → RUN_COMPLETED      (a 3-step program)
+RUN_STARTED → RUN_COMPLETED                                                (a 1-step program)
+```
+
+An **intermediate** success emits `RUN_STEP_COMPLETED`; the **final** success emits `RUN_COMPLETED`
+and **not both**. So a completed program carries **(successful steps − 1)** `RUN_STEP_COMPLETED`
+events — **do not infer that every completed step has one**. A one-step run is byte-for-byte the
+Slice-1 chain, which is why P45-1 and P45-2 evidence stands without reinterpretation.
+
+### The four invariants
+
+1. **Atomic birth.** The run, every step row, the server-assigned sequence, each step's immutable
+   skill/version/args/idempotency identity and `RUN_STARTED` are one unit. A **savepoint** inside
+   `startRun` makes that a property of the function rather than of its caller, so even a caller who
+   catches the error and continues in the same transaction cannot observe a partial program. **The
+   caller never supplies `seq`** — `ProgramStep` has no such field; position comes from array order.
+2. **Whole-program identity.** `run:<pursuit>:<revision>:prog:<sha(canonical program)>`, hashing each
+   step's **position, skill, version, canonical args and milestone key**. `max_attempts` is excluded:
+   how often we retry is execution policy, not a change to what is being done. Same program →
+   **replay onto the same run**. Same steps **reordered** → a **different** program. A different
+   program while one is **live** → **`ProgramConflictError`**, never a silent replay of work nobody
+   asked for. `pursuit_runs_one_live` would refuse the insert anyway, but a bare unique violation
+   cannot tell a retry from a different request, and the two deserve opposite answers.
+3. **Every step boundary is a fresh authority boundary.** The actor is pinned for the program — **a
+   pinned identity is not a pinned entitlement**. Eligibility, permission, the capability grant, the
+   revision pin and the approval policy are re-derived per step. **One `resumeRun` advances at most
+   one consequential step**; the program is never drained in a loop, because a loop would let one
+   request carry authority the caller was never separately granted.
+4. **Never skip forward.** Progress is the **lowest-seq step that is not COMPLETED**, whatever its
+   status — so a later `PENDING` step is *structurally* unreachable while an earlier one is
+   unresolved. Selecting on "eligible statuses" would have stepped over a `BLOCKED` step and run
+   step 3 on the assumption step 2 happened. **P45-3 adds no BLOCKED recovery path**: a `BLOCKED`
+   run is not resumable today and redefining that is deliberately not part of this slice.
+
+### A defect this slice found in the Slice-2 carry-over
+
+Slice 2 answered *"has this run been approved?"* from **`continuation.approvedRequestId`**, which is
+**run-scoped**. With one step that was the same question. With a program it is not: **step 3 would
+have sailed through the approval gate on the approval a human gave for step 2** — exactly the
+cascade ruling 8 forbids, and invisible to any skill-scoped check because the next step may name the
+very same skill. The gate now asks about the **step**, and asks **`pursuit_run_approvals`** — which
+is append-only and which `app_rw` cannot rewrite — rather than the run's mutable continuation. That
+is a strictly stronger source, and the advance replaces the continuation wholesale so an approval can
+never outlive its step. **Proven by checks 46–48: two steps, same skill, two independent parks, two
+separate `REQUESTED` records.**
+
+### Concurrency — serialization and compare-and-set, no lease
+
+`loadRun` now takes `select … for update`, making read-decide-write a critical section per run.
+`transitionRun` is a **genuine compare-and-set**: `from` was previously only the ledger's `before`
+value and is now a predicate with a checked `rowCount`. The step's own idempotency key remains the
+third line of defence, so even a lost race yields a duplicate *attempt*, never a duplicate *effect*.
+**`locked_at` was deliberately NOT activated** — no lease, no expiry, no crash-recovery protocol,
+because a request-triggered INTERNAL_WRITE runtime needs none.
+
+> **FUTURE BOUNDARY, recorded now:** do not generalize a long-held database transaction across an
+> external/provider action. That needs its own worker/claim design. EXTERNAL_ACTION steps are out of
+> scope here in any case.
+
+### Cancellation — CANCELLED never means "nothing executed"
+
+Completed steps keep their effects and stay `COMPLETED`. **P45-3 invents no compensation, rollback,
+undo or reverse skill** — the runtime has no authority to synthesize an inverse the registry never
+declared. What it owes instead is an unambiguous halt point, so every cancellation (including
+`PLAN_SUPERSEDED`) now records `stepsTotal`, `stepsCompleted`, `lastCompletedSeq`, `haltedAtSeq` and
+`effectsRetained` in the ledger.
+
+### Local certification
+
+**`p45-program` 69 / 0**, every run and decision through **`withTenantOrg` on the real `app_rw`
+login**. Atomic creation and its zero-residue failure · empty and invalid programs refused · replay,
+reorder and conflict · one step per call · the cursor advancing inside the same CAS · the audit
+contract, including a one-step run proving no new event · failure/block halting without skipping ·
+partial cancellation with effects retained and the halt point recorded · supersession mid-program
+still pinned · **one approval releasing exactly one step with the same skill on both** · grant
+revoked and actor suspended *between* steps · pause/resume mid-program resuming at the right seq ·
+concurrent advance · `app_rw` unable to rewrite a step's `skill_id` or `args` · `governed_skills`
+unchanged · **send 0/0/0/0/0** and an empty outbox.
+
+**Negative control:** reintroducing `ok ? "COMPLETED"` literally drives **20+ checks red**, including
+the audit contract (`RUN_STARTED → RUN_COMPLETED` for a three-step program) and the approval-cascade
+check. The suite is structurally capable of catching the defect it exists to prevent.
+
+**Two suite corrections, both made from captured evidence rather than by adjusting an expectation:**
+
+1. **The concurrency assertion was mine and it was wrong.** I asserted "two concurrent resumes
+   dispatch at most once". A probe showed what actually happens: the second caller blocks on the row
+   lock and, once the first commits, finds the **next** step and advances **that** — one invocation
+   per step, two distinct effects (`s1`, `s2`), step 3 untouched, two `RUN_STEP_COMPLETED`. Nothing
+   executed twice. The original assertion demanded that a request-driven runtime refuse a second
+   request, which is not the rule. Replaced with the invariants that matter — no two calls land on
+   the same step, no step has more than one invocation, completion is a prefix — **plus a one-step
+   program where there is nothing to advance to, so exactly one dispatch is the only correct answer**.
+2. **`p45-runtime` check 10** presented a replay that omitted `milestoneKey`. Under the old key
+   (skill + args only) that still replayed; under whole-program identity it is a materially different
+   program — which is the point of the rule. The replay now presents the identical program.
+
+**Battery:** tsc clean · build clean · unit **429 / 429** · SEEDED class **1666 / 0** (including
+p45-program 69, p45-runtime 50, p45-approvals 56, dp1 26, tenant-isolation 205, partnership 117,
+search-path 39) · FRESH **238 / 0** · EITHER **215 / 0** · `certify-world --runs 2` **96 clean / 0
+failures**, digest **`f72d1ff0d6b07b42`** — *unchanged from P45-2*, because the world digest hashes
+table contents and the table set, and 0111 adds neither. (96 rather than P45-2's 94 is one new suite
+across two runs.)
+
+### An unexplained digest movement I chased rather than re-baselined
+
+The first P45-3 certification run reported digest `3f857ccbeda49a10` instead of P45-2's
+`f72d1ff0d6b07b42`. The obvious story — "0111 moved it" — was **wrong**, and proving that was the
+point: cloning the local world, reverting *only* the 0111 CHECK value on the clone, and comparing
+fingerprints gave **IDENTICAL digests and 0 differing tables**, because the world fingerprint is
+table contents plus the table set and a CHECK constraint is neither.
+
+The real cause was mine. While diagnosing the concurrency question I pointed a throwaway probe at
+`pursuit_demo` — **the canonical local world — instead of a clone**, and its cleanup deleted
+`organizations` by `org_id`, a column that table does not have, so the error was swallowed and one
+row survived. Residue was then enumerated exactly: **one `organizations` row**, with **zero** rows in
+all eleven referencing tables. Deleting that single row by id returned the world to **3 organizations,
+160 tables and digest `f72d1ff0d6b07b42` exactly**. No re-baseline, and the P45-2 local record stands
+unchanged. The lesson is the one the SEEDED_CLONE guard already encodes and my scratch probe bypassed:
+**a throwaway script is exactly the thing that should be pointed at a clone.**
+
+### Identity boundary — unchanged
+
+No auth code was touched. The interactive decision path still resolves the principal server-side and
+**fails closed**. **P45-3 claims no production human identity integration and no production-ready
+interactive approvals.** Multi-step increases the number of human decision points; it does not change
+who may be one.
+
+### Expected hosted movement, when authorized
+
+migrations **110 → 111** · **0 tables added** · **0 policies, 0 grants, 0 roles changed** ·
+**business-data hash UNCHANGED** (no table joins or leaves the hashed map) · whole-world and security
+hashes move for the CHECK redefinition and are reconciled exactly · `governed_skills` **18**,
+unmoved · protected **31 / 0**.

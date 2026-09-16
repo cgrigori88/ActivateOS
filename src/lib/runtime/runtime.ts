@@ -31,6 +31,31 @@ import type { DataEnvironment } from "@/lib/pursuits/lineage";
  * SLICE 1 SCOPE. One step, request-triggered, under `app_rw` + `withTenant`. No worker drain (the
  * owner pool must not become ambient mutation authority for runtime execution — that needs its own
  * design slice), no AGENT actors, no approval workflow, and no EXTERNAL_ACTION.
+ *
+ * P45-3 — SEQUENTIAL MULTI-STEP. A run now carries an ORDERED PROGRAM of steps, seq 1..N, executed
+ * strictly in order, ONE consequential step per `resumeRun` call. Four rules make that safe:
+ *
+ *   1. A run and its whole program are born ATOMICALLY. The caller supplies an ordered list and
+ *      never a `seq`; the server assigns position. If any step fails to validate or insert, no run
+ *      and no partial program survive (a savepoint makes that a property of THIS function rather
+ *      than of whoever called it).
+ *   2. Run identity hashes the WHOLE canonical ordered program — position, skill, version, args and
+ *      milestone key. The same program retried replays onto the same run; the same steps in a
+ *      different order are a DIFFERENT program; and a different program offered while another is
+ *      live is an explicit CONFLICT, never a silent replay of the run that already exists.
+ *   3. EVERY STEP BOUNDARY IS A FRESH AUTHORITY BOUNDARY. The actor is pinned for the program, but a
+ *      pinned identity is not a pinned entitlement: eligibility, permission, the capability grant,
+ *      the pin and the approval policy are all re-evaluated per step. An approval on step N releases
+ *      step N and nothing else.
+ *   4. A failed or blocked step NEVER lets the runtime skip forward. Progress is defined by the
+ *      lowest-seq step that is not COMPLETED, so a later PENDING step is structurally unreachable
+ *      while an earlier one is unresolved.
+ *
+ * NOT P45-3: DAG / parallel branches / dependency joins · autonomous draining (one call still
+ * advances at most one step) · compensation, rollback or undo of a completed step · deriving the
+ * program from the decided plan (`PlanContent.nextAction` is untouched, and P45-3 proves only that a
+ * run pinned to a P3 revision can durably execute a CALLER-SUPPLIED ordered program — not that the
+ * program was synthesized from that plan) · EXTERNAL_ACTION steps.
  */
 
 export type RunStatus =
@@ -63,13 +88,40 @@ function canonical(v: unknown): unknown {
 export const stepIdempotencyKey = (runId: string, seq: number, skillId: string, skillVersion: number, args: unknown): string =>
   `run:${runId}:${seq}:${skillId}:v${skillVersion}:${sha(canonical(args))}`;
 
+/**
+ * One step of a caller-supplied program. Deliberately HAS NO `seq`: position is the server's to
+ * assign from the order of the array, so a caller cannot manufacture a gap, a duplicate position or
+ * an execution order that disagrees with the program it presented for hashing.
+ */
+export interface ProgramStep {
+  skillId: string;
+  skillVersion?: number;
+  args?: Record<string, unknown>;
+  /** Advisory only. Milestone completion stays COMPUTED by the plan's rules; a step never writes one. */
+  milestoneKey?: string | null;
+  maxAttempts?: number;
+}
+
+interface NormalizedStep {
+  seq: number; skillId: string; skillVersion: number;
+  args: Record<string, unknown>; milestoneKey: string | null; maxAttempts: number;
+}
+
+/**
+ * A run targets a decided revision and executes either a program (`steps`) or a single step given
+ * inline. The inline form is the Slice-1 shape, kept because a one-step program is the common case
+ * and because it lets P45-1/P45-2 evidence stand unchanged; it normalizes to a 1-element program and
+ * takes exactly the same path, so there is one creation code path, not two.
+ */
 export interface StartRunArgs {
   pursuitId: string;
   planId: string;
   planRevisionId: string;
   governedActorId: string;
   initiatedByUserId?: string | null;
-  skillId: string;
+  /** The ordered program, executed seq 1..N. Mutually exclusive with the inline single-step fields. */
+  steps?: ProgramStep[];
+  skillId?: string;
   skillVersion?: number;
   args?: Record<string, unknown>;
   milestoneKey?: string | null;
@@ -77,21 +129,76 @@ export interface StartRunArgs {
   dataEnvironment?: DataEnvironment;
 }
 
-export interface RunRow {
-  id: string; status: RunStatus; reason: string | null; correlationId: string;
-  planRevisionId: string; basisFingerprint: string; currentStepId: string | null;
+/**
+ * A different program was offered for a revision that already has a live run.
+ *
+ * This is its own error class on purpose. `pursuit_runs_one_live` would refuse the insert anyway,
+ * but a bare unique violation cannot tell "the caller retried the same request" from "the caller
+ * asked for something else while work is in flight". The first must replay; the second must be
+ * told plainly, because silently returning the existing run would hand back a program the caller
+ * never asked for and let them believe their steps are executing.
+ */
+export class ProgramConflictError extends Error {
+  constructor(readonly runId: string, readonly runStatus: string) {
+    super(`a different program is already live for this plan revision (run ${runId}, ${runStatus}) — cancel it or present the same program`);
+    this.name = "ProgramConflictError";
+  }
+}
+
+/** Validate and position the program. Every rejection happens BEFORE anything is written. */
+function normalizeProgram(a: StartRunArgs): NormalizedStep[] {
+  if (a.steps && a.skillId) throw new Error("provide either an ordered program (`steps`) or a single `skillId`, not both");
+  const raw: ProgramStep[] = a.steps ?? (a.skillId !== undefined
+    ? [{ skillId: a.skillId, skillVersion: a.skillVersion, args: a.args, milestoneKey: a.milestoneKey, maxAttempts: a.maxAttempts }]
+    : []);
+  if (raw.length === 0) throw new Error("a run needs at least one step");
+  return raw.map((st, i) => {
+    const seq = i + 1;
+    if (typeof st.skillId !== "string" || st.skillId.trim() === "") throw new Error(`program step ${seq}: skillId is required`);
+    const skillVersion = st.skillVersion ?? 1;
+    if (!Number.isInteger(skillVersion) || skillVersion < 1) throw new Error(`program step ${seq}: skillVersion must be a positive integer`);
+    const maxAttempts = st.maxAttempts ?? 3;
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1) throw new Error(`program step ${seq}: maxAttempts must be a positive integer`);
+    if (st.args !== undefined && (typeof st.args !== "object" || st.args === null || Array.isArray(st.args)))
+      throw new Error(`program step ${seq}: args must be an object`);
+    return { seq, skillId: st.skillId, skillVersion, args: st.args ?? {}, milestoneKey: st.milestoneKey ?? null, maxAttempts };
+  });
 }
 
 /**
- * Create a run pinned to a decided plan revision, plus its single Slice-1 step.
+ * Whole-program identity. POSITION IS PART OF THE HASH, so the same steps in a different order are
+ * a different program — which is the point: order carries meaning, and two orderings of the same
+ * skills are two different pieces of consequential work. `max_attempts` is deliberately excluded:
+ * how many times we are willing to retry is an execution policy, not a change to what is being done.
+ */
+const programIdentity = (p: NormalizedStep[]): string =>
+  sha(canonical(p.map((st) => ({ seq: st.seq, skillId: st.skillId, skillVersion: st.skillVersion, args: st.args, milestoneKey: st.milestoneKey }))));
+
+export interface RunRow {
+  id: string; status: RunStatus; reason: string | null; correlationId: string;
+  planRevisionId: string; basisFingerprint: string; currentStepId: string | null;
+  /** How many steps the program has. 1 for the Slice-1 shape. */
+  stepCount: number;
+  /** True when this call found an existing run for the identical program rather than creating one. */
+  replayed: boolean;
+}
+
+/**
+ * Create a run pinned to a decided plan revision, together with its ENTIRE ordered program.
  *
  * The revision must belong to this org and this plan, and must be a DECISION that was not REJECTED
  * — a recommendation nobody accepted is not authority to act. The `basis_fingerprint` is copied
  * here and never recomputed: it is the record of what the world looked like when the decision was
  * made, which is what later evaluation (P8) needs.
+ *
+ * ATOMIC BY CONSTRUCTION (P45-3 ruling 4). The run row, every step row, their server-assigned
+ * sequence, their immutable skill/version/args/idempotency identity and the RUN_STARTED ledger entry
+ * are one unit. A savepoint wraps the writes so a failure anywhere leaves NO run and NO partial
+ * program behind even when the caller catches the error and carries on in the same transaction —
+ * a half-written program would be indistinguishable from a program someone meant to shorten.
  */
 export async function startRun(db: PoolClient, orgId: string, a: StartRunArgs): Promise<RunRow> {
-  const skillVersion = a.skillVersion ?? 1;
+  const program = normalizeProgram(a);
   const env = a.dataEnvironment ?? "PRODUCTION";
 
   // Org-scoped read of the pin. This is the repository's certified cross-org guard (explicit
@@ -111,45 +218,83 @@ export async function startRun(db: PoolClient, orgId: string, a: StartRunArgs): 
   if (plan[0].status === "SUPERSEDED" || plan[0].status === "CLOSED")
     throw new Error(`plan is ${plan[0].status}; start a run from the current plan instead`);
 
-  // Run identity. Deterministic, so a retried creation collapses onto the same run rather than
-  // opening a second execution of one decision.
-  const runKey = `run:${a.pursuitId}:${a.planRevisionId}:${a.skillId}:v${skillVersion}:${sha(canonical(a.args ?? {}))}`;
-  const { rows: existing } = await db.query<{ id: string; status: RunStatus; reason: string | null; correlation_id: string; plan_revision_id: string; basis_fingerprint: string; current_step_id: string | null }>(
-    `select id, status, reason, correlation_id, plan_revision_id, basis_fingerprint, current_step_id
-       from pursuit_runs where org_id = $1 and idempotency_key = $2`, [orgId, runKey]);
+  // ── RUN IDENTITY — the WHOLE ordered program, not one skill (P45-3 ruling 5) ──────────────────
+  // Hashing only the first skill+args would make two genuinely different programs that happen to
+  // start the same way collide, so a caller asking for [draft, send] could be handed a live run
+  // that only ever intended [draft]. The hash therefore covers every step's position, skill,
+  // version, canonical args and milestone key.
+  const runKey = `run:${a.pursuitId}:${a.planRevisionId}:prog:${programIdentity(program)}`;
+  const { rows: existing } = await db.query<{ id: string; status: RunStatus; reason: string | null; correlation_id: string; plan_revision_id: string; basis_fingerprint: string; current_step_id: string | null; n: string }>(
+    `select r.id, r.status, r.reason, r.correlation_id, r.plan_revision_id, r.basis_fingerprint, r.current_step_id,
+            (select count(*) from pursuit_run_steps st where st.org_id = r.org_id and st.run_id = r.id) as n
+       from pursuit_runs r where r.org_id = $1 and r.idempotency_key = $2`, [orgId, runKey]);
   if (existing[0]) {
+    // Same program, presented again: this is a retry of one request, so it replays onto the run
+    // that already exists rather than opening a second execution of one decision.
     return { id: existing[0].id, status: existing[0].status, reason: existing[0].reason,
              correlationId: existing[0].correlation_id, planRevisionId: existing[0].plan_revision_id,
-             basisFingerprint: existing[0].basis_fingerprint, currentStepId: existing[0].current_step_id };
+             basisFingerprint: existing[0].basis_fingerprint, currentStepId: existing[0].current_step_id,
+             stepCount: Number(existing[0].n), replayed: true };
   }
 
-  const { rows: run } = await db.query<{ id: string; correlation_id: string }>(
-    `insert into pursuit_runs
-       (org_id, pursuit_id, plan_id, plan_revision_id, governed_actor_id, initiated_by_user_id,
-        status, idempotency_key, basis_fingerprint, data_environment)
-     values ($1,$2,$3,$4,$5,$6,'PENDING',$7,$8,$9)
-     returning id, correlation_id`,
-    [orgId, a.pursuitId, a.planId, a.planRevisionId, a.governedActorId, a.initiatedByUserId ?? null,
-     runKey, rev[0].basis_fingerprint, env]);
-  const runId = run[0].id;
+  // A DIFFERENT program while one is still live. `pursuit_runs_one_live` would refuse the insert,
+  // but a raw unique violation cannot distinguish this from a retry — and the two deserve opposite
+  // answers. Told explicitly, never blurred into a replay of the run that already exists.
+  const { rows: live } = await db.query<{ id: string; status: RunStatus }>(
+    `select id, status from pursuit_runs
+      where org_id = $1 and pursuit_id = $2 and plan_revision_id = $3
+        and status not in ('COMPLETED','CANCELLED','TERMINAL_FAILURE') limit 1`,
+    [orgId, a.pursuitId, a.planRevisionId]);
+  if (live[0]) throw new ProgramConflictError(live[0].id, live[0].status);
 
-  const { rows: step } = await db.query<{ id: string }>(
-    `insert into pursuit_run_steps
-       (org_id, run_id, seq, skill_id, skill_version, args, status, max_attempts, milestone_key, idempotency_key)
-     values ($1,$2,1,$3,$4,$5,'PENDING',$6,$7,$8) returning id`,
-    [orgId, runId, a.skillId, skillVersion, JSON.stringify(a.args ?? {}), a.maxAttempts ?? 3,
-     a.milestoneKey ?? null, stepIdempotencyKey(runId, 1, a.skillId, skillVersion, a.args ?? {})]);
+  // ── ATOMIC CREATION ───────────────────────────────────────────────────────────────────────────
+  // Run + every step + the ledger entry, or none of it. The savepoint means that even a caller who
+  // catches the error and continues in the same transaction cannot observe a partial program.
+  await db.query("savepoint p45_3_program");
+  try {
+    const { rows: run } = await db.query<{ id: string; correlation_id: string }>(
+      `insert into pursuit_runs
+         (org_id, pursuit_id, plan_id, plan_revision_id, governed_actor_id, initiated_by_user_id,
+          status, idempotency_key, basis_fingerprint, data_environment)
+       values ($1,$2,$3,$4,$5,$6,'PENDING',$7,$8,$9)
+       returning id, correlation_id`,
+      [orgId, a.pursuitId, a.planId, a.planRevisionId, a.governedActorId, a.initiatedByUserId ?? null,
+       runKey, rev[0].basis_fingerprint, env]);
+    const runId = run[0].id;
 
-  await db.query(`update pursuit_runs set current_step_id = $2, status = 'READY', last_transition_at = now(), updated_at = now() where id = $1 and org_id = $3`,
-    [runId, step[0].id, orgId]);
+    // `seq` comes from the program's order — never from the caller — so the executed order is
+    // provably the order that was hashed into the run's identity.
+    const stepIds: string[] = [];
+    for (const st of program) {
+      const { rows: row } = await db.query<{ id: string }>(
+        `insert into pursuit_run_steps
+           (org_id, run_id, seq, skill_id, skill_version, args, status, max_attempts, milestone_key, idempotency_key)
+         values ($1,$2,$3,$4,$5,$6,'PENDING',$7,$8,$9) returning id`,
+        [orgId, runId, st.seq, st.skillId, st.skillVersion, JSON.stringify(st.args), st.maxAttempts,
+         st.milestoneKey, stepIdempotencyKey(runId, st.seq, st.skillId, st.skillVersion, st.args)]);
+      stepIds.push(row[0].id);
+    }
 
-  await ledger(db, orgId, a.pursuitId, runId, step[0].id, null, "RUN_STARTED",
-    { actorId: a.initiatedByUserId ?? null, governedActorId: a.governedActorId, env,
-      reason: `Run started for ${a.skillId}`,
-      before: null, after: { status: "READY", planRevisionId: a.planRevisionId, skillId: a.skillId, seq: 1 } });
+    await db.query(`update pursuit_runs set current_step_id = $2, status = 'READY', last_transition_at = now(), updated_at = now() where id = $1 and org_id = $3`,
+      [runId, stepIds[0], orgId]);
 
-  return { id: runId, status: "READY", reason: null, correlationId: run[0].correlation_id,
-           planRevisionId: a.planRevisionId, basisFingerprint: rev[0].basis_fingerprint, currentStepId: step[0].id };
+    const shape = program.map((st) => `${st.seq}:${st.skillId}`).join(" → ");
+    await ledger(db, orgId, a.pursuitId, runId, stepIds[0], null, "RUN_STARTED",
+      { actorId: a.initiatedByUserId ?? null, governedActorId: a.governedActorId, env,
+        reason: program.length === 1 ? `Run started for ${program[0].skillId}` : `Run started for a ${program.length}-step program: ${shape}`,
+        before: null,
+        after: { status: "READY", planRevisionId: a.planRevisionId, skillId: program[0].skillId, seq: 1,
+                 stepCount: program.length, program: program.map((st) => ({ seq: st.seq, skillId: st.skillId, skillVersion: st.skillVersion })) } });
+
+    await db.query("release savepoint p45_3_program");
+    return { id: runId, status: "READY", reason: null, correlationId: run[0].correlation_id,
+             planRevisionId: a.planRevisionId, basisFingerprint: rev[0].basis_fingerprint,
+             currentStepId: stepIds[0], stepCount: program.length, replayed: false };
+  } catch (e) {
+    await db.query("rollback to savepoint p45_3_program");
+    await db.query("release savepoint p45_3_program");
+    throw e;
+  }
 }
 
 /** One ledger row per runtime transition. There is no parallel runtime event log. */
@@ -176,7 +321,24 @@ async function ledger(
   });
 }
 
+/**
+ * Load the run AND serialize on it.
+ *
+ * `for update` is the whole point (P45-3 ruling 11): every caller of this function goes on to
+ * mutate the run, and with a multi-step program a run is touched repeatedly rather than once, so
+ * two concurrent advances could otherwise both select the same lowest-seq step. The lock makes the
+ * read-decide-write sequence a critical section per run; the compare-and-set in `transitionRun` is
+ * the second line of defence, and the step's own idempotency key is the third — even a lost race
+ * produces a duplicate ATTEMPT, never a duplicate EFFECT.
+ *
+ * This is a plain row lock held for the caller's transaction, NOT a lease: there is no `locked_at`
+ * claim, no expiry and no crash-recovery protocol, because a request-triggered INTERNAL_WRITE
+ * runtime needs none. FUTURE BOUNDARY: do not generalize a database transaction held across an
+ * EXTERNAL/provider action — that needs its own worker/claim design, and EXTERNAL_ACTION steps are
+ * out of scope here anyway.
+ */
 async function loadRun(db: PoolClient, orgId: string, runId: string) {
+  await db.query(`select id from pursuit_runs where id = $1 and org_id = $2 for update`, [runId, orgId]);
   const { rows } = await db.query<{
     id: string; pursuit_id: string; plan_id: string; plan_revision_id: string; governed_actor_id: string;
     initiated_by_user_id: string | null; status: RunStatus; current_step_id: string | null;
@@ -188,19 +350,33 @@ async function loadRun(db: PoolClient, orgId: string, runId: string) {
   return rows[0] ?? null;
 }
 
+/**
+ * Move the run, then record it. The UPDATE is a genuine COMPARE-AND-SET: `from` is no longer only
+ * the `before` value in the ledger, it is a predicate. Before P45-3 the run advanced once and the
+ * distinction was academic; a looping run makes it load-bearing, and a transition that silently
+ * overwrote a status someone else had just moved would be exactly the kind of lost update the
+ * ledger would then attest to as fact.
+ */
 async function transitionRun(
   db: PoolClient, orgId: string, runId: string, pursuitId: string, from: RunStatus, to: RunStatus,
   o: { reason: string; changeType: string; stepId?: string | null; invocationId?: string | null;
-       actorId?: string | null; governedActorId?: string | null; env: DataEnvironment; continuation?: unknown },
+       actorId?: string | null; governedActorId?: string | null; env: DataEnvironment; continuation?: unknown;
+       /** Advance the durable cursor to the next step. Omitted leaves `current_step_id` alone. */
+       currentStepId?: string | null; after?: Record<string, unknown> },
 ): Promise<void> {
-  await db.query(
+  const moveCursor = o.currentStepId !== undefined;
+  const res = await db.query(
     `update pursuit_runs set status = $2, reason = $3, last_transition_at = now(), updated_at = now(),
-            continuation = coalesce($4::jsonb, continuation), locked_at = null
-      where id = $1 and org_id = $5`,
-    [runId, to, o.reason, o.continuation === undefined ? null : JSON.stringify(o.continuation), orgId]);
+            continuation = coalesce($4::jsonb, continuation), locked_at = null,
+            current_step_id = case when $6::boolean then $7::uuid else current_step_id end
+      where id = $1 and org_id = $5 and status = $8`,
+    [runId, to, o.reason, o.continuation === undefined ? null : JSON.stringify(o.continuation), orgId,
+     moveCursor, o.currentStepId ?? null, from]);
+  if (res.rowCount !== 1)
+    throw new Error(`run transition conflict: ${runId} was no longer ${from} when moving to ${to}`);
   await ledger(db, orgId, pursuitId, runId, o.stepId ?? null, o.invocationId ?? null, o.changeType,
     { actorId: o.actorId, governedActorId: o.governedActorId, env: o.env, reason: o.reason,
-      before: { status: from }, after: { status: to } });
+      before: { status: from }, after: { status: to, ...(o.after ?? {}) } });
 }
 
 /** Human steering — a first-class transition, never an exception path. */
@@ -224,12 +400,34 @@ export async function resumeAfterPause(db: PoolClient, orgId: string, runId: str
   return "READY";
 }
 
+/**
+ * CANCELLED NEVER MEANS "NOTHING EXECUTED" (P45-3 ruling 9).
+ *
+ * Steps that already completed had real effects and they stay. P45-3 invents no compensation,
+ * rollback, undo or reverse skill — the runtime has no authority to synthesize an inverse the skill
+ * registry never declared. What it owes instead is an unambiguous record of WHERE the program
+ * stopped, so nobody reading a CANCELLED run later assumes it was a no-op.
+ */
+async function haltPoint(db: PoolClient, orgId: string, runId: string) {
+  const { rows } = await db.query<{ total: string; completed: string; last_completed_seq: number | null; halted_at_seq: number | null }>(
+    `select count(*)::text as total,
+            count(*) filter (where status = 'COMPLETED')::text as completed,
+            max(seq) filter (where status = 'COMPLETED') as last_completed_seq,
+            min(seq) filter (where status <> 'COMPLETED') as halted_at_seq
+       from pursuit_run_steps where org_id = $1 and run_id = $2`, [orgId, runId]);
+  const r = rows[0];
+  return { stepsTotal: Number(r?.total ?? 0), stepsCompleted: Number(r?.completed ?? 0),
+           lastCompletedSeq: r?.last_completed_seq ?? null, haltedAtSeq: r?.halted_at_seq ?? null,
+           effectsRetained: Number(r?.completed ?? 0) > 0 };
+}
+
 export async function cancelRun(db: PoolClient, orgId: string, runId: string, reason: string, userId?: string | null): Promise<RunStatus> {
   const run = await loadRun(db, orgId, runId);
   if (!run) throw new Error("run not found in this org");
   if (TERMINAL.has(run.status)) return run.status;
+  const halt = await haltPoint(db, orgId, runId);
   await transitionRun(db, orgId, runId, run.pursuit_id, run.status, "CANCELLED",
-    { reason, changeType: "RUN_CANCELLED", stepId: run.current_step_id, actorId: userId, governedActorId: run.governed_actor_id, env: run.data_environment });
+    { reason, changeType: "RUN_CANCELLED", stepId: run.current_step_id, actorId: userId, governedActorId: run.governed_actor_id, env: run.data_environment, after: halt });
   await db.query(`update pursuit_run_steps set status = 'CANCELLED', updated_at = now() where org_id = $1 and run_id = $2 and status not in ('COMPLETED','CANCELLED','TERMINAL_FAILURE')`, [orgId, runId]);
   return "CANCELLED";
 }
@@ -250,14 +448,24 @@ async function cancelIfSuperseded(db: PoolClient, orgId: string, run: NonNullabl
     [run.plan_id, orgId, run.plan_revision_id]);
   const superseded = !rows[0] || rows[0].plan_status === "SUPERSEDED" || rows[0].plan_status === "CLOSED" || !rows[0].is_live_revision;
   if (!superseded) return false;
+  const halt = await haltPoint(db, orgId, run.id);
   await transitionRun(db, orgId, run.id, run.pursuit_id, run.status, "CANCELLED",
     { reason: "PLAN_SUPERSEDED", changeType: "RUN_CANCELLED", stepId: run.current_step_id,
-      governedActorId: run.governed_actor_id, env: run.data_environment });
+      governedActorId: run.governed_actor_id, env: run.data_environment, after: halt });
   await db.query(`update pursuit_run_steps set status = 'CANCELLED', updated_at = now() where org_id = $1 and run_id = $2 and status not in ('COMPLETED','CANCELLED','TERMINAL_FAILURE')`, [orgId, run.id]);
   return true;
 }
 
-export interface ExecuteResult { runStatus: RunStatus; stepStatus: string; invocationId: string | null; reason: string | null; dispatched: boolean }
+export interface ExecuteResult {
+  runStatus: RunStatus; stepStatus: string; invocationId: string | null; reason: string | null; dispatched: boolean;
+  /** The seq this call acted on, or null when no step was selected. */
+  stepSeq?: number | null;
+  /** Steps still not COMPLETED after this call. 0 means the program finished; null means unknown. */
+  remainingSteps?: number | null;
+}
+
+/** Statuses a step may legitimately be executed from. Anything else halts the program where it is. */
+const STEP_ELIGIBLE: ReadonlySet<string> = new Set(["PENDING", "READY", "RUNNING", "RETRYABLE_FAILURE"]);
 
 /**
  * Request-triggered execution of the run's next eligible step.
@@ -280,6 +488,11 @@ export async function resumeRun(db: PoolClient, orgId: string, runId: string, ac
   if (await cancelIfSuperseded(db, orgId, run))
     return { runStatus: "CANCELLED", stepStatus: "CANCELLED", invocationId: null, reason: "PLAN_SUPERSEDED", dispatched: false };
 
+  // ── WHICH STEP IS NEXT — the rule that makes skipping structurally impossible ─────────────────
+  // Progress is the LOWEST-SEQ STEP THAT IS NOT COMPLETED, whatever its status. Selecting on
+  // "eligible statuses" instead would quietly step OVER a BLOCKED or TERMINAL_FAILURE step and run
+  // step 3 on the assumption that step 2 happened. The run-level guards above already refuse those
+  // states, but a program's ordering must not depend on a second guard remembering to be correct.
   const { rows: steps } = await db.query<{
     id: string; seq: number; skill_id: string; skill_version: number; args: Record<string, unknown>;
     status: string; attempt: number; max_attempts: number; next_attempt_at: Date | null;
@@ -287,15 +500,27 @@ export async function resumeRun(db: PoolClient, orgId: string, runId: string, ac
   }>(`select id, seq, skill_id, skill_version, args, status, attempt, max_attempts, next_attempt_at,
              idempotency_key, milestone_key
         from pursuit_run_steps
-       where org_id = $1 and run_id = $2 and status in ('PENDING','READY','RUNNING','RETRYABLE_FAILURE')
+       where org_id = $1 and run_id = $2 and status <> 'COMPLETED'
        order by seq asc, id asc limit 1`, [orgId, runId]);
 
   if (!steps[0]) {
+    // Every step in the program is COMPLETED. (A one-step run reaches COMPLETED through the
+    // post-dispatch path below, not here; this is the terminator for a resume issued after the
+    // program already finished, and for a program whose last step completed elsewhere.)
     await transitionRun(db, orgId, runId, run.pursuit_id, run.status, "COMPLETED",
       { reason: "all steps complete", changeType: "RUN_COMPLETED", governedActorId: run.governed_actor_id, env: run.data_environment });
-    return { runStatus: "COMPLETED", stepStatus: "COMPLETED", invocationId: null, reason: null, dispatched: false };
+    return { runStatus: "COMPLETED", stepStatus: "COMPLETED", invocationId: null, reason: null, dispatched: false, stepSeq: null, remainingSteps: 0 };
   }
   const step = steps[0];
+
+  // The earliest unfinished step is in a state this call cannot act on — halt here rather than
+  // looking further down the program. A blocked or exhausted step is not a reason to run the NEXT
+  // one; it is a reason to stop. (P45-3 introduces no BLOCKED recovery path: a BLOCKED run is not
+  // resumable today, and redefining that is deliberately not part of this slice.)
+  if (!STEP_ELIGIBLE.has(step.status))
+    return { runStatus: run.status, stepStatus: step.status, invocationId: null,
+             reason: `step ${step.seq} is ${step.status} — the program cannot advance past it`,
+             dispatched: false, stepSeq: step.seq, remainingSteps: null };
 
   if (step.next_attempt_at && step.next_attempt_at.getTime() > Date.now())
     return { runStatus: run.status, stepStatus: step.status, invocationId: null, reason: "backoff not elapsed", dispatched: false };
@@ -321,9 +546,20 @@ export async function resumeRun(db: PoolClient, orgId: string, runId: string, ac
   const needsApproval = policy[0]
     ? effectiveApprovalRequired(step.skill_id, policy[0].approval_required === true, policy[0].override)
     : false;
-  // `continuation.approvedRequestId` is set only by a committed APPROVED decision, so an approved
-  // run passes straight through rather than re-requesting on every resume.
-  const alreadyApproved = (run.continuation as { approvedRequestId?: string } | null)?.approvedRequestId != null;
+  // ONE APPROVAL RELEASES EXACTLY ONE STEP (P45-3 ruling 8).
+  //
+  // Slice 2 answered "has this run been approved?" from `continuation.approvedRequestId`, which is
+  // RUN-scoped. With one step that was the same question; with a program it is not — step 3 would
+  // have sailed through the gate on the approval a human gave for step 2, which is precisely the
+  // cascade the governance model forbids. The question is now asked of the STEP, and asked of
+  // `pursuit_run_approvals`, which is append-only and which `app_rw` cannot rewrite — a strictly
+  // stronger source than the run's mutable continuation. A later approval-required step parks
+  // independently even when it names the very same skill.
+  const { rows: approved } = await db.query<{ ok: boolean }>(
+    `select true as ok from pursuit_run_approvals
+      where org_id = $1 and run_id = $2 and run_step_id = $3 and decision = 'APPROVED' limit 1`,
+    [orgId, runId, step.id]);
+  const alreadyApproved = approved.length > 0;
   if (needsApproval && !alreadyApproved) {
     const requestId = await requestApproval(db, orgId, {
       pursuitId: run.pursuit_id, planRevisionId: run.plan_revision_id, runId, runStepId: step.id,
@@ -337,7 +573,7 @@ export async function resumeRun(db: PoolClient, orgId: string, runId: string, ac
               last_transition_at = now(), updated_at = now()
         where id = $1 and org_id = $4`, [runId, step.id, `awaiting approval (${requestId})`, orgId]);
     return { runStatus: "WAITING_FOR_APPROVAL", stepStatus: "WAITING_FOR_APPROVAL", invocationId: null,
-             reason: `awaiting approval (${requestId})`, dispatched: false };
+             reason: `awaiting approval (${requestId})`, dispatched: false, stepSeq: step.seq, remainingSteps: null };
   }
 
   // ── BEFORE DISPATCH: persist RUNNING with this attempt's identity ──────────────────────────────
@@ -386,13 +622,49 @@ export async function resumeRun(db: PoolClient, orgId: string, runId: string, ac
      ok ? null : (res.reason ?? res.status), ok ? null : (rejected ? "GOVERNANCE" : "TRANSIENT"),
      backoffMs / 1000]);
 
-  const runStatus: RunStatus = ok ? "COMPLETED" : rejected ? "BLOCKED"
-    : stepStatus === "TERMINAL_FAILURE" ? "TERMINAL_FAILURE" : "RETRYABLE_FAILURE";
-  await transitionRun(db, orgId, runId, run.pursuit_id, "RUNNING", runStatus,
-    { reason: ok ? `${step.skill_id} executed` : (res.reason ?? res.status),
-      changeType: ok ? "RUN_COMPLETED" : rejected ? "RUN_BLOCKED" : "RUN_FAILED",
-      stepId: step.id, invocationId: res.invocationId, governedActorId: run.governed_actor_id,
-      env: run.data_environment, continuation: { seq: step.seq, attempt, stepId: step.id, lastStatus: stepStatus } });
+  // ── ADVANCE OR FINISH — the one expression that used to assume a single step ──────────────────
+  // Slice 1 read `ok ? "COMPLETED"`, so the first success ended the run no matter what else the
+  // program held. Progress is now decided by what is actually left: the step just written is
+  // COMPLETED, so anything this query returns is genuinely outstanding work.
+  const { rows: rest } = await db.query<{ id: string; seq: number }>(
+    `select id, seq from pursuit_run_steps
+      where org_id = $1 and run_id = $2 and status <> 'COMPLETED'
+      order by seq asc, id asc`, [orgId, runId]);
+  const remaining = rest.length;
+  const next = ok ? rest[0] : undefined;
 
-  return { runStatus, stepStatus, invocationId: res.invocationId, reason: ok ? null : (res.reason ?? res.status), dispatched: true };
+  const runStatus: RunStatus = ok ? (next ? "READY" : "COMPLETED")
+    : rejected ? "BLOCKED"
+    : stepStatus === "TERMINAL_FAILURE" ? "TERMINAL_FAILURE" : "RETRYABLE_FAILURE";
+
+  // THE AUDIT CONTRACT (ruling 2). An intermediate success emits RUN_STEP_COMPLETED; the final
+  // success emits RUN_COMPLETED and NOT both. A one-step run therefore still emits exactly
+  // RUN_STARTED → RUN_COMPLETED, unchanged from Slice 1.
+  const changeType = ok ? (next ? "RUN_STEP_COMPLETED" : "RUN_COMPLETED")
+    : rejected ? "RUN_BLOCKED" : "RUN_FAILED";
+
+  await transitionRun(db, orgId, runId, run.pursuit_id, "RUNNING", runStatus,
+    { reason: ok
+        ? (next ? `${step.skill_id} executed (step ${step.seq}); next is step ${next.seq}` : `${step.skill_id} executed`)
+        : (res.reason ?? res.status),
+      changeType,
+      stepId: step.id, invocationId: res.invocationId, governedActorId: run.governed_actor_id,
+      env: run.data_environment,
+      // Advance the durable cursor with the transition, in the same compare-and-set, so a crash can
+      // never leave the run pointing at a step it has already finished. Replacing the continuation
+      // wholesale also drops Slice 2's `approvedRequestId`, which must never outlive its step.
+      ...(next ? { currentStepId: next.id } : {}),
+      continuation: next
+        ? { seq: next.seq, attempt: 0, stepId: next.id, lastCompletedSeq: step.seq, lastStatus: stepStatus }
+        : { seq: step.seq, attempt, stepId: step.id, lastStatus: stepStatus },
+      after: { seq: step.seq, skillId: step.skill_id, stepStatus, remainingSteps: remaining,
+               ...(next ? { nextSeq: next.seq } : {}) } });
+
+  // ONE CALL ADVANCES AT MOST ONE CONSEQUENTIAL STEP (ruling 6). The remaining program is NOT
+  // drained here. Every step boundary is a fresh authority boundary — eligibility, permission, the
+  // capability grant, the pin and the approval policy are all re-derived on the next call — and a
+  // loop would let one request carry authority the caller was never separately granted.
+  return { runStatus, stepStatus, invocationId: res.invocationId,
+           reason: ok ? null : (res.reason ?? res.status), dispatched: true,
+           stepSeq: step.seq, remainingSteps: remaining };
 }

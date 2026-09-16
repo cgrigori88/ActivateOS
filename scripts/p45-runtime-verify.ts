@@ -188,10 +188,17 @@ async function main(): Promise<void> {
 
   // ── 4. Replay must not produce a second consequential mutation ──────────────────────────────────
   const after1 = await touchCount(db, f.orgId);
+  // P45-3: run identity now hashes the WHOLE canonical program — position, skill, version, args AND
+  // milestone key. This replay must therefore present the IDENTICAL program, milestoneKey included.
+  // It previously omitted it and still replayed, because the old key hashed only skill + args; under
+  // the stronger rule that omission is a materially different program, which is the point of the
+  // rule. (Presented while the first run is still live it is a ProgramConflictError; presented after
+  // it COMPLETED, as here, it would simply be a new program — either way, not a replay.)
   const replayRun = await txStart(db, f.orgId, {
     pursuitId: f.pursuitId, planId: f.planId, planRevisionId: f.revisionId,
     governedActorId: f.actorId, initiatedByUserId: f.principal,
     skillId: SKILL, args: { campaign: f.campaignName, name: "P45 draft", subject: "Hello", body: "Body" },
+    milestoneKey: "touch_drafted",
   });
   check("10: replaying the same decision returns the SAME run (run-level idempotency)", replayRun.id === run.id, `${replayRun.id === run.id}`);
   const replayExec = await txResume(db, f.orgId, run.id, actorFor(f));

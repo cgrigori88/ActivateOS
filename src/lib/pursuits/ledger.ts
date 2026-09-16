@@ -41,6 +41,10 @@ export type ChangeType =
   // so it belongs in the universal ledger rather than a parallel runtime log.
   | "RUN_STARTED" | "RUN_PAUSED" | "RUN_RESUMED" | "RUN_COMPLETED" | "RUN_FAILED"
   | "RUN_BLOCKED" | "RUN_CANCELLED"
+  // P45-3. A step succeeded and the run CONTINUES. The final successful step emits RUN_COMPLETED
+  // instead, never both — so a completed program has (successful steps - 1) of these, and a
+  // one-step run still emits exactly RUN_STARTED -> RUN_COMPLETED as it always has (0111).
+  | "RUN_STEP_COMPLETED"
   // P45-2 approval lifecycle (0110). REQUESTED/GRANTED/REJECTED are the human path; INVALIDATED is
   // system-governed — authority lapsed while the request waited.
   | "APPROVAL_REQUESTED" | "APPROVAL_GRANTED" | "APPROVAL_REJECTED" | "APPROVAL_INVALIDATED";
