@@ -92,11 +92,24 @@ export async function expectFailure(
   c.add(`${name} — transaction still usable after the expected failure`, guard?.v === 1);
 }
 
-/** The sanitized shape of a grant insert used by the constraint controls. Column list is fixed. */
+/**
+ * The grant insert used by the constraint controls. Column list is fixed; nothing here is caller
+ * supplied.
+ *
+ * STATUS IS 'offered', AND THAT IS ITSELF A GOVERNED RULE. The `h1b_consent_guard` trigger fires
+ * only when `current_user = 'app_rw'` and permits an INSERT solely as an OFFER from the caller's own
+ * organization — acceptance is the recipient's separate act. So `app_rw` cannot mint an
+ * already-accepted grant at all, and a control that tried to would be refused by the guard (42501)
+ * before any 0112 CHECK was ever reached, proving nothing about the CHECK. The lifecycle rule is
+ * asserted on its own below.
+ */
 const INSERT_GRANT = `insert into context_grants
     (pursuit_id, from_org_id, to_org_id, grant_kind, governed_information_classes, information_classes,
      purpose, purpose_code, scope, status, retention_class, expires_at, onward_sharing_allowed, delegation_allowed)
-  values ($1,$2,$3,$4,$5,$6,'p6ig-hosted-gate',$7,'{}'::jsonb,'accepted',$8,$9,false,false)`;
+  values ($1,$2,$3,$4,$5,$6,'p6ig-hosted-gate',$7,'{}'::jsonb,'offered',$8,$9,false,false)`;
+
+/** Same column list, but status 'accepted' — used only to prove the guard refuses it. */
+const INSERT_GRANT_ACCEPTED = INSERT_GRANT.replace("'offered'", "'accepted'");
 
 // ── D — AUTHORITY PRECONDITIONS ─────────────────────────────────────────────────────────────────
 
@@ -210,6 +223,12 @@ export async function runConstraints(db: PoolClient, c: Checks, f: Fixture): Pro
   await db.query(`release savepoint ${sp}`);
   if (inserted) c.add("POSITIVE CONTROL — app_rw may insert a well-formed machine-governed grant", true, "inserted then rolled back");
   c.add("POSITIVE CONTROL — the insert left nothing behind", true, "rolled back to savepoint");
+
+  // ── THE GOVERNED LIFECYCLE, enforced against app_rw itself ──
+  await expectFailure(db, c, "app_rw may not mint an ALREADY-ACCEPTED grant — acceptance is the recipient's act",
+    INSERT_GRANT_ACCEPTED, [f.pursuit, f.a, f.b, "DATA", G, null, "VALUE_CASE", "PURSUIT_LIFETIME", null], { code: "42501" });
+  await expectFailure(db, c, "app_rw may not offer a grant FROM an organization that is not the caller",
+    INSERT_GRANT, [f.pursuit, f.b, f.c, "DATA", G, null, "VALUE_CASE", "PURSUIT_LIFETIME", null], { code: "42501" });
 
   const F = (n: string, params: unknown[], wants: { code?: string; constraint?: RegExp }) =>
     expectFailure(db, c, n, INSERT_GRANT, params, wants);
