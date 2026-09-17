@@ -43,6 +43,20 @@ const nextConfig = {
           // 180 days, no includeSubDomains — other subdomains of the apex are
           // not ours to commit to HTTPS.
           { key: "Strict-Transport-Security", value: "max-age=15552000" },
+          // ── P6-IG: recipient-specific projections must be NON-SHARED and NON-STORABLE. ──
+          // `force-dynamic` already disables Next's route and data caches, so governance is
+          // re-evaluated per request — but the response was advertising itself as `public`, which
+          // authorizes a shared cache to STORE a confidential intercompany projection. Read-time
+          // revocation is not complete until a revoked recipient cannot retrieve a previously
+          // authorized response from a shared or server cache.
+          //
+          // `Vary: Cookie` is correct here because BOTH credential dimensions are cookies, traced:
+          // Supabase session cookies (src/lib/auth/supabase.ts) and SCOPE_COOKIE
+          // (src/lib/scope/server.ts), which changes what the projection contains. There is no auth
+          // header and no query-parameter credential. It is defense-in-depth; `no-store` is the
+          // control that actually matters.
+          { key: "Cache-Control", value: "private, no-store" },
+          { key: "Vary", value: "Cookie" },
         ],
       },
     ];

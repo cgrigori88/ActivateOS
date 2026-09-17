@@ -93,20 +93,45 @@ const SELECT = `select contribution_id, pursuit_id, source_org_id, contribution_
   disclosure_class, sensitivity_class, raw_stored, derived_only, revocation_state, observed_at, contributed_at
   from context_contributions`;
 
-/** All contributions on a pursuit (provenance always visible via can_see_pursuit). */
-export async function contributionsForPursuit(db: PoolClient, pursuitId: string): Promise<ContributionView[]> {
+/**
+ * ── RAW-ROW FIREWALL (P6-IG) ────────────────────────────────────────────────────────────────────
+ *
+ * RLS ELIGIBILITY IS NOT DISCLOSURE AUTHORIZATION. A `context_contributions` row admitted because
+ * the caller participates in the pursuit is an INTERNAL FEDERATION OBJECT. It becomes recipient-safe
+ * only after: grant → classification → disclosure resolution → recipient projection.
+ *
+ * The two readers below return `semanticMeaning` and `sensitivityClass` RAW — no `resolveDisclosure`.
+ * That was not a live exposure only because nothing recipient-facing called them, which is vacuous
+ * safety: the moment one were wired to a page it would emit every participant's contributed meaning
+ * regardless of classification.
+ *
+ * They are therefore renamed with an explicit `unsafe_` prefix and marked owner/verifier-only, so a
+ * recipient-facing caller cannot reach for one by accident or by autocomplete. The recipient-safe
+ * path is `getPursuitFederationView`, which applies the disclosure ladder. A source guard in the
+ * P6-IG suite fails the build if an `unsafe_` reader is referenced from `src/app/**`.
+ */
+
+/** OWNER/VERIFIER ONLY — returns RAW contributed meaning. Never call from a recipient-facing path. */
+export async function unsafe_contributionsForPursuit(db: PoolClient, pursuitId: string): Promise<ContributionView[]> {
   const { rows } = await db.query(`${SELECT} where pursuit_id = $1 order by contributed_at desc`, [pursuitId]);
   return rows.map(view);
 }
 
-/** Only ACTIVE, unexpired contributions — the set recompute/disclosure may USE (R28). */
-export async function liveContributionsForPursuit(db: PoolClient, pursuitId: string, asOf?: Date): Promise<ContributionView[]> {
+/**
+ * OWNER/VERIFIER ONLY — RAW. The set recompute/disclosure may USE (R28); it is an INPUT to
+ * governance, never an output to a recipient.
+ */
+export async function unsafe_liveContributionsForPursuit(db: PoolClient, pursuitId: string, asOf?: Date | null): Promise<ContributionView[]> {
+  // ONE CLOCK. This predicate used to compare `valid_until` against a JavaScript `new Date()` and
+  // `expires_at` against `now()` — two clocks in one WHERE, the application one drifting freely
+  // from the transaction's. Live evaluation now stays in SQL at full precision; an explicit `asOf`
+  // remains available for a deliberate as-of query (see `governanceClock`).
   const { rows } = await db.query(
     `${SELECT} where pursuit_id = $1 and revocation_state = 'ACTIVE'
-       and (valid_until is null or valid_until > $2)
-       and (expires_at is null or expires_at > now())
+       and (valid_until is null or valid_until > coalesce($2::timestamptz, transaction_timestamp()))
+       and (expires_at is null or expires_at > coalesce($2::timestamptz, transaction_timestamp()))
      order by contributed_at desc`,
-    [pursuitId, asOf ?? new Date()],
+    [pursuitId, asOf ?? null],
   );
   return rows.map(view);
 }

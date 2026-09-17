@@ -10,7 +10,7 @@
  */
 import { Pool, type PoolClient } from "pg";
 import { assertDisposableDatabase } from "./verify-guard";
-import { recordContribution, revokeContribution, contributionsForPursuit, liveContributionsForPursuit, linkFactToContribution, impliesRawCustody } from "../src/lib/pursuits/federation/contributions";
+import { recordContribution, revokeContribution, unsafe_contributionsForPursuit, unsafe_liveContributionsForPursuit, linkFactToContribution, impliesRawCustody } from "../src/lib/pursuits/federation/contributions";
 import { addParticipant, acceptParticipation } from "../src/lib/pursuits/federation/participation";
 import { buildFederationViewer, allowlistKeysFor } from "../src/lib/pursuits/federation/grants";
 import { resolveDisclosure, type Disclosable } from "../src/lib/pursuits/federation/disclosure";
@@ -52,13 +52,13 @@ async function main() {
     semanticMeaning: "Recent distributor transaction adjacency strongly supports CDW",
     disclosureClass: "PARTICIPANT_SHARED", sensitivityClass: "CONFIDENTIAL", purpose: "Globex co-sell", isSimulated: true,
   }));
-  const fed = await asOrg(s.vendor, (db) => contributionsForPursuit(db, s.hero));
+  const fed = await asOrg(s.vendor, (db) => unsafe_contributionsForPursuit(db, s.hero));
   const fedRow = fed.find((c) => c.contributionId === fedId)!;
   check("FEDERATED contribution recorded with raw_stored=false / derived_only=true", fedRow.rawStored === false && fedRow.derivedOnly === true);
   check("provenance retained: contribution knows its source org", fedRow.sourceOrgId === s.dist);
   // RAW contribution keeps raw
   const rawId = await asOrg(s.vendor, (db) => recordContribution(db, { pursuitId: s.hero, sourceOrgId: s.vendor, mode: "RAW", semanticMeaning: "first-party CRM", purpose: "x" }));
-  check("RAW contribution stores raw", (await asOrg(s.vendor, (db) => contributionsForPursuit(db, s.hero))).find((c) => c.contributionId === rawId)!.rawStored === true);
+  check("RAW contribution stores raw", (await asOrg(s.vendor, (db) => unsafe_contributionsForPursuit(db, s.hero))).find((c) => c.contributionId === rawId)!.rawStored === true);
   check("all 5 contribution modes accepted", (await asOrg(s.vendor, async (db) => {
     for (const m of ["DERIVED", "ASSERTED", "AGGREGATED"] as const) await recordContribution(db, { pursuitId: s.hero, sourceOrgId: s.vendor, mode: m, purpose: "x" });
     return true;
@@ -68,19 +68,19 @@ async function main() {
   console.log("E3-C.2  Provenance retained, disclosure controlled (R3)");
   // The contribution ROW (provenance) is visible to the participant via can_see_pursuit,
   // but the VALUE disclosure is governed separately by the E3-B engine.
-  const distSees = await asOrg(s.dist, (db) => contributionsForPursuit(db, s.hero));
+  const distSees = await asOrg(s.dist, (db) => unsafe_contributionsForPursuit(db, s.hero));
   check("active participant can see the contribution edge (provenance)", distSees.some((c) => c.contributionId === fedId));
   const distViewer = await asOrg(s.dist, (db) => buildFederationViewer(db, s.dist, s.hero));
   const item: Disclosable<string> = { ownerOrgId: s.dist, audience: "PARTICIPANT_SHARED", value: fedRow.semanticMeaning ?? "" };
   check("value disclosure is governed independently of row visibility", resolveDisclosure(item, distViewer).visibility === "EXACT");
   // outsider cannot even see the contribution row
-  check("non-participant outsider sees no contributions", (await asOrg(s.outsider, (db) => contributionsForPursuit(db, s.hero))).length === 0);
+  check("non-participant outsider sees no contributions", (await asOrg(s.outsider, (db) => unsafe_contributionsForPursuit(db, s.hero))).length === 0);
 
   // ---- Revocation stops future USE, preserves history (R28) ----
   console.log("E3-C.3  Revocation (R28)");
   await asOrg(s.dist, (db) => revokeContribution(db, fedId));
-  const liveAfter = await asOrg(s.vendor, (db) => liveContributionsForPursuit(db, s.hero));
-  const allAfter = await asOrg(s.vendor, (db) => contributionsForPursuit(db, s.hero));
+  const liveAfter = await asOrg(s.vendor, (db) => unsafe_liveContributionsForPursuit(db, s.hero));
+  const allAfter = await asOrg(s.vendor, (db) => unsafe_contributionsForPursuit(db, s.hero));
   check("revoked contribution excluded from the live (usable) set", !liveAfter.some((c) => c.contributionId === fedId));
   check("revoked contribution history preserved (still listed, state REVOKED)", allAfter.find((c) => c.contributionId === fedId)?.revocationState === "REVOKED");
 
