@@ -15,8 +15,26 @@ import { Pool } from "pg";
  * builds and cross-checked against `audit/DEMO-ITINERARY.md`, and it is emitted
  * as stable JSON that can be diffed between rebuilds.
  *
- *   npx tsx scripts/demo-manifest.ts              # JSON to stdout
- *   npx tsx scripts/demo-manifest.ts --digest     # just the content digest
+ *   npx tsx scripts/demo-manifest.ts                 # JSON to stdout
+ *   npx tsx scripts/demo-manifest.ts --digest        # the STABLE digest (time-invariant state)
+ *   npx tsx scripts/demo-manifest.ts --digest=observational   # stable state + observational fields
+ *
+ * STABLE vs OBSERVATIONAL — READ THIS BEFORE USING A DIGEST AS A GATE.
+ *
+ * `days_since_activity` is `extract(day from now() - updated_at)`: it moves when the CLOCK moves,
+ * with nothing written. On 2026-09-17 that produced a manifest-digest change between two hosted
+ * snapshots while every table fingerprint, the world hash, the business hash and the security hash
+ * were identical and the last write was three days old — elapsed time read as if it were mutation.
+ *
+ * So the digest is split at its source:
+ *   • `stableDigest`       — time-invariant canonical state ONLY. This is the zero-mutation oracle.
+ *   • `observationalDigest`— stable state PLUS clock-derived fields. Expected to move with time.
+ *   • `observational`      — the clock-derived values themselves, reported so a change can be
+ *                            classified rather than guessed at.
+ *
+ * `--digest` returns the STABLE one, because that is what every existing caller means by it.
+ * The product keeps `days_since_activity`: it is useful demo data, and the certification semantics
+ * were what needed fixing, not the world.
  *
  * WHAT IS AND IS NOT IN IT. Identifiers and timestamps are excluded on purpose:
  * they are freshly generated on every build, so including them would make the
@@ -147,12 +165,34 @@ async function build() {
     counts[t] = await one(`select count(*)::text v from ${t}`);
   }
 
-  const world = { tenants, heroes, figures, counts };
-  // The digest covers the world as declared above, so it moves when the demo
-  // moves and stays put when only ids and timestamps change.
-  const digest = createHash("sha256").update(JSON.stringify(world)).digest("hex").slice(0, 16);
-  return { generator: "scripts/demo-manifest.ts", digest, ...world };
+  // SPLIT AT THE SOURCE. `days_since_activity` is lifted out of each hero row into the
+  // observational block, so the stable world cannot silently contain a clock reading.
+  const stableHeroes = heroes.map(({ days_since_activity: _drop, ...rest }) => rest);
+  const observational = {
+    daysSinceActivity: heroes.map((h) => ({ account: h.account, deal: h.deal, days: h.days_since_activity })),
+  };
+
+  const stableWorld = { tenants, heroes: stableHeroes, figures, counts };
+  const sha = (v: unknown) => createHash("sha256").update(JSON.stringify(v)).digest("hex").slice(0, 16);
+  const stableDigest = sha(stableWorld);
+  const observationalDigest = sha({ ...stableWorld, observational });
+
+  return {
+    generator: "scripts/demo-manifest.ts",
+    // `digest` stays the name every existing caller uses, and now means the STABLE one.
+    digest: stableDigest,
+    stableDigest,
+    observationalDigest,
+    observedAt: new Date().toISOString(),
+    ...stableWorld,
+    observational,
+  };
 }
 
 const manifest = await build().finally(() => pool.end());
-console.log(process.argv.includes("--digest") ? manifest.digest : JSON.stringify(manifest, null, 2));
+const mode = process.argv.find((a) => a.startsWith("--digest"));
+console.log(
+  mode === "--digest=observational" ? manifest.observationalDigest
+  : mode ? manifest.stableDigest
+  : JSON.stringify(manifest, null, 2),
+);
