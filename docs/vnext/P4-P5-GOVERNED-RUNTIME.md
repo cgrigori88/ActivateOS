@@ -1122,6 +1122,22 @@ functions 149, roles 32, RLS+FORCE 160 — all unchanged · `governed_skills` 18
 hash · runtime and approval tables **empty** · organizations 3 · send 0/0/0/0/0 · **re-applying 0111
 is a byte-identical no-op** that does not double-add the member.
 
+### ATTRIBUTION OF RECORD — the business-data movement was D-P1's writer, NOT 0111
+
+> **Owner-accepted attribution (2026-09-17).** The business-data movement
+> `9e1fbd166fe06450 → 6db00c6841c51fc3` during this gate has **one cause: D-P1's read-triggered
+> canonical `pipeline_snapshots` writer**, which wrote the row for `taken_on = 2026-09-17` when this
+> gate's own flag-off crawl viewed `/pipeline` on a new calendar day.
+>
+> **It must not be attributed to migration 0111.** 0111 adds one `change_ledger` CHECK member and
+> touches `pg_constraint` only; it was applied at `01:50:38Z`, *after* the crawls that caused the
+> write; and the world fingerprint is table contents plus the table set, so a CHECK constraint
+> cannot move it. Independently confirmed locally before the gate: reverting only the 0111 CHECK
+> value on a clone gave **identical digests and 0 differing tables**.
+>
+> Any future gate that views `/pipeline` on a day with no snapshot row will reproduce this, by
+> design. It is correct canonical history, not residue, and it is not a migration effect.
+
 ### The one undeclared movement — found, chased and attributed
 
 My declaration said business-data must not move. **It moved**: `9e1fbd166fe06450` →
