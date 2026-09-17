@@ -640,6 +640,37 @@ P5 or P6.
 
 ---
 
+## 16A. Standing test invariant (adopted after Slices 1–2)
+
+> **Certification assertions must target semantic structure or observable behaviour — never
+> incidental prose, comments, formatting, source-string spelling or exact call-site text.**
+
+This is not style advice. Across P6-IG and P7 Slices 1–2, **eight** assertions failed while the
+product was correct, every one because the check matched *text* rather than *structure*:
+
+| What the assertion matched | What it actually caught |
+|---|---|
+| registry **prose** for "pertinence" | the metric's own *"not a pertinence signal"* denial |
+| `next.config.mjs` **text** for `Vary: Cookie` | the config file agreeing with itself while the wire disagreed |
+| the route's **exact call text** | a legitimate Slice 2 change to the same call |
+| a bare word **"projection"** | the page's own prose, *"a governed projection over…"* |
+| an operator **regex** for arithmetic | string concatenation inside a provenance sentence |
+| `/\bjoin\b/` | JavaScript's `Array.prototype.join` |
+| an **undecoded** apostrophe | correct output rendered as `&#x27;` |
+| a **one-hop** redirect expectation | a correct two-hop chain through trailing-slash normalization |
+
+Each cost a cycle and, worse, each was a moment where a *green* run would have meant nothing. A
+check that can fail for a reason unrelated to the property it names can also **pass** for one.
+
+**How to apply.** Assert on: registered keys and their values; response **bytes**; parsed structure;
+a function's arity or signature; observed HTTP behaviour; digests of normalized output. Do not assert
+on: a sentence, a comment, a variable name, a literal call-site expression, or a regex over source
+that a refactor would change. Where only source structure is available — a guard proving a module
+does not import a writer — strip comments first and match a *shape* (`fwd.delete(X)` before
+`fwd.set(X)`), not a spelling.
+
+---
+
 ## 17. What this contract forbids, in one list
 
 For review convenience — every prohibition above, collected:
