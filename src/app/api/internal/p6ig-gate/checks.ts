@@ -118,8 +118,23 @@ export async function proveAuthority(db: PoolClient, c: Checks): Promise<boolean
   const create = await one<{ v: boolean }>(db, `select has_schema_privilege('public', 'CREATE') as v`);
   const env = await one<{ environment: string; is_synthetic: boolean }>(db,
     `select environment, is_synthetic from environment_identity`);
-  const mig = await one<{ n: number; has112: boolean }>(db,
-    `select count(*)::int as n, bool_or(filename like '0112%') as has112 from schema_migrations`);
+  // The migration LEDGER is deliberately not readable by app_rw — it is an operations table, and a
+  // count of zero here would mean "not granted", not "not migrated". So the precondition proves the
+  // 0112 SHAPE from the catalogue, which app_rw can legitimately see; the tracker's own 111 → 112
+  // movement is owner-side evidence, taken before and after the migration.
+  const shape = await one<{ cols: number; checks: number; window: boolean }>(db,
+    `select
+       (select count(*)::int from information_schema.columns
+         where table_schema = 'public' and table_name = 'context_grants'
+           and column_name in ('purpose_code', 'governed_information_classes')) as cols,
+       (select count(*)::int from pg_constraint
+         where conrelid = 'public.context_grants'::regclass and contype = 'c'
+           and conname in ('context_grants_purpose_code_check',
+                           'context_grants_governed_information_classes_check',
+                           'context_grants_retention_class_check',
+                           'context_grants_machine_governed_complete')) as checks,
+       (select position('effective_to' in p.prosrc) > 0 from pg_proc p
+         where p.proname = 'can_see_pursuit' and p.pronamespace = 'public'::regnamespace) as window`);
 
   c.add("session_user = app_rw", id?.su === "app_rw", id?.su);
   c.add("current_user = app_rw", id?.cu === "app_rw", id?.cu);
@@ -133,7 +148,9 @@ export async function proveAuthority(db: PoolClient, c: Checks): Promise<boolean
   c.add("no CREATE on schema public", create?.v === false);
   c.add("row_security is on for this session", id?.rls === "on", id?.rls);
   c.add("database is the isolated synthetic preview", env?.environment === "demo" && env?.is_synthetic === true);
-  c.add("schema is at 112 with 0112 tracked", (mig?.n ?? 0) >= 112 && mig?.has112 === true, `${mig?.n} migrations`);
+  c.add("0112 is applied: both governed columns exist", shape?.cols === 2, `${shape?.cols} of 2`);
+  c.add("0112 is applied: all four CHECK constraints exist", shape?.checks === 4, `${shape?.checks} of 4`);
+  c.add("0112 is applied: can_see_pursuit enforces the effective window", shape?.window === true);
   return c.failed === 0;
 }
 
