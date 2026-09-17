@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation";
 import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
 import { executePursuitQuery } from "@/lib/experience/execute";
-import { isViewKey, PLANS, VIEW_KEYS, type ViewKey } from "@/lib/experience/plans";
+import { explainPlanFor, isViewKey, PLANS, VIEW_KEYS, type ViewKey } from "@/lib/experience/plans";
 import { FIELDS, METRICS, metricKey } from "@/lib/experience/registry";
-import type { GovernedCell, GovernedResultSet } from "@/lib/experience/types";
+import type { Explanation, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
 
 export const dynamic = "force-dynamic";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
  * P7 SLICE 1 — the first governed projection. TRANSPORT ONLY.
@@ -26,13 +28,16 @@ export const dynamic = "force-dynamic";
 export default async function ExperiencePursuitsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; explain?: string }>;
 }) {
   if (!pursuitExperienceEnabled()) notFound();   // deployment master — fast deny, no DB work
 
   const sp = await searchParams;
   const view: ViewKey = isViewKey(sp.view) ? sp.view : "open-by-value";
-  const outcome = await executePursuitQuery(PLANS[view].plan);
+  // `?explain=<id>` names WHICH object, never which organization: governance still decides whether
+  // it is visible. A malformed id is simply not a plan we will build.
+  const subject = typeof sp.explain === "string" && UUID.test(sp.explain) ? sp.explain : null;
+  const outcome = await executePursuitQuery(subject ? explainPlanFor(subject) : PLANS[view].plan);
 
   return (
     <main className="mx-auto max-w-[1100px] px-6 py-10">
@@ -64,6 +69,13 @@ export default async function ExperiencePursuitsPage({
           {outcome.error === "CAPABILITY_DENIED" ? "This capability is not enabled here." : "That view could not be run."}{" "}
           <span className="font-normal">{outcome.detail}</span>
         </p>
+      ) : outcome.explanation ? (
+        <ExplanationView explanation={outcome.explanation} />
+      ) : subject ? (
+        <p className="mt-8 text-body text-neutral-500 dark:text-neutral-400">
+          {/* No authorized subject: indistinguishable from one that does not exist. */}
+          No explanation is available for that pursuit.
+        </p>
       ) : (
         <Result result={outcome.result} view={view} />
       )}
@@ -93,7 +105,13 @@ function Result({ result, view }: { result: GovernedResultSet; view: ViewKey }) 
             <tr key={row.objectRef.id} className="border-b border-neutral-200/70 dark:border-white/10">
               {[...fields, ...metrics].map((ref) => (
                 <td key={ref} className="py-2 pr-4 align-top">
-                  <Cell cell={row.cells[ref]} />
+                  {ref === "pursuit.id" ? (
+                    <a className="text-accent underline" href={`/experience/pursuits?explain=${row.objectRef.id}`}>
+                      Explain
+                    </a>
+                  ) : (
+                    <Cell cell={row.cells[ref]} />
+                  )}
                 </td>
               ))}
             </tr>
@@ -118,6 +136,37 @@ function Result({ result, view }: { result: GovernedResultSet; view: ViewKey }) 
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * The explanation, inline and visible by default (ruling). A WITHHELD statement is shown exactly like
+ * any other — hiding it behind a click would let absence read as zero, which is the failure this
+ * slice exists to avoid. A statement whose existence was not authorized is not here to hide: the
+ * renderer never built it.
+ */
+function ExplanationView({ explanation }: { explanation: Explanation }) {
+  return (
+    <section className="mt-8">
+      <h2 className="text-title font-bold">Explanation</h2>
+      <ul className="mt-4 space-y-2">
+        {explanation.statements.map((s) => (
+          <li key={s.ref} className="text-copy">
+            <span>{s.text}</span>
+            {"provenance" in s && (
+              <span className="ml-2 text-body text-neutral-400 dark:text-neutral-500">({s.provenance})</span>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-6 text-body text-neutral-500 dark:text-neutral-400">
+        {explanation.templateId}@{explanation.templateVersion} · plan v{explanation.planVersion} ·
+        plan {explanation.planDigest} · computed at {explanation.computedAt}
+      </p>
+      <p className="mt-2 text-body">
+        <a href="/experience/pursuits" className="text-accent underline">Back to the list</a>
+      </p>
+    </section>
   );
 }
 

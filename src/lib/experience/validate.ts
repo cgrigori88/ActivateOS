@@ -10,6 +10,7 @@
  */
 import { isAllScope, type Scope } from "@/lib/scope/scope";
 import { FIELDS, FILTERS, MAX_LIMIT, METRICS, OBJECT_CLASSES, ORDERABLE, metricKey } from "./registry";
+import { TEMPLATES, templateKey } from "./explain-templates";
 import type { Filter, MetricRef, OrderRef, PursuitQuery } from "./types";
 
 export type ValidationResult = { ok: true; plan: PursuitQuery } | { ok: false; detail: string };
@@ -37,7 +38,30 @@ export function validatePlan(candidate: unknown): ValidationResult {
 
   if (p.queryVersion !== 1) return fail("queryVersion must be 1");
   if (p.asOf !== null) return fail("asOf must be null — Slice 1 has no historical semantics");
-  if (p.explain !== false) return fail("explain must be false — EXPLAIN is not in Slice 1");
+  // ── explain (Slice 2) ── a REGISTERED template, or false. Nothing else.
+  if (p.explain !== false) {
+    const e = p.explain as { template?: { id?: unknown; version?: unknown } } | null;
+    if (!e || typeof e !== "object" || Array.isArray(e)) return fail("explain must be false or { template }");
+    for (const k of Object.keys(e)) if (k !== "template") return fail(`unknown explain key ${k}`);
+    const t = e.template;
+    if (!t || typeof t !== "object") return fail("explain.template is required");
+    if (typeof t.id !== "string" || typeof t.version !== "number") return fail("explain.template needs an id and a version");
+    if (!TEMPLATES[templateKey(t.id, t.version)]) return fail(`unknown explanation template ${t.id}@${t.version}`);
+    // SINGLE OBJECT ONLY (ruling 3). Asking for an explanation without naming exactly one subject
+    // would mean explaining whatever governance happened to return — and the first row is never
+    // silently chosen. Zero, several, cohort and aggregate explanations are all refused here.
+    const ids = (p.subject as { ids?: unknown[] } | undefined)?.ids;
+    if (!Array.isArray(ids) || ids.length !== 1) {
+      return fail("an explanation requires subject.ids to name exactly one object");
+    }
+    // Every ref the template needs must be in the projection: an explanation may not cause a fetch.
+    const tmpl = TEMPLATES[templateKey(t.id, t.version)];
+    const available = new Set<string>([...(p.projection as string[]), ...(p.metrics as MetricRef[]).map(metricKey)]);
+    const missing = tmpl.requires.filter((r) => !available.has(r));
+    if (missing.length === tmpl.requires.length) {
+      return fail(`this explanation needs ${missing.join(", ")}, which this view does not include`);
+    }
+  }
 
   // ── subject ──
   const subject = p.subject as { class?: unknown; ids?: unknown } | undefined;

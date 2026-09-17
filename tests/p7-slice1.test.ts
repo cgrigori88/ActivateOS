@@ -232,7 +232,20 @@ test("a principal requires a canonical organization id", async () => {
 test("no production transport can select an organization", () => {
   // The route must pass NO principal: its org comes from the session, inside withTenant.
   const route = codeOf(new URL("../src/app/experience/pursuits/page.tsx", import.meta.url).pathname);
-  assert.match(route, /executePursuitQuery\(PLANS\[view\]\.plan\)/, "the route must call the boundary with no principal");
+
+  // The intent is "the route passes NO principal", not "the route contains one exact string" —
+  // pinning the literal call text made a legitimate Slice 2 change look like a violation. Walk the
+  // argument list instead and require a single top-level argument.
+  const at = route.indexOf("executePursuitQuery(");
+  assert.ok(at > -1, "the route must call the shared boundary");
+  let depth = 0, topLevelCommas = 0;
+  for (let i = at + "executePursuitQuery(".length; i < route.length; i++) {
+    const ch = route[i];
+    if (ch === "(") depth++;
+    else if (ch === ")") { if (depth === 0) break; depth--; }
+    else if (ch === "," && depth === 0) topLevelCommas++;
+  }
+  assert.equal(topLevelCommas, 0, "the route must pass the plan and nothing else — no principal argument");
   assert.ok(!/orgId|ExecutionPrincipal|testFixturePrincipal/.test(route), "the route must not name an organization at all");
 
   // Nothing under src/app may import the test-only factory.

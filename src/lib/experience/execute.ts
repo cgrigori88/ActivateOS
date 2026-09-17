@@ -14,6 +14,7 @@
  * NO SQL IDENTIFIER ORIGINATES IN A PLAN. Column names come from the registry; every plan-supplied
  * value is a bound parameter. The plan contributes *which registry keys*, never *what text*.
  */
+import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { withTenant, withTenantOrg } from "@/lib/db/tenant";
 import { experienceEnabledFor } from "@/lib/pursuits/tenant-flags";
@@ -24,7 +25,8 @@ import { mayDerive } from "@/lib/pursuits/federation/derivation";
 import { FIELDS, FILTERS, METRICS, metricKey } from "./registry";
 import { validatePlan } from "./validate";
 import { principalOrgId, type ExecutionPrincipal } from "./principal";
-import type { ExecuteOutcome, FieldRef, GovernedCell, GovernedResultSet, GovernedRow, MetricRef, PursuitQuery } from "./types";
+import { explain } from "./explain";
+import type { ExecuteOutcome, Explanation, FieldRef, GovernedCell, GovernedResultSet, GovernedRow, MetricRef, PursuitQuery } from "./types";
 
 /** One candidate row as the canonical loader returns it — pre-governance, never leaves this module. */
 interface CandidateRow {
@@ -94,16 +96,25 @@ export async function executePursuitQuery(candidate: unknown, principal?: Execut
     // The instant comes from the database, in SQL — never a JavaScript Date (D-P6-1).
     const { rows: at } = await db.query<{ t: string }>(`select transaction_timestamp()::text as t`);
 
-    return {
-      ok: true as const,
-      result: {
+    const resultSet: GovernedResultSet = {
         plan,
+        planDigest: planDigestOf(plan),
         computedAt: at[0].t,
         rows: limited,
         omissions: omissions.filter((o) => limited.some((r) => r.objectRef.id === o.objectId)),
         counts: { authorized: limited.length },
-      } satisfies GovernedResultSet,
     };
+
+    // EXPLAIN (Slice 2). The renderer is pure and sees only what governance produced: turning it on
+    // cannot widen a result, because there is no path from here back to the database.
+    let explanation: Explanation | undefined;
+    let explanationError: string | undefined;
+    if (plan.explain !== false) {
+      const e = explain(resultSet, plan.explain.template.id, plan.explain.template.version);
+      if (e.ok) explanation = e.explanation; else explanationError = e.detail;
+    }
+
+    return { ok: true as const, result: resultSet, explanation, explanationError };
   };
 
   if (principal) {
@@ -156,9 +167,13 @@ function governField(ref: FieldRef, row: CandidateRow, viewer: FederationViewer)
     value: raw === null || raw === undefined ? null : (raw instanceof Date ? raw.toISOString() : (raw as string | number)),
   };
   const res = resolveDisclosure(item, viewer);
+  // EXISTENCE. The row reached this point only because RLS and can_see_pursuit admitted it, and a
+  // registered field is schema-level knowledge, so the recipient may know the cell EXISTS even when
+  // its value is withheld. A future field whose existence is itself governed would set UNAUTHORIZED
+  // here, and the renderer would then emit nothing for it at all.
   return res.visibility === "SUPPRESSED"
-    ? { visibility: "SUPPRESSED", value: null, provenance: ref, reason: "NOT_DISCLOSABLE" }
-    : { visibility: res.visibility, value: res.value, provenance: ref };
+    ? { visibility: "SUPPRESSED", value: null, provenance: ref, reason: "NOT_DISCLOSABLE", existence: "AUTHORIZED" }
+    : { visibility: res.visibility, value: res.value, provenance: ref, existence: "AUTHORIZED" };
 }
 
 /**
@@ -181,7 +196,7 @@ async function governMetric(
   const decision = await mayDerive(db, viewerOrgId,
     { inputKind: def.deriveInputKind, sourceOrgId: row.org_id, pursuitId: row.id }, def.derivePurpose);
   if (!decision.allow) {
-    return { visibility: "SUPPRESSED", value: null, provenance, reason: "DERIVATION_DENIED" };
+    return { visibility: "SUPPRESSED", value: null, provenance, reason: "DERIVATION_DENIED", existence: "AUTHORIZED" };
   }
 
   // 2. INPUTS, each resolved through the ladder as its own disclosable item.
@@ -197,13 +212,22 @@ async function governMetric(
     );
     // ANY withheld input withholds the whole result. No partial sum, no zero substitute.
     if (res.visibility === "SUPPRESSED") {
-      return { visibility: "SUPPRESSED", value: null, provenance, reason: "INPUT_NOT_DISCLOSABLE" };
+      return { visibility: "SUPPRESSED", value: null, provenance, reason: "INPUT_NOT_DISCLOSABLE", existence: "AUTHORIZED" };
     }
     governed.push(Number(res.value ?? 0));
   }
 
   // 3. COMPUTATION, over governed inputs only. Deterministic, no I/O of its own.
-  return { visibility: "EXACT", value: computeSum(governed), provenance };
+  return { visibility: "EXACT", value: computeSum(governed), provenance, existence: "AUTHORIZED" };
+}
+
+/**
+ * A stable digest of the validated plan: registry keys and bound values only. It binds an
+ * explanation to its parent execution (ruling 1) and carries no governed data — the suite proves it
+ * cannot be used to reconstruct any, because nothing that is not already in the plan enters it.
+ */
+export function planDigestOf(plan: PursuitQuery): string {
+  return createHash("sha256").update(JSON.stringify(plan)).digest("hex").slice(0, 16);
 }
 
 /** The metric's arithmetic, isolated so it is testable without a database. */

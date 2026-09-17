@@ -18,6 +18,26 @@ export type ViewKey = (typeof VIEW_KEYS)[number];
 
 export const isViewKey = (v: string | undefined): v is ViewKey => !!v && (VIEW_KEYS as readonly string[]).includes(v);
 
+/**
+ * The explanation plan for ONE subject (ruling 3: single object only). The id is supplied by the
+ * request, which is ordinary detail-page behaviour: it names WHICH object, never which organization,
+ * and governance still decides whether that object is visible at all — an unauthorized id simply
+ * returns no row, indistinguishable from one that does not exist.
+ */
+export function explainPlanFor(pursuitId: string): PursuitQuery {
+  return {
+    queryVersion: 1,
+    subject: { class: "pursuit", ids: [pursuitId] },
+    scope: ALL_SCOPE,
+    filters: [],
+    metrics: [{ id: "pursuit.open_pipeline_usd", version: 1 }],
+    projection: ["pursuit.id", "pursuit.account_name", "pursuit.status", "pursuit.pursuit_type", "pursuit.updated_at"],
+    limit: 1,
+    asOf: null,
+    explain: { template: { id: "pursuit.summary", version: 1 } },
+  };
+}
+
 export const PLANS: Record<ViewKey, { label: string; plan: PursuitQuery }> = {
   "open-by-value": {
     label: "Open pursuits by open pipeline",

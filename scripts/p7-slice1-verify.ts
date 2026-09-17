@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { assertSeededClone } from "./seeded-clone";
 import { executePursuitQuery } from "../src/lib/experience/execute";
-import { PLANS } from "../src/lib/experience/plans";
+import { PLANS, explainPlanFor } from "../src/lib/experience/plans";
 import { testFixturePrincipal } from "../src/lib/experience/principal";
 import { FILTERS } from "../src/lib/experience/registry";
 import type { PursuitQuery } from "../src/lib/experience/types";
@@ -209,6 +209,44 @@ async function main(): Promise<void> {
   const crossOrg = await executePursuitQuery({ ...plan(), orgId: w.a } as unknown);
   check("21: a plan carrying an organization is rejected — an org is not a query parameter",
     crossOrg.ok === false && crossOrg.error === "INVALID_PLAN", crossOrg.ok === false ? crossOrg.detail : "");
+
+  // ── 8e. EXPLAIN (Slice 2), through the same governed path ──
+  const explainAsOwner = await asOrg(w.a, explainPlanFor(w.pursuitA));
+  const ex = explainAsOwner.ok ? explainAsOwner.explanation : undefined;
+  check("22: the owner receives an explanation for one authorized subject", Boolean(ex),
+    explainAsOwner.ok ? (explainAsOwner.explanationError ?? "") : "");
+  check("23: it carries provenance, NOT a second copy of the plan",
+    Boolean(ex) && !("plan" in (ex as object)) && typeof ex?.planDigest === "string" && ex?.templateId === "pursuit.summary",
+    ex ? `${ex.templateId}@${ex.templateVersion} plan ${ex.planDigest}` : "");
+  check("24: every statement names a cell of the governed result",
+    (ex?.statements ?? []).every((st) => st.ref in (explainAsOwner.ok ? explainAsOwner.result.rows[0].cells : {})),
+    String(ex?.statements.length));
+
+  // EXPLAIN CANNOT WIDEN A RESULT: the same plan with and without it returns the identical rows.
+  const withoutExplain = await asOrg(w.a, { ...explainPlanFor(w.pursuitA), explain: false as const });
+  const sameRows = explainAsOwner.ok && withoutExplain.ok &&
+    JSON.stringify(explainAsOwner.result.rows) === JSON.stringify(withoutExplain.result.rows);
+  check("25: explain:true returns the identical row set as explain:false", sameRows);
+
+  // A participant with no machine-governed grant: the metric is unavailable, and the explanation
+  // says so at OPERATION level without naming evidence — and the amount is nowhere in the bytes.
+  const explainAsB = await asOrg(w.b, explainPlanFor(w.pursuitA));
+  const exB = explainAsB.ok ? explainAsB.explanation : undefined;
+  const metricStatement = exB?.statements.find((st) => st.ref === "pursuit.open_pipeline_usd@1");
+  check("26: a grantless participant gets operation-level text for the metric, naming no evidence",
+    metricStatement?.kind === "OPERATION" && !/grant|evidence|economic|opportunit/i.test(metricStatement.text),
+    metricStatement?.text);
+  const exBytes = JSON.stringify(exB ?? {});
+  check("27: the withheld amount appears nowhere in the explanation bytes",
+    !exBytes.includes("750000") && !exBytes.includes("500000") && !exBytes.includes("250000"));
+  check("28: no internal reason code reaches the recipient-facing explanation",
+    !/NOT_DISCLOSABLE|DERIVATION_DENIED|INPUT_NOT_DISCLOSABLE/.test(exBytes));
+
+  // An unauthorized subject yields no explanation at all — not an error that confirms existence.
+  const explainAsC = await asOrg(w.c, explainPlanFor(w.pursuitA));
+  check("29: an unauthorized subject produces no explanation, indistinguishable from non-existence",
+    explainAsC.ok && explainAsC.explanation === undefined,
+    explainAsC.ok ? (explainAsC.explanationError ?? "") : "");
 
   // ── 9. No P7-local write occurred ──
   const db3 = await owner.connect();

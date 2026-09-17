@@ -51,8 +51,12 @@ export interface PursuitQuery {
   limit?: number;
   /** MUST be null in Slice 1. A non-null value is rejected by validation (ruling 3 of the contract). */
   asOf: null;
-  /** MUST be false in Slice 1. EXPLAIN arrives in Slice 2 as deterministic templates (ruling 4). */
-  explain: false;
+  /**
+   * Slice 2: a REGISTERED template, or `false`. Requesting an explanation requires exactly ONE
+   * governed subject object (ruling 3) — zero, several, cohort and aggregate explanations are all
+   * refused, and the first row is never silently chosen.
+   */
+  explain: ExplainSpec;
 }
 
 /** Why a value is absent. Operation metadata only — never a withheld value or its magnitude. */
@@ -61,6 +65,15 @@ export type OmissionReason =
   | "DERIVATION_DENIED"      // mayDerive said no
   | "INPUT_NOT_DISCLOSABLE"; // a contributing input was suppressed, so the result cannot be formed
 
+/**
+ * Is the recipient authorized to know this cell EXISTS, independently of its value?
+ *
+ * Load-bearing for EXPLAIN. `AUTHORIZED` + suppressed value is **WITHHELD** — say so, visibly, so
+ * absence is not mistaken for zero. `UNAUTHORIZED` existence must produce **nothing at all**: no
+ * placeholder, no label, no tooltip, no count contribution. A label is itself a disclosure.
+ */
+export type ExistenceDisclosure = "AUTHORIZED" | "UNAUTHORIZED";
+
 export interface GovernedCell {
   /** `EXACT | GENERALIZED | AGGREGATED` carry a value; `SUPPRESSED` never does. */
   visibility: Visibility;
@@ -68,6 +81,8 @@ export interface GovernedCell {
   /** For a metric: its registry id and version. For a field: its FieldRef. */
   provenance: string;
   reason?: OmissionReason;
+  /** Whether the recipient may know this cell exists at all. */
+  existence: ExistenceDisclosure;
 }
 
 export interface GovernedRow {
@@ -78,6 +93,13 @@ export interface GovernedRow {
 export interface GovernedResultSet {
   /** Echoed so the surface is re-derivable from the plan alone, and auditable. */
   plan: PursuitQuery;
+  /**
+   * A stable digest of the validated plan. An `Explanation` carries THIS rather than a second copy
+   * of the plan (ruling 1): enough to correlate an explanation with its parent execution, and no
+   * more. It is a hash of registry keys and bound values — it contains no governed data, and the
+   * suite proves it cannot be used to reconstruct any.
+   */
+  planDigest: string;
   /** The database transaction instant. Never a JavaScript `Date` comparison (D-P6-1). */
   computedAt: string;
   rows: GovernedRow[];
@@ -87,8 +109,46 @@ export interface GovernedResultSet {
   counts: { authorized: number };
 }
 
+// ── EXPLAIN (Slice 2) ───────────────────────────────────────────────────────────────────────────
+
+/** A plan asks for an explanation by naming a REGISTERED template. `false` means none. */
+export type ExplainSpec = false | { template: { id: string; version: number } };
+
+/**
+ * One statement. There are four kinds and no fifth — and a cell whose EXISTENCE is unauthorized
+ * produces NO statement at all, which is why omission is a property of the renderer's input
+ * selection rather than something removed afterwards.
+ */
+export type ExplanationStatement =
+  | { kind: "FACT"; ref: string; text: string; provenance: string }
+  | { kind: "DERIVED"; ref: string; text: string; provenance: string }
+  /** Existence authorized, value not. Fixed text, identical regardless of the hidden value. */
+  | { kind: "WITHHELD"; ref: string; text: string }
+  /** Operation-level: what the system may do, never what the data contains. */
+  | { kind: "OPERATION"; ref: string; text: string };
+
+/**
+ * Minimum provenance, per ruling 1: enough to bind the explanation to its governed execution, and
+ * deliberately NOT a second copy of the plan. Slice 2 has no persistence or export, so an
+ * explanation is not yet an independently portable artifact.
+ */
+export interface Explanation {
+  subject: { class: ObjectClass; id: string };
+  templateId: string;
+  templateVersion: number;
+  planVersion: number;
+  planDigest: string;
+  /** The instant the parent result set carries. Never re-read — there is no clock in here. */
+  computedAt: string;
+  statements: ExplanationStatement[];
+}
+
+export type ExplainOutcome =
+  | { ok: true; explanation: Explanation }
+  | { ok: false; error: "NO_SUBJECT" | "UNREGISTERED_TEMPLATE" | "MALFORMED"; detail: string };
+
 /** Validation and capability failures are values, not exceptions: the caller renders them. */
 export type ExecuteOutcome =
-  | { ok: true; result: GovernedResultSet }
+  | { ok: true; result: GovernedResultSet; explanation?: Explanation; explanationError?: string }
   | { ok: false; error: "INVALID_PLAN"; detail: string }
   | { ok: false; error: "CAPABILITY_DENIED"; detail: string };
