@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
+import { vnextCapabilities, vnextEnvEnabled } from "@/lib/env/vnext-flags";
+import { tenantFeatures } from "@/lib/pursuits/tenant-flags";
+import { callerFor } from "@/lib/pursuits/read-models/caller";
+import { getPortfolioPertinence } from "@/lib/pursuits/read-models/portfolio";
 import { loadStageWeights } from "@/lib/opportunities/stage-weights";
 import { enabledTriggers } from "@/lib/triggers/catalog";
 import { renewalProjection } from "@/lib/lifecycle/projection";
@@ -92,6 +96,7 @@ export default async function PipelinePage({
   // session to the caller's org. Inert on the owner connection; real isolation
   // once DATABASE_URL points at app_rw.
   const {
+    sortMode, pertinenceView, pertinenceAvailable,
     opps, open, total, weighted, regRows, tieOut, writebacks, approvedWb,
     calibration, renewals, scoreOf, quoteOf, probOf, qualOf, partnerOptions,
     visible, stakeholdersByOpp, regByOpp, meddpicc, momentum, initiativeOpts,
@@ -99,7 +104,7 @@ export default async function PipelinePage({
   } = await withTenant(async (db, orgId) => {
   const { rows: allOpps } = await db.query(
     `select o.id, o.name, o.stage, o.amount_usd, o.next_step, o.expected_close_date, o.updated_at,
-            o.company_id, c.legal_name, n.slug, o.motion_id, o.initiative_id,
+            o.company_id, c.legal_name, n.slug, o.motion_id, o.initiative_id, o.pursuit_id,
             pa.name as partner_name, m.partner_id, mn.name as motion_hypothesis
      from opportunities o
      join companies c on c.id = o.company_id
@@ -296,6 +301,40 @@ export default async function PipelinePage({
       lifeMatch(o.company_id),
   );
 
+  /* ── P2 — OPTIONAL pertinence ordering. PRESENTATION ONLY. ─────────────────────────────────────
+     RECENCY REMAINS THE DEFAULT: this runs only under `?sort=pertinence` AND with Pursuit
+     Intelligence on, so with the flag off the query never runs and the page is byte-identical.
+
+     THE JOIN CONTRACT (`opportunities.pursuit_id` is a single nullable FK, so opportunity → pursuit
+     is many-to-one and unambiguous):
+       • active linked pursuit  → that pursuit's rank;
+       • terminal or merged     → UNRANKED — the merge target is never silently substituted,
+                                  because `loadPortfolioCandidates` excludes those pursuits, so
+                                  their ids simply do not appear in the ranking;
+       • no pursuit_id          → UNRANKED (the common case: most opportunities have no pursuit).
+     Unranked rows sort AFTER ranked rows, keeping the existing recency order among themselves. */
+  const sortMode = qp("sort") === "pertinence" ? "pertinence" : "recency";
+  // The env flag is a pure read and a FAST DENY: with it off, `tenantFeatures` is never queried,
+  // the control never renders, and `?sort=pertinence` in the URL does nothing at all.
+  const pertinenceAvailable = vnextEnvEnabled("pursuit_intelligence")
+    && vnextCapabilities(await tenantFeatures(db, orgId)).pursuitIntelligence;
+  let pertinenceRanks: Map<string, number> | null = null;
+  let pertinenceView: Awaited<ReturnType<typeof getPortfolioPertinence>> | null = null;
+  if (sortMode === "pertinence" && pertinenceAvailable) {
+    pertinenceView = await getPortfolioPertinence(db, await callerFor(db, orgId),
+      { scope: scopeIds ? "Selected ecosystem" : "All pursuits" });
+    pertinenceRanks = new Map(pertinenceView.items.map((i): [string, number] => [i.pursuitId, i.rank]));
+    const recencyIndex = new Map(opps.map((o, i) => [o.id, i]));   // the existing deterministic order
+    opps.sort((a, b) => {
+      const ra = a.pursuit_id ? pertinenceRanks!.get(a.pursuit_id) : undefined;
+      const rb = b.pursuit_id ? pertinenceRanks!.get(b.pursuit_id) : undefined;
+      if (ra != null && rb != null) return ra - rb || recencyIndex.get(a.id)! - recencyIndex.get(b.id)!;
+      if (ra != null) return -1;          // ranked rows first
+      if (rb != null) return 1;
+      return recencyIndex.get(a.id)! - recencyIndex.get(b.id)!;   // both unranked → recency
+    });
+  }
+
   const open = opps.filter((o) => !o.stage.startsWith("closed"));
   // Stage weights: the org's editable curve (Insights → calibration card),
   // with per-partner overrides applied to deals attributed to that partner.
@@ -416,6 +455,7 @@ export default async function PipelinePage({
   }
 
   return {
+    sortMode, pertinenceView, pertinenceAvailable,
     opps, open, total, weighted, regRows, tieOut, writebacks, approvedWb,
     calibration, renewals, scoreOf, quoteOf, probOf, qualOf, partnerOptions,
     visible, stakeholdersByOpp, regByOpp, meddpicc, momentum, initiativeOpts,
@@ -455,7 +495,7 @@ export default async function PipelinePage({
   const drawerIntel = drawerId ? await withTenant((db, orgId) => getAccountIntel(db, drawerId, orgId)) : null;
   // Preserve the whole view (filters, scope, sort) across open/close — the drawer never navigates away.
   const preserved = new URLSearchParams();
-  for (const k of ["view", "timeframe", "stage", "partner", "quote", "qual", "scope", "prow", "pcol", "cond", "life", "value"] as const) { const v = qp(k); if (v) preserved.set(k, v); }
+  for (const k of ["view", "timeframe", "stage", "partner", "quote", "qual", "scope", "prow", "pcol", "cond", "life", "value", "sort"] as const) { const v = qp(k); if (v) preserved.set(k, v); }
   const drawerHref = (companyId: string) => { const p = new URLSearchParams(preserved); p.set("drawer", companyId); return `/pipeline?${p.toString()}`; };
   const drawerCloseHref = `/pipeline${preserved.toString() ? `?${preserved.toString()}` : ""}`;
   const drawerBase = preserved.toString();
@@ -948,6 +988,10 @@ export default async function PipelinePage({
                 )}
                 <QuerySelect param="quote" value={qp("quote") ?? "all"} label="Quote" options={[{ value: "all", label: "Any" }, { value: "yes", label: "Quote sent" }, { value: "no", label: "No quote" }]} />
                 <QuerySelect param="timeframe" value={qp("timeframe") ?? "all"} label="Closing within" options={[{ value: "all", label: "Any time" }, { value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }]} />
+                {pertinenceAvailable ? (
+                  <QuerySelect param="sort" value={qp("sort") ?? "recency"} label="Order by"
+                    options={[{ value: "recency", label: "Recent activity" }, { value: "pertinence", label: "Portfolio pertinence" }]} />
+                ) : null}
                 {/* Lifecycle (P2A §8) — three states, no fourth. */}
                 <QuerySelect param="life" value={qp("life") ?? "all"} label="Lifecycle" options={[{ value: "all", label: "Any lifecycle" }, { value: "renew90", label: "Renewing in 90 days" }, { value: "conflicting", label: "Conflicting timing" }, { value: "stale", label: "Stale evidence" }]} />
                 {/* Value case (P2B §14) — the derived state, four values, no new score. */}

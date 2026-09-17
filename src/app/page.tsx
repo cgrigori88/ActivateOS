@@ -5,6 +5,7 @@ import { RoomTabs } from "@/components/room-tabs";
 import { loadTodayNextActions, loadTodayOverview } from "@/lib/today/overview";
 import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
 import { getTodayQueue, getTodayExposure, type TodayExposure } from "@/lib/pursuits/read-models/today";
+import { getPortfolioPertinence } from "@/lib/pursuits/read-models/portfolio";
 import { callerFor } from "@/lib/pursuits/read-models/caller";
 import { Panel } from "@/components/pursuit/panel";
 import { TodayQueue } from "@/components/pursuit/today";
@@ -77,10 +78,30 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
          only narrow (D-013); the env check in front is a fast deny, never a grant. Flag OFF runs
          exactly the certified queue below, with no extra query. */
       const attention = vnextEnvEnabled("pursuit_attention") && vnextCapabilities(await tenantFeatures(db, orgId)).pursuitAttention;
+      /* P2 — portfolio pertinence. Resolved through the SAME capability chain (env fast-deny, then
+         the tenant's own features), so it can only narrow. With the flag OFF this is `null`, the
+         computation and its queries NEVER RUN, no rank reaches `todaySort`, and Today renders
+         byte-identically to the pre-P2 product. The comparison set is the caller's already-
+         authorized one — `loadPortfolioCandidates` is org-scoped and RLS-bound — and the scope
+         label matches the ecosystem narrowing already applied to this page. */
+      const intelligence = vnextEnvEnabled("pursuit_intelligence") && vnextCapabilities(await tenantFeatures(db, orgId)).pursuitIntelligence;
+      const pertinence = intelligence
+        ? await getPortfolioPertinence(db, caller, { scope: scopeIds ? "Selected ecosystem" : "All pursuits" })
+        : null;
       return {
+        /* Complete branches, chosen whole — the idiom this file already uses for attention. The
+           flag-OFF call is the CERTIFIED one, character for character: no `pertinence` key is even
+           present in the options object, so the flag-OFF path is unchanged at the source level and
+           not merely equivalent at runtime. */
         pursuitQueue: attention
-          ? await composeTodayAttention(db, caller, await getTodayQueue(db, caller, { companyIds: scopeIds }), { companyIds: scopeIds, limit })
-          : await getTodayQueue(db, caller, { companyIds: scopeIds, limit }),
+          ? await composeTodayAttention(db, caller,
+              pertinence
+                ? await getTodayQueue(db, caller, { companyIds: scopeIds, pertinence })
+                : await getTodayQueue(db, caller, { companyIds: scopeIds }),
+              { companyIds: scopeIds, limit })
+          : pertinence
+            ? await getTodayQueue(db, caller, { companyIds: scopeIds, limit, pertinence })
+            : await getTodayQueue(db, caller, { companyIds: scopeIds, limit }),
         exposure: await getTodayExposure(db, orgId, scopeIds),
         attentionOn: attention,
       };

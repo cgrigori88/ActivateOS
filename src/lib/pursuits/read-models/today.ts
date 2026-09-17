@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import type { TodayQueueView, DecisionItem, DecisionClass } from "./types";
 import { bandOf, type Caller } from "./helpers";
 import { classifyChange, isMaterial, todaySort, type OperationalUrgency } from "./materiality";
+import type { PortfolioPertinenceView } from "./portfolio-pertinence";
 import { motionAcceptanceBlockage } from "@/lib/motions/funnel";
 import { getLifecycleHorizon } from "@/lib/lifecycle/horizon";
 import { STAGE_PROBABILITY, type Stage } from "@/lib/opportunities/lifecycle";
@@ -44,6 +45,15 @@ const VALUE_CONFLICT_FLOOR_USD = 400_000;
 export interface TodayQueueOpts {
   companyIds?: string[] | null;
   limit?: number;
+  /**
+   * P2 — the caller's portfolio pertinence, computed over the SAME already-authorized comparison
+   * set this queue is built from. Supplied only when Pursuit Intelligence is ON.
+   *
+   * ABSENT IS THE FLAG-OFF CONTRACT: no rank is attached to any item, `todaySort` falls back to the
+   * commercial-priority band exactly as before, and no new string is rendered. The caller decides
+   * whether to compute this at all, so with the flag off the query never runs.
+   */
+  pertinence?: PortfolioPertinenceView | null;
 }
 
 export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQueueOpts = {}): Promise<TodayQueueView> {
@@ -256,9 +266,26 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
   // `todaySort` ends on age, which is not unique, and this list is cut to `opts.limit` — so a tie decided by
   // arrival order changes WHICH decisions reach Today. End on the item's stable key, as the attention queue
   // already does in `byMateriality` (D-G8-2A).
+  // ── P2: attach the pertinence disclosure BEFORE sorting, so the rank that orders the list is the
+  //    same one the card renders. With the flag off `opts.pertinence` is absent, nothing is attached,
+  //    and `todaySort` falls through to the commercial-priority band exactly as it always has.
+  if (opts.pertinence) {
+    const byPursuit = new Map(opts.pertinence.items.map((p) => [p.pursuitId, p]));
+    for (const it of items) {
+      const p = it.pursuitId ? byPursuit.get(it.pursuitId) : undefined;
+      if (!p) continue;
+      it.pertinence = {
+        rank: p.rank, comparisonSetSize: opts.pertinence.comparisonSetSize, scope: opts.pertinence.scope,
+        whyHere: p.comparedToBelow, tiedWithBelow: p.tiedWithBelow, score: p.score,
+      };
+    }
+  }
+
   items.sort((a, b) => todaySort(
-    { decisionClass: a.decisionClass, operationalUrgency: a.operationalUrgency, commercialPriority: a.commercialPriority, ageSeconds: (now - new Date(a.at).getTime()) / 1000 },
-    { decisionClass: b.decisionClass, operationalUrgency: b.operationalUrgency, commercialPriority: b.commercialPriority, ageSeconds: (now - new Date(b.at).getTime()) / 1000 })
+    { decisionClass: a.decisionClass, operationalUrgency: a.operationalUrgency, commercialPriority: a.commercialPriority,
+      ageSeconds: (now - new Date(a.at).getTime()) / 1000, pertinenceRank: a.pertinence?.rank ?? null },
+    { decisionClass: b.decisionClass, operationalUrgency: b.operationalUrgency, commercialPriority: b.commercialPriority,
+      ageSeconds: (now - new Date(b.at).getTime()) / 1000, pertinenceRank: b.pertinence?.rank ?? null })
     || a.id.localeCompare(b.id) || a.deepLink.localeCompare(b.deepLink));
 
   const counts = { DECISION_REQUIRED: 0, MATERIAL_CHANGE: 0, ACTION_REQUIRED: 0, RISK: 0, OPPORTUNITY: 0, FYI: 0 } as Record<DecisionClass, number>;

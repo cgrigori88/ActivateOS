@@ -27,6 +27,22 @@ export interface FreshnessView { label: string; at: string | null }   // e.g. "U
 
 // ---- Today decision queue (§2/§3/§4/§54) -----------------------------------
 export type DecisionClass = "DECISION_REQUIRED" | "MATERIAL_CHANGE" | "ACTION_REQUIRED" | "RISK" | "OPPORTUNITY" | "FYI";
+/** P2 — the "#N of M · Why here" disclosure, rendered only when Pursuit Intelligence is ON. */
+export interface DecisionPertinence {
+  /** 1-based, within the caller's authorized comparison set. */
+  rank: number;
+  /** A rank is meaningless without the set it came from, so this is never omitted. */
+  comparisonSetSize: number;
+  /** The active scope, always shown beside the rank. */
+  scope: string;
+  /** Mechanically causal — the largest positive delta in realised weighted contribution. */
+  whyHere: string | null;
+  /** True when this pursuit is genuinely tied with the one below it. */
+  tiedWithBelow: boolean;
+  /** For inspection and debugging only. NEVER the headline, and never an absolute quality claim. */
+  score: number;
+}
+
 export interface DecisionItem {
   id: string;
   type: string;                      // ROUTE_APPROVAL | FACT_REVIEW | SELLER_SELECTION | TEAM_REPLACEMENT | ...
@@ -50,6 +66,12 @@ export interface DecisionItem {
    * exactly as before.
    */
   attention?: DecisionAttention;
+  /**
+   * P2 — present only when Pursuit Intelligence is ON. Absent on every flag-OFF item, so the
+   * certified card renders exactly as before and the flag-OFF ordering falls back to the
+   * commercial-priority band. The RANK is the product; `score` is for inspection only.
+   */
+  pertinence?: DecisionPertinence;
   /** vNext Slice 2B — the pursuit's other reasons, folded beneath this card instead of becoming cards. */
   others?: DecisionOther[];
 }

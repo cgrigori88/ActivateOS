@@ -8,6 +8,11 @@ import {
 import { loadPortfolioCandidates } from "../src/lib/pursuits/read-models/portfolio-pertinence-loaders";
 import type { Caller } from "../src/lib/pursuits/read-models/helpers";
 import { todaySort } from "../src/lib/pursuits/read-models/materiality";
+import { getTodayQueue } from "../src/lib/pursuits/read-models/today";
+import { getPortfolioPertinence } from "../src/lib/pursuits/read-models/portfolio";
+import { TodayDecisionCard } from "../src/components/pursuit/today";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createElement } from "react";
 
 /**
  * P2 — Portfolio Pertinence.
@@ -314,6 +319,97 @@ async function main(): Promise<void> {
         (await db.query<{ n: string }>(`select count(*)::text n from change_ledger where change_type like 'PERTINENCE%'`)).rows[0].n === "0");
     } else check("51: (skipped — no organizations in this world)", true);
   } finally { db.release(); }
+
+  // ══ 15. PRODUCT PATHS — the REAL Today read-model, not todaySort in isolation ═════════════════
+  const db2: PoolClient = await owner.connect();
+  try {
+    const org = (await db2.query<{ id: string }>(`select id from organizations order by created_at limit 1`)).rows[0];
+    const c: Caller = { orgId: org.id, canSeeInternal: true, canSeeTransactionDetail: true };
+
+    // FLAG OFF is modelled exactly as the page models it: no pertinence is passed, so the new
+    // computation never runs and nothing can reach the ordering.
+    const off = await getTodayQueue(db2, c, {});
+    check("63: PRODUCT PATH, FLAG OFF — no item carries a pertinence disclosure",
+      off.items.every((i) => i.pertinence === undefined), `${off.items.length} items`);
+    const offAgain = await getTodayQueue(db2, c, {});
+    // Some Today item ids embed Date.now() at generation (`GAP:<uuid>:<ms>`) — pre-existing
+    // behaviour, unrelated to P2 — so identity is compared on the STABLE part of the key.
+    const stableKeys = (v: typeof off) => v.items.map((i) => i.id.split(":").slice(0, 2).join(":")).join(",");
+    check("64: PRODUCT PATH, FLAG OFF — the queue's composition and order are stable across calls",
+      stableKeys(off) === stableKeys(offAgain) && offAgain.items.every((i) => i.pertinence === undefined),
+      `${off.items.length} items, identical sequence`);
+
+    // FLAG ON — the real read-model consumes a real ranking over the caller's authorized set.
+    const view = await getPortfolioPertinence(db2, c, { asOf: ASOF, scope: "All pursuits" });
+    const on = await getTodayQueue(db2, c, { pertinence: view });
+    const ranked = on.items.filter((i) => i.pertinence);
+    check("65: PRODUCT PATH, FLAG ON — the real Today queue carries rank, set size, scope and a causal explanation",
+      ranked.length > 0 && ranked.every((i) => i.pertinence!.rank >= 1
+        && i.pertinence!.comparisonSetSize === view.comparisonSetSize && i.pertinence!.scope === "All pursuits"),
+      `${ranked.length} of ${on.items.length} items ranked, set size ${view.comparisonSetSize}`);
+    check("66: PRODUCT PATH — the rank that ORDERS the queue is the rank the card RENDERS",
+      ranked.every((i) => view.items.find((v) => v.pursuitId === i.pursuitId)!.rank === i.pertinence!.rank));
+    check("67: PRODUCT PATH — class order is never violated by pertinence",
+      (() => { const r = ["DECISION_REQUIRED", "RISK", "ACTION_REQUIRED", "MATERIAL_CHANGE", "OPPORTUNITY", "FYI"];
+        return on.items.every((it, k) => k === 0 || r.indexOf(on.items[k - 1].decisionClass) <= r.indexOf(it.decisionClass)); })());
+    check("68: PRODUCT PATH — within a class, urgency still outranks pertinence",
+      (() => { const u = ["critical", "high", "normal", "low"];
+        return on.items.every((it, k) => { const prev = on.items[k - 1];
+          return k === 0 || prev.decisionClass !== it.decisionClass || u.indexOf(prev.operationalUrgency) <= u.indexOf(it.operationalUrgency); }); })());
+    check("69: PRODUCT PATH — within a class AND urgency, ordering follows the pertinence rank",
+      on.items.every((it, k) => { const prev = on.items[k - 1];
+        if (k === 0 || !prev.pertinence || !it.pertinence) return true;
+        if (prev.decisionClass !== it.decisionClass || prev.operationalUrgency !== it.operationalUrgency) return true;
+        return prev.pertinence.rank <= it.pertinence.rank; }));
+    // A synthetic portfolio whose band order DISAGREES with P2 — the third key must be the only change.
+    const flip = await getTodayQueue(db2, c, { pertinence: {
+      ...view, items: [...view.items].reverse().map((it, k) => ({ ...it, rank: k + 1 })) } });
+    const classSeq = (v: typeof on) => v.items.map((i) => `${i.decisionClass}|${i.operationalUrgency}`).join(",");
+    check("70: PRODUCT PATH — reversing the ranking changes ONLY the third key: the class/urgency sequence is identical",
+      classSeq(flip) === classSeq(on), "class+urgency sequence preserved");
+    check("71: …and it DOES reorder within those groups, so the test is not vacuous",
+      JSON.stringify(flip.items.map((i) => i.id)) !== JSON.stringify(on.items.map((i) => i.id))
+      || on.items.filter((i) => i.pertinence).length < 2, "reordered within class/urgency groups");
+
+    // D-018 through the PRODUCT path: a hidden pursuit cannot influence another row's rendered rank.
+    const partial: Caller = { orgId: org.id, canSeeInternal: true, canSeeTransactionDetail: false };
+    const viewPartial = await getPortfolioPertinence(db2, partial, { asOf: ASOF, scope: "All pursuits" });
+    check("72: PRODUCT PATH — a caller with narrower disclosure gets a self-consistent ranking, ranks dense from 1",
+      viewPartial.items.every((i, k) => i.rank === k + 1) && viewPartial.comparisonSetSize === viewPartial.items.length);
+
+    // Scope narrowing through the real entry point.
+    const someIds = view.items.slice(0, Math.max(1, Math.floor(view.items.length / 2))).map((i) => i.pursuitId);
+    const narrow = await getPortfolioPertinence(db2, c, { asOf: ASOF, scope: "Selected ecosystem", pursuitIds: someIds });
+    check("73: PRODUCT PATH — scope narrowing updates rank, set size and scope label",
+      narrow.comparisonSetSize === someIds.length && narrow.scope === "Selected ecosystem"
+      && narrow.items.every((i, k) => i.rank === k + 1),
+      `${view.comparisonSetSize} → ${narrow.comparisonSetSize}`);
+
+    // ── RENDERED OUTPUT ─────────────────────────────────────────────────────────────────────────
+    const sample = on.items.find((i) => i.pertinence);
+    if (sample) {
+      const onHtml = renderToStaticMarkup(createElement(TodayDecisionCard, { item: sample }));
+      const offItem = { ...sample }; delete (offItem as { pertinence?: unknown }).pertinence;
+      const offHtml = renderToStaticMarkup(createElement(TodayDecisionCard, { item: offItem }));
+      check("74: RENDERED — flag ON shows '#N of M' as the headline treatment",
+        new RegExp(`#${sample.pertinence!.rank} of ${sample.pertinence!.comparisonSetSize}`).test(onHtml),
+        `#${sample.pertinence!.rank} of ${sample.pertinence!.comparisonSetSize}`);
+      check("75: RENDERED — flag ON surfaces the causal 'Why here' explanation and the active scope",
+        onHtml.includes("Portfolio pertinence: #") && onHtml.includes(sample.pertinence!.scope));
+      // The raw score must not be rendered at all. The only occurrence of "quality" is the tooltip
+      // DISCLAIMER ("Not a quality score."), which is the opposite of a violation — so the check is
+      // that every mention of quality is negated, not that the word is absent.
+      const qualityMentions = onHtml.match(/.{0,12}quality/gi) ?? [];
+      check("76: RENDERED — the RAW SCORE is never rendered, and 'quality' appears only as a denial",
+        !new RegExp(`>\\s*${sample.pertinence!.score}\\s*<`).test(onHtml)
+        && qualityMentions.every((m) => /not a/i.test(m)),
+        `score ${sample.pertinence!.score} absent · ${qualityMentions.length} quality mention(s), all negated`);
+      check("77: RENDERED — flag OFF markup contains no P2 string at all",
+        !offHtml.includes("Portfolio pertinence") && !/#\d+ of \d+/.test(offHtml));
+      check("78: RENDERED — flag OFF markup has no serialized undefined (the U-16 trap)",
+        !offHtml.includes("$undefined") && !offHtml.includes("undefined"));
+    } else check("74: (no ranked Today item in this world — rendering checks skipped)", true);
+  } finally { db2.release(); }
 
   console.log(`\n${failed === 0 ? "PASS" : "FAIL"} — ${passed} passed, ${failed} failed${failed ? `: ${failures.join(" | ")}` : ""}`);
   await owner.end();

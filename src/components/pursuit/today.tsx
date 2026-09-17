@@ -33,9 +33,14 @@ function whyHere(item: DecisionItem): string[] {
   const ageDays = Math.max(0, Math.floor((Date.now() - new Date(item.at).getTime()) / 86_400_000));
   const band = item.commercialPriority.replace(/_/g, " ");
   const governed = item.allowedActions[0];
+  const p = item.pertinence;
   return [
     `Class: ${CLASS_WORD[item.decisionClass]} — the primary rank`,
     `Operational urgency: ${item.operationalUrgency}`,
+    // P2 — the portfolio-relative position, stated as a RANK. Present only with Pursuit
+    // Intelligence ON; a spread of [] with the flag off leaves this list exactly as certified.
+    ...(p ? [`Portfolio pertinence: #${p.rank} of ${p.comparisonSetSize} · ${p.scope}`] : []),
+    ...(p?.whyHere ? [p.whyHere] : []),
     `Commercial priority: ${band}`,
     `Unresolved ${ageDays === 0 ? "today" : `${ageDays} day${ageDays === 1 ? "" : "s"}`} — older decisions break ties upward`,
     // A pursuit-attention card whose CTA only navigates runs nothing governed — so it does not claim to.
@@ -102,12 +107,28 @@ export function TodayDecisionCard({
         </span>
       </div>
       <div className="min-w-0 flex-1">
+        {item.pertinence ? (
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-copy font-bold">
+            {drawerHref
+              ? <Link href={drawerHref} scroll={false} className="truncate hover:underline" title="Open account intelligence">{item.accountLabel}</Link>
+              : <span className="truncate">{item.accountLabel}</span>}
+            <span className="truncate text-body font-medium text-neutral-500">{item.title}</span>
+            {/* The RANK is the product, never the raw score: "#3 of 18", with the scope beside it so
+                a position is never shown without the set it came from. */}
+            <span className="whitespace-nowrap rounded-full px-2 py-px text-micro font-bold tracking-[0.03em] text-neutral-500"
+                  style={{ background: "color-mix(in srgb, var(--border-subtle) 60%, transparent)" }}
+                  title={`Portfolio pertinence — relative attention priority within ${item.pertinence.scope}. Not a quality score.`}>
+              #{item.pertinence.rank} of {item.pertinence.comparisonSetSize}
+            </span>
+          </div>
+        ) : (
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-copy font-bold">
           {drawerHref
             ? <Link href={drawerHref} scroll={false} className="truncate hover:underline" title="Open account intelligence">{item.accountLabel}</Link>
             : <span className="truncate">{item.accountLabel}</span>}
           <span className="truncate text-body font-medium text-neutral-500">{item.title}</span>
         </div>
+        )}
         {/* WHY NOW — the one thing a reader cannot reconstruct from the rest of
             the row, and which this card never rendered at all. Shown only when
             it is specific to this item; see TodayQueue. */}
