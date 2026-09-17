@@ -153,7 +153,7 @@ P45  GOVERNED PURSUIT RUNTIME (P4 identity + P5 run)        **SLICE 1 IMPLEMENTE
 SLICE 2C Coordination breadth              (P3)        NOT STARTED
    │      goal editing · plan closure · multi-pursuit plans · review recording on events
    ↓
-SLICE 3  Portfolio Pertinence              (P2)   **IMPLEMENTED LOCALLY / NOT PUSHED** — five declared signals, deterministic, no model, no persistence, no migration;
+SLICE 3  Portfolio Pertinence              (P2)   **HOSTED ACCEPTED / CLOSED** (Phase 2 16/16, Phase 3 65/66; D-P2-1 and D-P2-2 hosted closed) — five declared signals, deterministic, no model, no persistence, no migration;
    │      PIPELINE and MODELED value are never compared as dollars (value/case.ts: modelled impact is NOT our revenue) — each normalized within its own
    │      basis cohort, only unitless standing crosses; 0.60 MODELED weight is product policy, not a confidence estimate; `portfolio-pertinence` 66/0;
    │      Today uses it as the THIRD key only; flag OFF byte-identical
