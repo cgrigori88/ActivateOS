@@ -159,6 +159,24 @@ SLICE 3  Portfolio Pertinence              (P2)   **HOSTED ACCEPTED / CLOSED** (
    │      Today uses it as the THIRD key only; flag OFF byte-identical
    │      "why this pursuit" ranked across the portfolio; Today + Pipeline ordering
    ↓
+P6-IG  Intercompany Governance Gap Closure  (P6)   **HOSTED ACCEPTED / CLOSED** (migration 0112, hosted 111 → 112; Phase 3 81/0)
+   │      executed INSIDE the deployed Preview runtime under its own password-authenticated app_rw, because the
+   │      app_rw plaintext is unrecoverable locally and rotation was forbidden — the runtime became the credential
+   │      boundary, via a temporary Preview-only harness REMOVED before closeout (the final build carries no
+   │      /api/internal surface, proven 404 while signed in AND carrying the ops token)
+   │      two gaps closed: derivation authority was stored and never read; the effective membership window had
+   │      ZERO references in src/ while sitting inside the RLS predicate itself
+   │      the semantic firewall — governed_information_classes is a SECOND column, and neither column may satisfy
+   │      the other's contract, proven hosted both ways; 0112 places no CHECK on the legacy column
+   │      D-P6-1: one governance clock, PostgreSQL transaction time, bound in SQL and never through a JS Date —
+   │      both bounds exact at microsecond resolution; 25 paired RLS/read-model probes, 0 disagreements
+   │      TWO SECURITY DEFECTS THE GATE FOUND, fixed hosted first: `9b9eefd` /joint ungated by a /join prefix
+   │      collision (40,950 B of a real joint room to an anonymous caller); `9cb4f66` anonymous renders carried
+   │      tenant state into their RSC payloads (/join, /join/<code>, /login). INVARIANT: an unauthenticated
+   │      request must not acquire an organization merely because no authenticated one exists
+   │      APPLICATION PRINCIPAL STAMP: NON-SPOOFABLE / CLOSED — 36/36, nine forgery variants byte-identical to control
+   │      0 of 160 fingerprints moved across the whole of Phase 3; fixtures 17 rows in, 17 out, 0 left
+    ↓
 SLICE 4  Thin Control Plane + Run Ledger   (P4, P5)
    │      backend primitives: agent/skill registry, run ledger, cost/observability
    ↓
