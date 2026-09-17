@@ -208,6 +208,17 @@ export async function proxy(req: NextRequest) {
     // stated here rather than in a robots.txt precisely so nobody mistakes it
     // for a gate: a crawler that ignores it still meets the sign-in redirect.
     res.headers.set("x-robots-tag", "noindex, nofollow");
+    // RECIPIENT-SPECIFIC PROJECTIONS VARY BY CREDENTIAL, AND THE CREDENTIAL IS A COOKIE.
+    // `Vary: Cookie` is declared in next.config.mjs, but a dynamic App Router response carries the
+    // framework's own Vary (the RSC negotiation list) and the configured value never reaches the
+    // wire — measured on the deployed Preview: 0 of 7 authenticated rooms carried it. A header that
+    // is configured but not delivered is stored policy that nothing enforces, which is the whole
+    // defect class P6-IG exists to close. APPENDED here, on the response the gate returns, where it
+    // survives — the same placement as x-robots-tag above.
+    //
+    // `no-store` remains the control that actually matters (nothing may be stored at all, so there
+    // is nothing for a shared cache to mis-serve); this is defense in depth beside it.
+    res.headers.append("vary", "Cookie");
     if (scopeToken) res.cookies.set("pos:scope", scopeToken, { path: "/", sameSite: "lax", maxAge: 60 * 60 * 24 * 30 });
     return res;
   };

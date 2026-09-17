@@ -109,3 +109,15 @@ test("the joint-pursuit room is still gated (9b9eefd must not regress)", () => {
   assert.ok(src.includes("isGuestSeatPath(req.nextUrl.pathname)"));
   assert.ok(!/startsWith\(\s*["']\/join["']\s*\)/.test(src), 'no raw startsWith("/join") may return at the gate');
 });
+
+test("Vary: Cookie is delivered by the gate, not merely declared in config", () => {
+  // next.config.mjs declares it, but a dynamic App Router response carries the framework's own Vary
+  // and the configured value never reaches the wire — 0 of 7 authenticated rooms carried it on the
+  // deployed Preview. Declared-but-undelivered is stored policy that nothing enforces. The gate now
+  // appends it to the response it returns, where x-robots-tag already proves headers survive.
+  const src = code("src/proxy.ts");
+  assert.ok(/res\.headers\.append\("vary", "Cookie"\)/.test(src), "the gate must append Vary: Cookie to the response");
+  const robots = src.indexOf('res.headers.set("x-robots-tag"');
+  const vary = src.indexOf('res.headers.append("vary", "Cookie")');
+  assert.ok(robots > -1 && vary > robots, "it belongs with the other response headers the gate sets");
+});
