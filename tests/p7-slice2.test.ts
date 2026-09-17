@@ -293,3 +293,27 @@ test("explanation bytes contain only information the governed statement set auth
     if (r.ok) assert.ok(!JSON.stringify(r.explanation).includes(secret), `leak at iteration ${i}`);
   }
 });
+
+// ── a malformed subject id fails safely and never becomes query input ───────────────────────────
+
+test("a malformed subject id is refused by validation, never bound into a query", () => {
+  const base = explainPlanFor("1f0b2e4c-9a77-4a1e-b0a2-9d4f3c7e5b81");
+  for (const bad of [
+    "not-a-uuid", "1 OR 1=1", "'; drop table pursuits; --", "../../etc/passwd",
+    "1f0b2e4c-9a77-4a1e-b0a2-9d4f3c7e5b81' or '1'='1", "%27", "", " ",
+    "1f0b2e4c9a774a1eb0a29d4f3c7e5b81",                       // right characters, wrong shape
+  ]) {
+    const r = validatePlan({ ...base, subject: { class: "pursuit", ids: [bad] } });
+    assert.equal(r.ok, false, `${JSON.stringify(bad)} must be refused`);
+    if (!r.ok) assert.match(r.detail, /canonical uuids/);
+  }
+});
+
+test("the route only builds an explanation plan for a syntactically valid id", () => {
+  // The route's own guard: anything that is not a canonical uuid never reaches plan construction,
+  // so a malformed value cannot become a bound parameter, let alone query shape.
+  const route = readFileSync(new URL("../src/app/experience/pursuits/page.tsx", import.meta.url), "utf8");
+  assert.match(route, /const UUID = \/\^\[0-9a-f\]\{8\}-/, "the route validates the id's shape itself");
+  assert.match(route, /UUID\.test\(sp\.explain\) \? sp\.explain : null/, "a non-matching id becomes null, not a plan");
+  assert.ok(!/explainPlanFor\(sp\.explain\)/.test(route), "an unvalidated request value must never reach plan construction");
+});
