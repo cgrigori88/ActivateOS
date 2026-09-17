@@ -11,6 +11,7 @@
 import { isAllScope, type Scope } from "@/lib/scope/scope";
 import { FIELDS, FILTERS, MAX_LIMIT, METRICS, OBJECT_CLASSES, ORDERABLE, metricKey } from "./registry";
 import { TEMPLATES, templateKey } from "./explain-templates";
+import { AGGREGATES, aggregateKey } from "./registry";
 import type { Filter, MetricRef, OrderRef, PursuitQuery } from "./types";
 
 export type ValidationResult = { ok: true; plan: PursuitQuery } | { ok: false; detail: string };
@@ -19,6 +20,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SCOPE_KINDS = new Set(["ALL", "PARTNER", "VENDOR", "TERRITORY", "SELLER", "PERSONAL"]);
 const PLAN_KEYS = new Set([
   "queryVersion", "subject", "scope", "filters", "metrics", "projection", "ordering", "limit", "asOf", "explain",
+  "aggregate",
 ]);
 
 const fail = (detail: string): ValidationResult => ({ ok: false, detail });
@@ -127,6 +129,22 @@ export function validatePlan(candidate: unknown): ValidationResult {
         const selected = (p.metrics as MetricRef[]).some((m) => metricKey(m) === key);
         if (!selected) return fail(`ordering by ${o.ref} requires that metric in metrics[]`);
       }
+    }
+  }
+
+  // ── aggregate (Slice 3) ── a REGISTERED aggregate, or false. Note what is NOT here: an
+  // organization. A cross-org cohort cannot be REPRESENTED by this shape (ruling 4).
+  if (p.aggregate !== false) {
+    const a = p.aggregate as { id?: unknown; version?: unknown } | null;
+    if (!a || typeof a !== "object" || Array.isArray(a)) return fail("aggregate must be false or { id, version }");
+    for (const k of Object.keys(a)) if (k !== "id" && k !== "version") return fail(`unknown aggregate key ${k}`);
+    if (typeof a.id !== "string" || typeof a.version !== "number") return fail("an aggregate needs an id and a version");
+    const def = AGGREGATES[aggregateKey({ id: a.id, version: a.version })];
+    if (!def) return fail(`unknown aggregate ${a.id}@${a.version}`);
+    // It delegates to a registered per-member metric, so that metric must be governed by this plan.
+    const overKey = metricKey(def.over);
+    if (!(p.metrics as MetricRef[]).some((m) => metricKey(m) === overKey)) {
+      return fail(`aggregate ${a.id}@${a.version} requires ${overKey} in metrics[]`);
     }
   }
 

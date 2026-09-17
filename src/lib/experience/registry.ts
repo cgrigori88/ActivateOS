@@ -136,6 +136,47 @@ export const METRICS: Record<string, MetricDef> = {
 
 export const metricKey = (m: MetricRef): string => `${m.id}@${m.version}`;
 
+/**
+ * THE AGGREGATE REGISTRY — inside the SAME registry, never a second one.
+ *
+ * An aggregate DELEGATES to an already-registered per-member metric: it names `over`, and the
+ * analysis layer reads that metric's governed cells. It does not re-derive the value, re-check the
+ * authority, or re-implement the arithmetic — so a member's contribution carries exactly the
+ * `mayDerive` and disclosure decisions P6 already made about it, and there is no second place where
+ * "what this number means" could drift.
+ *
+ * `operation` comes from a closed set. The analysis layer performs no other arithmetic anywhere.
+ */
+export type AggregateOperation = "SUM";
+
+export interface AggregateDef {
+  id: string;
+  version: number;
+  /** The registered per-member metric whose GOVERNED cells this aggregate sums. */
+  over: MetricRef;
+  operation: AggregateOperation;
+  provenance: string;
+  label: string;
+}
+
+export const AGGREGATES: Record<string, AggregateDef> = {
+  "cohort.open_pipeline_usd@1": {
+    id: "cohort.open_pipeline_usd",
+    version: 1,
+    over: { id: "pursuit.open_pipeline_usd", version: 1 },
+    operation: "SUM",
+    provenance:
+      "Sum of the registered per-pursuit open-pipeline metric across the members of this governed " +
+      "cohort. Computed only when EVERY member's contribution is disclosable to you; otherwise the " +
+      "whole aggregate is withheld rather than partially computed. Not a forecast, not a " +
+      "probability, not a ranking, not a pertinence signal, and not a total of anything you are not " +
+      "authorized to see.",
+    label: "Cohort open pipeline (USD)",
+  },
+};
+
+export const aggregateKey = (a: { id: string; version: number }): string => `${a.id}@${a.version}`;
+
 /** Ordering keys. `pursuit.id asc` is always appended, so every ordering is total and reproducible. */
 export const ORDERABLE = new Set<string>(["pursuit.updated_at", "metric:pursuit.open_pipeline_usd@1"]);
 

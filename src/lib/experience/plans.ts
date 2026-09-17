@@ -13,7 +13,7 @@ import { ALL_SCOPE } from "@/lib/scope/scope";
 import { OPEN_STATUSES } from "./registry";
 import type { PursuitQuery } from "./types";
 
-export const VIEW_KEYS = ["open-by-value", "recently-updated"] as const;
+export const VIEW_KEYS = ["open-by-value", "recently-updated", "open-pipeline-cohort"] as const;
 export type ViewKey = (typeof VIEW_KEYS)[number];
 
 export const isViewKey = (v: string | undefined): v is ViewKey => !!v && (VIEW_KEYS as readonly string[]).includes(v);
@@ -35,6 +35,7 @@ export function explainPlanFor(pursuitId: string): PursuitQuery {
     limit: 1,
     asOf: null,
     explain: { template: { id: "pursuit.summary", version: 1 } },
+    aggregate: false,
   };
 }
 
@@ -52,6 +53,28 @@ export const PLANS: Record<ViewKey, { label: string; plan: PursuitQuery }> = {
       limit: 50,
       asOf: null,
       explain: false,
+      aggregate: false,
+    },
+  },
+  /**
+   * THE SLICE 3 COHORT. Fixed and code-defined (ruling 5): no caller-supplied filtering, no filter
+   * AST, no free-form dimension combinations. The organization is absent by construction — it comes
+   * from the principal, and a cross-org cohort cannot be expressed here at all (ruling 4).
+   */
+  "open-pipeline-cohort": {
+    label: "Open pipeline across open pursuits",
+    plan: {
+      queryVersion: 1,
+      subject: { class: "pursuit" },
+      scope: ALL_SCOPE,
+      filters: [{ dimension: "pursuit.status", op: "in", values: [...OPEN_STATUSES] }],
+      metrics: [{ id: "pursuit.open_pipeline_usd", version: 1 }],
+      projection: ["pursuit.id", "pursuit.account_name", "pursuit.status", "pursuit.updated_at"],
+      ordering: [{ ref: "pursuit.updated_at", dir: "desc" }],
+      limit: 200,
+      asOf: null,
+      explain: false,
+      aggregate: { id: "cohort.open_pipeline_usd", version: 1 },
     },
   },
   "recently-updated": {
@@ -67,6 +90,7 @@ export const PLANS: Record<ViewKey, { label: string; plan: PursuitQuery }> = {
       limit: 50,
       asOf: null,
       explain: false,
+      aggregate: false,
     },
   },
 };

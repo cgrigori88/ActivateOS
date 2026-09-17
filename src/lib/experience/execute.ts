@@ -26,7 +26,8 @@ import { FIELDS, FILTERS, METRICS, metricKey } from "./registry";
 import { validatePlan } from "./validate";
 import { principalOrgId, type ExecutionPrincipal } from "./principal";
 import { explain } from "./explain";
-import type { ExecuteOutcome, Explanation, FieldRef, GovernedCell, GovernedResultSet, GovernedRow, MetricRef, PursuitQuery } from "./types";
+import { analyze } from "./analyze";
+import type { AggregateResult, ExecuteOutcome, Explanation, FieldRef, GovernedCell, GovernedResultSet, GovernedRow, MetricRef, PursuitQuery } from "./types";
 
 /** One candidate row as the canonical loader returns it — pre-governance, never leaves this module. */
 interface CandidateRow {
@@ -114,7 +115,15 @@ export async function executePursuitQuery(candidate: unknown, principal?: Execut
       if (e.ok) explanation = e.explanation; else explanationError = e.detail;
     }
 
-    return { ok: true as const, result: resultSet, explanation, explanationError };
+    // ANALYZE (Slice 3). Runs over the governed cohort — the rows governance admitted, never a
+    // candidate set — and like explain() it cannot reach the database to widen one.
+    let aggregate: AggregateResult | undefined;
+    if (plan.aggregate !== false) {
+      const a = analyze(resultSet, plan.aggregate.id, plan.aggregate.version);
+      if (a.ok) aggregate = a.result;
+    }
+
+    return { ok: true as const, result: resultSet, explanation, explanationError, aggregate };
   };
 
   if (principal) {

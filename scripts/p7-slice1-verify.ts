@@ -248,6 +248,88 @@ async function main(): Promise<void> {
     explainAsC.ok && explainAsC.explanation === undefined,
     explainAsC.ok ? (explainAsC.explanationError ?? "") : "");
 
+  // ── 8f. ANALYZE (Slice 3) — cohort membership under real RLS and real participation ──────────
+  //
+  // These are the §L proofs the unit suite cannot make. "A hidden member cannot affect an aggregate"
+  // is only meaningful when the member is hidden by RLS and `mayDerive` rather than by a fixture
+  // literal — B genuinely participates on A's pursuit, genuinely sees the row, and genuinely cannot
+  // derive its economic value.
+  const cohortPlan = (over: Partial<PursuitQuery> = {}): PursuitQuery =>
+    ({ ...structuredClone(PLANS["open-pipeline-cohort"].plan), ...over });
+  const METRIC = "pursuit.open_pipeline_usd@1";
+
+  const cohortA = await asOrg(w.a, cohortPlan());
+  const aggA = cohortA.ok ? cohortA.aggregate : undefined;
+  const aCells = cohortA.ok ? cohortA.result.rows.map((r) => r.cells[METRIC]) : [];
+  check("30: the owner's cohort computes, and equals the cells it can already see individually",
+    aggA?.visibility === "EXACT" && aggA.value === aCells.reduce((s, c) => s + Number(c?.value), 0),
+    `${aggA?.value} over ${aCells.length}`);
+  check("31: basis.members is exactly the post-governance membership",
+    aggA?.basis?.members === (cohortA.ok ? cohortA.result.rows.length : -1),
+    String(aggA?.basis?.members));
+  // L11: this cohort has one member, and the aggregate is that member's own governed metric — the
+  // caller could already derive it, so a one-member cohort is not a channel.
+  check("32: a single-member cohort reveals nothing the caller could not already derive",
+    aCells.length === 1 && aggA?.value === aCells[0]?.value, String(aggA?.value));
+
+  // B's cohort contains a member (A's pursuit) it can SEE but whose contribution it cannot DERIVE.
+  const cohortB = await asOrg(w.b, cohortPlan());
+  const aggB = cohortB.ok ? cohortB.aggregate : undefined;
+  const bSawForeign = cohortB.ok && cohortB.result.rows.some((r) => r.objectRef.id === w.pursuitA);
+  check("33: RULING 1 — one underivable contribution withholds the WHOLE aggregate",
+    bSawForeign && aggB?.visibility === "WITHHELD" && aggB.value === null,
+    `foreign member present: ${bSawForeign}`);
+  const aggBytes = JSON.stringify(aggB ?? {});
+  check("34: the withheld aggregate carries no partial sum, no basis and no member identity",
+    !aggBytes.includes("100000") && !aggBytes.includes("750000") && !/"basis"|"members"/.test(aggBytes) &&
+    !aggBytes.includes(w.pursuitA) && !aggBytes.includes(w.pursuitB));
+
+  // L4: narrowing to B's OWN pursuit yields only what B already sees cell-by-cell, and the wide
+  // cohort stays withheld — so there is no pair of published sums to difference.
+  const narrowB = await asOrg(w.b, cohortPlan({ subject: { class: "pursuit", ids: [w.pursuitB] } }));
+  const narrowAgg = narrowB.ok ? narrowB.aggregate : undefined;
+  const bOwnCell = narrowB.ok ? narrowB.result.rows[0]?.cells[METRIC] : undefined;
+  check("35: narrowing cannot expose a hidden member by subtraction",
+    narrowAgg?.visibility === "EXACT" && narrowAgg.value === bOwnCell?.value && aggB?.value === null,
+    `narrow ${narrowAgg?.value}, wide ${String(aggB?.value)}`);
+
+  // L12, under governance: identical bytes on both the computed and the withheld path.
+  const againA = await asOrg(w.a, cohortPlan());
+  const againB = await asOrg(w.b, cohortPlan());
+  check("36: the same cohort plan twice is byte-identical, basis.members included",
+    JSON.stringify(aggA) === JSON.stringify(againA.ok ? againA.aggregate : null) &&
+    JSON.stringify(aggB) === JSON.stringify(againB.ok ? againB.aggregate : null));
+
+  // L8: change ONLY a value B cannot see. B's recipient-visible output must not move at all.
+  const before = JSON.stringify({ rows: cohortB.ok ? cohortB.result.rows : null, agg: aggB });
+  const db6 = await owner.connect();
+  await db6.query(`insert into opportunities (org_id, company_id, pursuit_id, name, stage, amount_usd)
+                   values ($1, $2, $3, $4, 'qualification', 424242)`, [w.a, w.company, w.pursuitA, `${NS} hidden opp`]);
+  db6.release();
+  const afterB = await asOrg(w.b, cohortPlan());
+  const after = JSON.stringify({ rows: afterB.ok ? afterB.result.rows : null, agg: afterB.ok ? afterB.aggregate : undefined });
+  check("37: changing only a hidden value changes neither B's output nor its basis",
+    before === after && !after.includes("424242"));
+  // …while the owner's own aggregate does move, proving the fixture actually changed something.
+  const movedA = await asOrg(w.a, cohortPlan());
+  check("38: the hidden change was real — the owner's own aggregate moved by exactly that amount",
+    movedA.ok && Number(movedA.aggregate?.value) === Number(aggA?.value) + 424242,
+    `${aggA?.value} → ${String(movedA.ok ? movedA.aggregate?.value : "")}`);
+
+  // L1: an org that may see nothing is indistinguishable from one for which nothing exists.
+  const cohortC = await asOrg(w.c, cohortPlan());
+  const aggC = cohortC.ok ? cohortC.aggregate : undefined;
+  check("39: an undisclosable pursuit influences neither membership, sum, nor provenance",
+    cohortC.ok && cohortC.result.rows.length === 0 && aggC?.basis?.members === 0 &&
+    !JSON.stringify(aggC ?? {}).includes(NS));
+
+  // RULING 5: what executed is the code-defined cohort, unchanged.
+  check("40: the executed cohort is exactly the code-defined plan",
+    cohortA.ok && JSON.stringify(cohortA.result.plan) === JSON.stringify(PLANS["open-pipeline-cohort"].plan));
+  const badAgg = await executePursuitQuery({ ...cohortPlan(), aggregate: { id: "made.up", version: 1 } });
+  check("41: an unregistered aggregate is refused by the boundary, never by the database",
+    badAgg.ok === false && badAgg.error === "INVALID_PLAN", badAgg.ok === false ? badAgg.detail : "");
+
   // ── 9. No P7-local write occurred ──
   const db3 = await owner.connect();
   const { rows: counts } = await db3.query<{ n: string }>(

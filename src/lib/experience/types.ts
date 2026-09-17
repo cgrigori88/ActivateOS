@@ -40,6 +40,12 @@ export type OrderRef =
   | { ref: "pursuit.updated_at"; dir: "asc" | "desc" }
   | { ref: "metric:pursuit.open_pipeline_usd@1"; dir: "asc" | "desc" };
 
+/**
+ * An aggregate request. There is NO organization field anywhere in a plan — a cross-org cohort
+ * cannot be REPRESENTED, so there is nothing to accept and reject later (ruling 4).
+ */
+export type AggregateSpec = false | { id: string; version: number };
+
 export interface PursuitQuery {
   queryVersion: 1;
   subject: { class: ObjectClass; ids?: string[] };
@@ -57,6 +63,8 @@ export interface PursuitQuery {
    * refused, and the first row is never silently chosen.
    */
   explain: ExplainSpec;
+  /** A REGISTERED aggregate over the governed cohort, or `false`. */
+  aggregate: AggregateSpec;
 }
 
 /** Why a value is absent. Operation metadata only — never a withheld value or its magnitude. */
@@ -109,6 +117,27 @@ export interface GovernedResultSet {
   counts: { authorized: number };
 }
 
+// ── ANALYZE (Slice 3) ──────────────────────────────────────────────────────────────────────────
+
+/**
+ * The result of one registered aggregate over one governed cohort.
+ *
+ * `cohort` is the DEFINITION — the question — never the membership. `basis` appears ONLY on a
+ * computed aggregate whose every member contributed (ruling 3); on a withheld aggregate it is
+ * absent, because a member count beside a withheld value is exactly the differencing channel the
+ * withhold-whole rule exists to close.
+ */
+export interface AggregateResult {
+  aggregate: { id: string; version: number };
+  over: { id: string; version: number };
+  operation: "SUM";
+  cohort: { subjectClass: ObjectClass; scope: Scope; filters: Filter[] };
+  visibility: "EXACT" | "WITHHELD";
+  value: number | null;
+  basis?: { members: number };
+  provenance: string;
+}
+
 // ── EXPLAIN (Slice 2) ───────────────────────────────────────────────────────────────────────────
 
 /** A plan asks for an explanation by naming a REGISTERED template. `false` means none. */
@@ -149,6 +178,6 @@ export type ExplainOutcome =
 
 /** Validation and capability failures are values, not exceptions: the caller renders them. */
 export type ExecuteOutcome =
-  | { ok: true; result: GovernedResultSet; explanation?: Explanation; explanationError?: string }
+  | { ok: true; result: GovernedResultSet; explanation?: Explanation; explanationError?: string; aggregate?: AggregateResult }
   | { ok: false; error: "INVALID_PLAN"; detail: string }
   | { ok: false; error: "CAPABILITY_DENIED"; detail: string };

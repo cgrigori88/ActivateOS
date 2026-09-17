@@ -3,7 +3,7 @@ import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
 import { executePursuitQuery } from "@/lib/experience/execute";
 import { explainPlanFor, isViewKey, PLANS, VIEW_KEYS, type ViewKey } from "@/lib/experience/plans";
 import { FIELDS, METRICS, metricKey } from "@/lib/experience/registry";
-import type { Explanation, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
+import type { AggregateResult, Explanation, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +77,10 @@ export default async function ExperiencePursuitsPage({
           No explanation is available for that pursuit.
         </p>
       ) : (
-        <Result result={outcome.result} view={view} />
+        <>
+          {outcome.aggregate && <Aggregate aggregate={outcome.aggregate} />}
+          <Result result={outcome.result} view={view} />
+        </>
       )}
     </main>
   );
@@ -136,6 +139,33 @@ function Result({ result, view }: { result: GovernedResultSet; view: ViewKey }) 
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * The cohort aggregate, with its provenance. A WITHHELD aggregate shows no value, no partial sum and
+ * NO member count — a basis beside a withheld number would disclose the composition of a cohort whose
+ * aggregate could not be safely computed.
+ */
+function Aggregate({ aggregate }: { aggregate: AggregateResult }) {
+  return (
+    <section className="mt-8 rounded-input border border-neutral-300/80 px-5 py-4 dark:border-white/15">
+      <h2 className="text-title font-bold">
+        {aggregate.visibility === "EXACT"
+          ? new Intl.NumberFormat("en-US").format(aggregate.value ?? 0)
+          : "Not available"}
+      </h2>
+      <p className="mt-1 text-copy">
+        {aggregate.operation} of {aggregate.over.id}@{aggregate.over.version}
+        {aggregate.basis ? ` over ${aggregate.basis.members} cohort member${aggregate.basis.members === 1 ? "" : "s"}` : ""}
+      </p>
+      {aggregate.visibility === "WITHHELD" && (
+        <p className="mt-2 text-copy">This analysis isn&apos;t available for this cohort.</p>
+      )}
+      <p className="mt-3 text-body text-neutral-500 dark:text-neutral-400">
+        {aggregate.aggregate.id}@{aggregate.aggregate.version} · {aggregate.provenance}
+      </p>
+    </section>
   );
 }
 
