@@ -1,6 +1,6 @@
 # P7 Slice 3 — deterministic ANALYZE / cohort querying: contract and plan
 
-**Status:** CONTRACT / PLAN ONLY, awaiting ruling. **No implementation authorized.**
+**Status:** **RULED AND AUTHORIZED** (rulings in §O). Implementation may proceed.
 **Builds on:** Slice 1 (`cade340`) and Slice 2 (`a6dabbb`), both HOSTED ACCEPTED.
 **Excluded:** LLM plan generation · Dynamic Pursuit Surfaces · pinning · actions · exports ·
 historical `asOf` · cross-org ranking or percentile · new canonical state · a second metric registry ·
@@ -131,9 +131,12 @@ The existing P6 rule stands, unchanged and unextended:
 - the declared product-policy floor (`CROSS_ORG_COUNT_FLOOR = 5`) and the anti-differencing control
   apply wherever a count could describe, or be differenced against, rows belonging to another
   organization;
-- **counts of the caller's OWN organization's rows are not a disclosure** — the caller may read those
-  rows individually — and are permitted without a floor. This is stated explicitly so the floor is
-  applied where it means something rather than everywhere as ritual.
+- **CORRECTED BY RULING — the earlier wording was too broad and is replaced:** *an exact own-org
+  cohort count is exempt from the cross-org withheld-count floor **only when** every counted member is
+  independently existence-disclosable to the requesting principal **and** the count is computed
+  exclusively from the post-governance cohort.* **This is not a generic `count(*)` exception.**
+  Hidden, suppressed or otherwise undisclosable rows never contribute to that count. No helper whose
+  semantics amount to unrestricted counting may be created.
 
 **No generic `count(*)` is introduced.** `basis.members` is the only count Slice 3 emits, it is
 subject to the rules above, and it is omitted entirely when the aggregate is WITHHELD (§D) — because
@@ -276,3 +279,39 @@ No LLM · no natural-language planning · no Dynamic Pursuit Surfaces · no pinn
 exports · no historical `asOf` · no cross-org ranking or percentile · no new canonical state · no
 second metric registry · no hidden-input aggregation · no declassification transform · no generic
 `count(*)` · no persisted cohort.
+
+---
+
+## O. Ruling record (authoritative — supersedes any recommendation above it)
+
+1. **Mixed-authority aggregate — WITHHOLD THE WHOLE AGGREGATE.** Every cohort member must have a
+   disclosable/derivable `pursuit.open_pipeline_usd@1` contribution. If even one does not: **no
+   partial sum**, **no sum of the authorized subset**, the governed **WITHHELD** state, and **no basis
+   metadata** that would reveal the withheld contribution or the cohort's composition. *P7 may return
+   less information; it may not silently change what the metric means.*
+2. **No comparison in Slice 3.** Single governed cohort → one registered aggregate → deterministic
+   result. No cohort-vs-cohort comparison, delta, winner, rank, percentile or relative ordering.
+   Comparison requires its own contract.
+3. **`basis.members` only on a successfully computed aggregate**, describing the actual
+   post-governance cohort, and only when every counted member is independently visible to the
+   principal, every member contributes to the computed aggregate, and no hidden or suppressed member
+   exists in the reported basis. **Omitted entirely when the aggregate is WITHHELD or unavailable.**
+   The basis may never expose the size or identities of a cohort whose aggregate cannot be safely
+   computed.
+4. **Single organization, enforced STRUCTURALLY.** The Slice 3 query shape carries no organization
+   field at all — there is nothing to reject later, because a cross-org cohort **cannot be
+   represented**. No cross-org cohort construction, aggregation, ranking or comparison.
+5. **Fixed, code-defined cohort/filter definitions only.** No caller-supplied filtering, no filter
+   AST, no free-form dimension combinations. A later authenticated API/MCP ingestion path must
+   separately solve filter authorization, repeated-query differencing and query-shape abuse.
+
+**Additional required proofs** (folded into §L): one withheld contribution withholds the entire
+aggregate · the withheld case exposes neither a partial sum nor `basis.members` · the same cohort with
+all contributions authorized computes the exact registered sum · `basis.members` exactly matches the
+post-governance contributing members · adding a hidden candidate row changes neither membership nor
+recipient-visible output · changing only a hidden value changes neither output nor basis · an
+undisclosable pursuit cannot influence count, sum, order or provenance · no generic count path exists
+outside the registered analysis definition · no cross-org cohort can be represented by the query shape
+· caller input cannot synthesize or alter the fixed cohort definition · **the aggregate delegates to
+the already-registered per-pursuit metric rather than reimplementing its arithmetic or authority
+semantics.**
