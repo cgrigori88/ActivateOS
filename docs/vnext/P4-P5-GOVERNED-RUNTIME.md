@@ -5,7 +5,7 @@ flag default **OFF** · runtime tables **empty** · no external sending.
 **P45-D1 — HOSTED CORRECTED / CLOSED.** **P45-1 — HOSTED ACCEPTED / CLOSED (2026-09-16).**
 P4's first governed actor + explicit capability grant and P5's first durable Pursuit execution are
 both **PROVEN HOSTED** through the real `app_rw` runtime. Fixture removed; **159/159 fingerprints
-restored exactly**. **P45-2 (Slice 2) — HOSTED ACCEPTED / CLOSED** (2026-09-17) · hosted migration **110** · approval runtime and authorization substrate **proven hosted**. **Production human approval identity remains NOT PROVEN** — tracked separately. **P45-3 — SEQUENTIAL MULTI-STEP RUNTIME: IMPLEMENTED LOCALLY / NOT PUSHED** (migration **0111**, local only). Hosted authorization **not yet given**.
+restored exactly**. **P45-2 (Slice 2) — HOSTED ACCEPTED / CLOSED** (2026-09-17) · hosted migration **110** · approval runtime and authorization substrate **proven hosted**. **Production human approval identity remains NOT PROVEN** — tracked separately. **P45-3 — SEQUENTIAL MULTI-STEP RUNTIME: HOSTED ACCEPTED / CLOSED** (2026-09-17) · hosted migration **111** · ordered multi-step runtime and generation-safe advancement **proven hosted**. Plan-derived program synthesis and DAG/parallel execution remain **separate future work**. Production human approval identity remains **NOT PROVEN**.
 
 This is the architecture record for the amended roadmap's P4 (AI Control Plane) and P5 (Pursuit
 Runtime). It begins after H1 closed and Gate 9 accepted pilot readiness.
@@ -1101,3 +1101,165 @@ tables, 3 organizations**, no residue.
 > baseline at 3 organizations is **1654**, and **1654 + 9 new P45-3-D1 checks = 1663** — which is
 > exactly what runs now. The 1666 figure has been corrected wherever it appeared rather than left to
 > read as a drop.
+
+
+---
+
+## 21. P45-3 — HOSTED ACCEPTED / CLOSED
+
+### Phase 1 — migration gate, 24/24
+
+Baseline captured **before any mutation** and compared to the accepted P45-2 record: **0 of 160
+per-table hashes moved**; the only differences were `pendingVsRepo` (0111 awaiting) and the live
+session count. Expected movement was then **declared in writing before the push**.
+
+`0111` applied alone through the allowlisted single-migration applier → level **111**. Proven:
+exactly one migration since 0110 · **160 tables → 160** · `RUN_STEP_COMPLETED` present and the
+vocabulary grew **86 → 87**, the sole addition, every prior member retained · `app_rw` on
+`change_ledger` still exactly **`INSERT, SELECT`**, no UPDATE, no DELETE, **no column-level UPDATE** ·
+`change_ledger` **contents** unchanged (68 rows, 0 runtime rows) · policies 385, SECURITY DEFINER 26,
+functions 149, roles 32, RLS+FORCE 160 — all unchanged · `governed_skills` 18 with the same content
+hash · runtime and approval tables **empty** · organizations 3 · send 0/0/0/0/0 · **re-applying 0111
+is a byte-identical no-op** that does not double-add the member.
+
+### The one undeclared movement — found, chased and attributed
+
+My declaration said business-data must not move. **It moved**: `9e1fbd166fe06450` →
+**`6db00c6841c51fc3`**. I stopped and reconciled before any functional testing.
+
+Exactly **two** tables moved between pre and post: `schema_migrations` (declared) and
+**`pipeline_snapshots`, 2 → 3 rows**. The new row is **`taken_on = 2026-09-17`**, with values
+identical to the 09-15 and 09-16 rows (`open_count 11`, `open_usd 8,040,000.00`, `weighted_usd
+3,361,500.00`) — matching the canonical world gate2 independently reports as *11 open · $8,040,000*.
+The prior-date rows are untouched.
+
+**Cause: D-P1's read-triggered canonical snapshot writer, plus the calendar.** The owner ruled in
+D-P1 that viewing `/pipeline` writes today's canonical row. My own flag-off crawl viewed `/pipeline`,
+and the day had rolled to 09-17. It was **not** the migration — 0111 was applied at 01:50:38Z, after
+the crawls, and it touches only `pg_constraint`. **Business-data therefore moved SOLELY because of
+that one D-P1 row; 0111 contributed nothing to it.** The row is correct canonical history produced by
+the certified writer, so it stays: deleting it would invent a false history and would itself be an
+unauthorized canonical mutation.
+
+**My declaration was also wrong in the safe direction:** I predicted the security hash would move for
+the CHECK redefinition. It did **not** — `092a20af64a0444e` throughout. The security hash does not
+cover CHECK constraints, and neither does the world fingerprint, which is table contents plus the
+table set. Both moved only for the two data tables above.
+
+### The deployment changed nothing user-visible — proven by a same-day control
+
+The first CFR-1.2 comparison against the P45-2 crawl reported **STOP**: two absolute dates
+`2026-09-16 → 2026-09-17`, and `/queue` at **173 vs 171 lines**. Rather than reason about it, I
+crawled the **previous deployment (`fbdeef5`) and the new one (`59f48a4`) on the same day against the
+same level-110 database**. They produced a **byte-identical RAW digest `947ab4a844cd3785`**, 37/37
+rooms, **STRICT 0**, line counts equal.
+
+So the entire delta was the calendar: an action **due 2026-09-16** became *overdue · 2026-09-16*,
+moving overdue **3 → 4** and due-today **1 → 0** (3+1 = 4+0), which empties the "Today" bucket and
+removes its 2-line heading — **173 − 2 = 171**, reconciled exactly. A due-date bucket boundary
+crossing, the same category as the declared rolling-window reconciliations. I classified it by
+**control experiment rather than by adding a normalizer**, because a normalizer that masks absolute
+dates could also mask a real change.
+
+### Phase 2 — hosted functional acceptance, 75/75
+
+Synthetic Option-A fixtures; every run and decision through **`withTenantOrg` on the real hosted
+`app_rw`** (BYPASSRLS false); owner authority only for fixtures, cleanup and bounded negatives.
+
+**A — atomic creation:** one run, three PENDING steps, server-assigned seq 1/2/3, one `RUN_STARTED`;
+an invalid step rejects the whole program leaving **zero run, zero steps, zero ledger residue**.
+**B — whole-program identity:** identical program replays onto the same run; **reordered** steps and a
+**different milestone identity** are each a different program; a different program against a live run
+raises `ProgramConflictError`, never a false replay; no second run from any conflict.
+**C — sequential progression:** each fresh resume executes exactly one step; the cursor advances; the
+audit chain is exactly `RUN_STARTED → RUN_STEP_COMPLETED → RUN_STEP_COMPLETED → RUN_COMPLETED`, and a
+one-step run remains exactly `RUN_STARTED → RUN_COMPLETED`.
+**D — generation-aware concurrency (the P45-3-D1 closure condition):** two same-generation resumes →
+**exactly one advances**, loser `stale` with `invocationId` null, **one step-1 invocation and zero
+step-2 invocations**, one effect, **steps 2–3 still PENDING**, one `RUN_STEP_COMPLETED` and **no
+ledger event from the loser**; a fresh next-generation resume then executes step 2 normally; **five**
+same-generation resumes advance exactly once with all losers stale. **Retry generation proven
+hosted:** a handler that throws before any write leaves the step `RETRYABLE_FAILURE` at attempt 1, and
+two concurrent retries consume **attempt 1 → 2, not 3** — a stale duplicate cannot spend another
+attempt, and step 2 never executed.
+**E — approval mid-program:** each step parks independently on the **same skill**; **three separate
+REQUESTED records, one per step**, with exactly **one open** at a time naming the right step;
+approval releases one step only; concurrent resumes right after release advance it **once**; step 3
+does not execute on step 2's approval. Chain:
+`RUN_STARTED → APPROVAL_REQUESTED → APPROVAL_GRANTED → RUN_STEP_COMPLETED → APPROVAL_REQUESTED →
+APPROVAL_GRANTED → RUN_STEP_COMPLETED → APPROVAL_REQUESTED`.
+**F — failure / no skipping:** retryable stays on the same step; terminal halts; governance BLOCKS;
+later steps remain PENDING; **no BLOCKED recovery added**.
+**G — stale authority:** grant revoked and actor suspended each refuse step 2 for the same pinned
+actor; supersession gives `CANCELLED / PLAN_SUPERSEDED` **still pinned, never retargeted**, and both
+cancellation paths record `stepsTotal / stepsCompleted / lastCompletedSeq / haltedAtSeq /
+effectsRetained`.
+**H — actor binding:** one governed actor across the whole program, on the run and on every
+invocation, with **no substitution**.
+**I — boundaries:** a foreign tenant cannot advance or even see the run; `app_rw` cannot rewrite a
+step's `skill_id`, `args` or `idempotency_key`, and can neither update nor delete a ledger row.
+**J — send safety:** 0/0/0/0/0, empty outbox, `governed_skills` 18 → 18 (approval came from the
+grant override, so canonical policy was never touched).
+
+> **A nuance worth preserving.** The generation guard is **not** what prevents duplicate approval
+> requests. `pursuit_run_approvals_one_request` and the `WAITING_FOR_APPROVAL` state already provide
+> that, and E-series checks pass with or without the guard. The guard's contribution is confined to
+> stale *advancement*.
+
+### Three harness defects I fixed — none in the product
+
+The first hosted run reported 72/74 and then crashed. All three causes were mine: `stepsOf` omitted
+the step `id` so a cursor assertion compared against `undefined`; two assertions counted **all**
+`REQUESTED` rows instead of **open** ones (a decided request's REQUESTED row is history — the partial
+unique index is per *step*, so three REQUESTED rows across three steps is exactly right); and a
+leftover malformed line crashed the run. A fourth was a bad experiment: my induced failure used a
+non-existent campaign, but `draftTouchImpl` *returns* `{created:false}` rather than throwing, so the
+step succeeded. Replaced with `accept_participation` on an unknown id, which throws **before any
+write** (`participation.ts:78`) — a genuine, effect-free transient failure. Each diagnosis was made
+from queried hosted state, not from adjusting an expectation to fit.
+
+### Cleanup and restoration
+
+The acceptance run wrote its fixture manifest **on every plant**, so exact ids survive a crash. All
+13 fixture orgs and 13 companies were removed **by exact id in dependency order** — 335 rows across
+16 tables — and a pattern query proved the manifest listed **every** fixture row (0 unlisted). No
+wildcard delete drove any statement.
+
+> **160/160 per-table fingerprints EXACTLY restored** to the post-0111 baseline, and re-verified
+> again after both crawls: **0 of 160 moved**. business-data `6db00c6841c51fc3` · whole-world
+> `f2d83f71489c6682` · security `092a20af64a0444e` · manifest `cbddf5de9433b9fd` · protected 31/0 ·
+> organizations 3 · `governed_skills` 18 · runtime and approval tables empty · send 0/0/0/0/0.
+> `pipeline_snapshots` held at the same hash across both crawls, confirming the D-P1 writer is
+> idempotent within a day. **No re-baseline.**
+
+**Post-cleanup CFR-1.2 crawl:** 37/37, 4/4 byte-identical passes, **STRICT 0**, clock-derived 0,
+**RAW digest `947ab4a844cd3785` — byte-identical to the pre-migration same-day baseline.** The hosted
+acceptance left no user-visible trace whatsoever.
+
+### Certification
+
+tsc clean · unit **429/429** · `p45-program` **78/0** · `p45-runtime` **50/0** · `p45-approvals`
+**56/0** · partnership-app-rw **117/0** · tenant-isolation **205/0** · search-path **39/0** ·
+catalogue/protected **31/0** · SEEDED **1663/0** · FRESH **238/0** · EITHER **215/0** ·
+`certify-world --runs 2` **96 clean / 0 failures**, digest **`f72d1ff0d6b07b42`** stable.
+Env **38 entries byte-identical** to both the pre-gate and the P45-2 snapshots ·
+**`VNEXT_CONTROL_PLANE_ENABLED` ABSENT (OFF)** throughout · serving `59f48a4` as
+`dpl_3JP1VTcqjZbMCbYFZYm1zD89Z1gQ`.
+
+### DISPOSITION
+
+**P45-3 — Sequential Multi-Step Runtime: HOSTED ACCEPTED / CLOSED.**
+
+This closure claims, and only claims: durable ordered multi-step runtime **proven hosted** · one
+governed step per fresh resume · **generation-safe concurrent advancement** · per-step authority
+re-evaluation · per-step approval isolation · durable partial-execution semantics · same-run
+progression across multiple governed actions.
+
+> **It does NOT claim** plan-derived program synthesis · DAG/parallel execution · worker or autonomous
+> drain · compensation/rollback · **production human identity integration** · EXTERNAL_ACTION
+> orchestration. None of those has been started.
+
+**NEW HOSTED RECORD OF RECORD:** migrations **111** · business-data **`6db00c6841c51fc3`** ·
+whole-world **`f2d83f71489c6682`** · security **`092a20af64a0444e`** · manifest
+**`cbddf5de9433b9fd`** · protected **31 / 0** · `governed_skills` 18 · organizations 3 ·
+`app_rw` LOGIN true / BYPASSRLS false · serving `59f48a4`.
