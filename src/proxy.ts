@@ -50,6 +50,24 @@ function cspFor(nonce: string): string {
   ].join("; ");
 }
 
+/**
+ * Is this path the deliberately-public guest-seat landing?
+ *
+ * SEGMENT-EXACT ON PURPOSE. The test was `pathname.startsWith("/join")`, which also matched
+ * `/joint` — the authenticated joint-pursuit room — so an unauthenticated caller reached it and it
+ * rendered: with no session, `sessionOrgId()` resolves `resolve_user_org(null)`, which falls back to
+ * the OLDEST organization, and the room then rendered that org's partner names, joint pursuits,
+ * settlement panel and row ids. Writes were never exposed (every `/joint` server action runs
+ * `requireWrite` inside `withTenant`, and with no user there is no role), but the read was.
+ *
+ * A path belongs to the family only if it IS `/join` or lies strictly under `/join/`. Anything that
+ * merely begins with those five characters — `/joint`, `/joint/<id>`, `/joinery` — stays gated.
+ * Deployment Protection is defense in depth and is NOT the authorization boundary; this is.
+ */
+export function isGuestSeatPath(pathname: string): boolean {
+  return pathname === "/join" || pathname.startsWith("/join/");
+}
+
 async function digest(value: string): Promise<string> {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -188,7 +206,7 @@ export async function proxy(req: NextRequest) {
   // Guest-seat landing (B+2): /join/<code> is deliberately public — the
   // ~93-bit invite code in the URL is the credential, its actions are
   // rate-limited, and a dead code reveals nothing. Everything else stays gated.
-  if (req.nextUrl.pathname.startsWith("/join")) return pass();
+  if (isGuestSeatPath(req.nextUrl.pathname)) return pass();
 
   // 1. Basic Auth — the demo path, exactly as before.
   if (await basicAuthValid(req)) return pass();
