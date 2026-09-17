@@ -1,0 +1,10 @@
+{
+  "_comment": "Room ids from the accepted P2 HOSTED ACCEPTED / CLOSED crawl (2026-09-17), reused so a historical comparison uses the identical room set. Synthetic demo-world ids on the isolated Preview project; not secrets.",
+  "hero": "8e5f5d34-093a-4754-b474-fc40d8aca8f3",
+  "account": "a3be8e8b-5158-4ac2-a78f-5456337bb887",
+  "contact": "02e93a9f-c819-4ed6-8677-cbf20f79b8d6",
+  "motion": "c0282ab2-46c6-4920-a0f2-047e233835a5",
+  "goal": "445eedff-dcc2-46df-86fd-0908991be3ed",
+  "partner": "5801e94a-07f2-4cfa-b8df-3b1b53c7b23b",
+  "joint": "8e97ea9d-ea33-441a-9531-92d6018cf41e"
+}

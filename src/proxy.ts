@@ -52,6 +52,28 @@ function cspFor(nonce: string): string {
 }
 
 /**
+ * Does `pathname` belong to the route family rooted at `root`?
+ *
+ * SEGMENT-EXACT, ALWAYS. `startsWith(root)` is the wrong test for a route family and it has already
+ * cost us once: `startsWith("/join")` also matched `/joint`, the authenticated joint-pursuit room.
+ * A path is in the family only if it IS the root or lies strictly under `root/` — `/joinery`,
+ * `/loginfoo` and `/login-anything` share characters with a root, not a family.
+ *
+ * One helper, so the next family added here cannot reintroduce the shape.
+ */
+export function isRouteFamily(pathname: string, root: `/${string}`): boolean {
+  return pathname === root || pathname.startsWith(`${root}/`);
+}
+
+/**
+ * The sign-in surface. `/login` is the only member today; `/login/<step>` would join the family if
+ * one were ever added, and anything merely prefixed by those six characters stays gated.
+ */
+export function isSignInPath(pathname: string): boolean {
+  return isRouteFamily(pathname, "/login");
+}
+
+/**
  * Is this path the deliberately-public guest-seat landing?
  *
  * SEGMENT-EXACT ON PURPOSE. The test was `pathname.startsWith("/join")`, which also matched
@@ -66,7 +88,7 @@ function cspFor(nonce: string): string {
  * Deployment Protection is defense in depth and is NOT the authorization boundary; this is.
  */
 export function isGuestSeatPath(pathname: string): boolean {
-  return pathname === "/join" || pathname.startsWith("/join/");
+  return isRouteFamily(pathname, "/join");
 }
 
 async function digest(value: string): Promise<string> {
@@ -257,8 +279,10 @@ export async function proxy(req: NextRequest) {
     const { data } = await supabase.auth.getUser();
     // The sign-in surface itself must stay reachable — and it is reached WITHOUT a principal, which
     // is the whole point: /login is a pre-authentication surface and must render tenant-neutral.
+    // Segment-exact, like the guest seat: a raw prefix here would hand the same allowance to any
+    // path that merely starts with those characters.
     const signedIn = Boolean(data.user);
-    if (signedIn || req.nextUrl.pathname.startsWith("/login")) {
+    if (signedIn || isSignInPath(req.nextUrl.pathname)) {
       const res = pass(signedIn ? "identity" : null);
       for (const { name, value, options } of refreshed) res.cookies.set(name, value, options as never);
       return res;

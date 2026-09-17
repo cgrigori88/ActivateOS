@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { isGuestSeatPath } from "../src/proxy";
+import { isGuestSeatPath, isRouteFamily, isSignInPath } from "../src/proxy";
 
 /**
  * The guest-seat exemption is the ONE authenticated-gate hole in the proxy, so it is the one place
@@ -46,4 +46,39 @@ test("the proxy gate calls the segment-exact predicate, not a raw prefix test", 
   const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   assert.ok(code.includes("isGuestSeatPath(req.nextUrl.pathname)"), "the gate must use isGuestSeatPath");
   assert.ok(!/startsWith\(\s*["']\/join["']\s*\)/.test(code), 'no raw startsWith("/join") may remain in the gate');
+});
+
+// ── the sign-in surface is the same family shape, and the same trap ─────────────────────────────
+
+test("the sign-in family matches /login and paths strictly under it", () => {
+  assert.equal(isSignInPath("/login"), true);
+  assert.equal(isSignInPath("/login/"), true);
+  assert.equal(isSignInPath("/login/reset"), true);       // if such a step is ever added
+});
+
+test("no path merely prefixed by /login inherits the sign-in allowance", () => {
+  // The latent collision: this is what `startsWith("/login")` used to admit. Not exploitable when
+  // no such route existed — a gated path 404s — but it is the identical shape as /join → /joint,
+  // and the next route added under that prefix would have inherited a pre-authentication allowance.
+  for (const p of ["/loginfoo", "/login-anything", "/logins", "/loginform", "/login.html", "/loginsettings"]) {
+    assert.equal(isSignInPath(p), false, `${p} must not be treated as the sign-in surface`);
+  }
+});
+
+test("the route-family helper is segment-exact for any root", () => {
+  assert.equal(isRouteFamily("/x", "/x"), true);
+  assert.equal(isRouteFamily("/x/y", "/x"), true);
+  assert.equal(isRouteFamily("/xy", "/x"), false);
+  assert.equal(isRouteFamily("/x-y", "/x"), false);
+  assert.equal(isRouteFamily("/a/x", "/x"), false);
+  assert.equal(isRouteFamily("", "/x"), false);
+});
+
+test("both families route through the one helper, so neither can drift back to a raw prefix", () => {
+  const src = readFileSync(new URL("../src/proxy.ts", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.ok(/isGuestSeatPath\(pathname: string\): boolean \{\s*return isRouteFamily\(pathname, "\/join"\);/.test(src));
+  assert.ok(/isSignInPath\(pathname: string\): boolean \{\s*return isRouteFamily\(pathname, "\/login"\);/.test(src));
+  assert.ok(!/startsWith\(\s*["']\/login["']\s*\)/.test(src), 'no raw startsWith("/login") may remain');
+  assert.ok(!/startsWith\(\s*["']\/join["']\s*\)/.test(src), 'no raw startsWith("/join") may remain');
 });
