@@ -57,9 +57,14 @@ one function signature.
 |---|---|---|---|
 | **FACT** | a disclosed cell | "Status: QUALIFIED." | must name the `FieldRef` it came from |
 | **DERIVED** | a registered metric cell | "Open pipeline 750,000 USD (`pursuit.open_pipeline_usd@1`)." | must name metric id **and** version |
-| **ABSENCE** | an omission record | "Open pipeline is not disclosable here." | must name the reason code, never a value or magnitude |
+| **WITHHELD** | a suppressed cell **whose existence is authorized** | the registered withheld representation | fixed text, byte-identical regardless of the hidden value; **never** the internal reason code |
+| **OPERATION** | a `DERIVATION_DENIED` cell | "This analysis isn't available for this result." | describes what the system may do, never what the data contains |
 
-There is no fourth kind in Slice 2. In particular there is **no narrative**: Slice 2 ships
+There is a fourth possibility that is **not a kind**: a cell whose **existence** is not disclosable
+produces **no statement at all** (§5). It is absent from `statements`, from the count, and from the
+ordinals — there is nothing to label, because a label would itself be the disclosure.
+
+There is no narrative kind in Slice 2. In particular there is **no narrative**: Slice 2 ships
 deterministic templates, and generated prose arrives later under its own gate (Slice 1 ruling 4).
 
 ### 3.2 `Explanation` — the output shape
@@ -74,9 +79,13 @@ Explanation {
 }
 
 ExplanationStatement =
-  | { kind: "FACT";    ref: FieldRef;  text: string; provenance: FieldRef }
-  | { kind: "DERIVED"; ref: MetricKey; text: string; provenance: `${MetricId}@${Version}` }
-  | { kind: "ABSENCE"; ref: string;    text: string; reason: OmissionReason }
+  | { kind: "FACT";      ref: FieldRef;  text: string; provenance: FieldRef }
+  | { kind: "DERIVED";   ref: MetricKey; text: string; provenance: `${MetricId}@${Version}` }
+  | { kind: "WITHHELD";  ref: string;    text: string }   // registered representation; NO reason code
+  | { kind: "OPERATION"; ref: string;    text: string }   // operation-level, names no evidence
+
+// A suppressed-existence cell yields NO ExplanationStatement. The internal OmissionReason stays in
+// the GovernedResultSet for authorized audit; it is never carried into a recipient-facing statement.
 ```
 
 Every statement carries the cell reference it was built from. **An explanation with a statement whose
@@ -116,31 +125,75 @@ ExplanationTemplate {
 ### 4.1 Slice 2 ships exactly one template
 
 `pursuit.summary@1` over the Slice 1 projection: status, type, account, last update, and the open
-pipeline metric — with an ABSENCE statement wherever a cell is suppressed. One template is enough to
+pipeline metric — with the registered WITHHELD statement wherever a cell is suppressed and its
+existence is authorized, and nothing at all where existence is not. One template is enough to
 prove the contract; more are a later, cheap addition once the shape is ruled.
 
 ---
 
-## 5. Absence is stated, never implied
+## 5. Absence: three states, and they must not be collapsed (RULED)
 
-When a cell is `SUPPRESSED`, the explanation says so with the reason code and **nothing else**:
+The earlier draft had one absence state and would have rendered a "withheld" label for everything
+suppressed. That is wrong where **existence itself is not disclosable**: a label is a disclosure.
+The ruled model has three states, and Slice 2 must keep them distinct.
 
-| Reason | Statement text |
-|---|---|
-| `NOT_DISCLOSABLE` | "Not disclosable to your organization." |
-| `DERIVATION_DENIED` | "No live machine-governed grant authorizes deriving this." |
-| `INPUT_NOT_DISCLOSABLE` | "Withheld because a contributing input is not disclosable." |
+| State | Meaning | Recipient-facing rendering |
+|---|---|---|
+| **UNKNOWN** | no known authorized item | nothing to say; the item is simply not part of the answer |
+| **WITHHELD** | existence IS authorized, value/content is not | the **registered WITHHELD representation**, rendered inline and visible |
+| **SUPPRESSED existence** | existence itself is not disclosable | **omit entirely** — no placeholder, no label, no tooltip, no count contribution, no statement |
 
-Three properties this must preserve, each a test:
+### 5.1 The internal reason codes are not disclosure authority
 
-1. **No magnitude leaks.** The text never varies with the hidden value — not "a large deal", not
-   "several opportunities", not a count of withheld inputs. The reason code is the whole message.
-2. **No existence leak beyond what the result set already implies.** If governance omitted the row
-   entirely, the explanation has no subject to be asked about — absence of a row is absence of an
-   explanation, not "this pursuit exists but you may not see it".
-3. **Silence is not an option either.** A suppressed cell produces an explicit ABSENCE statement, so
-   a reader can tell "withheld" from "zero" from "not applicable". A blank that reads as zero is the
-   failure mode this slice exists to avoid.
+`DERIVATION_DENIED` and `NOT_DISCLOSABLE` remain distinct **internally**, and stay available to
+authorized audit and debug machinery. **That distinction is not automatically exposed to a
+recipient.** The renderer maps an internal reason to a recipient-facing state through the disclosure
+rules below — it never prints a reason code.
+
+**`DERIVATION_DENIED`** may produce **operation-level** text, because the sentence describes what the
+*system may do*, not what the *data contains*:
+
+> "This analysis isn't available for this result."
+
+It must not identify a hidden input, name a class of evidence, or imply that a particular undisclosed
+fact exists. "No live grant covers the economic value on this pursuit" would already be too much — it
+asserts there is an economic value to cover.
+
+**`NOT_DISCLOSABLE`** splits on whether **existence** is disclosable:
+
+- existence authorized → render the registered WITHHELD representation (§5.2);
+- existence not authorized → **render nothing at all** for that statement.
+
+### 5.2 The WITHHELD representation is registered, not improvised
+
+One registered representation, used everywhere, so a recipient learns to read it: a value slot marked
+withheld, inline, visible by default, carrying **no** value, magnitude, count, hint or tooltip. Its
+text is **byte-identical regardless of the hidden value**, which is what makes it safe — and is
+tested as such (§8 test 5).
+
+### 5.3 Omission must leave no shadow
+
+When existence is not disclosable, the statement does not exist — and nothing else in the output may
+betray that it once did:
+
+- **no placeholder** and no empty slot where it would have been;
+- **no gap in indices or ordinals** — statements are numbered after omission, never before;
+- **no change in statement count** that varies with what was omitted;
+- **no template wording** that implies a missing item ("and one other item", "3 of 5 shown");
+- **no ordering artefact** — the sequence of surviving statements must be the same as if the omitted
+  item had never been in the result set at all.
+
+The test for this is comparative rather than assertional (§8 test 2): render two result sets that
+differ **only** in an item whose existence is unauthorized, and require the outputs to be
+**byte-identical**.
+
+### 5.4 Slice 1 is consistent with this, and stays closed
+
+Worth stating so nobody re-opens it: in Slice 1 a row appears only if RLS and `can_see_pursuit`
+admitted it, so the row's existence is authorized; field-level suppression inside such a row is
+therefore the **WITHHELD** case, and rendering "not disclosable" inline is the correct representation
+under this ruling. Slice 2 adopts the registered representation for that state rather than inventing
+a second one.
 
 ---
 
@@ -167,8 +220,10 @@ design forbids.
 |---|---|
 | template not registered | reject the plan at validation, naming the template id |
 | template requires a ref the plan did not project | fail visibly: "this explanation needs `X`, which this view does not include" — never silently fetch it |
-| a required cell is suppressed | the template still renders, with an ABSENCE statement for that ref |
-| every cell suppressed | an explanation consisting only of ABSENCE statements — correct and complete, not an error |
+| a required cell is suppressed, existence authorized | the template still renders, with the registered WITHHELD statement for that ref |
+| a required cell is suppressed, existence NOT authorized | the statement is omitted entirely, leaving no placeholder, gap or count change |
+| every cell suppressed with existence authorized | an explanation consisting only of WITHHELD statements — correct and complete, not an error |
+| every cell suppressed with existence unauthorized | **no explanation at all** for that subject — indistinguishable from a subject that was never in the result set |
 | result set has no rows | no explanation; the surface says the authorized set is empty |
 | a statement references an unknown cell | the renderer refuses to emit the explanation at all (malformed), rather than dropping the statement |
 
@@ -176,28 +231,31 @@ design forbids.
 
 ## 8. Negative tests — the proof obligations
 
-Each is checkable without a database except where noted.
+Structural proofs first; the ruled absence proofs are tests 13–21 and are the heart of this slice.
 
 | # | Test | Proves |
 |---|---|---|
 | 1 | `explain()` has no database parameter, and its module imports nothing under `@/db`, `federation/` or `unsafe_` | the guarantee is structural |
 | 2 | `explain()` is synchronous and pure: same input twice → identical output | no interleaved read |
 | 3 | a statement whose `ref` is not a cell in the result set → the explanation is refused as malformed | per-statement traceability |
-| 4 | a suppressed cell yields exactly one ABSENCE statement carrying the reason code | absence is stated |
-| 5 | the ABSENCE text is **byte-identical** across two result sets whose hidden values differ | no magnitude leak |
-| 6 | a template naming a ref outside its `requires` fails registration | closed template vocabulary |
-| 7 | a template containing arithmetic fails a structural guard | no shadow metric in prose |
-| 8 | every DERIVED statement names metric id **and** version; every FACT names its `FieldRef` | provenance is mandatory |
-| 9 | the serialized explanation contains no value absent from the result set (fuzzed over generated result sets) | nothing unauthorized, end to end |
-| 10 | **hosted/DB:** a participant without a grant gets ABSENCE for the metric and the withheld amount appears nowhere in the response **bytes** | the Slice 1 guarantee survives explanation |
-| 11 | **hosted/DB:** `explain: true` returns the identical row set as `explain: false` for the same plan and principal | EXPLAIN cannot widen a result |
-| 12 | no model/LLM import anywhere in the Slice 2 tree | deterministic, per ruling |
-
-Test 9 is the one that matters most: it takes generated `GovernedResultSet`s with known hidden
-values, renders explanations, and asserts the hidden values appear nowhere in the output — the same
-"absent from the bytes" discipline Slice 1 applied to the response.
-
----
+| 4 | a template naming a ref outside its `requires` fails registration | closed template vocabulary |
+| 5 | a template containing arithmetic fails a structural guard | no shadow metric in prose |
+| 6 | every DERIVED statement names metric id **and** version; every FACT names its `FieldRef` | provenance is mandatory |
+| 7 | no model/LLM import anywhere in the Slice 2 tree | deterministic, per ruling |
+| 8 | **hosted/DB:** `explain: true` returns the identical row set as `explain: false` for the same plan and principal | EXPLAIN cannot widen a result |
+| **9** | **a suppressed value cannot appear in explanation bytes** (fuzzed over generated result sets with known hidden values) | nothing unauthorized, end to end |
+| **10** | **a suppressed item's existence cannot be inferred** from a placeholder, a missing index, statement count, ordinal numbering or template wording — two result sets differing only in an existence-unauthorized item render **byte-identically** | omission leaves no shadow |
+| **11** | `NOT_DISCLOSABLE` **with existence authorized** produces the registered WITHHELD representation, inline and visible | withheld is legible, not silent |
+| **12** | `NOT_DISCLOSABLE` **with existence unauthorized** produces **no recipient-facing statement** — no placeholder, no label, no tooltip, no count contribution | existence is not disclosed by a label |
+| **13** | `DERIVATION_DENIED` explains the unavailable **operation** without naming or implying hidden evidence | operation-level text is safe text |
+| **14** | explanation **ordering and count** cannot reveal omitted statements | no positional leak |
+| **15** | every factual reference maps to an actual `GovernedResultSet` cell | no invented evidence |
+| **16** | changing a template cannot introduce arithmetic or an unregistered reference | the guard binds future templates, not just today's |
+| **17** | identical `GovernedResultSet` + template version → **byte-identical** explanation output | determinism |
+| 18 | the WITHHELD text is **byte-identical** across two result sets whose hidden values differ | no magnitude leak |
+| 19 | **hosted/DB:** a participant without a grant gets the authorized absence state, and the withheld amount appears nowhere in the response **bytes** | the Slice 1 guarantee survives explanation |
+| 20 | UNKNOWN, WITHHELD and suppressed-existence are three distinct paths in the renderer, and no code path collapses two of them | the states stay distinct |
+| 21 | an internal reason code never appears in recipient-facing output | reason codes are not disclosure authority |
 
 ## 9. Implementation shape (for ruling, not for building)
 
@@ -221,16 +279,20 @@ exactly as Slice 1 does, since it exposes the same data with sentences attached.
 1. **Does the `Explanation` echo the full plan, or only the subject and template id?** Echoing the
    plan makes an explanation independently re-derivable, at the cost of a larger payload.
    **Recommend: echo it**, consistent with the result set.
-2. **Where do statements render — inline per row, or an expandable panel?** Presentation only, but it
-   determines whether ABSENCE statements are always visible. **Recommend: inline and always visible**,
-   because a withheld value that is only visible on click reads as absent rather than withheld.
+2. ~~**Where do statements render — inline per row, or an expandable panel?**~~ **RULED: inline and
+   visible by default**, with the governance qualification that inline visibility never overrides
+   disclosure — *if a statement's existence is not authorized, there is no statement to display.*
+   Normal explanation and an authorized WITHHELD state may not be hidden behind a click merely to
+   reduce visual density.
 3. **Is `explain: true` permitted on a multi-row result, or only when `subject.ids` names one
    object?** Multi-row explanation is more useful and more likely to produce noise.
    **Recommend: allow multi-row**, capped by the existing `limit`.
-4. **Should ABSENCE distinguish `DERIVATION_DENIED` from `NOT_DISCLOSABLE` in user-facing text?**
-   Both are honest; the first tells a partner that a grant would change the answer, which is arguably
-   useful and arguably a hint about what exists. **Recommend: keep them distinct** — the reason codes
-   describe the operation, not the data, which is the existing P6-IG deny-reason discipline.
+4. ~~**Should ABSENCE distinguish `DERIVATION_DENIED` from `NOT_DISCLOSABLE` in user-facing text?**~~
+   **RULED: distinct internally, NOT automatically exposed.** See §5 — `DERIVATION_DENIED` may produce
+   operation-level text that reveals no hidden data or hidden existence; `NOT_DISCLOSABLE` splits on
+   whether existence is disclosable, and where it is not, **nothing is rendered**. UNKNOWN, WITHHELD
+   and suppressed-existence must not be collapsed. My original recommendation was too permissive: it
+   would have printed a label wherever a value was suppressed, and a label is itself a disclosure.
 5. **Does Slice 2 touch the metric registry at all?** It should not need to.
    **Recommend: no** — if a template wants a number that is not already a registered metric, that is a
    metric change in its own slice, not an explanation feature.
