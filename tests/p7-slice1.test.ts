@@ -1,0 +1,193 @@
+import assert from "node:assert/strict";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { test } from "node:test";
+import { validatePlan } from "../src/lib/experience/validate";
+import { computeSum } from "../src/lib/experience/execute";
+import { FIELDS, METRICS, MAX_LIMIT, metricKey } from "../src/lib/experience/registry";
+import { PLANS, VIEW_KEYS } from "../src/lib/experience/plans";
+import type { PursuitQuery } from "../src/lib/experience/types";
+
+/**
+ * P7 SLICE 1 — the proofs that need no database.
+ *
+ * The rule these enforce: a plan that does not validate is never executed, so an invented metric or
+ * an unregistered field cannot cause so much as a query. The governance proofs (RLS, mayDerive,
+ * disclosure, tenant entitlement) live in scripts/p7-slice1-verify.ts, where a real database and a
+ * real app_rw session exist.
+ */
+
+const base = (): PursuitQuery => structuredClone(PLANS["open-by-value"].plan);
+const ok = (p: unknown) => validatePlan(p);
+const rejects = (p: unknown, match: RegExp) => {
+  const r = validatePlan(p);
+  assert.equal(r.ok, false, "expected the plan to be rejected");
+  if (!r.ok) assert.match(r.detail, match);
+};
+
+// ── the closed vocabulary ───────────────────────────────────────────────────────────────────────
+
+test("every shipped view plan validates", () => {
+  for (const k of VIEW_KEYS) assert.equal(ok(PLANS[k].plan).ok, true, `${k} must validate`);
+});
+
+test("an unregistered metric hard-fails, and the pair (id, version) is the key", () => {
+  rejects({ ...base(), metrics: [{ id: "made.up.metric", version: 1 }] }, /unknown metric made\.up\.metric@1/);
+  // The SAME id at an unreleased version is equally unknown — versions are not interchangeable.
+  rejects({ ...base(), metrics: [{ id: "pursuit.open_pipeline_usd", version: 2 }], ordering: [] },
+    /unknown metric pursuit\.open_pipeline_usd@2/);
+});
+
+test("an unregistered field, filter dimension, operator or object class hard-fails", () => {
+  rejects({ ...base(), projection: ["pursuit.id", "pursuit.secret_score"] }, /unknown field pursuit\.secret_score/);
+  rejects({ ...base(), filters: [{ dimension: "pursuit.owner_email", op: "=", values: ["x"] }] }, /unknown filter dimension/);
+  rejects({ ...base(), filters: [{ dimension: "pursuit.status", op: "like", values: ["%x%"] }] }, /operator like is not allowed/);
+  rejects({ ...base(), subject: { class: "invoice" } }, /unknown object class invoice/);
+});
+
+test("the excluded score and valuation columns are not reachable — they are not in the registry", () => {
+  for (const excluded of [
+    "pursuit.current_priority_score", "pursuit.current_purchase_propensity_score",
+    "pursuit.expected_value_weighted", "pursuit.expected_value_high", "pursuit.pertinence",
+  ]) {
+    assert.equal(excluded in FIELDS, false, `${excluded} must not be registered`);
+    rejects({ ...base(), projection: ["pursuit.id", excluded] }, /unknown field/);
+  }
+});
+
+test("no P2 pertinence value is reachable from Slice 1 in any form", () => {
+  // Assert on what is REGISTERED — keys, columns, metric ids — not on prose. The metric's provenance
+  // text legitimately says it is "not a pertinence signal", and a regex over prose would read that
+  // denial as a mention. Structure is the contract; wording is not.
+  const surfaces = [
+    ...Object.keys(FIELDS),
+    ...Object.values(FIELDS).map((f) => `${f.column} ${f.expression ?? ""}`),
+    ...Object.values(METRICS).flatMap((m) => [m.id, m.label, m.inputs.relation, m.inputs.valueColumn, ...m.informationClasses]),
+  ].join(" ");
+  assert.ok(!/pertinen/i.test(surfaces), "no registered key, column or metric may be a pertinence value");
+  assert.ok(!/propensity|priority_score|probability|_score\b/i.test(surfaces), "no scoring output may be registered");
+});
+
+test("unknown plan keys are rejected rather than ignored", () => {
+  rejects({ ...base(), rawSql: "select 1" }, /unknown plan key rawSql/);
+  rejects({ ...base(), table: "pursuits" }, /unknown plan key table/);
+});
+
+// ── Slice 1 boundaries that are enforced by validation ───────────────────────────────────────────
+
+test("asOf must be null and explain must be false", () => {
+  rejects({ ...base(), asOf: "2026-01-01T00:00:00Z" }, /asOf must be null/);
+  rejects({ ...base(), explain: true }, /explain must be false/);
+});
+
+test("limit is bounded", () => {
+  rejects({ ...base(), limit: 0 }, /limit must be an integer/);
+  rejects({ ...base(), limit: MAX_LIMIT + 1 }, /limit must be an integer/);
+  assert.equal(ok({ ...base(), limit: MAX_LIMIT }).ok, true);
+});
+
+test("a scope kind outside the existing scope model is rejected", () => {
+  rejects({ ...base(), scope: { kind: "EVERYTHING", id: null } }, /unknown scope kind EVERYTHING/);
+});
+
+test("subject ids must be canonical uuids — never a fragment of SQL", () => {
+  rejects({ ...base(), subject: { class: "pursuit", ids: ["1 or 1=1"] } }, /canonical uuids/);
+  rejects({ ...base(), filters: [{ dimension: "pursuit.account", op: "=", values: ["'; drop table pursuits; --"] }] },
+    /requires canonical uuids/);
+});
+
+test("ordering by a metric requires that metric to be selected", () => {
+  rejects({ ...base(), metrics: [], ordering: [{ ref: "metric:pursuit.open_pipeline_usd@1", dir: "desc" }] },
+    /requires that metric in metrics/);
+  rejects({ ...base(), ordering: [{ ref: "pursuit.secret", dir: "desc" }] }, /unknown ordering key/);
+});
+
+test("a row must be identifiable", () => {
+  rejects({ ...base(), projection: ["pursuit.status"] }, /must include pursuit\.id/);
+});
+
+// ── structural guards: what may not exist in the P7 tree ────────────────────────────────────────
+
+const treeFiles = (dir: string): string[] =>
+  readdirSync(dir).flatMap((e) => {
+    const full = join(dir, e);
+    return statSync(full).isDirectory() ? treeFiles(full) : full.endsWith(".ts") || full.endsWith(".tsx") ? [full] : [];
+  });
+
+const P7_TREE = [
+  ...treeFiles(new URL("../src/lib/experience", import.meta.url).pathname),
+  ...treeFiles(new URL("../src/app/experience", import.meta.url).pathname),
+];
+const codeOf = (f: string) => readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+test("no P7 module writes: no INSERT, UPDATE, DELETE or writer import", () => {
+  for (const f of P7_TREE) {
+    const code = codeOf(f);
+    assert.ok(!/\b(insert\s+into|update\s+\w+\s+set|delete\s+from)\b/i.test(code), `${f} must not mutate`);
+    assert.ok(!/dispatchSkill|startRun|resumeRun|setOrgFeature|proposeGrant|acceptGrant/.test(code),
+      `${f} must not reach an action or write path in Slice 1`);
+  }
+});
+
+test("no P7 module reaches a raw unsafe_ reader", () => {
+  for (const f of P7_TREE) assert.ok(!/unsafe_/.test(codeOf(f)), `${f} must not touch a raw reader`);
+});
+
+test("NO MODEL: nothing in the Slice 1 tree imports an LLM client", () => {
+  for (const f of P7_TREE) {
+    const code = codeOf(f);
+    assert.ok(!/@anthropic-ai|openai|anthropic|\bllm\b|generateText|createMessage/i.test(code),
+      `${f} must contain no model call — Slice 1 is deterministic end to end`);
+  }
+});
+
+test("the web route carries transport concerns only — no governance or metric semantics", () => {
+  const route = codeOf(new URL("../src/app/experience/pursuits/page.tsx", import.meta.url).pathname);
+  for (const forbidden of ["resolveDisclosure", "mayDerive", "buildFederationViewer", "withTenant", "resolveScope", "amount_usd", "reduce("]) {
+    assert.ok(!route.includes(forbidden), `the route must not contain ${forbidden}`);
+  }
+  assert.ok(route.includes("executePursuitQuery"), "the route must call the shared boundary");
+  assert.ok(route.includes("pursuitExperienceEnabled"), "the route must apply the environment master");
+});
+
+test("the boundary applies BOTH capability layers and the governance primitives", () => {
+  const exec = codeOf(new URL("../src/lib/experience/execute.ts", import.meta.url).pathname);
+  for (const required of ["withTenant", "experienceEnabledFor", "resolveScope", "buildFederationViewer", "mayDerive", "resolveDisclosure"]) {
+    assert.ok(exec.includes(required), `the boundary must apply ${required}`);
+  }
+  // Governance precedes computation: mayDerive must appear before the summation in the metric path.
+  assert.ok(exec.indexOf("mayDerive(") < exec.indexOf("computeSum("), "derivation authority must be resolved before computation");
+});
+
+test("no SQL identifier originates in a plan — column names live only in the registry", () => {
+  const exec = codeOf(new URL("../src/lib/experience/execute.ts", import.meta.url).pathname);
+  // Every interpolation into a statement must come from a registry def, never from plan input.
+  const interpolations = [...exec.matchAll(/\$\{([^}]+)\}/g)].map((m) => m[1].trim());
+  for (const i of interpolations) {
+    assert.ok(/def\.|columns\.join|where\.join|params\.length|selected/.test(i),
+      `interpolation \${${i}} must derive from the registry or bound-parameter bookkeeping`);
+  }
+});
+
+test("the transaction instant comes from SQL, never a JavaScript Date", () => {
+  const exec = codeOf(new URL("../src/lib/experience/execute.ts", import.meta.url).pathname);
+  assert.ok(exec.includes("transaction_timestamp()"), "the instant must be read in SQL");
+  assert.ok(!/new Date\(/.test(exec), "no JavaScript Date may participate (D-P6-1)");
+});
+
+// ── the metric's arithmetic ─────────────────────────────────────────────────────────────────────
+
+test("the metric sums only what it is given", () => {
+  assert.equal(computeSum([]), 0);
+  assert.equal(computeSum([100, 250.5]), 350.5);
+  assert.equal(computeSum([Number.NaN, 5]), 5);
+});
+
+test("the metric definition declares its governance inputs", () => {
+  const def = METRICS[metricKey({ id: "pursuit.open_pipeline_usd", version: 1 })];
+  assert.equal(def.determinism, "DETERMINISTIC");
+  assert.deepEqual([...def.informationClasses], ["economic_value"]);
+  assert.equal(def.deriveInputKind, "economic_fact");
+  assert.equal(def.derivePurpose, "VALUE_CASE");
+  assert.match(def.provenance, /Not a forecast, not a probability, not a pertinence signal/);
+});
