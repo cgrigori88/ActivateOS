@@ -1,6 +1,7 @@
 # P7 Slice 1 — implementation plan (NO CODE AUTHORIZED)
 
-**Status:** PLAN ONLY, awaiting ruling. No implementation, no schema, no migration.
+**Status:** **RULED AND AUTHORIZED** (ruling recorded in §11). Implementation of §1–§7 is authorized;
+no schema, no migration, no change to P5/P6.
 **Contract:** `docs/p7-pursuit-experience-analysis-contract.md` (accepted at `2b3d49d`).
 **Constraints in force:** read-only · one canonical object class · one deterministic query path ·
 closed registry · no new tables · no schema · **no LLM** · no pinning · no actions · `asOf = null`
@@ -371,3 +372,63 @@ unlinked route, name to be confirmed.**
 If ruled, implementation of §1–§7 **only**: the registry, the validator, the governance path, the
 computation, one unlinked read-only route, and the fifteen negative tests. Nothing in §8 becomes
 authorized by implication, and no decision in §9 is treated as approved unless ruled.
+
+---
+
+## 11. Ruling record (authoritative — supersedes any recommendation above it)
+
+Recorded verbatim in effect, from the Slice 1 approval.
+
+1. **Feature gating.** `pursuitExperienceEnabled()` is the environment master / fast deny;
+   `experienceEnabledFor(db, orgId)` is required inside the tenant-aware governed path; **both must
+   pass**; missing or false tenant entitlement **fails closed**. The existing nine env-only call sites
+   are **not changed** by Slice 1. No new flag. `dynamic_surfaces` is **not claimed** — it stays
+   reserved for later generated/composed surface slices.
+2. **Route.** `/experience/pursuits`, **unlinked** for Slice 1, requiring normal application
+   authentication plus the feature and tenant gates. **Its path is not yet a permanent
+   product-navigation contract.**
+3. **Metric versioning — §9 decision 1 is MODIFIED.** A metric **name + version definition is
+   immutable after release**. Slice 1 ships only `pursuit.open_pipeline_usd@1`. **Do not build
+   indefinite version-retention machinery now.** Once persisted pins or external interfaces can
+   reference a version, that version acquires a **compatibility obligation**; migration and retention
+   semantics are defined when pinning is designed.
+4. **EXPLAIN.** Slice 1: none. Slice 2: deterministic templates from governed facts and provenance.
+   LLM explanation later, under its own gate.
+5. **Export.** Deferred entirely. No P7 result export in Slice 1. Future export is a
+   **disclosure/persistence/onward-sharing design problem, not a formatting feature.**
+6. **Transports.** One shared, headless P7 execution boundary — validate → registry resolution →
+   governance → `GovernedResultSet` → deterministic computation → projection — which the web route
+   calls. **No new MCP/API infrastructure in Slice 1** merely to demonstrate portability. The web
+   handler carries **transport concerns only** and must not duplicate metric, governance, disclosure
+   or query semantics.
+7. **Aggregate safety — binding at code level.** Every metric requiring aggregate-safety reasoning
+   ships its tests in the same change. For `pursuit.open_pipeline_usd@1`, prove explicitly that
+   `mayDerive(economic_value)` is **necessary but not sufficient** to expose the result; that
+   computation consumes **only** the post-governance / post-disclosure governed inputs; and that a
+   suppressed economic-value input **does not contribute to the recipient-facing amount, directly or
+   indirectly**. Zero safe-declassification transforms is unchanged.
+8. **Boundaries preserved.** Read-only · pursuit only · eight registered fields · three filter
+   dimensions · one canonical metric · `asOf: null` · `explain: false` · no LLM · no pinning · no
+   actions · no new tables · no schema · no cross-org ranking · no P5/P6 modification. The
+   load-bearing execution order stands, and **P7 must never receive raw hidden data after governance
+   resolution**. Every §8 exclusion stays excluded: acceptance authorizes no `current_*_score`, no
+   `expected_value_*`, no P2 reimplementation and no unregistered field.
+9. **Implementation acceptance** adds these proofs to §7: unknown field/metric/filter hard-fails
+   **before query execution**; org feature false/missing denies **despite env master ON**; scope
+   cannot broaden from query input; an undisclosable pursuit cannot enter the result set; `mayDerive`
+   denial prevents the metric; disclosure suppression cannot feed the metric; **no SQL, table or
+   column identifier originates in a `PursuitQuery`**; the rendered response is regenerable entirely
+   from the validated plan and governed result; no P7-local write occurs; no hidden value appears in
+   response bytes.
+
+**Standing instruction:** if implementation demonstrates that an existing P5/P6 primitive is actually
+insufficient, **STOP before modifying it** and return the exact missing primitive. Otherwise proceed
+through local implementation and evidence without another architecture checkpoint.
+
+### 11.1 One factual refinement to §2.4, made during implementation prep
+
+`opportunities` carries `pursuit_id` directly (confirmed against schema 112). The metric therefore
+sums **the pursuit's own open opportunities** — `where pursuit_id = <pursuit> and stage not in
+('closed_won','closed_lost')` — rather than reaching through `account_id`. This is narrower and
+removes a class of cross-pursuit contamination the account-based formulation would have allowed. The
+registered definition text states this exactly.
