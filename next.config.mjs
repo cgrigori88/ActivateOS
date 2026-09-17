@@ -50,6 +50,16 @@ const nextConfig = {
           // revocation is not complete until a revoked recipient cannot retrieve a previously
           // authorized response from a shared or server cache.
           //
+          // MEASURED DELIVERY, hosted 2026-09-17. These two land on ROUTE HANDLERS and static assets
+          // (/api/build answers `vary: Cookie`, `cache-control: no-store`). On a rendered RSC page
+          // Next owns both: it replaces Vary with its router-negotiation list, so `Cookie` does NOT
+          // reach the wire there, and it replaces Cache-Control with `private, no-cache, no-store,
+          // max-age=0, must-revalidate` — strictly STRONGER than the value below. So the control
+          // that matters, non-storable and non-shared, holds on every rendered room (7/7 measured),
+          // and the Vary beside it is defense in depth that the framework declines to carry on
+          // pages. Setting it from the proxy was tried and does not survive either. It is kept here
+          // for the surfaces that DO deliver it; the claim is stated to match the wire, not this file.
+          //
           // `Vary: Cookie` is correct here because BOTH credential dimensions are cookies, traced:
           // Supabase session cookies (src/lib/auth/supabase.ts) and SCOPE_COOKIE
           // (src/lib/scope/server.ts), which changes what the projection contains. There is no auth

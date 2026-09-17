@@ -110,14 +110,15 @@ test("the joint-pursuit room is still gated (9b9eefd must not regress)", () => {
   assert.ok(!/startsWith\(\s*["']\/join["']\s*\)/.test(src), 'no raw startsWith("/join") may return at the gate');
 });
 
-test("Vary: Cookie is delivered by the gate, not merely declared in config", () => {
-  // next.config.mjs declares it, but a dynamic App Router response carries the framework's own Vary
-  // and the configured value never reaches the wire — 0 of 7 authenticated rooms carried it on the
-  // deployed Preview. Declared-but-undelivered is stored policy that nothing enforces. The gate now
-  // appends it to the response it returns, where x-robots-tag already proves headers survive.
-  const src = code("src/proxy.ts");
-  assert.ok(/res\.headers\.append\("vary", "Cookie"\)/.test(src), "the gate must append Vary: Cookie to the response");
-  const robots = src.indexOf('res.headers.set("x-robots-tag"');
-  const vary = src.indexOf('res.headers.append("vary", "Cookie")');
-  assert.ok(robots > -1 && vary > robots, "it belongs with the other response headers the gate sets");
+test("the cache contract is stated as the wire delivers it, not as config declares it", () => {
+  // Hosted measurement (2026-09-17): a rendered RSC page carries Next's own Cache-Control
+  // (`private, no-cache, no-store, max-age=0, must-revalidate` — stronger than the declared
+  // `private, no-store`) and Next's own Vary (the router-negotiation list), so the declared
+  // `Vary: Cookie` reaches route handlers and static assets but NOT rendered pages. Setting it from
+  // the proxy was tried and did not survive either. What must never happen again is the suite
+  // agreeing with the config file instead of the wire.
+  const cfg = readFileSync(new URL("../next.config.mjs", import.meta.url), "utf8");
+  assert.ok(/MEASURED DELIVERY/.test(cfg), "the config must record what is actually delivered");
+  assert.ok(!/res\.headers\.append\("vary", "Cookie"\)/.test(code("src/proxy.ts")),
+    "the proxy must not carry a header append that was measured not to survive");
 });

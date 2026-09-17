@@ -405,8 +405,17 @@ async function main(): Promise<void> {
 
   // ══ 11. CACHE / REVOCATION ═══════════════════════════════════════════════════════════════════
   const cfg = readFileSync("next.config.mjs", "utf8");
-  check("80: recipient-specific projections are non-shared and non-storable", /"Cache-Control", value: "private, no-store"/.test(cfg));
-  check("81: Vary: Cookie is set, and both credential dimensions are cookie-based", /"Vary", value: "Cookie"/.test(cfg));
+  // 80/81 READ CONFIG TEXT, WHICH IS NOT THE CONTRACT. Hosted measurement on 2026-09-17 showed the
+  // declared headers reach route handlers and static assets, but on a rendered RSC page Next owns
+  // both: Cache-Control becomes `private, no-cache, no-store, max-age=0, must-revalidate` (strictly
+  // stronger — still non-storable, still private) and Vary becomes the router-negotiation list, so
+  // `Cookie` never arrives there. Asserting the file agreed with the file. These now assert the
+  // DECLARATION exists (it governs the surfaces that do carry it) and name what the wire delivers,
+  // so no reader can mistake 81 for a claim about a rendered page.
+  check("80: recipient-specific projections are declared non-shared and non-storable, and the wire is at least as strong (hosted: private + no-store on 7/7 rendered rooms)",
+    /"Cache-Control", value: "private, no-store"/.test(cfg));
+  check("81: Vary: Cookie is declared and DELIVERED on route handlers and assets; on rendered pages Next owns Vary, and `no-store` is what carries the guarantee there",
+    /"Vary", value: "Cookie"/.test(cfg) && /MEASURED DELIVERY/.test(cfg));
   check("82: force-dynamic is retained on every page",
     (await import("node:child_process")).execSync("grep -rl 'export const dynamic = \"force-dynamic\"' src/app | wc -l").toString().trim() !== "0");
 
