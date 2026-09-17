@@ -1,12 +1,31 @@
 import type { PoolClient } from "pg";
 import type { PursuitPortfolioView, PortfolioRow, PortfolioAccountGroup } from "./types";
 import { scoreView, type Caller } from "./helpers";
+import { rankPortfolioPertinence, type PortfolioPertinenceView } from "./portfolio-pertinence";
+import { loadPortfolioCandidates } from "./portfolio-pertinence-loaders";
 
 /**
  * Pursuit portfolio read model (Workstream D, §5/§6). The canonical work list: one row per
  * Pursuit (an account may hold several), with an optional account rollup that groups without
  * collapsing their distinct scores. Optimized to answer "what should I work next?"
  */
+
+/**
+ * P2 — Portfolio Pertinence, computed alongside the portfolio when Pursuit Intelligence is on.
+ *
+ * FLAG-OFF BYTE IDENTITY. `getPursuitPortfolio` is untouched: it still orders by
+ * `current_priority_score desc nulls last`, and nothing below runs unless the caller asks for it.
+ * P2 replaces that column's PRODUCT ROLE; it does not alter the pre-P2 experience.
+ *
+ * `asOf` is the single evaluation clock for the whole ranking (see `portfolio-pertinence.ts`).
+ */
+export async function getPortfolioPertinence(
+  db: PoolClient, caller: Caller, opts: { asOf?: Date; scope?: string; pursuitIds?: string[] } = {},
+): Promise<PortfolioPertinenceView> {
+  const asOf = opts.asOf ?? new Date();
+  const candidates = await loadPortfolioCandidates(db, caller, asOf, { pursuitIds: opts.pursuitIds });
+  return rankPortfolioPertinence({ caller, candidates, asOf, scope: opts.scope ?? "All pursuits" });
+}
 
 export async function getPursuitPortfolio(db: PoolClient, caller: Caller): Promise<PursuitPortfolioView> {
   const { rows } = await db.query<{

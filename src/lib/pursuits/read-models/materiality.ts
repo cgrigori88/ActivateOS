@@ -50,15 +50,35 @@ const CLASS_RANK: Record<DecisionClass, number> = {
 const URGENCY_RANK: Record<OperationalUrgency, number> = { critical: 0, high: 1, normal: 2, low: 3 };
 const BAND_RANK: Record<string, number> = { very_high: 0, high: 1, moderate: 2, low: 3, unknown: 4 };
 
+/** What a Today row needs in order to be ordered. */
+export interface TodaySortable {
+  decisionClass: DecisionClass;
+  operationalUrgency: OperationalUrgency;
+  commercialPriority: string;
+  ageSeconds: number;
+  /**
+   * P2 portfolio pertinence rank (1 = most pertinent), when Pursuit Intelligence is on. UNDEFINED
+   * with the flag off, which is what keeps flag-OFF ordering byte-identical to the pre-P2 product.
+   */
+  pertinenceRank?: number | null;
+}
+
 /**
  * Today ordering (§3): material business state first — decision class, then operational urgency,
  * then commercial priority, then how long a decision has been unresolved. A low-value recent event
  * never outranks a major route change on a large Pursuit merely for being newer.
+ *
+ * P2 occupies the THIRD key only, and only when a pertinence rank is supplied. Decision class and
+ * operational urgency still dominate, so portfolio pertinence can never outrank a hard operational
+ * deadline. With the flag off no rank is supplied and the comparison falls through to the original
+ * commercial-priority band, unchanged.
  */
-export function todaySort(a: { decisionClass: DecisionClass; operationalUrgency: OperationalUrgency; commercialPriority: string; ageSeconds: number },
-                          b: { decisionClass: DecisionClass; operationalUrgency: OperationalUrgency; commercialPriority: string; ageSeconds: number }): number {
+export function todaySort(a: TodaySortable, b: TodaySortable): number {
+  const byThirdKey = a.pertinenceRank != null && b.pertinenceRank != null
+    ? a.pertinenceRank - b.pertinenceRank
+    : (BAND_RANK[a.commercialPriority] ?? 9) - (BAND_RANK[b.commercialPriority] ?? 9);
   return (CLASS_RANK[a.decisionClass] - CLASS_RANK[b.decisionClass])
       || (URGENCY_RANK[a.operationalUrgency] - URGENCY_RANK[b.operationalUrgency])
-      || ((BAND_RANK[a.commercialPriority] ?? 9) - (BAND_RANK[b.commercialPriority] ?? 9))
+      || byThirdKey
       || (b.ageSeconds - a.ageSeconds);   // older unresolved decisions first
 }
