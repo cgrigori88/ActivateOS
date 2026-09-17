@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { loadStageWeights } from "@/lib/opportunities/stage-weights";
+import { getValueCase } from "@/lib/value/case";
 import type { Stage } from "@/lib/opportunities/lifecycle";
 import type { Caller } from "./helpers";
 import {
@@ -16,6 +17,14 @@ import type { DisclosureClass } from "./types";
  * Every query is explicitly `org_id`-scoped ON TOP OF RLS (the house rule), and the caller's
  * disclosure class travels with each candidate so the ranking module can filter BEFORE it builds a
  * comparison set. Nothing here is written: this module reads canonical state and nothing else.
+ *
+ * NO QUERY ERROR IS EVER CAUGHT HERE. These queries run inside the caller's transaction, and in
+ * PostgreSQL a failed statement aborts that transaction: catching the JavaScript error does NOT
+ * recover it, it only hides the real failure and leaves every later statement failing with 25P02.
+ * An earlier version wrapped three of these in `.catch(() => ({ rows: [] }))`, which turned two
+ * genuinely broken queries into a silent "no data" locally and a 500 on the hosted Today page.
+ * A query that can fail belongs behind a SAVEPOINT, as `dispatchSkill` does; a query that should
+ * not fail must simply be correct.
  *
  * ONE CLOCK. `asOf` is supplied by the caller and captured once per computation; no function below
  * calls `now()` for a ranking input, so two pursuits can never be scored against two instants.
@@ -75,7 +84,7 @@ export async function loadPortfolioCandidates(
   // ── MODELED magnitude: defensible modelled customer impact. A CONFLICTING case is deliberately
   //    NOT credited commercially — it surfaces through contextNeed instead, so a conflict can never
   //    be counted as both value and need.
-  const modeled = await loadModeledImpact(db, caller.orgId, ids);
+  const modeled = await loadModeledImpact(db, caller.orgId, ids, asOf);
 
   // ── contextNeed, momentum, readiness, pending decisions.
   const need = await loadContextNeed(db, caller.orgId, ids);
@@ -110,25 +119,22 @@ export async function loadPortfolioCandidates(
 /**
  * Modelled customer impact, midpoint of the defensible interval.
  *
- * BASELINE drivers are excluded — `value/case.ts` §4: "spending $2M a year today is not a $2M
- * benefit". A case with a CONFLICTING driver returns null, so the pursuit falls to UNESTABLISHED
- * for commercial purposes and is attended to through contextNeed instead.
+ * USES THE CANONICAL VALUE CASE, not hand-written SQL. `getValueCase` owns the driver taxonomy, the
+ * interval arithmetic, the BASELINE exclusion ("spending $2M a year today is not a $2M benefit") and
+ * the defensibility rule. Re-deriving any of that here would be a second source of truth for the
+ * economics — and my first attempt at hand-rolled SQL was simply wrong: it read `facts.pursuit_id`
+ * and `facts.value_low`, neither of which exists (facts link through `pursuit_facts`).
+ *
+ * A CONFLICTING or undefensible case returns null, so the pursuit falls to UNESTABLISHED for
+ * commercial purposes and is attended to through contextNeed instead — never credited as both.
  */
-async function loadModeledImpact(db: PoolClient, orgId: string, ids: string[]): Promise<Map<string, number>> {
-  const { rows } = await db.query<{ pursuit_id: string; low: string | null; high: string | null; conflicting: boolean; roles: number }>(
-    `select f.pursuit_id,
-            sum(case when fp.driver_role = 'BENEFIT' then f.value_low end) low,
-            sum(case when fp.driver_role = 'BENEFIT' then f.value_high end) high,
-            bool_or(f.status = 'DISPUTED' or fp.driver_role = 'CONFLICTING') conflicting,
-            count(*) filter (where fp.driver_role = 'BENEFIT')::int roles
-       from facts f
-       join fact_predicates fp on fp.key = f.predicate_key
-      where f.org_id = $1 and f.pursuit_id = any($2::uuid[]) and fp.driver_role is not null
-      group by f.pursuit_id`, [orgId, ids]).catch(() => ({ rows: [] as never[] }));
+async function loadModeledImpact(db: PoolClient, orgId: string, ids: string[], asOf: Date): Promise<Map<string, number>> {
   const out = new Map<string, number>();
-  for (const r of rows) {
-    if (r.conflicting || r.roles === 0 || r.low == null || r.high == null) continue;   // not defensible → UNESTABLISHED
-    out.set(r.pursuit_id, (Number(r.low) + Number(r.high)) / 2);
+  for (const id of ids) {
+    const vc = await getValueCase(db, orgId, id, asOf);
+    if (!vc || !vc.defensible || vc.modeledImpact == null) continue;
+    if (vc.state !== "STRONG" && vc.state !== "INCOMPLETE") continue;   // CONFLICTING earns no commercial credit
+    out.set(id, (vc.modeledImpact.low + vc.modeledImpact.high) / 2);
   }
   return out;
 }
@@ -142,20 +148,28 @@ async function loadModeledImpact(db: PoolClient, orgId: string, ids: string[]): 
  * so a missing economic buyer is counted here exactly once.
  */
 async function loadContextNeed(db: PoolClient, orgId: string, ids: string[]): Promise<Map<string, { value: number; reason: string }>> {
-  const { rows } = await db.query<{ pursuit_id: string; disputed: number; stale: number; unverified: number; missing_roles: number }>(
+  // Facts reach a pursuit through `pursuit_facts` — `facts` itself carries no `pursuit_id`. Each
+  // measure is its own scalar subquery rather than one multi-join with filtered counts: joining
+  // facts AND stakeholders in a single row set fans out, and `stakeholders` has no `id` column to
+  // count distinctly on (its identity is opportunity+contact). Subqueries are both correct and
+  // immune to that fan-out.
+  const { rows } = await db.query<{ pursuit_id: string; disputed: number; stale: number; unverified: number; verified_roles: number }>(
     `select pu.id pursuit_id,
-            count(f.*) filter (where f.status = 'DISPUTED')::int disputed,
-            count(f.*) filter (where f.status = 'STALE')::int stale,
-            count(distinct s.id) filter (where s.assertion_state in ('INFERRED','UNVERIFIED'))::int unverified,
-            (3 - count(distinct s.role) filter (where s.assertion_state = 'VERIFIED'))::int missing_roles
+            (select count(*) from pursuit_facts pf join facts f on f.id = pf.ref_id
+              where pf.pursuit_id = pu.id and f.org_id = pu.org_id and f.status = 'DISPUTED')::int disputed,
+            (select count(*) from pursuit_facts pf join facts f on f.id = pf.ref_id
+              where pf.pursuit_id = pu.id and f.org_id = pu.org_id and f.status = 'STALE')::int stale,
+            (select count(*) from stakeholders s
+              where s.pursuit_id = pu.id and s.assertion_state in ('inferred','unverified'))::int unverified,
+            (select count(distinct s.role) from stakeholders s
+              where s.pursuit_id = pu.id and s.assertion_state = 'verified'
+                and s.role in ('economic_buyer','champion','technical_buyer'))::int verified_roles
        from pursuits pu
-       left join facts f on f.pursuit_id = pu.id and f.org_id = pu.org_id
-       left join stakeholders s on s.pursuit_id = pu.id
-      where pu.org_id = $1 and pu.id = any($2::uuid[])
-      group by pu.id`, [orgId, ids]).catch(() => ({ rows: [] as never[] }));
+      where pu.org_id = $1 and pu.id = any($2::uuid[])`, [orgId, ids]);
   const out = new Map<string, { value: number; reason: string }>();
   for (const r of rows) {
-    const missing = Math.max(0, r.missing_roles);
+    // The three buying roles a pursuit needs verified; absence is a gap, never zero.
+    const missing = Math.max(0, 3 - r.verified_roles);
     // Declared arithmetic: a disagreement outranks an absence (the missing-context principle).
     const value = Math.min(1, r.disputed * 0.5 + r.stale * 0.2 + missing * 0.15 + r.unverified * 0.05);
     const parts: string[] = [];
@@ -236,8 +250,7 @@ async function loadPendingDecisions(db: PoolClient, orgId: string, ids: string[]
   const { rows: appr } = await db.query<{ pursuit_id: string }>(
     `select distinct a.pursuit_id from pursuit_run_approvals a
       where a.org_id = $1 and a.pursuit_id = any($2::uuid[]) and a.decision = 'REQUESTED'
-        and not exists (select 1 from pursuit_run_approvals t where t.request_id = a.id)`, [orgId, ids])
-    .catch(() => ({ rows: [] as never[] }));
+        and not exists (select 1 from pursuit_run_approvals t where t.request_id = a.id)`, [orgId, ids]);
   for (const r of appr) add(r.pursuit_id, "A governed action is waiting for approval");
 
   return out;

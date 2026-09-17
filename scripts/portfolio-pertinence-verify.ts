@@ -316,6 +316,26 @@ async function main(): Promise<void> {
       const ranked = rankPortfolioPertinence({ caller: c0, candidates: loaded, asOf: ASOF, scope: "All pursuits" });
       check("54: a real portfolio ranks deterministically from canonical state",
         JSON.stringify(ranked) === JSON.stringify(rankPortfolioPertinence({ caller: c0, candidates: loaded, asOf: ASOF, scope: "All pursuits" })));
+      // D-P2-2 — the loaders must not poison the caller's transaction. A failed statement aborts a
+      // PostgreSQL transaction, and catching the JS error does NOT recover it; the next statement
+      // then fails with 25P02. This probe is the direct test for that class.
+      let txnAlive = false;
+      try { await db.query(`select 1 as probe`); txnAlive = true; } catch { txnAlive = false; }
+      check("55a: D-P2-2 — the transaction is still usable after loading candidates (no 25P02)", txnAlive);
+      // A swallowed query used to look exactly like "no data". Real inputs must vary.
+      const needs = new Set(loaded.map((x) => x.contextNeed.toFixed(3)));
+      check("55b: D-P2-2 — contextNeed is really computed, not defaulted (a swallowed query would leave every value at 0.100)",
+        needs.size > 1 || !needs.has("0.100"), `${needs.size} distinct value(s): ${[...needs].join(", ")}`);
+      const bases = new Set(loaded.map((x) => x.valueBasis));
+      check("55c: D-P2-2 — more than one value basis is produced from real canonical data", bases.size > 1, [...bases].join(", "));
+      const loaderSrc = readFileSync(new URL("../src/lib/pursuits/read-models/portfolio-pertinence-loaders.ts", import.meta.url), "utf8");
+      const codeLines = loaderSrc.split("\n").filter((l) => !l.trim().startsWith("*") && !l.trim().startsWith("//"));
+      check("55d: D-P2-2 — NO query error is caught in the loaders; a query that can fail belongs behind a SAVEPOINT",
+        !codeLines.some((l) => l.includes(".catch(")));
+      check("55e: D-P2-2 — facts are reached through pursuit_facts, never a non-existent facts.pursuit_id",
+        // The boundary matters: `pf.pursuit_id` (the link table, correct) ENDS WITH the substring
+        // `f.pursuit_id` (the non-existent column), so a naive match flags the correct code.
+        loaderSrc.includes("pursuit_facts") && !/(?<![A-Za-z_])f\.pursuit_id/.test(loaderSrc));
       check("55: ranking wrote nothing — the module is a pure read-model",
         (await db.query<{ n: string }>(`select count(*)::text n from change_ledger where change_type like 'PERTINENCE%'`)).rows[0].n === "0");
     } else check("51: (skipped — no organizations in this world)", true);
