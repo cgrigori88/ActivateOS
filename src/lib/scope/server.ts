@@ -182,6 +182,22 @@ export async function getScopeContext(searchParamScope?: string | null): Promise
 }
 
 /** Lightweight scope context for the shell/chip: options + active resolved scope. Cookie-driven. */
+/**
+ * The shell scope for a caller with NO organization: the generic "All" entry and nothing else.
+ *
+ * This is not placeholder tenant data — it names no organization, partner, seller or pursuit. It is
+ * the same fail-safe value `getShellScope()` already returns when no tenant can be resolved, made
+ * explicit so an anonymous render can ask for it WITHOUT running the tenant query that produced the
+ * leak (see src/lib/auth/principal.ts). A fresh object each call: the shell must never be handed a
+ * shared mutable default.
+ */
+export function tenantNeutralShellScope(): { options: ScopeOption[]; active: ScopeContext } {
+  return {
+    options: [{ kind: "ALL", id: null, label: "All (my authorized set)", group: "" }],
+    active: { scope: ALL_SCOPE, label: "All", facts: [] },
+  };
+}
+
 export async function getShellScope(): Promise<{ options: ScopeOption[]; active: ScopeContext }> {
   let raw: string | null = null;
   try {
@@ -199,7 +215,7 @@ export async function getShellScope(): Promise<{ options: ScopeOption[]; active:
       return { options, active: { scope: resolved.scope, label: resolved.label, facts: resolved.facts } };
     });
   } catch {
-    return { options: [{ kind: "ALL", id: null, label: "All (my authorized set)", group: "" }], active: { scope: ALL_SCOPE, label: "All", facts: [] } };
+    return tenantNeutralShellScope();
   }
 }
 

@@ -6,9 +6,10 @@ import { headers } from "next/headers";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { Shell } from "@/components/shell";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
+import { PRINCIPAL_HEADER, hasAuthenticatedPrincipal } from "@/lib/auth/principal";
 import { currentRole } from "@/lib/auth/org";
 import { withTenant } from "@/lib/db/tenant";
-import { getShellScope } from "@/lib/scope/server";
+import { getShellScope, tenantNeutralShellScope } from "@/lib/scope/server";
 import { signOutAction } from "@/app/login/actions";
 import { isPublicSite } from "@/lib/env/environment";
 
@@ -40,13 +41,26 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // browser would refuse the theme-boot script and dark mode would flash.
   let nonce: string | undefined;
   let surface: string | null = null;
+  // THE INVARIANT (security): an unauthenticated request must not acquire an organization merely
+  // because no authenticated organization exists. The gate states which principal it verified; when
+  // it verified none — the guest seat and the sign-in surface, the two routes it lets through
+  // without one — every tenant read below is SKIPPED and the shell is handed tenant-neutral state.
+  //
+  // Skipped, not hidden. These props are serialized into the RSC payload whether or not `Shell`
+  // draws them, and on exactly those routes it draws nothing (its `bareRoots`) — which is how one
+  // organization's partner and seller names, their row ids and `isOwner: true` were reaching
+  // anonymous callers while appearing nowhere on screen.
+  //
+  // Defaults to anonymous, so a missing or unrecognized header costs chrome, never a tenant read.
+  let anonymous = true;
   try {
     const h = await headers();
     nonce = h.get("x-nonce") ?? undefined;
     // Set by src/proxy.ts when this deployment is the public marketing site.
     surface = h.get("x-pursuitos-surface");
+    anonymous = !hasAuthenticatedPrincipal(h.get(PRINCIPAL_HEADER));
   } catch {
-    /* static build pass — no request, no CSP either */
+    /* static build pass — no request, no CSP either, and no tenant to read */
   }
 
   // The marketing page is not a room: no navigation rail, no scope selector, no
@@ -82,11 +96,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // Defaults survive a build pass / no-tenant / db hiccup so the shell always
   // renders. isOwner defaults to Basic-Auth-owns-the-demo only when identity
   // is off; under identity a membership-less user stays non-owner.
-  let isOwner = !authConfigured();
+  let isOwner = !authConfigured() && !anonymous;
   const badges: Record<string, number> = {};
   const alerts: Record<string, number> = {};
   let guest = false;
-  try {
+  if (!anonymous) {
+    try {
     await withTenant(async (db, orgId) => {
       isOwner = (await currentRole(db)) === "owner";
       const { rows: kindRows } = await db.query<{ kind: string }>(
@@ -139,14 +154,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       );
       if (Number(failed[0]?.n ?? 0) > 0) alerts["/routines"] = Number(failed[0].n);
     });
-  } catch {
-    /* build pass, no tenant, or db unavailable — defaults, shell still renders */
+    } catch {
+      /* build pass, no tenant, or db unavailable — defaults, shell still renders */
+    }
   }
 
   // Ecosystem scope (scale-disclosure §1): options derived from the tenant's data + the active
   // resolved scope (label + facts). Cookie-driven so it persists across plain rail navigations;
   // fail-safe to ALL. Self-contained (its own withTenant) — never throws into the shell.
-  const { options: scopeOptions, active: scopeActive } = await getShellScope();
+  // …and with no principal there is no tenant whose data could form options, so the neutral value
+  // is used WITHOUT running the query that derives them.
+  const { options: scopeOptions, active: scopeActive } = anonymous ? tenantNeutralShellScope() : await getShellScope();
 
   return (
     // suppressHydrationWarning: the boot script may add `class="dark"` before

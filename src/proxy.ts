@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { PRINCIPAL_HEADER, type Principal } from "@/lib/auth/principal";
 import { clientIp, rateLimited } from "@/lib/security/rate-limit";
 import { siteMode, type SiteMode } from "@/lib/env/environment";
 
@@ -173,7 +174,12 @@ export async function proxy(req: NextRequest) {
   const rawScope = req.nextUrl.searchParams.get("scope");
   const scopeToken = rawScope && /^[a-z]+(:[A-Za-z0-9 _.\-]{1,128})?$/.test(rawScope) ? rawScope : null;
 
-  const pass = () => {
+  /**
+   * Let the request through, stating WHICH principal the gate established — `null` for the routes
+   * that are allowed through without one (the guest seat and the sign-in surface). Server rendering
+   * reads this to decide whether it may resolve a tenant at all; see src/lib/auth/principal.ts.
+   */
+  const pass = (principal: Principal | null = null) => {
     if (scopeToken && req.cookies.get("pos:scope")?.value !== scopeToken) {
       req.cookies.set("pos:scope", scopeToken); // same-render: server components read the new cookie
     }
@@ -186,6 +192,11 @@ export async function proxy(req: NextRequest) {
     // set it could strip the navigation off any authenticated page, so it is
     // cleared on every request the gate lets through.
     fwd.delete("x-pursuitos-surface");
+    // Same discipline, and it carries more weight here: a client that could set this would award
+    // itself a principal and with it a tenant read. Deleted first, ALWAYS, then set only from what
+    // this function was told by the branch that actually checked a credential.
+    fwd.delete(PRINCIPAL_HEADER);
+    if (principal) fwd.set(PRINCIPAL_HEADER, principal);
     if (csp) {
       fwd.set("content-security-policy", csp); // where Next reads the nonce
       fwd.set("x-nonce", nonce); // where the root layout reads it
@@ -201,15 +212,19 @@ export async function proxy(req: NextRequest) {
     return res;
   };
 
-  if (!basicConfigured && !identityConfigured) return pass(); // local dev
+  if (!basicConfigured && !identityConfigured) return pass("open"); // local dev
 
   // Guest-seat landing (B+2): /join/<code> is deliberately public — the
   // ~93-bit invite code in the URL is the credential, its actions are
   // rate-limited, and a dead code reveals nothing. Everything else stays gated.
+  //
+  // NO PRINCIPAL. The invite code authorizes the guest-seat flow and nothing else, so rendering
+  // gets no tenant: the code is a capability for one partnership, never a seat in the organization
+  // that issued it. What the invite itself discloses still comes from `inviteInfo`, which reads it.
   if (isGuestSeatPath(req.nextUrl.pathname)) return pass();
 
   // 1. Basic Auth — the demo path, exactly as before.
-  if (await basicAuthValid(req)) return pass();
+  if (await basicAuthValid(req)) return pass("basic");
 
   // A PRESENTED-but-wrong Basic credential is a guess — throttle guessing.
   // (No header at all is just an unauthenticated browser; that's not counted,
@@ -223,22 +238,31 @@ export async function proxy(req: NextRequest) {
   // 2. Supabase session — canonical @supabase/ssr pattern (also refreshes
   //    expiring tokens; the refreshed cookies ride out on the response).
   if (identityConfigured) {
-    let res = pass();
+    // The refresh is collected rather than turned straight into a response, because the principal
+    // is not known until getUser() answers and `pass()` must be called once, with it. Refreshed
+    // cookies are written onto the REQUEST here (so the forwarded render sees them) and onto the
+    // RESPONSE below (so the browser keeps them) — the same two placements as before.
+    const refreshed: { name: string; value: string; options?: Record<string, unknown> }[] = [];
     const supabase = createServerClient(supabaseUrl!, supabaseAnon!, {
       cookies: {
         getAll: () => req.cookies.getAll(),
         setAll: (all) => {
-          for (const { name, value } of all) req.cookies.set(name, value);
-          res = pass(); // rebuilt so the forwarded request carries the refreshed cookies
-          for (const { name, value, options } of all) res.cookies.set(name, value, options);
+          for (const c of all) {
+            req.cookies.set(c.name, c.value);
+            refreshed.push(c);
+          }
         },
       },
     });
     const { data } = await supabase.auth.getUser();
-    if (data.user) return res;
-
-    // The sign-in surface itself must stay reachable.
-    if (req.nextUrl.pathname.startsWith("/login")) return res;
+    // The sign-in surface itself must stay reachable — and it is reached WITHOUT a principal, which
+    // is the whole point: /login is a pre-authentication surface and must render tenant-neutral.
+    const signedIn = Boolean(data.user);
+    if (signedIn || req.nextUrl.pathname.startsWith("/login")) {
+      const res = pass(signedIn ? "identity" : null);
+      for (const { name, value, options } of refreshed) res.cookies.set(name, value, options as never);
+      return res;
+    }
   }
 
   // 3. Unauthenticated: Basic-Auth deployments keep the browser prompt;
