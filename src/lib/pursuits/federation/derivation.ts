@@ -17,6 +17,13 @@ import type { PoolClient } from "pg";
  * text and `information_classes` / `retention_class` were stored and never read, so every grant was
  * effectively all-or-nothing per pursuit. Shipping a `mayDerive` that silently ignored purpose and
  * class would have been worse than having none — it would have looked like governance.
+ *
+ * THE SEMANTIC FIREWALL. `context_grants.information_classes` is a LEGACY DISCLOSURE field that
+ * already carries Audience-oriented values ('PARTICIPANT_SHARED') in certified paths as well as
+ * data categories elsewhere. NOTHING IN THIS MODULE READS IT. Machine-governed derivation reads
+ * `governed_information_classes` and only that column. There is no fallback, no coalesce between
+ * the two, and neither can satisfy the other's contract: an Audience value can never become a
+ * derivation authority, and a governed data class never alters the disclosure interpretation.
  */
 
 /** Governed-USE purposes. NOT all of these authorize derivation — see DERIVATION_PURPOSES. */
@@ -127,8 +134,10 @@ export async function mayDerive(
 
   // A MACHINE-GOVERNED, DERIVATION-CAPABLE, LIVE grant from the source org. Every clause matters:
   // purpose_code NOT NULL makes it machine-governed (0112 then guarantees completeness); the
-  // purpose must be a DERIVATION purpose AND match the operation exactly; the class must be
-  // covered; and the grant must be live at the same instant.
+  // purpose must be a DERIVATION purpose AND match the operation exactly; the class must be covered
+  // BY THE GOVERNED COLUMN — `information_classes` is the legacy disclosure field and is never
+  // consulted here, so an Audience value or a legacy data category cannot confer derivation
+  // authority; and the grant must be live at the same instant.
   const { rows } = await db.query<{ id: string; purpose_code: string; retention_class: string; scope: Record<string, unknown> }>(
     `select id, purpose_code, retention_class, scope
        from context_grants
@@ -136,7 +145,7 @@ export async function mayDerive(
         and grant_kind = 'DATA' and status = 'accepted'
         and purpose_code is not null
         and purpose_code = $4
-        and information_classes is not null and $5 = any(information_classes)
+        and governed_information_classes is not null and $5 = any(governed_information_classes)
         and (expires_at is null or expires_at > coalesce($6::timestamptz, transaction_timestamp()))
       limit 1`,
     [input.sourceOrgId, viewerOrgId, input.pursuitId, operationPurpose, cls, asOf ?? null]);

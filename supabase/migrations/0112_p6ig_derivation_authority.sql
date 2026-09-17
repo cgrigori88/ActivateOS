@@ -42,28 +42,36 @@ do $$ begin
   end if;
 end $$;
 
--- ── 2. Bounded information-class vocabulary — FOR MACHINE-GOVERNED GRANTS ONLY ───────────────────
--- Every derivable canonical input maps to exactly one of these. There is deliberately no OTHER and
--- no wildcard: an unmapped input must DENY rather than fall through to a catch-all.
---
--- WHY THIS IS CONDITIONAL ON purpose_code. `information_classes` is used with TWO incompatible
--- meanings in the pre-existing code, which is precisely why nothing ever read it:
+-- ── 2. A SEPARATE COLUMN FOR MACHINE-GOVERNED DATA CLASSES — A SEMANTIC FIREWALL ─────────────────
+-- `information_classes` ALREADY CARRIES TWO INCOMPATIBLE MEANINGS in pre-existing, certified code,
+-- which is precisely why nothing ever read it:
 --
 --   • demo-db.ts / demo-stories.ts (and both LIVE hosted rows) store a DATA CATEGORY —
 --     'transaction_adjacency';
 --   • disclosure-verify.ts and partnership-app-rw-verify.ts store an AUDIENCE value —
 --     'PARTICIPANT_SHARED' — which is what grants.ts's own comment describes.
 --
--- Constraining the column unconditionally would have invalidated certified suites, and rewriting
--- those fixtures to fit a new constraint would be adjusting the evidence to fit the claim. So the
--- vocabulary binds ONLY where it must carry weight: a grant that declares a machine-readable
--- purpose. Legacy grants keep whatever they already store, and keep their certified behaviour.
+-- A column cannot mean two things. Reinterpreting the same column as machine-governed data classes
+-- "when purpose_code is populated" would make its meaning depend on a sibling field — exactly the
+-- ambiguity this workstream exists to remove — and would leave one write path able to satisfy the
+-- other's contract by accident. So the two vocabularies get two columns:
+--
+--   information_classes            LEGACY DISCLOSURE. Untouched, unconstrained by this migration,
+--                                  read only by the pre-existing disclosure paths that read it today.
+--   governed_information_classes   MACHINE-EVALUABLE P6-IG DATA CLASSES ONLY. The only field
+--                                  `mayDerive` and the completeness constraint ever read.
+--
+-- NEITHER COLUMN MAY SATISFY THE OTHER'S CONTRACT. There is no fallback, no coalesce, no wildcard
+-- and no OTHER: an unmapped input must DENY rather than fall through to a catch-all, and an Audience
+-- value can never become a derivation authority.
+alter table context_grants add column if not exists governed_information_classes text[];
+
 do $$ begin
-  if not exists (select 1 from pg_constraint where conname = 'context_grants_information_classes_check') then
-    alter table context_grants add constraint context_grants_information_classes_check
-      check (purpose_code is null or (information_classes is not null and information_classes <@ array[
+  if not exists (select 1 from pg_constraint where conname = 'context_grants_governed_information_classes_check') then
+    alter table context_grants add constraint context_grants_governed_information_classes_check
+      check (governed_information_classes is null or governed_information_classes <@ array[
         'transaction_adjacency','economic_value','stakeholder_coverage',
-        'timing','route_candidate','evidence_document']::text[]));
+        'timing','route_candidate','evidence_document']::text[]);
   end if;
 end $$;
 
@@ -86,7 +94,7 @@ end $$;
 --                                       an ACTION grant may not carry one
 --        ⇒ pursuit-anchored             which is ALSO what makes `scope = {}` unambiguous: it means
 --                                       "the whole of THIS pursuit", never organization-wide
---        ⇒ at least one information class
+--        ⇒ at least one GOVERNED information class (the legacy column cannot satisfy this)
 --        ⇒ a retention class
 --        ⇒ a valid end: the pursuit itself (PURSUIT_LIFETIME) or an explicit expires_at
 --
@@ -100,8 +108,8 @@ do $$ begin
         or (
               grant_kind = 'DATA'
           and pursuit_id is not null
-          and information_classes is not null
-          and cardinality(information_classes) > 0
+          and governed_information_classes is not null
+          and cardinality(governed_information_classes) > 0
           and retention_class is not null
           and (retention_class = 'PURSUIT_LIFETIME' or expires_at is not null)
         )
@@ -114,10 +122,14 @@ end $$;
 -- clause is an additional conjunct, so no row admitted by the new definition was refused by the old.
 -- Enforcing this in a later UI filter would leave RLS itself wrong, which is why it belongs here.
 --
--- ONE GOVERNANCE CLOCK: `now()` is `transaction_timestamp()` and is fixed for the whole transaction.
--- `withTenant`/`withTenantOrg` wrap each request in one transaction, so a read model that takes its
--- `asOf` from `transaction_timestamp()` evaluates against the IDENTICAL instant this predicate uses.
--- The boundary is closed: `effective_to > now()` is strict, so exactly at `effective_to` is DENIED.
+-- ONE GOVERNANCE CLOCK, AND IT NEVER LEAVES SQL (D-P6-1). `now()` is `transaction_timestamp()`,
+-- fixed for the whole transaction, at MICROSECOND precision. `withTenant`/`withTenantOrg` wrap each
+-- request in one transaction, so a read model whose predicate also reads `transaction_timestamp()`
+-- evaluates against the IDENTICAL instant this one does. A read model that instead carried the
+-- instant through a JavaScript `Date` — MILLISECONDS — evaluated up to 999µs in the PAST and could
+-- ALLOW a participant this predicate had already DENIED; that defect was found and corrected here.
+-- The boundary is closed: `effective_to > now()` is strict, so exactly at `effective_to` is DENIED,
+-- while `effective_from <= now()` is inclusive, so exactly at `effective_from` is ALLOWED.
 create or replace function public.can_see_pursuit(p uuid) returns boolean
   language sql stable security definer set search_path = pg_catalog, public, pg_temp as $$
     select exists (
@@ -133,6 +145,15 @@ create or replace function public.can_see_pursuit(p uuid) returns boolean
   $$;
 
 -- ── ROLLBACK ─────────────────────────────────────────────────────────────────────────────────────
--- Drop the four constraints and the column, and restore the prior can_see_pursuit body (without the
--- effective-window conjuncts). Reverting only WIDENS eligibility back to the defective form, so it
--- is a correctness regression rather than a safe undo.
+-- Drop the four constraints and the TWO added columns, and restore the prior can_see_pursuit body
+-- (0080's text, with 0105's pinned search_path, and without the effective-window conjuncts).
+-- Reverting only WIDENS eligibility back to the defective form, so it is a correctness regression
+-- rather than a safe undo.
+-- ROLLBACK: alter table context_grants drop constraint if exists context_grants_machine_governed_complete;
+-- ROLLBACK: alter table context_grants drop constraint if exists context_grants_retention_class_check;
+-- ROLLBACK: alter table context_grants drop constraint if exists context_grants_governed_information_classes_check;
+-- ROLLBACK: alter table context_grants drop constraint if exists context_grants_purpose_code_check;
+-- ROLLBACK: alter table context_grants drop column if exists governed_information_classes;
+-- ROLLBACK: alter table context_grants drop column if exists purpose_code;
+-- ROLLBACK: (then re-run 0080's can_see_pursuit body verbatim, followed by
+-- ROLLBACK:  alter function public.can_see_pursuit(uuid) set search_path = pg_catalog, public, pg_temp;)
