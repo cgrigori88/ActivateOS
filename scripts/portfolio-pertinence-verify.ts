@@ -11,6 +11,7 @@ import { todaySort } from "../src/lib/pursuits/read-models/materiality";
 import { getTodayQueue } from "../src/lib/pursuits/read-models/today";
 import { getPortfolioPertinence } from "../src/lib/pursuits/read-models/portfolio";
 import { TodayDecisionCard } from "../src/components/pursuit/today";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 
@@ -410,6 +411,78 @@ async function main(): Promise<void> {
         !offHtml.includes("$undefined") && !offHtml.includes("undefined"));
     } else check("74: (no ranked Today item in this world — rendering checks skipped)", true);
   } finally { db2.release(); }
+
+  // ══ 16. D-P2-1 — ONE TODAY COMPUTATION USES ONE CLOCK ════════════════════════════════════════
+  const db3: PoolClient = await owner.connect();
+  try {
+    const org = (await db3.query<{ id: string }>(`select id from organizations order by created_at limit 1`)).rows[0];
+    const c: Caller = { orgId: org.id, canSeeInternal: true, canSeeTransactionDetail: true };
+    const q1 = await getTodayQueue(db3, c, {});
+
+    const readStamped = q1.items.filter((i) => ["STAKEHOLDER_GAP", "VALUE_GAP", "LIFECYCLE_WINDOW"].includes(i.type));
+    const stamps = new Set(readStamped.map((i) => new Date(i.at).getTime()));
+    check("79: D-P2-1 — every read-time-stamped item in ONE computation shares ONE evaluation timestamp",
+      stamps.size <= 1, `${readStamped.length} items, ${stamps.size} distinct timestamp(s)`);
+    const gapsOnly = q1.items.filter((i) => i.type === "STAKEHOLDER_GAP");
+    check("80: D-P2-1 — specifically, all gap items share it (8 items previously carried 2 stamps 1ms apart)",
+      new Set(gapsOnly.map((i) => new Date(i.at).getTime())).size <= 1, `${gapsOnly.length} gap items`);
+
+    // The stable id tie-break must now ACTUALLY ENGAGE where everything above it ties.
+    let engaged = 0, violated = 0;
+    for (let k = 1; k < q1.items.length; k++) {
+      const a = q1.items[k - 1], b = q1.items[k];
+      if (a.decisionClass !== b.decisionClass || a.operationalUrgency !== b.operationalUrgency
+          || a.commercialPriority !== b.commercialPriority || new Date(a.at).getTime() !== new Date(b.at).getTime()) continue;
+      engaged++;
+      if (a.id.localeCompare(b.id) > 0) violated++;
+    }
+    check("81: D-P2-1 — where class, urgency, band AND age all tie, the stable ID tie-break decides, and is never violated",
+      engaged > 0 && violated === 0, `${engaged} fully-tied adjacent pairs, ${violated} violations`);
+
+    const orderOf = (v: Awaited<ReturnType<typeof getTodayQueue>>) => v.items.map((i) => `${i.type}:${i.pursuitId}`).join(",");
+    const repeats = new Set<string>();
+    for (let k = 0; k < 6; k++) repeats.add(orderOf(await getTodayQueue(db3, c, {})));
+    check("82: D-P2-1 — six identical calls produce ONE ordering (flag OFF)", repeats.size === 1, `${repeats.size} distinct`);
+
+    const viewD = await getPortfolioPertinence(db3, c, { asOf: ASOF, scope: "All pursuits" });
+    const onRepeats = new Set<string>();
+    for (let k = 0; k < 6; k++) onRepeats.add(orderOf(await getTodayQueue(db3, c, { pertinence: viewD })));
+    check("83: D-P2-1 — six identical calls produce ONE ordering with P2 flag ON", onRepeats.size === 1, `${onRepeats.size} distinct`);
+
+    // NEGATIVE CONTROL — the former per-item `new Date()`, reproduced on the comparator alone.
+    // Two items identical on class, urgency and band, whose stamps straddle a millisecond: age
+    // decides and the stable id tie-break never runs, so construction jitter picks the order.
+    const base = { decisionClass: "ACTION_REQUIRED" as const, operationalUrgency: "high" as const, commercialPriority: "high" };
+    const older = { ...base, ageSeconds: 0.002, pertinenceRank: null };   // stamped 2ms earlier
+    const newer = { ...base, ageSeconds: 0.001, pertinenceRank: null };
+    const same = { ...base, ageSeconds: 0.001, pertinenceRank: null };
+    check("84: D-P2-1 NEGATIVE CONTROL — with per-item stamps, a 1ms difference DECIDES the order before the id tie-break",
+      todaySort(older, newer) < 0 && todaySort(newer, older) > 0,
+      "unequal ageSeconds returns non-zero, so `|| a.id.localeCompare(b.id)` is never reached");
+    check("85: D-P2-1 — with ONE shared stamp the comparator ties, which is what lets the stable id tie-break decide",
+      todaySort(newer, same) === 0);
+
+    // Nothing but the timestamp-derived fields may move.
+    const q2 = await getTodayQueue(db3, c, {});
+    const payload = (v: typeof q1) => JSON.stringify(v.items.map((i) =>
+      ({ t: i.type, p: i.pursuitId, c: i.decisionClass, u: i.operationalUrgency, b: i.commercialPriority, ti: i.title, r: i.reason })));
+    check("86: D-P2-1 — no unrelated Today field or reason string changes across calls",
+      payload(q1) === payload(q2), `${q1.items.length} items compared on type/pursuit/class/urgency/band/title/reason`);
+    const src = readFileSync(new URL("../src/lib/pursuits/read-models/today.ts", import.meta.url), "utf8");
+    check("87: D-P2-1 — the shared stamp reaches items ONLY through mk's `at` argument (id and at are its sole uses)",
+      /id: `\$\{type\}:\$\{pursuitId \?\? "x"\}:\$\{at\.getTime\(\)\}`/.test(src) && /at: at\.toISOString\(\)/.test(src));
+    check("88: D-P2-1 — no per-item clock read survives in the item-construction path",
+      (src.match(/new Date\(\), now,/g) ?? []).length === 0 && (src.match(/\?\? new Date\(\), now,/g) ?? []).length === 0);
+    check("89: D-P2-1 — no new clock abstraction, flag, persistence or schema change was introduced",
+      !/asOfProvider|ClockService|process\.env\.[A-Z_]*CLOCK/.test(src) && !/insert into|update /i.test(src));
+
+    // Pipeline is untouched by this correction.
+    const pipeSrc = readFileSync(new URL("../src/app/pipeline/page.tsx", import.meta.url), "utf8");
+    check("90: D-P2-1 — Pipeline behaviour is unchanged: recency is still the default and the snapshot still takes only the org identity",
+      /qp\("sort"\) === "pertinence" \? "pertinence" : "recency"/.test(pipeSrc)
+      && /upsertCanonicalPipelineSnapshot\(db, tieOrgId\)/.test(pipeSrc)
+      && !pipeSrc.includes("read-models/today"));
+  } finally { db3.release(); }
 
   console.log(`\n${failed === 0 ? "PASS" : "FAIL"} — ${passed} passed, ${failed} failed${failed ? `: ${failures.join(" | ")}` : ""}`);
   await owner.end();

@@ -59,6 +59,21 @@ export interface TodayQueueOpts {
 export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQueueOpts = {}): Promise<TodayQueueView> {
   const items: DecisionItem[] = [];
   const now = Date.now();
+  /**
+   * D-P2-1 — ONE TODAY COMPUTATION USES ONE CLOCK.
+   *
+   * Items with no canonical timestamp of their own are stamped at read time. Each used to call
+   * `new Date()` INDIVIDUALLY, so items built microseconds apart could straddle a millisecond
+   * boundary: 8 gap items would carry 2 distinct timestamps 1ms apart. `todaySort` ends on
+   * `ageSeconds`, so those unequal ages decided the order BEFORE the stable id tie-break could
+   * engage — and two calls of the same query could order equal-priority items differently. The
+   * intended order (class → urgency → pertinence/band → age → stable id) was intact; it simply
+   * never reached its last two keys.
+   *
+   * One `Date` built from the call's existing `now`, shared by every such item, is the whole fix.
+   * No new clock abstraction, no flag, and no change to ranking semantics.
+   */
+  const readTime = new Date(now);
   // Scope narrowing (§1): an empty array is a valid "nothing in scope" set → no items. `null`/absent
   // = no restriction. Applied as an additional company_id predicate; never widens the RLS-scoped set.
   const scoped = opts.companyIds != null;
@@ -118,7 +133,7 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
     const wBand = bandOf(n(w.priority));
     items.push(mk("TEAM_WAITING", "ACTION_REQUIRED", wBand === "very_high" || wBand === "high" ? "high" : "normal", wBand, w.pursuit_id, w.company_id, w.account_label,
       `Waiting on ${who} to accept`, `A confirmed ${w.role.replace(/_/g, " ").toLowerCase()} role has not yet been accepted — activation readiness is held.`,
-      w.synthetic, w.invited_at ?? new Date(), now,
+      w.synthetic, w.invited_at ?? readTime, now,
       [{ label: "Mark accepted", skill: "accept_team_member", sideEffect: "INTERNAL_WRITE" }], `/pursuits/${w.pursuit_id}#team`));
   }
 
@@ -132,7 +147,7 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
       items.push(mk("MOTION_ACCEPTANCE_BLOCKED", "ACTION_REQUIRED", "high", "high", null, null, b.name,
         `${formatMoney(b.blockedUsd)} of ${b.name} is blocked by participant acceptance`,
         `${b.pursuits} pursuit${b.pursuits === 1 ? "" : "s"} on this hypothesis are waiting on a confirmed participant (partner or vendor side) to accept.`,
-        false, new Date(), now,
+        false, readTime, now,
         [{ label: "Mark accepted", skill: "accept_team_member", sideEffect: "INTERNAL_WRITE" }],
         `/motions?mdrawer=${b.taxonomyNodeId}&mstage=not_ready`));
     }
@@ -172,7 +187,7 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
       g.path_seller
         ? `No verified buying authority. Strongest known path: ${g.path_partner ? `${g.path_partner} seller ` : ""}${g.path_seller} (account-level relationship).`
         : "No verified buying authority, and no warm path is known — UNKNOWN, not zero.",
-      g.synthetic, new Date(), now,
+      g.synthetic, readTime, now,
       [{ label: "Verify role", skill: "assert_stakeholder_role", sideEffect: "INTERNAL_WRITE" }], `/pursuits/${g.pursuit_id}#stakeholders`));
   }
 
@@ -200,7 +215,7 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
           : `${money} Pursuit enters ${/\bwindow$/i.test(it.event.label)
               ? `a ${it.event.label.toLowerCase()}`
               : `a ${it.event.label.toLowerCase()} window`} in ${it.event.daysUntil} days`,
-        it.whyItMatters, false, new Date(), now,
+        it.whyItMatters, false, readTime, now,
         [{ label: it.nextAction?.label ?? "Open", skill: "explain_partner_route", sideEffect: "READ" }],
         it.nextAction?.deepLink ?? (it.pursuitId ? `/pursuits/${it.pursuitId}#whynow` : `/accounts/${it.companyId}`)));
     }
@@ -238,7 +253,7 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
           ? `${vusd(ev)} Pursuit has contested economics — sources disagree on what it is worth`
           : `${vusd(ev)} Pursuit has no defensible economic baseline`,
         top ? `${vc.because} Largest uncertainty: ${top.label}. ${top.ask}` : vc.because,
-        false, new Date(), now,
+        false, readTime, now,
         [{ label: conflicting ? "Reconcile" : "Establish value", skill: "assert_economic_fact", sideEffect: "INTERNAL_WRITE" }],
         `/pursuits/${row.id}#value`));
     }
