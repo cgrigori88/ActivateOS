@@ -161,6 +161,10 @@ export async function findFixture(db: PoolClient): Promise<Fixture | null> {
   const pick = (tag: string) => orgs.rows.find((o) => o.name.endsWith(tag))?.id ?? null;
   const a = pick("A-sponsor"), b = pick("B-participant"), c = pick("C-outsider");
   if (!a || !b || !c) return null;
+  // `organizations` is globally readable by design; `pursuits` and `context_grants` are NOT — they
+  // are RLS-scoped, so the sponsor's tenant must be pinned before they can be resolved. That is the
+  // enforcement working, not an obstacle: app_rw sees nothing until a tenant is in scope.
+  await setOrg(db, a);
   const pursuit = await one<{ id: string }>(db,
     `select id from pursuits where org_id = $1 and dedup_key = $2`, [a, `${FIXTURE_PREFIX}-MAIN`]);
   const windowPursuit = await one<{ id: string }>(db,
