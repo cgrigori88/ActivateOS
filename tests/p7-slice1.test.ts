@@ -191,3 +191,88 @@ test("the metric definition declares its governance inputs", () => {
   assert.equal(def.derivePurpose, "VALUE_CASE");
   assert.match(def.provenance, /Not a forecast, not a probability, not a pertinence signal/);
 });
+
+// ── the organization comes from a credential, never from caller input ───────────────────────────
+
+test("an execution principal cannot be forged from plain data", async () => {
+  const { testFixturePrincipal } = await import("../src/lib/experience/principal");
+  const prior = process.env.P7_TEST_PRINCIPAL;
+  process.env.P7_TEST_PRINCIPAL = "allow";
+  const real = testFixturePrincipal("11111111-1111-1111-1111-111111111111");
+  assert.equal(typeof real, "object");
+  // The brand is a module-private symbol: a hand-built object has no own symbol keys, so it can
+  // never be the same type, and nothing outside principal.ts can produce one.
+  const forged = { orgId: "22222222-2222-2222-2222-222222222222", source: "web-session" };
+  assert.equal(Object.getOwnPropertySymbols(forged).length, 0);
+  assert.ok(Object.getOwnPropertySymbols(real).length > 0, "a real principal carries the private brand");
+  process.env.P7_TEST_PRINCIPAL = prior;
+});
+
+test("the test-only principal factory is refused outside a test run", async () => {
+  const { testFixturePrincipal } = await import("../src/lib/experience/principal");
+  // NODE_ENV is typed read-only; a test that simulates a deployment has to write it anyway.
+  const env = process.env as Record<string, string | undefined>;
+  const priorEnv = env.NODE_ENV, priorOptIn = env.P7_TEST_PRINCIPAL;
+  env.NODE_ENV = "production";          // simulate a deployment: neither marker set
+  delete env.P7_TEST_PRINCIPAL;
+  assert.throws(() => testFixturePrincipal("11111111-1111-1111-1111-111111111111"), /refused outside a test run/);
+  if (priorEnv === undefined) delete env.NODE_ENV; else env.NODE_ENV = priorEnv;
+  if (priorOptIn !== undefined) env.P7_TEST_PRINCIPAL = priorOptIn;
+});
+
+test("a principal requires a canonical organization id", async () => {
+  const { testFixturePrincipal } = await import("../src/lib/experience/principal");
+  const prior = process.env.P7_TEST_PRINCIPAL;
+  process.env.P7_TEST_PRINCIPAL = "allow";
+  assert.throws(() => testFixturePrincipal("../../etc/passwd"), /canonical organization id/);
+  assert.throws(() => testFixturePrincipal("' or 1=1 --"), /canonical organization id/);
+  process.env.P7_TEST_PRINCIPAL = prior;
+});
+
+test("no production transport can select an organization", () => {
+  // The route must pass NO principal: its org comes from the session, inside withTenant.
+  const route = codeOf(new URL("../src/app/experience/pursuits/page.tsx", import.meta.url).pathname);
+  assert.match(route, /executePursuitQuery\(PLANS\[view\]\.plan\)/, "the route must call the boundary with no principal");
+  assert.ok(!/orgId|ExecutionPrincipal|testFixturePrincipal/.test(route), "the route must not name an organization at all");
+
+  // Nothing under src/app may import the test-only factory.
+  const appFiles = treeFiles(new URL("../src/app", import.meta.url).pathname);
+  for (const f of appFiles) {
+    assert.ok(!/testFixturePrincipal/.test(readFileSync(f, "utf8")), `${f} must not import the test-only principal factory`);
+  }
+
+  // A plan cannot carry an organization: it is not a plan key, so validation rejects it.
+  const r = validatePlan({ ...base(), orgId: "22222222-2222-2222-2222-222222222222" });
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.detail, /unknown plan key orgId/);
+});
+
+// ── the vocabularies are the canonical ones, not P7's ──────────────────────────────────────────
+
+test("the filter vocabularies are IMPORTED from the canonical modules, not restated", async () => {
+  const { PURSUIT_STATUSES } = await import("../src/lib/pursuits/lifecycle");
+  const { PURSUIT_TYPES } = await import("../src/lib/pursuits/model");
+  const { FILTERS } = await import("../src/lib/experience/registry");
+  assert.deepEqual([...(FILTERS["pursuit.status"].values ?? [])], [...PURSUIT_STATUSES]);
+  assert.deepEqual([...(FILTERS["pursuit.pursuit_type"].values ?? [])], [...PURSUIT_TYPES]);
+  // …and the registry must not carry its own copy of either list.
+  const registrySrc = readFileSync(new URL("../src/lib/experience/registry.ts", import.meta.url).pathname, "utf8");
+  assert.ok(!/"READY_TO_ACTIVATE"/.test(registrySrc), "statuses must be imported, never restated");
+  assert.ok(!/"COMPETITIVE_DISPLACEMENT"/.test(registrySrc), "pursuit types must be imported, never restated");
+});
+
+// ── the cross-object field stays inside the governed projection ─────────────────────────────────
+
+test("account_name is a governed projection field with a stated provenance, not a join escape", () => {
+  const def = FIELDS["pursuit.account_name"];
+  assert.equal(def.audience, "PARTICIPANT_SHARED", "it is disclosed through the ladder like any other field");
+  assert.match(def.expression ?? "", /^\(select c\.legal_name from companies c where c\.id = p\.account_id\)$/,
+    "exactly one scalar subselect, keyed on the row's own account_id");
+  // It reads ONE column of ONE row, keyed by the pursuit's own foreign key: it cannot enumerate
+  // companies, cannot filter on them, and cannot widen the row set. A join would have made the
+  // result set depend on companies visibility; a scalar subselect keeps the loader single-table.
+  const exec = codeOf(new URL("../src/lib/experience/execute.ts", import.meta.url).pathname);
+  // A SQL join, not JavaScript's Array.prototype.join — the naive word match hits `columns.join(", ")`.
+  assert.ok(!/(?<!\.)\bjoin\s+[a-z_]+/i.test(exec), "the loader stays single-table");
+  assert.ok(!/from companies/i.test(exec), "no company access path exists outside the registry expression");
+});

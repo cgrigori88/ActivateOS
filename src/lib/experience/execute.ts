@@ -23,6 +23,7 @@ import { resolveDisclosure, type Disclosable, type FederationViewer } from "@/li
 import { mayDerive } from "@/lib/pursuits/federation/derivation";
 import { FIELDS, FILTERS, METRICS, metricKey } from "./registry";
 import { validatePlan } from "./validate";
+import { principalOrgId, type ExecutionPrincipal } from "./principal";
 import type { ExecuteOutcome, FieldRef, GovernedCell, GovernedResultSet, GovernedRow, MetricRef, PursuitQuery } from "./types";
 
 /** One candidate row as the canonical loader returns it — pre-governance, never leaves this module. */
@@ -36,15 +37,18 @@ interface CandidateRow {
  * Execute a validated plan. The caller has already established the principal and the environment
  * master; this owns the tenant-aware capability check, governance and computation.
  *
- * `orgId` IS NOT A REQUEST PARAMETER. Omitted — the web path — the organization comes from the
- * session via `withTenant`, exactly as every screen resolves it. Supplied, it uses `withTenantOrg`,
- * the existing primitive for callers whose organization is established by their OWN credential
- * rather than a web session (the MCP surface resolves it from an API key; the verifier plants and
- * then names the org it is testing). A transport that would take this value from its caller instead
- * of from a credential is the defect — the boundary cannot tell the difference, so the transport
- * must not offer the choice.
+ * THE ORGANIZATION IS NEVER A REQUEST PARAMETER. Omitted — the web path — it comes from the
+ * authenticated session via `withTenant`, exactly as every screen resolves it. Supplied, it arrives
+ * as an `ExecutionPrincipal`, which only a trusted resolver in ./principal.ts can mint (the brand is
+ * a module-private symbol, so `{ orgId: req.query.org }` neither type-checks nor exists). The
+ * boundary then uses `withTenantOrg`, the established primitive for callers whose organization comes
+ * from their own credential rather than a cookie.
+ *
+ * The earlier shape took a raw `{ orgId }`, which a transport could have filled from caller input.
+ * The boundary could not tell the difference, so it must not offer the choice: interface possession
+ * does not confer authority.
  */
-export async function executePursuitQuery(candidate: unknown, opts: { orgId?: string } = {}): Promise<ExecuteOutcome> {
+export async function executePursuitQuery(candidate: unknown, principal?: ExecutionPrincipal): Promise<ExecuteOutcome> {
   const v = validatePlan(candidate);
   if (!v.ok) return { ok: false, error: "INVALID_PLAN", detail: v.detail };
   const plan = v.plan;
@@ -102,9 +106,11 @@ export async function executePursuitQuery(candidate: unknown, opts: { orgId?: st
     };
   };
 
-  return opts.orgId
-    ? withTenantOrg(opts.orgId, (db) => run(db, opts.orgId!))
-    : withTenant((db, orgId) => run(db, orgId));
+  if (principal) {
+    const orgId = principalOrgId(principal);
+    return withTenantOrg(orgId, (db) => run(db, orgId));
+  }
+  return withTenant((db, orgId) => run(db, orgId));
 }
 
 /**

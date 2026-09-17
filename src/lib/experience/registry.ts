@@ -11,6 +11,8 @@
  * NOTHING HERE IS RUNTIME-CREATABLE. Not by a user, not by a model, not by an insert.
  */
 import type { Audience } from "@/lib/pursuits/federation/disclosure";
+import { PURSUIT_STATUSES, TERMINAL_STATUSES } from "@/lib/pursuits/lifecycle";
+import { PURSUIT_TYPES } from "@/lib/pursuits/model";
 import type { FieldRef, FilterDimension, FilterOperator, MetricRef, ObjectClass } from "./types";
 
 /** The canonical relation a class reads from. Referenced by the loader; never by a plan. */
@@ -63,26 +65,20 @@ export interface FilterDef {
 }
 
 /**
- * The canonical vocabularies, mirrored from the database CHECK constraints
- * (`pursuits_status_check`, `pursuits_pursuit_type_check`). Mirrored ON PURPOSE: validation must
- * reject an unknown value BEFORE a statement is built, so an invalid plan cannot reach the database
- * at all. The database remains the authority — if these ever diverge, the constraint still refuses,
- * and the drift test in the suite fails loudly rather than letting the two drift quietly.
+ * THE CANONICAL VOCABULARIES ARE IMPORTED, NOT RESTATED.
+ *
+ * `PURSUIT_STATUSES` and `TERMINAL_STATUSES` are the lifecycle module's own constants — the same
+ * values `transitionPursuit` enforces — and `PURSUIT_TYPES` is the pursuit model's. P7 holds no
+ * vocabulary of its own: a validation list retyped here would be a second definition of a canonical
+ * fact, which is precisely what this workstream exists not to do.
+ *
+ * These lists are a FAIL-FAST GUARD, not truth. They let validation refuse an unknown value before a
+ * statement is built; the database CHECK constraints remain the authority, and the seeded suite
+ * proves the code constants and the constraints still agree (drift fails loudly, in either
+ * direction, rather than silently narrowing or broadening what P7 will accept).
  */
-export const PURSUIT_STATUSES = [
-  "DETECTED", "RESEARCHING", "REVIEW_REQUIRED", "QUALIFIED", "ROUTED", "MOTION_DESIGNED",
-  "READY_TO_ACTIVATE", "ACTIVATING", "ACTIVE", "CUSTOMER_ENGAGED", "OPPORTUNITY_CREATED",
-  "WON", "LOST", "DORMANT", "DISQUALIFIED",
-] as const;
-
-export const PURSUIT_TYPES = [
-  "NET_NEW", "CROSS_SELL", "UPSELL", "RENEWAL_ATTACH", "EXPANSION", "COMPETITIVE_DISPLACEMENT",
-  "MIGRATION", "WIN_BACK", "CONSOLIDATION", "MODERNIZATION", "OTHER", "UNCLASSIFIED",
-] as const;
-
-/** Terminal statuses — a pursuit in one of these is no longer being worked. */
-export const TERMINAL_STATUSES = ["WON", "LOST", "DISQUALIFIED"] as const;
-export const OPEN_STATUSES = PURSUIT_STATUSES.filter((s) => !(TERMINAL_STATUSES as readonly string[]).includes(s));
+/** Live statuses, derived from the canonical lists rather than restated. */
+export const OPEN_STATUSES: readonly string[] = PURSUIT_STATUSES.filter((s) => !(TERMINAL_STATUSES as readonly string[]).includes(s));
 
 export const FILTERS: Record<FilterDimension, FilterDef> = {
   "pursuit.status":       { column: "status",       ops: ["=", "in"], values: PURSUIT_STATUSES },

@@ -3,6 +3,8 @@ import { Pool, type PoolClient } from "pg";
 import { assertSeededClone } from "./seeded-clone";
 import { executePursuitQuery } from "../src/lib/experience/execute";
 import { PLANS } from "../src/lib/experience/plans";
+import { testFixturePrincipal } from "../src/lib/experience/principal";
+import { FILTERS } from "../src/lib/experience/registry";
 import type { PursuitQuery } from "../src/lib/experience/types";
 
 /**
@@ -34,6 +36,8 @@ process.env.DATABASE_URL = rwUrl;   // the boundary's withTenant runs as app_rw,
  * that matters (ruling 1).
  */
 for (const v of ["PURSUITS_ENABLED", "FACTS_ENABLED", "ROUTING_ENABLED", "PURSUIT_EXPERIENCE_ENABLED"]) process.env[v] = "true";
+// This suite executes AS organizations it planted; the principal factory refuses without this.
+process.env.P7_TEST_PRINCIPAL = "allow";
 
 let passed = 0, failed = 0; const failures: string[] = [];
 const check = (n: string, ok: boolean, d = ""): void => {
@@ -89,7 +93,7 @@ async function plant(db: PoolClient): Promise<World> {
  * explicit-org entry point — the same `withTenantOrg` path the MCP surface uses when the org comes
  * from an API key rather than a cookie. The org is planted by this suite, never taken from input.
  */
-const asOrg = (orgId: string, p: PursuitQuery) => executePursuitQuery(p, { orgId });
+const asOrg = (orgId: string, p: PursuitQuery) => executePursuitQuery(p, testFixturePrincipal(orgId));
 
 async function main(): Promise<void> {
   await assertSeededClone(owner);
@@ -160,6 +164,51 @@ async function main(): Promise<void> {
   // ── 8. The result is regenerable from the plan alone ──
   check("14: the result echoes the validated plan, so the surface is re-derivable",
     asA.ok && JSON.stringify(asA.result.plan) === JSON.stringify(plan()));
+
+  // ── 8b. account_name: a governed cross-object field, not an alternate access path ──
+  const aRow = asA.ok ? asA.result.rows.find((r) => r.objectRef.id === w.pursuitA) : undefined;
+  check("16: account_name resolves for the owner, with its own provenance",
+    aRow?.cells["pursuit.account_name"]?.visibility === "EXACT" &&
+    aRow?.cells["pursuit.account_name"]?.provenance === "pursuit.account_name" &&
+    String(aRow?.cells["pursuit.account_name"]?.value).startsWith(NS), String(aRow?.cells["pursuit.account_name"]?.value));
+
+  // The outsider sees no row at all, so the subselect cannot have reached companies on its behalf.
+  const outsiderBytes = JSON.stringify(asC.ok ? asC.result : {});
+  check("17: an unauthorized org recovers no account name from the response bytes", !outsiderBytes.includes(`${NS} Co`));
+
+  // The subselect runs inside the SAME tenant-pinned, RLS-bound statement as the row it belongs to:
+  // it reads one column of one company keyed by the pursuit's own account_id, so it can neither
+  // enumerate companies nor widen the row set. Proven by asking the same session for the company
+  // directly and comparing: what the projection can see is never more than the session can see.
+  const db4 = await owner.connect();
+  const { rows: cmp } = await db4.query<{ n: string }>(
+    `select count(*)::text as n from companies where id = $1`, [w.company]);
+  db4.release();
+  check("18: the fixture company exists exactly once — the projection reads a keyed scalar, not a set",
+    cmp[0].n === "1", cmp[0].n);
+
+  // ── 8c. Canonical vocabulary parity — the registry guard must match the database ──
+  const db5 = await owner.connect();
+  const vocab = async (constraint: string, upper: boolean) => {
+    const { rows } = await db5.query<{ d: string }>(`select pg_get_constraintdef(oid) d from pg_constraint where conname = $1`, [constraint]);
+    const re = upper ? /'([A-Z_]+)'::text/g : /'([a-z_]+)'::text/g;
+    return [...(rows[0]?.d ?? "").matchAll(re)].map((m) => m[1]).sort();
+  };
+  const dbStatuses = await vocab("pursuits_status_check", true);
+  const dbTypes = await vocab("pursuits_pursuit_type_check", true);
+  db5.release();
+  const regStatuses = [...(FILTERS["pursuit.status"].values ?? [])].sort();
+  const regTypes = [...(FILTERS["pursuit.pursuit_type"].values ?? [])].sort();
+  check("19: the accepted status vocabulary matches the database CHECK exactly — drift fails loudly",
+    JSON.stringify(regStatuses) === JSON.stringify(dbStatuses),
+    `code ${regStatuses.length} vs db ${dbStatuses.length}`);
+  check("20: the accepted pursuit-type vocabulary matches the database CHECK exactly",
+    JSON.stringify(regTypes) === JSON.stringify(dbTypes), `code ${regTypes.length} vs db ${dbTypes.length}`);
+
+  // ── 8d. No request input can select another organization ──
+  const crossOrg = await executePursuitQuery({ ...plan(), orgId: w.a } as unknown);
+  check("21: a plan carrying an organization is rejected — an org is not a query parameter",
+    crossOrg.ok === false && crossOrg.error === "INVALID_PLAN", crossOrg.ok === false ? crossOrg.detail : "");
 
   // ── 9. No P7-local write occurred ──
   const db3 = await owner.connect();
