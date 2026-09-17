@@ -1,6 +1,6 @@
 # P7 Slice 2 — deterministic EXPLAIN: contract and implementation plan
 
-**Status:** CONTRACT / PLAN ONLY, awaiting ruling. **No implementation authorized.**
+**Status:** **RULED AND AUTHORIZED** (rulings in §12). Implementation may proceed.
 **Builds on:** P7 Slice 1 HOSTED ACCEPTED (`cade340`), contract `docs/p7-pursuit-experience-analysis-contract.md` (§8).
 **Excluded by ruling:** LLMs · natural-language plan generation · pinning · actions · exports ·
 historical queries · cross-org ranking · any new canonical state.
@@ -304,3 +304,53 @@ exactly as Slice 1 does, since it exposes the same data with sentences attached.
 No LLM · no natural-language plan generation · no pinning · no actions · no exports · no historical
 queries · no cross-org ranking · no new canonical state · no new object class, field, filter or
 metric · no change to P5, P6 or the Slice 1 governance path.
+
+---
+
+## 12. Ruling record (authoritative — supersedes any recommendation above it)
+
+**Decision 1 — plan echo. RULED: do NOT echo the full `PursuitQuery`.** An `Explanation` carries only
+the minimum provenance that binds it to the governed execution: **subject identity · template id ·
+template version · plan version · a stable `planDigest`** sufficient to correlate it with the
+validated parent result. The canonical validated plan stays owned by the parent execution/result and
+is not serialized a second time. *Reason: Slice 2 has no persistence, pinning or export, so an
+explanation is not yet an independently portable artifact; duplicating the plan would expand response
+bytes and create another disclosure and compatibility surface for a capability Slice 2 does not need.
+A future persisted or exported explanation must define its provenance packaging explicitly.* My §10.1
+recommendation to echo is superseded.
+
+**Decision 3 — multi-row. RULED: Slice 2 is SINGLE-OBJECT ONLY.** `explain` requires **exactly one**
+governed subject object. Zero subjects, multiple subjects, cohort explanation and aggregate
+explanation over multiple rows are all **rejected** — and the first row is never silently chosen, nor
+are per-row explanations concatenated. A later slice may add multi-row EXPLAIN, but must explicitly
+solve statement-count/cardinality leakage, omission shadows, per-row comparability, ordering
+semantics, and the distinction between EXPLAIN and ANALYZE. Slice 2 proves the narrower invariant
+first: **one governed result can be explained without creating a new information channel.** My §10.3
+recommendation to allow multi-row is superseded — and the concern I raised when returning it, that
+per-row statement counts become comparable across rows, is exactly what this avoids.
+
+**Decision 5 — metric registry. RULED: Slice 2 does not modify it.** An explanation may reference
+only values already present in the `GovernedResultSet` from registered fields and metrics. Templates
+perform **no arithmetic**, create **no derived numeric value**, restate **no unregistered metric**,
+and **do not infer a number from multiple cells**. A desired explanation needing a value that is not
+already a canonical registered field or metric is a metric change in its own slice.
+
+**Implementation direction, binding:**
+
+```
+GovernedResultSet → recipient-authorized statement inputs → registered deterministic template → Explanation
+```
+
+**never** `all possible statements → template → redact afterward`. Redaction after the fact is the
+shape that leaks; selection before the fact is the shape that cannot.
+
+`explain()` remains synchronous, deterministic and pure; holds no database handle; is barred from
+importing DB, federation or `unsafe_` readers; is incapable of arithmetic, of fetching, and of
+creating a statement whose reference does not map to an authorized `GovernedResultSet` cell.
+
+Slice 2 remains: no LLM · no natural-language planning · no pinning · no actions · no exports · no
+historical `asOf` · **no multi-row explanation** · no cross-org ranking · no new tables or schema ·
+no P5/P6 change.
+
+**Additional required tests:** the plan digest/reference **cannot be used to reconstruct hidden
+data**, and explanation bytes contain **only** information authorized by the governed statement set.
