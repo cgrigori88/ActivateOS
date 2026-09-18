@@ -17,7 +17,7 @@
  * ONLY the model call. With it off, every deterministic P7 capability behaves exactly as certified in
  * Slices 1–4 — the compiler, the registry and the execution path are untouched.
  */
-import { completeStructured } from "@/lib/ai/client";
+import { completeStructuredScoped, scopedCredential, type CallMeta, type ScopedCredential } from "@/lib/ai/client";
 import { z } from "zod";
 import { compilerVocabulary } from "./vocabulary";
 import { toPrompt } from "./context";
@@ -32,6 +32,40 @@ export function intentModelEnabled(): boolean {
   const v = (process.env.PURSUIT_INTENT_ENABLED ?? "").trim().toLowerCase();
   return v === "true" || v === "1" || v === "on" || v === "yes";
 }
+
+/**
+ * THE ONLY CREDENTIAL SLICE 5 MAY CONSUME.
+ *
+ * > Provider credentials are capability-scoped inputs, not ambient application authority.
+ *
+ * This reads exactly one variable. It does NOT fall back to `ANTHROPIC_API_KEY`,
+ * `ANTHROPIC_AUTH_TOKEN`, or the SDK's local auth profile — so another feature's credential can never
+ * make this one provider-capable, and a structural guard in the suite proves no other production
+ * module reads this variable either.
+ */
+export const INTENT_CREDENTIAL_VAR = "PURSUIT_INTENT_ANTHROPIC_API_KEY";
+
+export function intentCredential(): ScopedCredential | null {
+  return scopedCredential(process.env[INTENT_CREDENTIAL_VAR]);
+}
+
+/** For acceptance evidence: presence only. Never the key, a prefix, a hash or a length. */
+export function intentCredentialPresent(): boolean {
+  return intentCredential() !== null;
+}
+
+/**
+ * Why the model was not asked. Infrastructure failure is NOT `UNSUPPORTED`: calling a provider
+ * outage "that isn't something this surface can do" would tell the user something false about the
+ * product's capabilities.
+ */
+export type ProposeOutcome =
+  | { status: "DISABLED" }
+  | { status: "UNAVAILABLE" }
+  | { status: "PROPOSED"; proposal: unknown; meta: CallMeta };
+
+/** Injected ONLY by the certification suite, to observe whether a call happened. Never by the route. */
+export type IntentTransport = (args: { system: string; user: string; credential: ScopedCredential }) => Promise<unknown>;
 
 /**
  * The output schema handed to the provider. It mirrors `ModelProposal` — but it is a convenience, not
@@ -81,25 +115,42 @@ function systemPrompt(manifest: ContextManifest): string {
 }
 
 /**
- * Ask the model for a proposal. Returns `null` when the master is off or the provider fails — the
- * caller then treats it exactly as it treats a malformed proposal: nothing executes.
+ * Ask the model for a proposal.
+ *
+ * THE CONJUNCTION, IN ORDER. The capability switch is checked FIRST, so an OFF deployment returns
+ * before the credential is even read and before any provider object is constructed — credential
+ * presence alone confers nothing. Only then is the scoped credential required; absent, the answer is
+ * `UNAVAILABLE`, never a fallback to an ambient key and never a guess.
+ *
+ * Whatever comes back is UNTRUSTED and goes to `compileIntent` unexamined. There is no repair call,
+ * no semantic retry and no second model asked to reinterpret the first — a retry loop steered by
+ * refusals is a probe.
  */
-export async function proposeIntent(utterance: string, manifest: ContextManifest): Promise<unknown | null> {
-  if (!intentModelEnabled()) return null;
+export async function proposeIntent(
+  utterance: string, manifest: ContextManifest, transport?: IntentTransport,
+): Promise<ProposeOutcome> {
+  if (!intentModelEnabled()) return { status: "DISABLED" };
+
+  const credential = intentCredential();
+  if (!credential) return { status: "UNAVAILABLE" };   // fail closed: no global discovery exists here
+
+  const system = systemPrompt(manifest);
+  // The utterance is DATA. It is bounded here so a very long input cannot crowd out the rules.
+  const user = utterance.slice(0, 2000);
   try {
-    return await completeStructured({
-      tier: INTENT_MODEL_TIER,
-      system: systemPrompt(manifest),
-      // The utterance is DATA. It is bounded here so a very long input cannot crowd out the rules.
-      user: utterance.slice(0, 2000),
-      schema: proposalSchema,
-      maxTokens: 256,
+    if (transport) return { status: "PROPOSED", proposal: await transport({ system, user, credential }), meta: TEST_META };
+    const { output, meta } = await completeStructuredScoped({
+      credential, tier: INTENT_MODEL_TIER, system, user, schema: proposalSchema, maxTokens: 256,
     });
+    return { status: "PROPOSED", proposal: output, meta };
   } catch {
-    // A refusal, a timeout or a schema failure are all the same answer: no proposal.
-    return null;
+    // A refusal, a timeout, a credential rejection or a schema failure are one answer: no proposal.
+    return { status: "UNAVAILABLE" };
   }
 }
+
+/** Placeholder metadata for the injected-transport path; never produced by a real provider call. */
+const TEST_META: CallMeta = { model: "transport", tier: INTENT_MODEL_TIER, inputTokens: 0, outputTokens: 0, costUsd: 0, latencyMs: 0 };
 
 /** Exposed for the certification suite: the exact prompt text, so its contents can be asserted. */
 export function intentPromptForAudit(manifest: ContextManifest): string {

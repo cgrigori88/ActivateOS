@@ -186,19 +186,19 @@ async function IntentView({ ask, propose, ctx, view }: { ask?: string; propose?:
   // request says so plainly — it does not fall through to a guessed proposal, a default view or an
   // execution. `?propose=` is unaffected, because deterministic compilation is not what this gates.
   const fromModel = typeof propose !== "string" && typeof ask === "string";
-  if (fromModel && !intentModelEnabled()) {
-    return (
-      <main className="mx-auto max-w-[1100px] px-6 py-10">
-        <h1 className="text-section font-extrabold tracking-[-0.03em]">Intent</h1>
-        <p className="mt-8 text-body text-neutral-500 dark:text-neutral-400">
-          Natural-language requests are not enabled here.
-        </p>
-      </main>
-    );
-  }
+  const notice = (text: string) => (
+    <main className="mx-auto max-w-[1100px] px-6 py-10">
+      <h1 className="text-section font-extrabold tracking-[-0.03em]">Intent</h1>
+      <p className="mt-8 text-body text-neutral-500 dark:text-neutral-400">{text}</p>
+    </main>
+  );
 
   // The manifest comes from a governed read for THIS principal — never from a lookup of its own.
+  // It also carries the TENANT ENTITLEMENT: if the organization is not entitled to the Pursuit
+  // experience, this is not ok, and the model is never asked. The conjunction is entitlement AND
+  // master AND scoped credential, in that order.
   const base = await executePursuitQuery(PLANS[view].plan);
+  if (fromModel && !base.ok) return notice("Natural-language requests are not enabled here.");
   const manifest = buildContextManifest(base.ok ? base.result.rows : []);
 
   // An untrusted proposal, from the model or supplied directly. Malformed JSON is simply not one.
@@ -206,7 +206,12 @@ async function IntentView({ ask, propose, ctx, view }: { ask?: string; propose?:
   if (typeof propose === "string") {
     try { proposal = JSON.parse(propose); } catch { proposal = null; }
   } else if (typeof ask === "string") {
-    proposal = await proposeIntent(ask, manifest);
+    const outcome = await proposeIntent(ask, manifest);
+    // DISABLED and UNAVAILABLE are DIFFERENT answers, and neither is UNSUPPORTED: a provider outage
+    // must not be reported as a limit of what the product can do.
+    if (outcome.status === "DISABLED") return notice("Natural-language requests are not enabled here.");
+    if (outcome.status === "UNAVAILABLE") return notice("Natural-language requests are temporarily unavailable.");
+    proposal = outcome.proposal;
   }
 
   const compiled = compileIntent({

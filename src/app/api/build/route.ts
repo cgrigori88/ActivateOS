@@ -5,6 +5,8 @@ import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { getPool } from "@/db/client";
 import { type DatabasePosture, probeDatabasePosture } from "@/lib/env/db-posture";
 import { buildInfo, databaseIdentity, environmentLabel, externalSendingArmed, siteMode } from "@/lib/env/environment";
+import { interpreterEnabled } from "@/lib/interpret/answer";
+import { intentCredentialPresent, intentModelEnabled } from "@/lib/experience/intent/model";
 
 export const dynamic = "force-dynamic";
 
@@ -108,6 +110,12 @@ export async function GET() {
         // against the running process instead.
         externalSendingArmed: externalSendingArmed(),
         modelCredentialPresent: Boolean(process.env.ANTHROPIC_API_KEY),
+        // P7 Slice 5 posture. Presence only — never the key, a prefix, a hash or a length. The
+        // capability switch and the credential are reported separately BECAUSE they are separate:
+        // a credential is a capability-scoped input, never ambient application authority.
+        interpreterEnabled: interpreterEnabled(),
+        intentEnabled: intentModelEnabled(),
+        intentCredentialPresent: intentCredentialPresent(),
       },
       serverTime: new Date().toISOString(),
     },

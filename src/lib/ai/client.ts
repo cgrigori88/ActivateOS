@@ -40,6 +40,34 @@ export function getAnthropic(apiKey?: string | null): Anthropic {
   return client;
 }
 
+/**
+ * A CAPABILITY-SCOPED CREDENTIAL (P7 Slice 5).
+ *
+ * > Provider credentials are capability-scoped inputs, not ambient application authority. A feature
+ * > may not become provider-capable merely because another feature's credential exists.
+ *
+ * `getAnthropic(apiKey?)` falls back to global discovery when no key is supplied — correct for the
+ * callers that have always used it, and exactly wrong for a feature whose whole point is that it
+ * consumes ONE named credential and nothing else. A caller that passed `undefined` by accident would
+ * silently acquire the ambient key.
+ *
+ * So the fail-closed property is made structural rather than remembered. `ScopedCredential` is
+ * branded: the only way to obtain one is `scopedCredential()`, which returns **null** when the
+ * variable is absent or blank. A call site with no credential therefore has no value to pass and
+ * cannot type-check its way into the global path — there is nothing to forget.
+ */
+declare const SCOPED_CREDENTIAL: unique symbol;
+export interface ScopedCredential {
+  readonly [SCOPED_CREDENTIAL]: true;
+  readonly apiKey: string;
+}
+
+/** Returns null when the named credential is absent or blank. Never reads any other variable. */
+export function scopedCredential(raw: string | undefined | null): ScopedCredential | null {
+  const apiKey = (raw ?? "").trim();
+  return apiKey.length > 0 ? ({ apiKey } as unknown as ScopedCredential) : null;
+}
+
 export class ModelRefusalError extends Error {
   constructor(public category: string | null) {
     super(`model declined the request (category: ${category ?? "unknown"})`);
@@ -117,4 +145,30 @@ export async function completeStructured<T extends z.ZodType>(opts: {
 }): Promise<z.infer<T>> {
   const { output } = await completeStructuredMeta(opts);
   return output;
+}
+
+/**
+ * Schema-constrained completion on an EXPLICIT capability-scoped credential.
+ *
+ * `credential` is required and non-nullable, so this function cannot reach `getAnthropic()`'s global
+ * discovery: a caller without a credential cannot call it at all. It delegates to the same
+ * `completeStructuredMeta` seam every other surface uses — no second structured-output
+ * implementation, no second provider abstraction, and no change to any existing caller.
+ */
+export async function completeStructuredScoped<T extends z.ZodType>(opts: {
+  credential: ScopedCredential;
+  tier: ModelTier;
+  system: string;
+  user: string;
+  schema: T;
+  maxTokens?: number;
+}): Promise<{ output: z.infer<T>; meta: CallMeta }> {
+  return completeStructuredMeta({
+    tier: opts.tier,
+    system: opts.system,
+    user: opts.user,
+    schema: opts.schema,
+    maxTokens: opts.maxTokens,
+    apiKey: opts.credential.apiKey,
+  });
 }

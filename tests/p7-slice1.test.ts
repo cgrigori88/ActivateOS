@@ -133,11 +133,20 @@ test("no P7 module reaches a raw unsafe_ reader", () => {
   for (const f of P7_TREE) assert.ok(!/unsafe_/.test(codeOf(f)), `${f} must not touch a raw reader`);
 });
 
-test("NO MODEL: nothing in the Slice 1 tree imports an LLM client", () => {
-  for (const f of P7_TREE) {
-    const code = codeOf(f);
-    assert.ok(!/@anthropic-ai|openai|anthropic|\bllm\b|generateText|createMessage/i.test(code),
-      `${f} must contain no model call — Slice 1 is deterministic end to end`);
+test("NO MODEL: the deterministic tree contains exactly ONE quarantined model boundary", () => {
+  // Slice 5 introduced a single module whose entire purpose is to be the only place a provider call
+  // can originate. The property is not "no file mentions a model" — it is that the model boundary is
+  // exactly one named file, and every other P7 module is deterministic end to end.
+  const QUARANTINED = "src/lib/experience/intent/model.ts";
+  const reaching = P7_TREE.filter((f) =>
+    /@anthropic-ai|openai|anthropic|\bllm\b|generateText|createMessage|completeStructured/i.test(codeOf(f)));
+  const relative = reaching.map((f) => f.slice(f.indexOf("src/"))).sort();
+  assert.deepEqual(relative, [QUARANTINED],
+    "exactly one P7 module may reach a model, and every other must be deterministic end to end");
+  // …and the execution path is on the deterministic side of that quarantine.
+  for (const f of ["execute.ts", "validate.ts", "analyze.ts", "explain.ts", "navigate.ts", "registry.ts", "plans.ts"]) {
+    const code = codeOf(new URL(`../src/lib/experience/${f}`, import.meta.url).pathname);
+    assert.ok(!/@anthropic-ai|anthropic|completeStructured/i.test(code), `${f} must contain no model call`);
   }
 });
 
