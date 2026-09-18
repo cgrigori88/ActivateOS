@@ -1,6 +1,7 @@
 # P7 Slice 8 — governed component-to-component binding: contract and plan
 
-**Status:** **PLAN ONLY — NOT AUTHORIZED FOR IMPLEMENTATION.** Decisions requiring a ruling are in §R.
+**Status:** **CONTRACT RULED — A–F RETURNED, B AND F MODIFIED. IMPLEMENTATION AUTHORIZED.** The rulings
+as returned are recorded in §R; hosted acceptance requires separate authorization.
 **Builds on:** Slices 1–7 and D-HIST-2, all HOSTED ACCEPTED / CLOSED. Slice 7 is not reopened.
 
 > **A component may consume an explicitly exported governed identity handle from another certified
@@ -357,6 +358,87 @@ expressions · **more than one dependency level**.
 
 ---
 
+## R. Rulings (returned and recorded)
+
+**R-A — selector semantics: APPROVED.** Exactly `select: "first"`, a closed registered selector —
+**never** an ordinal 0, a numeric index, an arbitrary N, a sort expression or a predicate. It means
+*the first selectable row in the already-governed, deterministically ordered result set of an upstream
+plan explicitly certified to export FIRST identity.* `"first"` is its own certified capability.
+
+**R-B — component-derived identity: MODIFIED.** Reuse the certified `ContextRef` **resolution
+semantics**, but do **not** model component-derived identity as an ordinary recipient
+`ContextManifest`. **The distinction must be structural.** Introduce the smallest execution-only
+abstraction — `DerivedIdentityContext` — that is ephemeral to one surface execution, holds one resolved
+candidate identity, is provider-invisible, has **no `toPrompt()` capability**, cannot be appended to or
+mutate the recipient manifest, cannot be persisted and confers no authority. It may use the same
+low-level resolution machinery; **do not create a second resolution algorithm.** Where the unchanged
+Slice 5 compiler needs `{fromContext:0}`, use a narrow deterministic adapter at the execution boundary.
+
+> **Recipient context is available before composition. Derived identity is an execution artifact created
+> after a governed upstream operation. They may share resolver mechanics; they are not the same
+> semantic object.**
+
+**A structural guard is required** proving the provider-facing path *cannot accept* the derived type —
+not merely a test asserting we remembered not to call `toPrompt()`.
+
+**R-C — dependency shape: APPROVED.** `subject: { fromComponent: <ComponentKey>, select: "first" }`.
+Validation must prove **before execution**: the referenced component exists · is **upstream** · is
+registry-permitted to export identity · the target accepts component-derived identity · the selector is
+allowed **for that exact upstream plan** · depth ≤ 1 · no cycle or self-reference · no arbitrary field,
+result or path reference. **Future caveat recorded:** if repeated component types are ever permitted,
+`ComponentKey` ceases to be sufficient graph-node identity and an explicit node identifier needs its own
+ruling. **Node ids are not pre-added now.**
+
+**R-D — zero-row semantics: APPROVED.** `NO_SELECTABLE_RESULT` is a distinct deterministic
+surface-level **composition** outcome: *the certified upstream governed result was valid, but contained
+no row from which the registered selector could produce the required identity.* It is not
+`NOT_AVAILABLE`, not `FAILED`, not zero-as-data and not an index failure. Upstream zero rows plus a
+required `"first"` dependency → the **entire** surface returns the bare outcome. No fallback, no nearest
+row, no previous context, no partial surface, and **nothing revealing internal component topology**.
+
+**R-E — execution/replay identity: APPROVED WITH PRECISE DIGEST CONTENT.** `surfaceSpecDigest` and
+`contextDigest` are preserved unchanged. Add `executionDigest` **only for dynamic component-derived
+bindings**: a **domain-separated** deterministic digest over the ordered dynamic-binding facts —
+upstream component execution identity, upstream governed result digest, selector key/version, the
+resolved selected canonical identity, and the consumer binding identity needed to prevent ambiguous
+reuse. The canonical identity **may participate inside the hash input** and **must not be serialized or
+rendered** merely because it contributes. The digest is provenance and replay identity — **not
+authority, not a bearer token, not a substitute for current governance.** Surfaces with no
+component-derived edge keep their Slice 7 behaviour byte-for-byte. A later execution against changed
+canonical state may legitimately select a different object and produce a different `executionDigest`;
+Slice 8 does **not** persist the old handle to force historical retargeting.
+
+**R-F — ordering/export safety: MODIFIED. NOT a universal SHOW ME invariant.** The traced properties are
+sufficient for the plans evaluated, but a future `SHOW_ME` view gets **no** export capability merely by
+returning pursuits.
+
+> **Being a SHOW ME operation does not imply being a safe identity-export source. Identity export is an
+> explicit certified registry capability.**
+
+Identity export becomes a **per-plan registry capability, default OFF** — `identityExport: { selectors:
+["first"] }` only on a plan whose ordering and disclosure contract has actually been certified. Slice 8
+certifies **only** the `SHOW ME open pursuits` plan the first vertical needs. **No widening for
+convenience.**
+
+### Additional load-bearing rules recorded
+
+1. **Selection consumes the final governed upstream result** the recipient's certified operation
+   actually produced — never pre-governance candidates, pre-suppression rows, an unbounded hidden set,
+   or values omitted from the recipient result. The resolver consumes **the same governed execution
+   artifact** used to build the component result; it never reruns a broader query to find an identity.
+2. **Handle contents:** only the identity capability required to invoke a certified boundary. No
+   pipeline value, account name, lifecycle state, arbitrary cell, sort value or raw payload.
+3. **Downstream governance:** *upstream visibility is not downstream authorization.* The handle
+   identifies a candidate; EXPLAIN and GO TO each traverse their certified path under the current
+   principal.
+4. **Mid-graph authority change:** upstream succeeds, a required downstream component becomes
+   unavailable → the whole read-only surface fails atomically under Slice 7's contract; upstream output
+   is discarded; nothing has streamed; the handle preserves no authority.
+5. **Three outcomes stay distinct and are never collapsed:** `NO_SELECTABLE_RESULT` (valid governed
+   upstream result, no selectable row) · `NOT_AVAILABLE` (a candidate exists, but a certified governed
+   downstream target is not recipient-available) · `FAILED` (internal/programming/infrastructure
+   invalidity, not governance).
+
 ## R. Decisions requiring a ruling
 
 **R-A — selector semantics.** *Recommend exactly one: `select: "first"`* — the first governed row of the
@@ -397,3 +479,62 @@ order is **total**; and `limit` is applied **after** ordering, so "first" is the
 authorized set. **No widening of ordering semantics is requested.** The one property I want confirmed
 rather than assumed: that this disclosure contract is intended to hold for *any* view a future
 `SHOW_ME` component may bind, not only the three registered today.
+
+---
+
+## V. Implementation status — LOCALLY IMPLEMENTED AND PROVEN (hosted acceptance NOT authorized)
+
+**Evidence.** `p7-slice8` **33/33** · unit **715/715** · `p7-slice1` **66/66** (seeded clone) · tsc and
+`next build` clean · `certify-world` **52 suites clean, no drift** (`c9004670ffda112f`). All seven ruled
+negative controls bite, three of them **on the checkers themselves** (a broader candidate source, a
+dropped governed-result guard, and a handle that skips downstream execution are each constructed in
+memory and confirmed caught).
+
+**No database schema. No new flag. No new route. No P5/P6 change. No new provider module. No persistence.**
+
+| Module | Change |
+|---|---|
+| `intent/schema.ts` | `ResolutionContext` split out; `ContextManifest` gains `origin: "RECIPIENT"` |
+| `intent/context.ts` | `toPrompt` refuses non-recipient context at runtime; the resolver takes `ResolutionContext` |
+| `intent/compile.ts` | consumes `ResolutionContext` — **one** resolution algorithm, not two |
+| `plans.ts` | `SELECTOR_KEYS`; per-plan `identityExport`, declared **only** on `open-by-value` |
+| `surface/identity.ts` | **new, pure** — `DerivedIdentityContext`, `selectIdentity`, the adapter, `executionDigest` |
+| `surface/registry.ts` | `exportsIdentity` / `acceptsContextIdentity` / `acceptsComponentIdentity` |
+| `surface/schema.ts` | `ComponentDependency`; the STATIC/DYNAMIC node union; `NO_SELECTABLE_RESULT` |
+| `surface/compile.ts` | edge validation, upstream-only references, per-plan export check, dry-run |
+| `surface/assemble.ts` | topological execution, identity export, `executionDigest` |
+| `intent/model.ts` | the same quarantined module; the closed dependency shape |
+| `page.tsx` | one new sentence; the renderer still resolves nothing |
+
+**The structural guard (ruling B) is real, not a convention.** `DerivedIdentityContext` has no `slots`,
+so it is **not assignable** to `toPrompt` — the compiler refuses it. `toPrompt` *also* checks `origin`
+at runtime, so the guard survives a caller arriving through untyped JSON. Both halves are proven, and
+the recipient manifest passes as a negative control so the check discriminates.
+
+**Depth is bounded structurally, not counted.** No component both exports and consumes identity, so a
+second level is unrepresentable rather than merely unreached — proven by a registry-wide assertion
+instead of a depth test on one example.
+
+**Cycles are refused by construction.** A dependency may only name a component validated **above** it,
+so array order *is* topological order and a forward reference — hence any cycle — is refused during the
+single validation pass, with no separate cycle search to keep correct.
+
+**Compile-time validation stays total.** A dependent bind is dry-run through the certified
+`compileIntent` against a sentinel one-slot context, so a malformed dependent bind (bad surface key,
+wrong operation, unknown field) is refused **before** anything executes. The dry run's output is
+discarded — only its success is consulted — and a suite proves the sentinel identity appears in no
+validated node and no executed request.
+
+**Four defects of my own, caught and fixed before the recorded run** — none tuned away:
+
+- two Slice 6/7 structural assertions that Slice 8 legitimately supersedes were **rewritten, not
+  deleted**: the "assembler threads NOTHING between components" check now asserts the sharper property
+  it was protecting — *only identity flows; never a result, row or payload*, with the assembler proven
+  to read no governed cell and to pass the narrow adapter rather than a result;
+- a whole-file scan for fallback substitution tripped on `def.fallbackLabel` — the certified Slice 4
+  **label** rule, which is not an identity fallback. Scoped to `selectIdentity`, with the label rule
+  asserted still present as the control;
+- **§16A again** — an assertion that the prompt offers no value-based selection tripped on the prompt
+  rule that *forbids* one, which has to say "largest" in order to refuse it. What the model may emit is
+  decided by the schema, so the enum is asserted instead of the prose;
+- a test-only cast that `tsc --noEmit` accepted but the full build rejected.

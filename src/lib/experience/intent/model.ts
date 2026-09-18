@@ -187,7 +187,7 @@ export function intentPromptForAudit(manifest: ContextManifest): string {
 // invariant stays literally true: EXACTLY ONE production module may reach a provider. It reuses the
 // same scoped credential, the same seam and the same gating; only the vocabulary differs.
 
-export const SURFACE_PROMPT_TEMPLATE_VERSION = "p7-slice7-surface-prompt@1";
+export const SURFACE_PROMPT_TEMPLATE_VERSION = "p7-slice8-surface-prompt@1";
 
 /**
  * Mirrors SurfaceSpec. A convenience for the provider, never a control: the compiler re-validates.
@@ -205,7 +205,12 @@ const surfaceSchema = z.object({
     bind: z.object({
       operation: z.enum(["SHOW_ME", "ANALYZE", "EXPLAIN", "GO_TO"]),
       view: z.string().optional(),
-      subject: z.object({ fromContext: z.number().int() }).optional(),
+      // Slice 8: a subject is EITHER a recipient context index OR a component dependency. Both are
+      // closed shapes; there is still no field for an identifier, a path or an expression.
+      subject: z.union([
+        z.object({ fromContext: z.number().int() }),
+        z.object({ fromComponent: z.string(), select: z.enum(["first"]) }),
+      ]).optional(),
       surface: z.string().optional(),
     }),
   })).min(1).max(4),
@@ -226,6 +231,11 @@ function surfacePrompt(manifest: ContextManifest): string {
     "  pursuit.explanation \u2014 explains ONE pursuit in context.    bind: { operation: EXPLAIN, subject }",
     "  pursuit.destination \u2014 navigates to ONE pursuit in context. bind: { operation: GO_TO, subject, surface }",
     "",
+    "A subject is ONE of exactly two shapes:",
+    '  {"fromContext": <0-based index>}            \u2014 a pursuit already open in the context below',
+    '  {"fromComponent": "pursuit.list", "select": "first"}  \u2014 the first row of a list component',
+    "    in THIS SAME surface. That component must appear BEFORE the one that refers to it.",
+    "",
     "Layouts: stack | grid",
     `Views: ${v.views.map((x) => `${x.key} (${x.label}${x.aggregate ? ", analyzable" : ""})`).join(" | ")}`,
     `Surfaces: ${v.surfaces.join(" | ")}`,
@@ -236,7 +246,12 @@ function surfacePrompt(manifest: ContextManifest): string {
     "RULES:",
     "- At most 4 components, and never the same component bound the same way twice.",
     "- ANALYZE may bind only a view that is analyzable.",
-    "- A subject may ONLY be a context index. Never an identifier, and never a name you were shown.",
+    "- A subject may ONLY be a context index or a component dependency. Never an identifier, never a",
+    "  name you were shown, and never a description of a row.",
+    "- `select` has exactly one value: \"first\". There is NO way to ask for the largest, the best, the",
+    "  most recent, a number, or a row matching a condition. If asked for one, use \"first\" or refuse.",
+    "- Only pursuit.list may be depended upon, and nothing may depend on a component that itself",
+    "  depends on another. There is exactly one level.",
     "- If nothing is in context, do not compose a component that takes a subject.",
     "- Never invent a component, a view, a metric, a filter, an identifier, a URL or a title.",
     "- Never add any field beyond those shown; an unknown field rejects the whole surface.",

@@ -17,7 +17,7 @@
  */
 import { createHash } from "node:crypto";
 import { DESTINATIONS, destinationKey } from "../registry";
-import type { ContextManifest, ContextSlot } from "./schema";
+import type { ContextManifest, ContextSlot, ResolutionContext } from "./schema";
 import type { GovernedRow } from "../types";
 
 /** The label rule is Slice 4's, unchanged: a disclosed registered cell, or the class-generic fallback. */
@@ -40,7 +40,7 @@ export function buildContextManifest(rows: readonly GovernedRow[]): ContextManif
   const digest = createHash("sha256")
     .update(JSON.stringify(ids.map((id, i) => [i, id, slots[i].class, slots[i].label])))
     .digest("hex").slice(0, 16);
-  return { manifestVersion: 1, slots, digest, ids: Object.freeze([...ids]) };
+  return { manifestVersion: 1, origin: "RECIPIENT", slots, digest, ids: Object.freeze([...ids]) };
 }
 
 /** The empty manifest. EXPLAIN and GO_TO are simply unavailable against it — there is nothing to name. */
@@ -51,6 +51,13 @@ export const EMPTY_MANIFEST: ContextManifest = buildContextManifest([]);
  * the already-disclosed label, never an organization.
  */
 export function toPrompt(manifest: ContextManifest): { count: number; slots: ContextSlot[] } {
+  // THE RUNTIME HALF OF THE SLICE 8 GUARD. The type already refuses a `DerivedIdentityContext` — it
+  // has no `slots` — but a structural guard that only exists in the type system disappears the moment
+  // something reaches this from untyped JSON. An execution-derived identity must never be describable
+  // to a provider, so this refuses rather than serializing anything it was not certified to show.
+  if (manifest.origin !== "RECIPIENT") {
+    throw new Error("only recipient context may be described to a provider");
+  }
   return { count: manifest.slots.length, slots: manifest.slots.map((s) => ({ class: s.class, label: s.label })) };
 }
 
@@ -59,7 +66,7 @@ export function toPrompt(manifest: ContextManifest): { count: number; slots: Con
  * never a neighbouring slot — for an out-of-range index, a non-integer, or a digest mismatch.
  */
 export function resolveContextRef(
-  manifest: ContextManifest, boundDigest: string, index: unknown,
+  manifest: ResolutionContext, boundDigest: string, index: unknown,
 ): string | null {
   if (manifest.digest !== boundDigest) return null;                       // stale or substituted context
   if (typeof index !== "number" || !Number.isInteger(index)) return null;

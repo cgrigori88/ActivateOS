@@ -354,6 +354,10 @@ async function SurfaceView({ surface, compose, ctx, view }: { surface?: string; 
   if (!assembled.ok) {
     if (assembled.error === "NOT_AVAILABLE") return notice("That surface is not available.");
     if (assembled.error === "FAILED") return notice("That surface could not be completed.");
+    // SLICE 8 (ruling D): a valid governed upstream result held no row the selector could use. It is
+    // neither a governed absence nor a defect, so it says its own thing — and, like the others, it
+    // names no component, so it reveals no internal topology.
+    if (assembled.error === "NO_SELECTABLE_RESULT") return notice("There is nothing here to build that on.");
     return notice("Surfaces are not enabled here.");
   }
   return <SurfaceRender result={assembled.result} />;

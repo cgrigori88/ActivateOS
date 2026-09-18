@@ -31,16 +31,33 @@
  * component result becomes recipient-observable before whole-surface success is determined: this
  * function returns a single already-finalized value, and React is handed that value or nothing.
  *
+ * SLICE 8 — TOPOLOGICAL EXECUTION AND DERIVED IDENTITY. The validated graph is already in
+ * topological order (a dependency may only name a component validated ABOVE it), so execution is
+ * still a single forward pass. An exporting component's governed result is reduced by a registered
+ * selector to ONE identity; consumers compile against that through the SAME certified compiler.
+ *
+ * UPSTREAM VISIBILITY IS NOT DOWNSTREAM AUTHORIZATION. A derived identity names a CANDIDATE. Every
+ * consumer still executes through its own certified P6/P7 boundary under the current principal, and
+ * the handle carries no field that could be mistaken for a decision.
+ *
+ * THE SELECTION CONSUMES THE GOVERNED RESULT — the very object the upstream component produced, not
+ * a fresh, broader query run to find an identity. There is no second read here to govern.
+ *
  * THE CAPABILITY GATE IS THE CANONICAL ONE (ruling 1). `vnextCapabilities` owns the Dynamic Surfaces
  * dependency chain; this module asks it rather than restating it, so the conjunction cannot drift.
  * Tenant Pursuit Experience entitlement is ALSO enforced independently inside each component's
  * governed execution, which is where it has always been enforced.
  */
+import { COMPONENTS } from "./registry";
+import { interpretedAs } from "../intent/vocabulary";
 import { withTenant, withTenantOrg } from "@/lib/db/tenant";
 import { tenantFeatures } from "@/lib/pursuits/tenant-flags";
 import { vnextCapabilities } from "@/lib/env/vnext-flags";
 import { runCompiledIntent } from "../intent/run";
+import { compileIntent } from "../intent/compile";
 import { surfaceDisposition, type ExecutedComponent } from "./availability";
+import { asResolutionContext, executionDigest, selectIdentity, type DerivedIdentityContext } from "./identity";
+import type { ComponentKey } from "./schema";
 import type { ExecutionPrincipal } from "../principal";
 import { principalOrgId } from "../principal";
 import type { SurfaceOutcome, ValidatedSurfaceSpec } from "./schema";
@@ -72,13 +89,57 @@ export async function assembleSurface(
 ): Promise<SurfaceOutcome> {
   if (!(await dynamicSurfacesEnabled(principal))) return { ok: false, error: "CAPABILITY_DENIED" };
 
-  // EVERY component executes first, into a LOCAL that never escapes on the failure path. Each runs
-  // INDEPENDENTLY against canonical state under the CURRENT principal; nothing is threaded between
-  // them, so one component's output is never another's input — and no result can flow back into the
-  // context that named the object.
+  // EVERY component executes first, into LOCALS that never escape on a failure path. Each runs
+  // against canonical state under the CURRENT principal; only IDENTITY flows between them, and only
+  // along an edge the compiler already validated.
   const executed: ExecutedComponent[] = [];
+  const results: (Awaited<ReturnType<typeof runCompiledIntent>> | null)[] = [];
+  const exported = new Map<ComponentKey, DerivedIdentityContext>();
+  const bindings: { consumer: ComponentKey; derived: DerivedIdentityContext }[] = [];
+
   for (const c of validated.components) {
-    executed.push({ operation: c.operation, execution: await runCompiledIntent(c.intent, principal) });
+    let intent;
+    if (c.kind === "STATIC") {
+      intent = c.intent;
+    } else {
+      // The upstream identity, resolved from the result its component ALREADY produced.
+      const derived = exported.get(c.dependency.fromComponent);
+      // NOTHING TO SELECT is a composition outcome, not a governance one, and not a defect: the
+      // upstream result was valid and simply held no selectable row. No fallback is invented here —
+      // no nearest row, no default, no previous context (ruling D).
+      if (!derived) return { ok: false, error: "NO_SELECTABLE_RESULT" };
+
+      // Compiled by the SAME certified compiler, through the narrow adapter: one slot, so the
+      // resolver's own refusals (digest mismatch, out of range, non-integer) still apply unchanged.
+      const compiled = compileIntent({
+        proposal: { ...c.bind, subject: { fromContext: 0 } },
+        manifest: asResolutionContext(derived),
+        boundContextDigest: derived.digest,
+        source: validated.provenance.source,
+        modelId: validated.provenance.modelId,
+        promptTemplateVersion: validated.provenance.promptTemplateVersion,
+      });
+      // The bind was already proven well-formed at compile time, so a failure here is an internal
+      // inconsistency rather than anything the recipient did — and it is NOT a governed absence.
+      if (!compiled.ok) return { ok: false, error: "FAILED" };
+      intent = compiled.intent;
+      bindings.push({ consumer: c.component, derived });
+    }
+
+    const outcome = await runCompiledIntent(intent, principal);
+    executed.push({ operation: c.operation, execution: outcome });
+    results.push(outcome);
+
+    // EXPORT, but only what the registry certified and only from a governed result this component
+    // actually produced. A component that exports nothing simply never reaches this.
+    if (c.kind === "STATIC" && COMPONENTS[c.component].exportsIdentity
+        && outcome.kind === "RESULT" && outcome.outcome.ok) {
+      const selector = selectorFor(validated, c.component);
+      if (selector) {
+        const derived = selectIdentity(outcome.outcome.result, selector, c.component);
+        if (derived) exported.set(c.component, derived);
+      }
+    }
   }
 
   // THE ATOMIC DECISION, taken ONCE over the WHOLE executed set — because the property being decided
@@ -91,15 +152,39 @@ export async function assembleSurface(
   const disposition = surfaceDisposition(executed);
   if (disposition !== "AVAILABLE") return { ok: false, error: disposition };
 
+  // A dependent component whose upstream exported nothing never got here — but a surface whose
+  // dependency was satisfied must have produced every binding it validated.
+  if (validated.components.some((c) => c.kind === "DYNAMIC") && bindings.length === 0) {
+    return { ok: false, error: "NO_SELECTABLE_RESULT" };
+  }
+
   const components: SurfaceResultComponents = validated.components.map((c, i) => ({
     component: c.component,
     title: c.title,
-    interpretedAs: c.intent.interpretedAs,
-    view: c.intent.provenance.view ?? null,
-    outcome: executed[i].execution,
+    interpretedAs: c.kind === "STATIC" ? c.intent.interpretedAs : INTERPRETED[c.operation],
+    view: c.kind === "STATIC" ? (c.intent.provenance.view ?? null) : null,
+    outcome: results[i]!,
   }));
 
-  return { ok: true, result: { layout: validated.spec.layout, components, provenance: validated.provenance } };
+  const provenance = { ...validated.provenance, executionDigest: executionDigest(bindings) };
+
+  return { ok: true, result: { layout: validated.spec.layout, components, provenance } };
 }
 
 type SurfaceResultComponents = Extract<SurfaceOutcome, { ok: true }>["result"]["components"];
+
+/** Registry-composed wording for a derived component. Never model prose, never names the object. */
+const INTERPRETED: Record<string, string> = {
+  EXPLAIN: interpretedAs("EXPLAIN"),
+  GO_TO: interpretedAs("GO_TO"),
+  SHOW_ME: interpretedAs("SHOW_ME"),
+  ANALYZE: interpretedAs("ANALYZE"),
+};
+
+/** The selector every consumer of this component asked for — validated identical by the compiler. */
+function selectorFor(validated: ValidatedSurfaceSpec, source: ComponentKey) {
+  for (const c of validated.components) {
+    if (c.kind === "DYNAMIC" && c.dependency.fromComponent === source) return c.dependency.select;
+  }
+  return null;
+}

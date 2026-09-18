@@ -21,7 +21,7 @@ import { DESTINATIONS, destinationKey } from "../registry";
 import { resolveContextRef } from "./context";
 import { CLARIFICATIONS, interpretedAs, vocabularyDigest } from "./vocabulary";
 import type {
-  ClarificationKey, CompileOutcome, ContextManifest, IntentProvenance, ModelProposal, ProposalSource, ViewKey,
+  ClarificationKey, CompileOutcome, IntentProvenance, ModelProposal, ProposalSource, ResolutionContext, ViewKey,
 } from "./schema";
 
 /** Bumped when the compiler's semantics change. Stamped into provenance; never read for authority. */
@@ -30,8 +30,14 @@ export const COMPILER_VERSION = "p7-slice5-compiler@1";
 export interface CompileInputs {
   /** The untrusted model output, `unknown` on purpose: it arrives as JSON from a provider. */
   proposal: unknown;
-  /** The manifest the proposal is bound to, and the digest it was issued against. */
-  manifest: ContextManifest;
+  /**
+   * The context the proposal is bound to, and the digest it was issued against.
+   *
+   * SLICE 8 widened this from `ContextManifest` to the minimum resolution needs, so an execution-time
+   * derived identity can be compiled by THIS compiler rather than a second one. The compiler cannot
+   * tell the two apart, and must not: it resolves an index against a digest either way.
+   */
+  manifest: ResolutionContext;
   boundContextDigest: string;
   /**
    * Provenance the COMPILER stamps. The model cannot supply or override any of it (ruling 4), and a

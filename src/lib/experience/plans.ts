@@ -13,6 +13,31 @@ import { ALL_SCOPE } from "@/lib/scope/scope";
 import { OPEN_STATUSES } from "./registry";
 import type { PursuitQuery } from "./types";
 
+/**
+ * P7 SLICE 8 — THE CLOSED SELECTOR VOCABULARY.
+ *
+ * `"first"` is its own certified capability, deliberately a WORD and not an ordinal: an integer
+ * invites arbitrary N, and "the second row" is a different capability with its own disclosure
+ * question (it lets a caller walk the governed set).
+ */
+export const SELECTOR_KEYS = ["first"] as const;
+export type SelectorKey = (typeof SELECTOR_KEYS)[number];
+export const isSelectorKey = (v: unknown): v is SelectorKey =>
+  typeof v === "string" && (SELECTOR_KEYS as readonly string[]).includes(v);
+
+/**
+ * WHICH SELECTORS A PLAN MAY EXPORT IDENTITY FOR. Absent means NONE (ruling F).
+ *
+ * > **Being a SHOW ME operation does not imply being a safe identity-export source. Identity export is
+ * > an explicit certified registry capability.**
+ *
+ * A plan earns this only when its ORDERING AND DISCLOSURE contract has actually been certified: that
+ * ordering runs on governed cells after governance, that a suppressed value cannot acquire an invented
+ * sort key and therefore cannot promote a row, that the order is total, and that `limit` is applied
+ * after ordering. A future view that returns pursuits gets nothing by default.
+ */
+export interface IdentityExport { selectors: readonly SelectorKey[] }
+
 export const VIEW_KEYS = ["open-by-value", "recently-updated", "open-pipeline-cohort"] as const;
 export type ViewKey = (typeof VIEW_KEYS)[number];
 
@@ -63,9 +88,18 @@ export function goToPlanFor(pursuitId: string): PursuitQuery {
   };
 }
 
-export const PLANS: Record<ViewKey, { label: string; plan: PursuitQuery }> = {
+export const PLANS: Record<ViewKey, { label: string; plan: PursuitQuery; identityExport?: IdentityExport }> = {
   "open-by-value": {
     label: "Open pursuits by open pipeline",
+    /**
+     * THE ONLY PLAN CERTIFIED TO EXPORT IDENTITY IN SLICE 8, and only for `first`.
+     *
+     * Its ordering is `metric:pursuit.open_pipeline_usd@1 desc` with `pursuit.id asc` as the final
+     * key, applied by `orderRows` to ALREADY-GOVERNED rows — so a withheld value sorts last rather
+     * than acquiring a position, the order is total, and `limit` slices afterwards. "First" is
+     * therefore canonical, stable, and derived only from what this recipient may already see.
+     */
+    identityExport: { selectors: ["first"] },
     plan: {
       queryVersion: 1,
       subject: { class: "pursuit" },

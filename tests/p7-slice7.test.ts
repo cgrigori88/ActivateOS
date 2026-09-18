@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import type { ValidatedComponent } from "../src/lib/experience/surface/schema";
 import { compileSurface } from "../src/lib/experience/surface/compile";
 import { COMPONENTS, CONTEXT_BOUND_OPERATIONS, isContextBound } from "../src/lib/experience/surface/registry";
 import { componentDisposition, surfaceDisposition, type ExecutedComponent } from "../src/lib/experience/surface/availability";
@@ -27,6 +28,16 @@ import type { Explanation, GovernedCell, GovernedResultSet, GovernedRow } from "
  * except where the property IS structural — that a shape is unrepresentable, or that a module reaches
  * no provider — and those are marked.
  */
+
+/**
+ * Slice 8 made a validated node a union of STATIC and DYNAMIC. Every spec in this suite is directly
+ * bound, so this ASSERTS that rather than casting it away — if a node ever became dynamic here, the
+ * test would fail loudly instead of reading an absent field as undefined (§16B).
+ */
+const stat = (c: ValidatedComponent) => {
+  if (c.kind !== "STATIC") throw new Error(`expected a directly-bound component, got ${c.kind}`);
+  return c;
+};
 
 const ID0 = "11111111-2222-4333-8444-555555555555";
 const ID1 = "99999999-8888-4777-8666-555555555555";
@@ -107,8 +118,8 @@ test("the ruled first vertical compiles: EXPLAIN and GO TO bound INDEPENDENTLY t
   assert.deepEqual(r.validated.components.map((c) => c.component), ["pursuit.explanation", "pursuit.destination"]);
 
   // BOTH resolved the SAME canonical object — that is the property this slice exists to prove.
-  const explain = r.validated.components[0].intent.request as { subjectId: string };
-  const goto = r.validated.components[1].intent.request as { ref: { id: string } };
+  const explain = stat(r.validated.components[0]).intent.request as { subjectId: string };
+  const goto = stat(r.validated.components[1]).intent.request as { ref: { id: string } };
   assert.equal(explain.subjectId, ID0);
   assert.equal(goto.ref.id, ID0);
   assert.equal(explain.subjectId, goto.ref.id, "one slot, two independent bindings");
@@ -117,9 +128,9 @@ test("the ruled first vertical compiles: EXPLAIN and GO TO bound INDEPENDENTLY t
   assert.equal(r.validated.components[0].title, COMPONENTS["pursuit.explanation"].title);
   assert.equal(r.validated.components[1].title, COMPONENTS["pursuit.destination"].title);
   for (const c of r.validated.components) {
-    assert.equal(c.intent.interpretedAs.includes("this pursuit"), true);
-    assert.ok(!c.intent.interpretedAs.includes(ID0), "the operation statement never names the object");
-    assert.ok(!c.intent.interpretedAs.includes("Acme"), "nor its label");
+    assert.equal(stat(c).intent.interpretedAs.includes("this pursuit"), true);
+    assert.ok(!stat(c).intent.interpretedAs.includes(ID0), "the operation statement never names the object");
+    assert.ok(!stat(c).intent.interpretedAs.includes("Acme"), "nor its label");
   }
 });
 
@@ -170,7 +181,7 @@ test("a resolved id reached the compiled request ONLY by resolution, never by be
   assert.ok(!JSON.stringify(spec()).includes(ID0), "the submitted spec names no object");
   const r = compile(spec());
   assert.ok(r.ok);
-  if (r.ok) assert.ok(JSON.stringify(r.validated.components.map((c) => c.intent.request)).includes(ID0));
+  if (r.ok) assert.ok(JSON.stringify(r.validated.components.map((c) => stat(c).intent.request)).includes(ID0));
 });
 
 // ── SLOT REFERENCES REFUSE BEFORE EXECUTION ─────────────────────────────────────────────────────
@@ -211,7 +222,7 @@ test("reordering the manifest changes its digest, so a bound spec cannot be sile
   // Re-binding to the reordered manifest resolves the OTHER object — visibly, not silently.
   const rebound = compile(spec(), { manifest: reordered });
   assert.ok(rebound.ok);
-  if (rebound.ok) assert.equal((rebound.validated.components[0].intent.request as { subjectId: string }).subjectId, ID1);
+  if (rebound.ok) assert.equal((stat(rebound.validated.components[0]).intent.request as { subjectId: string }).subjectId, ID1);
 });
 
 test("IDENTICAL visible labels but DIFFERENT canonical identities produce different execution identity", () => {
@@ -426,7 +437,7 @@ test("the atomic rule is keyed on the OPERATION, and every context-bound operati
   assert.ok(r.ok);
   if (!r.ok) return;
   for (const c of r.validated.components) {
-    const carriesObject = JSON.stringify(c.intent.request).includes(ID0);
+    const carriesObject = JSON.stringify(stat(c).intent.request).includes(ID0);
     assert.equal(carriesObject, isContextBound(c.operation), `${c.component} classification must match its request`);
   }
 });
@@ -549,12 +560,25 @@ test("NEGATIVE CONTROL: the valid shape those attempts deviate from does compile
   assert.ok(compile(spec({ components: [EXPLAIN] })).ok);
 });
 
-test("the assembler threads NOTHING between components — no result can become context", () => {
+/**
+ * SUPERSEDED IN PART BY SLICE 8, deliberately and in one direction only.
+ *
+ * This originally asserted that NOTHING is threaded between components. Slice 8 threads exactly one
+ * thing — a `DerivedIdentityContext` — along an edge the compiler validated. What the test was
+ * actually protecting is kept and made sharper: no component may receive another's RESULT, ROW or
+ * PAYLOAD, and the assembler may not build or mutate recipient context.
+ */
+test("only IDENTITY flows between components — never a result, row or payload", () => {
   const body = strip(ASSEMBLE);
-  assert.ok(!/components\[i\s*-\s*1\]|previous|prior|accumulat/i.test(body), "no component reads another's result");
-  assert.ok(!/buildContextManifest|resolveContextRef|ContextManifest/.test(body), "the assembler builds no context");
-  // Execution takes the COMPILED intent only; there is no path from an outcome back into a bind.
-  assert.match(body, /runCompiledIntent\(c\.intent, principal\)/);
+  // The recipient's context is not built, extended or resolved against here.
+  assert.ok(!/buildContextManifest/.test(body), "the assembler builds no recipient context");
+  // A downstream component's compiler input is the NARROW ADAPTER, never a result or a row.
+  assert.match(body, /manifest: asResolutionContext\(derived\)/);
+  assert.ok(!/manifest:\s*(outcome|result|rows)/.test(body), "no result is ever passed as context");
+  // No component's cells are read anywhere in the assembler.
+  assert.ok(!/\.cells\b/.test(body), "the assembler never reads a governed cell");
+  // Execution still takes a COMPILED intent only; there is no path from an outcome back into a bind.
+  assert.match(body, /runCompiledIntent\(intent, principal\)/);
 });
 
 test("an empty manifest makes context-bound components uncomposable — not silently empty", () => {
@@ -593,8 +617,8 @@ test("hand-authored and model-authored identical specs compile to identical exec
   if (!hand.ok || !model.ok) return;
   // The EXECUTION is identical; only provenance records which path produced it.
   assert.deepEqual(
-    hand.validated.components.map((c) => [c.component, c.operation, c.intent.request, c.intent.interpretedAs]),
-    model.validated.components.map((c) => [c.component, c.operation, c.intent.request, c.intent.interpretedAs]),
+    hand.validated.components.map((c) => [c.component, c.operation, stat(c).intent.request, stat(c).intent.interpretedAs]),
+    model.validated.components.map((c) => [c.component, c.operation, stat(c).intent.request, stat(c).intent.interpretedAs]),
   );
   assert.equal(hand.validated.provenance.surfaceSpecDigest, model.validated.provenance.surfaceSpecDigest);
   assert.equal(hand.validated.provenance.source, "HAND_AUTHORED");

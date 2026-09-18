@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import type { ValidatedComponent } from "../src/lib/experience/surface/schema";
 import { compileSurface, SURFACE_COMPILER_VERSION } from "../src/lib/experience/surface/compile";
 import { COMPONENTS, LAYOUTS, MAX_COMPONENTS, componentRegistryDigest } from "../src/lib/experience/surface/registry";
 import { buildContextManifest } from "../src/lib/experience/intent/context";
@@ -18,6 +19,16 @@ import type { GovernedCell, GovernedRow } from "../src/lib/experience/types";
  * anywhere must produce ZERO compiled components, which is checkable because compilation is the
  * thing that precedes execution.
  */
+
+/**
+ * Slice 8 made a validated node a union of STATIC and DYNAMIC. Every spec in this suite is directly
+ * bound, so this ASSERTS that rather than casting it away — if a node ever became dynamic here, the
+ * test would fail loudly instead of reading an absent field as undefined (§16B).
+ */
+const stat = (c: ValidatedComponent) => {
+  if (c.kind !== "STATIC") throw new Error(`expected a directly-bound component, got ${c.kind}`);
+  return c;
+};
 
 const ID0 = "11111111-2222-4333-8444-555555555555";
 const SRC = readFileSync(new URL("../src/lib/experience/surface/compile.ts", import.meta.url), "utf8");
@@ -47,8 +58,8 @@ test("the ruled first vertical compiles: SHOW ME open pursuits + ANALYZE open pi
     // Titles and labels are REGISTRY-owned; nothing in the spec can author them.
     assert.equal(r.validated.components[0].title, COMPONENTS["pursuit.list"].title);
     assert.equal(r.validated.components[1].title, COMPONENTS["pursuit.cohort"].title);
-    assert.equal(r.validated.components[0].intent.interpretedAs, "Show: Open pursuits by open pipeline");
-    assert.equal(r.validated.components[1].intent.interpretedAs, "Analyze: Open pipeline across open pursuits");
+    assert.equal(stat(r.validated.components[0]).intent.interpretedAs, "Show: Open pursuits by open pipeline");
+    assert.equal(stat(r.validated.components[1]).intent.interpretedAs, "Analyze: Open pipeline across open pursuits");
   }
 });
 
@@ -137,7 +148,7 @@ test("query semantics cannot be smuggled through layout or configuration", () =>
   const a = compile(spec({ layout: "stack" })), b = compile(spec({ layout: "grid" }));
   assert.ok(a.ok && b.ok);
   if (a.ok && b.ok) {
-    assert.deepEqual(a.validated.components.map((c) => c.intent.request), b.validated.components.map((c) => c.intent.request));
+    assert.deepEqual(a.validated.components.map((c) => stat(c).intent.request), b.validated.components.map((c) => stat(c).intent.request));
   }
 });
 
@@ -168,7 +179,10 @@ test("an exact semantic duplicate hard-fails, and identity is NOT raw JSON equal
   if (!r.ok) assert.match(r.detail, /duplicate component/);
   // Structurally: identity derives from the compiled request, never from the raw component.
   const code = strip(SRC);
-  assert.match(code, /const identity = JSON\.stringify\(\[def\.key, canonical\(intent\.intent\.request\)\]\)/);
+  // Slice 8 renamed the local (`identity` → `identityKey`) when nodes became a union; the PROPERTY is
+  // unchanged and is what is asserted: a directly-bound node's identity is the COMPILED request,
+  // canonically normalized — never the raw spec bytes.
+  assert.match(code, /identityKey = JSON\.stringify\(\[def\.key, canonical\(intent\.intent\.request\)\]\)/);
   assert.ok(!/JSON\.stringify\(c\.bind\)|JSON\.stringify\(raw\)/.test(code), "identity is not raw spec bytes");
   // RULING 4: a repeated component TYPE is refused in Slice 6 even when the binds genuinely differ —
   // "a future slice may allow repeated component types with genuinely different canonical binds".
@@ -227,7 +241,7 @@ test("component order changes presentation order but NOT execution semantics", (
     assert.deepEqual(forward.validated.components.map((c) => c.component), ["pursuit.list", "pursuit.cohort"]);
     assert.deepEqual(reverse.validated.components.map((c) => c.component), ["pursuit.cohort", "pursuit.list"]);
     // …while each component's compiled execution is identical whichever position it holds.
-    const byKey = (v: typeof forward.validated) => Object.fromEntries(v.components.map((c) => [c.component, JSON.stringify(c.intent.request)]));
+    const byKey = (v: typeof forward.validated) => Object.fromEntries(v.components.map((c) => [c.component, JSON.stringify(stat(c).intent.request)]));
     assert.deepEqual(byKey(forward.validated), byKey(reverse.validated));
   }
 });
@@ -247,7 +261,7 @@ test("the same validated spec yields the same execution graph and the same diges
   const a = compile(spec()), b = compile(spec());
   assert.ok(a.ok && b.ok);
   if (a.ok && b.ok) {
-    assert.deepEqual(a.validated.components.map((c) => c.intent.request), b.validated.components.map((c) => c.intent.request));
+    assert.deepEqual(a.validated.components.map((c) => stat(c).intent.request), b.validated.components.map((c) => stat(c).intent.request));
     assert.equal(a.validated.provenance.surfaceSpecDigest, b.validated.provenance.surfaceSpecDigest);
   }
   // A different composition is a different digest — the digest tracks the SPEC, not the data.
@@ -261,7 +275,7 @@ test("hand-authored and model-authored identical specs compile to identical exec
   const model = compile(spec(), "MODEL");
   assert.ok(hand.ok && model.ok);
   if (hand.ok && model.ok) {
-    assert.deepEqual(hand.validated.components.map((c) => c.intent.request), model.validated.components.map((c) => c.intent.request));
+    assert.deepEqual(hand.validated.components.map((c) => stat(c).intent.request), model.validated.components.map((c) => stat(c).intent.request));
     assert.equal(hand.validated.provenance.surfaceSpecDigest, model.validated.provenance.surfaceSpecDigest);
     // Only PROVENANCE differs, and a hand-authored spec fabricates no provider.
     assert.equal(hand.validated.provenance.source, "HAND_AUTHORED");

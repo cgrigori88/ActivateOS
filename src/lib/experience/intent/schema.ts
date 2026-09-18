@@ -60,16 +60,34 @@ export interface ContextSlot {
 }
 
 /**
+ * THE MINIMUM RESOLUTION NEEDS (Slice 8). A digest to bind against and the ordered canonical ids —
+ * nothing else. `resolveContextRef` and `compileIntent` are written against THIS, so Slice 8's
+ * execution-time derived identity can reuse the certified resolver without being a recipient context.
+ *
+ * It deliberately carries NO `slots`, so it is not assignable to anything that renders or prompts.
+ */
+export interface ResolutionContext {
+  /** Stable digest of whatever produced this context; a bind is refused unless it matches. */
+  digest: string;
+  /** The canonical ids. NEVER sent to the model; resolved only by the compiler. */
+  readonly ids: readonly string[];
+}
+
+/**
  * The immutable manifest a proposal is bound to (ruling 2). `digest` covers the ordered slots, so a
  * proposal cannot be replayed against a different context to retarget its reference.
+ *
+ * SLICE 8 — `origin` IS A STRUCTURAL GUARD, NOT A LABEL. It is what makes "recipient context" and
+ * "execution-derived identity" different SEMANTIC OBJECTS rather than two instances of one type:
+ * recipient context existed before composition and may be shown to a provider; derived identity is an
+ * artifact of a governed read that already happened and may never be. The provider-facing path accepts
+ * only this type, and checks this field at runtime too, so the guard survives an untyped caller.
  */
-export interface ContextManifest {
+export interface ContextManifest extends ResolutionContext {
   manifestVersion: 1;
+  /** RECIPIENT context only. There is no other value; derived identity is a different type. */
+  origin: "RECIPIENT";
   slots: ContextSlot[];
-  /** Stable digest of the ordered slots AND their ids — order changes change the digest. */
-  digest: string;
-  /** The canonical ids behind the slots. NEVER sent to the model; resolved only by the compiler. */
-  readonly ids: readonly string[];
 }
 
 /**

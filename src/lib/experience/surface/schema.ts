@@ -15,6 +15,7 @@
  * deliberately first.
  */
 import type { ModelProposal, IntentOperation } from "../intent/schema";
+import type { SelectorKey } from "../plans";
 import type { IntentExecution } from "../intent/run";
 
 /** Closed presentation vocabulary (ruling 9). Presentation only — never an input to execution. */
@@ -23,10 +24,32 @@ export type LayoutKey = "stack" | "grid";
 /** Closed component vocabulary. Four; a fifth is a reviewed code change, never a model request. */
 export type ComponentKey = "pursuit.list" | "pursuit.cohort" | "pursuit.explanation" | "pursuit.destination";
 
+/**
+ * SLICE 8 — the ONLY shape that expresses a component dependency. Closed, typed, and referencing a
+ * component by its registered KEY, because one-component-per-type already makes that a unique closed
+ * namespace inside a validated surface. An integer index would be indistinguishable in shape from the
+ * row reference the threat model must forbid.
+ *
+ * There is no field here for a UUID, a field name, a path, a URL, SQL, a metric, a filter, an
+ * expression or a model-authored transformation — they are UNREPRESENTABLE, not merely rejected.
+ */
+export interface ComponentDependency {
+  fromComponent: ComponentKey;
+  select: SelectorKey;
+}
+
+export const isComponentDependency = (v: unknown): v is ComponentDependency =>
+  !!v && typeof v === "object" && !Array.isArray(v) && "fromComponent" in v;
+
 export interface ComponentSpec {
   component: ComponentKey;
-  /** EXACTLY a Slice 5 proposal. Untrusted, and compiled by the certified compiler. */
-  bind: ModelProposal;
+  /**
+   * EXACTLY a Slice 5 proposal — or, in Slice 8, one whose `subject` is a component dependency
+   * instead of a recipient `ContextRef`. Untrusted either way, and compiled by the certified compiler:
+   * a dependent bind has its subject resolved at execution and is then compiled by the SAME
+   * `compileIntent`, so there is no second grammar.
+   */
+  bind: ModelProposal | (Omit<Extract<ModelProposal, { operation: "EXPLAIN" | "GO_TO" }>, "subject"> & { subject: ComponentDependency });
 }
 
 export interface SurfaceSpec {
@@ -47,23 +70,52 @@ export interface SurfaceProvenance {
   vocabularyDigest: string;
   contextDigest: string;
   compilerVersion: string;
+  /**
+   * SLICE 8 (ruling E). Domain-separated, over the ordered dynamic-binding facts, and stamped at
+   * EXECUTION because that is when a derived identity exists. `null` for a surface with no
+   * component-derived edge — which is why such a surface keeps its Slice 7 provenance byte-for-byte.
+   */
+  executionDigest: string | null;
   source: "HAND_AUTHORED" | "MODEL";
   /** null unless a model actually ran — a provider that never ran is not recorded as if it had. */
   modelId: string | null;
   promptTemplateVersion: string | null;
 }
 
-/** A spec that has passed the WHOLE validation, with every component already compiled (ruling 3). */
+/**
+ * ONE VALIDATED NODE. Slice 8 splits it in two, and the split is the whole architecture:
+ *
+ *   STATIC   — its subject was known at compile time, so it is ALREADY a certified `CompiledIntent`.
+ *   DYNAMIC  — its subject is produced by an upstream governed read, so it cannot be compiled yet.
+ *
+ * A dynamic node is NOT half-validated. Its component, operation, bind shape, dependency legality,
+ * upstream export permission and selector were all decided before execution; only the identity VALUE
+ * is outstanding, and a value is data, not a validation input.
+ */
+export type ValidatedComponent =
+  | {
+      kind: "STATIC";
+      component: ComponentKey;
+      /** Registry-owned (ruling 6). Never model prose. */
+      title: string;
+      operation: IntentOperation;
+      /** The compiled, certified intent this component will execute. */
+      intent: import("../intent/schema").CompiledIntent;
+    }
+  | {
+      kind: "DYNAMIC";
+      component: ComponentKey;
+      title: string;
+      operation: IntentOperation;
+      dependency: ComponentDependency;
+      /** The validated bind, minus the subject that execution will resolve. Never a new grammar. */
+      bind: Record<string, unknown>;
+    };
+
+/** A spec that has passed the WHOLE validation (ruling 3), in deterministic topological order. */
 export interface ValidatedSurfaceSpec {
   spec: SurfaceSpec;
-  components: {
-    component: ComponentKey;
-    /** Registry-owned (ruling 6). Never model prose. */
-    title: string;
-    operation: IntentOperation;
-    /** The compiled, certified intent this component will execute. */
-    intent: import("../intent/schema").CompiledIntent;
-  }[];
+  components: ValidatedComponent[];
   provenance: SurfaceProvenance;
 }
 
@@ -106,7 +158,20 @@ export type SurfaceOutcome =
    * not disclosure semantics, and relabelling one as governed unavailability would tell the
    * recipient something false about governance while hiding a bug behind a disclosure word.
    */
-  | { ok: false; error: "FAILED" };
+  | { ok: false; error: "FAILED" }
+  /**
+   * SLICE 8 (ruling D). A COMPOSITION outcome, and deliberately none of the others: the certified
+   * upstream governed result was VALID and contained no row from which the registered selector could
+   * produce the required identity.
+   *
+   * It is not `NOT_AVAILABLE` — nothing became undisclosable, and no target was ever identified, so
+   * claiming one is unavailable would assert something false. It is not `FAILED` — an empty
+   * authorized set is a certified correct answer (Slices 1 and 3), not a defect. And it is never
+   * zero-as-data, an index failure, a nearest row or a default.
+   *
+   * Bare, like the others: it names no component, so it reveals no internal topology.
+   */
+  | { ok: false; error: "NO_SELECTABLE_RESULT" };
 
 export type SurfaceCompileOutcome =
   | { ok: true; validated: ValidatedSurfaceSpec }

@@ -24,13 +24,40 @@ export interface ComponentDef {
   operation: IntentOperation;
   /** Recipient-facing title. Registry-owned, deterministic, never authored by a model. */
   title: string;
+  /**
+   * SLICE 8 CAPABILITIES — DECLARED, NEVER INFERRED FROM A NAME (ruling 13).
+   *
+   * `exportsIdentity` additionally requires the bound PLAN to declare `identityExport`: being a
+   * SHOW ME component is not enough, because safety is a property of the plan's ordering and
+   * disclosure contract, not of the operation.
+   *
+   * Depth is bounded STRUCTURALLY rather than by a counter: no component that consumes identity also
+   * exports it, so a second dependency level is unrepresentable in Slice 8 rather than merely unused.
+   */
+  exportsIdentity: boolean;
+  acceptsContextIdentity: boolean;
+  acceptsComponentIdentity: boolean;
 }
 
 export const COMPONENTS: Record<ComponentKey, ComponentDef> = {
-  "pursuit.list":        { key: "pursuit.list",        operation: "SHOW_ME", title: "Pursuits" },
-  "pursuit.cohort":      { key: "pursuit.cohort",      operation: "ANALYZE", title: "Cohort total" },
-  "pursuit.explanation": { key: "pursuit.explanation", operation: "EXPLAIN", title: "Explanation" },
-  "pursuit.destination": { key: "pursuit.destination", operation: "GO_TO",   title: "Go to" },
+  "pursuit.list": {
+    key: "pursuit.list", operation: "SHOW_ME", title: "Pursuits",
+    exportsIdentity: true, acceptsContextIdentity: false, acceptsComponentIdentity: false,
+  },
+  // ANALYZE EXPORTS NOTHING (ruling 13). An aggregate is a statement about a cohort, not an object,
+  // and no component may consume one — enforced by the flag validation reads, not by convention.
+  "pursuit.cohort": {
+    key: "pursuit.cohort", operation: "ANALYZE", title: "Cohort total",
+    exportsIdentity: false, acceptsContextIdentity: false, acceptsComponentIdentity: false,
+  },
+  "pursuit.explanation": {
+    key: "pursuit.explanation", operation: "EXPLAIN", title: "Explanation",
+    exportsIdentity: false, acceptsContextIdentity: true, acceptsComponentIdentity: true,
+  },
+  "pursuit.destination": {
+    key: "pursuit.destination", operation: "GO_TO", title: "Go to",
+    exportsIdentity: false, acceptsContextIdentity: true, acceptsComponentIdentity: true,
+  },
 };
 
 /**

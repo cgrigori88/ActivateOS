@@ -23,10 +23,12 @@
 import { createHash } from "node:crypto";
 import { compileIntent } from "../intent/compile";
 import { COMPONENTS, MAX_COMPONENTS, componentRegistryDigest, isComponentKey, isLayoutKey } from "./registry";
+import { mayExportIdentity } from "./identity";
+import { isSelectorKey } from "../plans";
 import type { ContextManifest, ProposalSource } from "../intent/schema";
-import type { SurfaceCompileOutcome, SurfaceProvenance, ValidatedSurfaceSpec } from "./schema";
+import type { ComponentDependency, SurfaceCompileOutcome, SurfaceProvenance, ValidatedSurfaceSpec, ValidatedComponent } from "./schema";
 
-export const SURFACE_COMPILER_VERSION = "p7-slice7-surface@1";
+export const SURFACE_COMPILER_VERSION = "p7-slice8-surface@1";
 
 export interface SurfaceCompileInputs {
   /** The untrusted spec — from a model or a caller; neither has more authority than the other. */
@@ -57,7 +59,7 @@ export function compileSurface(inputs: SurfaceCompileInputs): SurfaceCompileOutc
   if (spec.components.length === 0) return fail("a surface needs at least one component");
   if (spec.components.length > MAX_COMPONENTS) return fail(`a surface may hold at most ${MAX_COMPONENTS} components`);
 
-  const compiled: ValidatedSurfaceSpec["components"] = [];
+  const compiled: ValidatedComponent[] = [];
   /**
    * Duplicate identity, decided AFTER canonical normalization of the COMPILED bind (ruling 4) — and
    * in Slice 6 the component TYPE is also unique, because repeated types with genuinely different
@@ -66,6 +68,8 @@ export function compileSurface(inputs: SurfaceCompileInputs): SurfaceCompileOutc
    */
   const seen = new Set<string>();
   const seenTypes = new Set<string>();
+  /** Which components are available to be depended ON: ones already validated ABOVE this node. */
+  const upstream = new Map<string, ValidatedComponent>();
 
   for (const raw of spec.components as unknown[]) {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return fail("each component must be an object");
@@ -76,47 +80,96 @@ export function compileSurface(inputs: SurfaceCompileInputs): SurfaceCompileOutc
     if (!isComponentKey(c.component)) return fail(`unknown component ${String(c.component)}`);
     const def = COMPONENTS[c.component];
 
-    // The bind is compiled by the CERTIFIED compiler, bound to the same manifest and digest.
-    const intent = compileIntent({
-      proposal: c.bind,
-      manifest: inputs.manifest,
-      boundContextDigest: inputs.boundContextDigest,
-      source: inputs.source,
-      modelId: inputs.modelId,
-      promptTemplateVersion: inputs.promptTemplateVersion,
-    });
-    // A component that needs clarification is not a surface component: a surface is composed of
-    // things that will run, and a half-specified panel is a partial surface by another name.
-    if (!intent.ok) return fail(`component ${def.key} did not compile`);
-    // A component may bind ONLY its own registered operation — a cohort cannot become a list.
-    if (intent.intent.operation !== def.operation) {
-      return fail(`component ${def.key} binds ${def.operation}, not ${intent.intent.operation}`);
+    // ── SLICE 8: is this a DEPENDENT node? ──────────────────────────────────────────────────────
+    const bind = (typeof c.bind === "object" && c.bind !== null && !Array.isArray(c.bind))
+      ? c.bind as Record<string, unknown> : null;
+    const subject = bind?.subject;
+    const dependent = !!subject && typeof subject === "object" && !Array.isArray(subject)
+      && "fromComponent" in (subject as object);
+
+    let node: ValidatedComponent;
+    let identityKey: string;
+
+    if (dependent) {
+      const dep = validateDependency(subject as Record<string, unknown>, def.key, upstream);
+      if (typeof dep === "string") return fail(dep);
+      if (!def.acceptsComponentIdentity) return fail(`component ${def.key} does not accept component-derived identity`);
+
+      // THE BIND IS VALIDATED NOW, NOT LATER. A dry run through the CERTIFIED compiler, against a
+      // sentinel one-slot context, proves the whole bind is well-formed — its operation, its surface
+      // key, its closed key set — so a malformed dependent bind is refused before anything executes.
+      // The dry run's OUTPUT is discarded: only its success is consulted, and the sentinel identity
+      // never reaches an execution (a suite proves it appears in no executed request).
+      const probe = compileIntent({
+        proposal: { ...bind, subject: { fromContext: 0 } },
+        manifest: SENTINEL_CONTEXT,
+        boundContextDigest: SENTINEL_CONTEXT.digest,
+        source: inputs.source,
+        modelId: inputs.modelId,
+        promptTemplateVersion: inputs.promptTemplateVersion,
+      });
+      if (!probe.ok) return fail(`component ${def.key} did not compile`);
+      if (probe.intent.operation !== def.operation) {
+        return fail(`component ${def.key} binds ${def.operation}, not ${probe.intent.operation}`);
+      }
+
+      const { subject: _dropped, ...rest } = bind as Record<string, unknown>;
+      node = { kind: "DYNAMIC", component: def.key, title: def.title, operation: def.operation, dependency: dep, bind: rest };
+      // Identity covers the DEPENDENCY, not a resolved id — which does not exist yet.
+      identityKey = JSON.stringify([def.key, canonical(rest), dep.fromComponent, dep.select]);
+    } else {
+      // The bind is compiled by the CERTIFIED compiler, bound to the same manifest and digest.
+      const intent = compileIntent({
+        proposal: c.bind,
+        manifest: inputs.manifest,
+        boundContextDigest: inputs.boundContextDigest,
+        source: inputs.source,
+        modelId: inputs.modelId,
+        promptTemplateVersion: inputs.promptTemplateVersion,
+      });
+      // A component that needs clarification is not a surface component: a surface is composed of
+      // things that will run, and a half-specified panel is a partial surface by another name.
+      if (!intent.ok) return fail(`component ${def.key} did not compile`);
+      // A component may bind ONLY its own registered operation — a cohort cannot become a list.
+      if (intent.intent.operation !== def.operation) {
+        return fail(`component ${def.key} binds ${def.operation}, not ${intent.intent.operation}`);
+      }
+      node = { kind: "STATIC", component: def.key, title: def.title, operation: def.operation, intent: intent.intent };
+      // Canonical normalization: the component type plus the COMPILED request, never raw JSON bytes.
+      // Two specs whose binds differ only in key order or whitespace are the same component.
+      identityKey = JSON.stringify([def.key, canonical(intent.intent.request)]);
     }
 
-    // Canonical normalization: the component type plus the COMPILED request, never raw JSON bytes.
-    // Two specs whose binds differ only in key order or whitespace are the same component.
-    const identity = JSON.stringify([def.key, canonical(intent.intent.request)]);
-    if (seen.has(identity)) return fail(`duplicate component ${def.key}`);
-    seen.add(identity);
+    if (seen.has(identityKey)) return fail(`duplicate component ${def.key}`);
+    seen.add(identityKey);
     // Slice 6: one panel per registered component type. A second `pursuit.list` bound to a different
     // view is a genuinely different composition, and it is a LATER slice's capability, not this one's.
     if (seenTypes.has(def.key)) return fail(`repeated component type ${def.key}`);
     seenTypes.add(def.key);
 
-    compiled.push({ component: def.key, title: def.title, operation: def.operation, intent: intent.intent });
+    compiled.push(node);
+    upstream.set(def.key, node);
   }
+
+  const anchor = compiled.find((c) => c.kind === "STATIC");
+  if (!anchor || anchor.kind !== "STATIC") return fail("a surface needs at least one directly-bound component");
+  const stamped = anchor.intent.provenance;
 
   const provenance: SurfaceProvenance = {
     specVersion: 1,
     surfaceSpecDigest: surfaceDigest(spec.layout, compiled),
     componentRegistryDigest: componentRegistryDigest(),
-    // The intent compiler already stamped these on every component; they are identical across a spec.
-    vocabularyDigest: compiled[0].intent.provenance.vocabularyDigest,
-    contextDigest: compiled[0].intent.provenance.contextDigest,
+    // The intent compiler already stamped these; they are identical across a spec. A DYNAMIC node
+    // has not compiled yet, so provenance is read from a static node — of which a dependent surface
+    // always has at least one, because a dependency requires an upstream component to depend on.
+    vocabularyDigest: stamped.vocabularyDigest,
+    contextDigest: stamped.contextDigest,
     compilerVersion: SURFACE_COMPILER_VERSION,
+    /** Stamped at EXECUTION, where a derived identity exists. Null keeps Slice 7 behaviour exact. */
+    executionDigest: null,
     source: inputs.source,
-    modelId: compiled[0].intent.provenance.modelId,
-    promptTemplateVersion: compiled[0].intent.provenance.promptTemplateVersion,
+    modelId: stamped.modelId,
+    promptTemplateVersion: stamped.promptTemplateVersion,
   };
 
   return {
@@ -160,8 +213,53 @@ function canonical(value: unknown): unknown {
  * provenance, never rendered (ruling 6), and a suite proves no resolved identifier is newly
  * serialized into any recipient-visible surface because the digest was computed from one.
  */
-function surfaceDigest(layout: string, components: ValidatedSurfaceSpec["components"]): string {
+function surfaceDigest(layout: string, components: ValidatedComponent[]): string {
   return createHash("sha256")
-    .update(JSON.stringify([layout, components.map((c) => [c.component, canonical(c.intent.request)])]))
+    .update(JSON.stringify([layout, components.map((c) => c.kind === "STATIC"
+      ? [c.component, canonical(c.intent.request)]
+      // A DYNAMIC node contributes its DEPENDENCY, never a resolved identity — which does not exist
+      // at compile time. Its resolved identity lives in `executionDigest` instead (ruling E), which
+      // is why a surface with no dynamic node keeps its Slice 7 digest byte-for-byte.
+      : [c.component, canonical(c.bind), c.dependency.fromComponent, c.dependency.select])]))
     .digest("hex").slice(0, 16);
 }
+
+/**
+ * VALIDATE ONE DEPENDENCY EDGE, before anything executes. Returns the edge, or the reason it is not
+ * one. Every clause here is a refusal the threat model names.
+ */
+function validateDependency(
+  subject: Record<string, unknown>, self: string, upstream: Map<string, ValidatedComponent>,
+): ComponentDependency | string {
+  for (const k of Object.keys(subject)) {
+    if (k !== "fromComponent" && k !== "select") return `unknown dependency key ${k}`;
+  }
+  const from = subject.fromComponent;
+  if (!isComponentKey(from)) return `unknown dependency target ${String(from)}`;
+  if (from === self) return `component ${self} cannot depend on itself`;
+  if (!isSelectorKey(subject.select)) return `unknown selector ${String(subject.select)}`;
+
+  // UPSTREAM MEANS EARLIER. The array order IS the topological order, so a forward reference — and
+  // therefore any cycle — is refused here rather than needing a separate cycle search.
+  const source = upstream.get(from);
+  if (!source) return `component ${self} depends on ${from}, which is not upstream of it`;
+  if (!COMPONENTS[from].exportsIdentity) return `component ${from} does not export identity`;
+  // DEPTH IS BOUNDED STRUCTURALLY: a node that CONSUMES identity is not an exporter, so it can never
+  // be depended upon, and a second level cannot be expressed at all.
+  if (source.kind !== "STATIC") return `component ${from} is itself derived and cannot export identity`;
+  // Identity export is a per-PLAN capability, default OFF (ruling F). Being a SHOW ME is not enough.
+  const view = (source.intent.request as { view?: string }).view;
+  if (!view || !mayExportIdentity(view as Parameters<typeof mayExportIdentity>[0], subject.select)) {
+    return `plan ${String(view)} is not certified to export identity for ${String(subject.select)}`;
+  }
+  return { fromComponent: from, select: subject.select };
+}
+
+/**
+ * The sentinel context the compile-time dry run resolves against. Its id is never executed: the dry
+ * run's output is discarded and only its success consulted. It exists so a dependent bind is fully
+ * validated BEFORE execution rather than at it.
+ */
+const SENTINEL_ID = "00000000-0000-4000-8000-000000000000";
+const SENTINEL_CONTEXT = { digest: "p7s8-sentinel", ids: Object.freeze([SENTINEL_ID]) };
+export const COMPILE_SENTINEL_ID = SENTINEL_ID;
