@@ -869,3 +869,21 @@ passed, because all three organizations carry identical feature state — so the
 proving nothing it claimed. Derive the principal's organization from the governed context itself (join
 the observed object ids back to `organizations`); where a posture should hold everywhere, assert it
 across *every* row rather than one convenient name.
+
+### §16H — result-region extraction is TOOLING, not a rule to remember
+
+The §16D lesson recurred in Slices 4, 7 and 8 — each time as an assertion that treated
+caller-controlled text as application disclosure. A prose rule has now failed three times, so it
+becomes tooling instead:
+
+> **Future P7 disclosure gates use a shared semantic-result-region extraction and assertion helper.**
+> **Whole-document scans are used only where the property genuinely belongs to the whole document.**
+> **Caller-controlled query/URL echo, app-shell navigation and compile-input text must not participate
+> in result-disclosure assertions.**
+
+The helper owns: locating the result region, stripping HTML comments before tags (React's `<!-- -->`
+text separators), masking instants, and exposing the region, the app-shell control and the caller echo
+as *separate* values so an assertion must choose one deliberately.
+
+**Prior closed slices are NOT refactored to adopt it.** Their gates passed on evidence that was
+correct at the time; rewriting them would risk re-certifying by editing rather than by proving.
