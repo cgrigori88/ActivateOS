@@ -1,6 +1,7 @@
 # P7 Slice 4 — deterministic GO TO / canonical navigation: contract and plan
 
-**Status:** **PLAN ONLY — NOT AUTHORIZED FOR IMPLEMENTATION.** Decisions requiring a ruling are in §K.
+**Status:** **RULED AND AUTHORIZED** (rulings in §L, which supersede every recommendation above them).
+Implementation may proceed.
 **Builds on:** Slice 1 (`cade340`), Slice 2 (`a6dabbb`), Slice 3 (`7ac8c7f`) — all HOSTED ACCEPTED.
 **Excluded:** LLM / natural-language aliases · fuzzy matching · search · pinning · actions · exports ·
 historical `asOf` · arbitrary caller-defined routes · Dynamic Pursuit Surfaces · new schema · new flag.
@@ -314,6 +315,69 @@ No new table, no migration, no new flag, no P5/P6 change, no new route (§K deci
 7. **Failure taxonomy at the boundary.** *Recommend: `NOT_AVAILABLE` is a single value for both
    unauthorized and nonexistent*, with the distinction never crossing the boundary even to trusted
    internal callers — the moment one caller may branch on it, it is a probe.
+
+---
+
+## L. Ruling record (authoritative — supersedes any recommendation above it)
+
+**Preserved above all:** *GO TO resolves authority before navigation. A route is presentation metadata,
+never authority.*
+
+1. **`surface` — APPROVED.** `GoToRequest` carries a closed-registry `surface: "canonical"`. Slice 4
+   supports **exactly one** surface. **No fragments or sub-surface anchors.** A future second
+   destination requires an explicit registry addition, never a reinterpretation of `"canonical"`. **No
+   arbitrary URL, pathname, fragment or route parameter may enter the canonical request.**
+2. **`UNAVAILABLE_TARGET` — DEFINE IT NOW.** Semantics: *the governed object's existence is authorized,
+   but the requested registered surface has no usable destination.* It may be created **only after**
+   governance has established that the recipient may know the object exists. It must contain **no**
+   hidden target path, hidden label, alternate route, org metadata, or diagnostic reason revealing
+   undisclosed state. For `pursuit@canonical` the first vertical is expected not to produce it
+   naturally: keep a **constructed-unit proof of its semantics** rather than manufacturing hosted
+   conditions to reach it. **Never conflated with `NOT_AVAILABLE`.**
+3. **Web transport — APPROVED.** `/experience/pursuits?goto=<uuid>`. **No new redirect endpoint in
+   Slice 4.** The UUID names a requested object only. The transport renders exactly one of: a governed
+   `NavigationTarget`; `UNAVAILABLE_TARGET` (existence authorized, destination unavailable); or a
+   recipient-safe `NOT_AVAILABLE`. **No redirect is issued before deterministic governance resolution
+   succeeds.**
+4. **Label policy — APPROVED.** A governed label is used **only if** the corresponding registered cell
+   survived disclosure; for this slice that cell is `pursuit.account_name`. Otherwise the fixed
+   class-generic fallback **"Pursuit"**. **Never a second read solely to obtain a label.** Never
+   suppressed or raw account data. **Changing hidden label data must not change recipient-visible
+   navigation bytes.**
+5. **Governed read path — APPROVED.** GO TO reuses `executePursuitQuery` with a fixed registered plan.
+   **No dedicated navigation loader.** Preserved order: *principal → fixed `PursuitQuery` → existing
+   governance/disclosure → governed row → `NavigationTarget`.* **The existence of the governed row is
+   the authorization basis**, and route resolution happens only after it.
+6. **Navigation registry.** P7 **may** register canonical destinations for application routes it does
+   not own; the registry owns **mapping**, not the destination route's business logic. Every registered
+   `pathTemplate` must be proven to correspond to a real App Router destination **using structured
+   route/build metadata or an equivalent semantic mechanism — not brittle grep/source-string
+   assertions.** The fifteen existing hand-built `/pursuits/${id}` call sites are **out of scope and
+   must not be migrated now**; consolidation is recorded separately, and their existence **does not
+   authorize bypassing the P7 registry inside GO TO**.
+7. **Failure taxonomy.** At the canonical P7 GO TO boundary, an **unauthorized** object and a
+   **nonexistent** object both resolve to exactly `NOT_AVAILABLE`, and the distinction **must not cross
+   that boundary**. A caller must not be able to branch on a reason code, a status difference, a target
+   shape, a label, metadata or response bytes. Lower-level trusted diagnostics may retain an internal
+   classification **only if it already exists** and cannot affect recipient-visible behaviour or
+   product control flow — **no internal distinction may be added merely for Slice 4**.
+   `UNAVAILABLE_TARGET` remains separately representable because object existence has *already* been
+   authorized.
+
+**Required implementation proofs** (in addition to §J): malformed object ids fail **before DB query
+construction** · arbitrary URLs/pathnames/fragments are **unrepresentable** · an unknown object class
+or surface **hard-fails at registry validation** · caller-controlled org input cannot affect the
+resolved principal · unauthorized and nonexistent references are **byte-identical at the P7 boundary
+and at the web transport** · no navigation target is constructed before governance succeeds ·
+suppressed label data produces the generic fallback and does not leak in bytes · changing only hidden
+target metadata does not change output · same principal + same canonical reference yields the same
+`NavigationTarget` · `pathTemplate` receives **only canonical governed identifiers** · route existence
+is validated **structurally** · no navigation resolver performs its own DB read · **no P7 write** · **no
+model**.
+
+**Slice 4 remains:** pursuit only · `"canonical"` surface only · deterministic · LLM-free · read-only ·
+no search · no fuzzy matching · no aliases · no fragments · no pinning · no actions · no export · no
+historical queries · no Dynamic Pursuit Surfaces · no new schema · no P5/P6 changes.
 
 ---
 
