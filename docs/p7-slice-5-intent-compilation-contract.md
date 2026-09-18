@@ -430,6 +430,54 @@ historical queries · no Dynamic Pursuit Surfaces · no schema · no P5/P6 chang
 
 ---
 
+---
+
+## M. Stage B provider discovery — FINDING: STOPPED, awaiting a ruling
+
+Stage A is **HOSTED ACCEPTED / CLOSED**. Stage B was authorized subject to a provider-discovery step
+that must STOP rather than introduce provider infrastructure. It stopped. The finding:
+
+**The provider abstraction EXISTS and is mature — nothing new would need to be introduced.**
+
+| Question | Finding |
+|---|---|
+| Existing provider/client | `src/lib/ai/client.ts`, wrapping `@anthropic-ai/sdk` `^0.116.0` |
+| Exact abstraction already used | `completeStructured` / `completeStructuredMeta` — the seam `intent/model.ts` already calls |
+| Structured output | **Supported**: `messages.parse` with `output_config: { format: zodOutputFormat(schema) }` |
+| Model identifiers | tier `cheap` = `claude-haiku-4-5` (what Slice 5 requests) · tier `frontier` = `claude-opus-5` |
+| Required env var NAMES | `ANTHROPIC_API_KEY`, else `ANTHROPIC_AUTH_TOKEN` (the SDK's documented resolution order) |
+| Already a deployed model surface? | **Yes** — `/ask` and `/api/palette` reach it through `lib/interpret`, gated by `INTERPRETER_ENABLED` (default `on`) |
+
+**The blocker is the credential, not the infrastructure.**
+
+> **No Anthropic credential exists in ANY Vercel environment on this project.**
+
+Measured, with a validated control so the negative is not vacuous (§16B): `vercel env ls` exited 0 and
+returned 52 lines; `DATABASE_URL` matched **3** entries (the control), `ANTHROPIC` matched **0** in any
+environment, `PURSUIT_INTENT_ENABLED` **0** (consistent with Stage A's OFF proof), `INTERPRETER_ENABLED`
+**0** (so it runs at its `on` default). A deployed serverless runtime also has no `ant auth login` OAuth
+profile, which is the SDK's only other credential source.
+
+**Therefore Stage B cannot begin without provisioning `ANTHROPIC_API_KEY` scoped to Preview** — the
+owner's key, added to the owner's Vercel project. That is a credential-provisioning and environment
+change, and it is theirs to make: this session neither holds such a key nor has authorization to add
+one. Stopped here and returned for ruling, as §0 of the Stage B authorization requires.
+
+**Two observations worth a decision at the same time.**
+
+1. **`/ask` and `/api/palette` already attempt live model calls in Preview and fail closed.**
+   `INTERPRETER_ENABLED` defaults to `on` and is unset, so the interpreter tier is live wherever those
+   surfaces are reached; with no credential the call raises and the interpreter's catch returns a
+   rejection, while the palette's deterministic-registry-first design means the failure degrades
+   silently rather than erroring. Nothing is broken and nothing leaks — but it means **adding a Preview
+   key switches that surface on too**, not only Slice 5's. Worth ruling on deliberately rather than
+   discovering later.
+2. **Temperature is not exposed by the existing seam.** `completeStructuredMeta` passes `model`,
+   `max_tokens`, `system`, `messages` and `output_config` — no `temperature`. Stage B prefers
+   temperature 0 where supported, so this needs a small **additive** parameter on the shared client
+   (defaulting to today's behaviour, so no existing caller changes). Flagged rather than done, because
+   it touches a module other features depend on.
+
 ## What this plan does not authorize
 
 No Dynamic Pursuit Surfaces · no new fields · no new metrics · no new aggregates · no arbitrary
