@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { timingSafeEqual } from "node:crypto";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { getPool } from "@/db/client";
+import { withTenantOrg } from "@/lib/db/tenant";
 import { type DatabasePosture, probeDatabasePosture } from "@/lib/env/db-posture";
 import { buildInfo, databaseIdentity, environmentLabel, externalSendingArmed, siteMode } from "@/lib/env/environment";
 import { interpreterEnabled } from "@/lib/interpret/answer";
@@ -97,10 +98,13 @@ export async function GET() {
     const { rows } = await pool.query<{ id: string; name: string }>(
       "select id, name from organizations order by name");
     const real = process.env.VNEXT_DYNAMIC_SURFACES_ENABLED;
-    capabilities = await Promise.all(rows.map(async (org) => {
-      const client = await pool.connect();
-      try {
-        const tenant = await tenantFeatures(client, org.id);
+    capabilities = [];
+    for (const org of rows) {
+      // `org_features` is RLS-bound: read WITHOUT the tenant GUC and it returns no row, which
+      // `orgRow` fail-closes to all-false. That would report a denial as a capability. So this
+      // reads through the same tenant-pinned primitive every governed read uses.
+      const entry = await withTenantOrg(org.id, async (db) => {
+        const tenant = await tenantFeatures(db, org.id);
         const actual = vnextCapabilities(tenant);
         // The counterfactual: identical inputs, this one master off.
         delete process.env.VNEXT_DYNAMIC_SURFACES_ENABLED;
@@ -108,8 +112,9 @@ export async function GET() {
         if (real === undefined) delete process.env.VNEXT_DYNAMIC_SURFACES_ENABLED;
         else process.env.VNEXT_DYNAMIC_SURFACES_ENABLED = real;
         return { org: org.name, tenantExperience: tenant.experience, actual, withoutDynamicSurfaces: without };
-      } finally { client.release(); }
-    }));
+      });
+      (capabilities as unknown[]).push(entry);
+    }
   } catch { capabilities = null; }
 
   return NextResponse.json(
