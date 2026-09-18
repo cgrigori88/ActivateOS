@@ -720,6 +720,39 @@ whose parser missed must fail loudly, not report clean.
 
 ---
 
+## 16C. Standing certification invariant — security assertions are atomic (adopted after Slice 4)
+
+> **A gate must not combine multiple security properties into one boolean assertion when those
+> properties can fail independently.**
+
+Four things are routinely conflated in a single `&&`, and they are not the same claim:
+
+| Property | What it actually asserts |
+|---|---|
+| **caller-supplied input echoed by transport/router state** | the bytes contain something *the caller put there* |
+| **canonical object identity resolved by the application** | the application decided this id is the subject |
+| **governed disclosure of object existence** | the recipient may know the object exists |
+| **governed disclosure of object metadata** | the recipient may know this *about* the object |
+
+**Each must have its own evidence and its own named assertion.**
+
+**Why.** In the Slice 4 hosted gate, one compound check read *"neither resolves, and neither exposes the
+requested id, a path or a label."* It failed — correctly, but uselessly: the clause that failed was
+the id clause, and the id was in the bytes because Next's router state **echoes the URL the caller
+supplied**. Nothing was disclosed. A compound assertion names no clause, so a genuine failure and a
+false alarm arrive looking identical, and the only way to tell them apart is to take the check apart.
+Split into five, the same run reported the discriminator directly: the id is present when supplied
+(`true`) and absent when not (`false`), which is the actual proof that it is echo and not disclosure.
+
+The same trap appeared in Slice 3 with a foreign organization's id. Echo is not disclosure — but
+*proving* that requires its own control, and a compound assertion has nowhere to put one.
+
+**How to apply.** One property, one `check()`, one name, one piece of evidence. When a property's
+meaning depends on a control (echo vs. disclosure), assert the control explicitly rather than folding
+it into the same boolean. Prefer a failing gate that says *which* thing broke over a shorter one.
+
+---
+
 ## 17. What this contract forbids, in one list
 
 For review convenience — every prohibition above, collected:
