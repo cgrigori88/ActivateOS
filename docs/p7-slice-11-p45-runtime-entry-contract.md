@@ -1,7 +1,9 @@
 # P7 Slice 11 — P45 runtime entry and approval-bearing actions: discovery and contract
 
-**Status:** **DISCOVERY ONLY — AND I AM RETURNING A STOP.** No implementation, no flag change, no DB
-mutation was made. Decisions requiring a ruling are in §R. **Builds on:** Slices 1–10, all HOSTED
+**Status:** **DESIGN / DISCOVERY COMPLETE — IMPLEMENTATION BLOCKED (ruled).** No approval-bearing P45
+capability is configured, no governed approver state exists, and the runtime cannot be activated for
+one Preview org without affecting all enabled orgs. **This is the correct result of the discovery
+gate, not an implementation failure.** No implementation, no flag change, no DB mutation was made. Decisions requiring a ruling are in §R. **Builds on:** Slices 1–10, all HOSTED
 ACCEPTED / CLOSED. Slice 10 is not reopened.
 
 > **A Dynamic Surface may let a human explicitly create a governed P45 operation. The surface does not
@@ -272,3 +274,86 @@ traced the enforcement rather than relying on the historic invariant: row lock, 
 the step idempotency key, with the explicit property that a lost race yields a duplicate *attempt*,
 never a duplicate *effect*. **The caveat is the code's own:** the lock is not a lease and must not be
 generalized across a provider action; `EXTERNAL_ACTION` steps are out of scope and should stay so.
+
+
+---
+
+## S. Rulings recorded
+
+**A — no approval-bearing capability exists.** Do **not** set `approval_required = true` on an
+arbitrary skill, repurpose `assemble_pursuit_team@1`, create a synthetic approval-only capability,
+invent a demo skill, or alter product governance to exercise the runtime. A future Slice 11 requires a
+**real product capability whose intended governance genuinely requires approval**. Until then **P7 has
+nothing legitimate to integrate.**
+
+**B — APPROVED.** The run **is** the durable operation instance: the canonical ordered program
+identifies it, a retry of the same program reuses the same live run, a materially different program is
+a conflict rather than a silent replay, and **P7 must not add a parallel `(subject, capability)`
+scheme.** The deferred non-idempotent-action problem belongs to P45 when an action genuinely uses P45.
+
+**C — APPROVED AS DISCOVERED.** T1 render preserves no authority · T2 invoke evaluates current
+authority · T3 approval authorizes continuation only · T4 resume/execute evaluates current authority
+again. **Approval does not restore revoked authority, and no P7 layer may weaken this.**
+
+**D — DEFERRED.** The eventual transition is conceptually governed subject → explicit human invocation
+→ current server-side resolution → run creation → durable run identity, but the exact transport must be
+ruled against the **actual** future capability. **No generic P45 action handles, plan payloads, run
+creation endpoints, or speculative protected closures for a nonexistent action.**
+
+**E — APPROVED.** Reuse `/approvals`, the existing pending-approval model and `decide()`. P7 builds no
+approval state machine; a future integration links or navigates into the existing experience.
+
+**F — DO NOT ACTIVATE.** No change to `VNEXT_CONTROL_PLANE_ENABLED` and no org feature change. The env
+master is not org-scoped, and with `governed_action = true` across the three orgs, enabling it would
+activate the capability for **all three**. **No flag change is authorized.**
+
+**G — DEFERRED.** The hosted mutation allowlist cannot be certified from table names alone; derive it
+from the actual chosen run, steps, approval, audit and business-effect path when Slice 11 resumes.
+**Historical runtime/audit rows must not be deleted to restore a zero-diff state.**
+
+**H — APPROVED, no blocking gap.** Enforcement layers recorded: **row lock · compare-and-set · step
+idempotency key.** Property preserved: *a lost resume race may produce a duplicate attempt, but not a
+duplicate consequential effect.* Caveat preserved: **the row lock is not a lease** — do not generalize
+it to a long-running or provider-backed action without a separate execution/lease ruling.
+
+---
+
+## T. D-P45-READ — control-plane read-side isolation (IMPLEMENTED)
+
+> **When `controlPlane` is false, P45 runtime state must not become recipient-observable through P2/P7
+> or other unrelated recipient-facing surfaces unless an independently governed product contract
+> explicitly permits that disclosure.**
+
+**The inventory — every production reader of P45 runtime state, classified.** A suite walks all of
+`src/` and fails if this list changes:
+
+| Reader | Class | Gated? |
+|---|---|---|
+| `lib/runtime/runtime.ts`, `lib/runtime/approvals.ts`, `lib/runtime/entry.ts` | P45-native runtime | yes — `runtimeEnabled` (env master **and** the per-org column) |
+| `app/approvals/page.tsx` | P45-native UI | yes — its own `control_plane` + `governed_action` checks |
+| `lib/pursuits/read-models/portfolio-pertinence-loaders.ts` | **recipient-facing non-P45** | **was not — this correction gates it** |
+| worker / background | — | **none exist** |
+
+**So the pertinence loader was the only leak**, and the correction is the smallest one: the
+`pursuit_run_approvals` read is now guarded on the canonical `vnextCapabilities(...).controlPlane`.
+
+**The gate is asked BEFORE the table is read, not after.** Suppressing the reason afterwards would
+still have made P45 state reachable by that path; declining to look means a control-plane-disabled
+deployment does not touch a P45 table from a recipient surface at all. It delegates to the canonical
+evaluator rather than reading the environment directly, so if `controlPlane` ever acquires a dependency
+chain this boundary follows it instead of drifting.
+
+**Proven behaviourally, with the control that matters.** The table is empty in every environment this
+suite runs in, so "no approval reason appeared" would have passed **without the fix and without the
+bug**. An in-memory fixture therefore supplies a pending approval and records every statement issued:
+with the plane **off** the reason is absent *and the P45 table is never queried*; with it **on** the
+same fixture **does** produce the reason and the table **is** queried. The ordinary route- and
+plan-decision reasons are byte-identical either side of the gate.
+
+**Unchanged, deliberately:** no approval row written, deleted or reinterpreted · no P2 ranking or
+metric semantics · no approval semantics · no P45 activation · no P45 writes · no schema · no flag.
+A structural test also asserts no P45-native module was touched.
+
+**Evidence.** `d-p45-read-isolation` **12/12** · unit **777/777** · `portfolio-pertinence` **99/99**
+(seeded clone) · tsc and build clean · `certify-world` **52 suites clean, no drift**
+(`c9004670ffda112f`).

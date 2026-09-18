@@ -10,6 +10,8 @@ import {
   type ValueBasis,
 } from "./portfolio-pertinence";
 import type { DisclosureClass } from "./types";
+import { vnextCapabilities } from "@/lib/env/vnext-flags";
+import { tenantFeatures } from "@/lib/pursuits/tenant-flags";
 
 /**
  * Canonical inputs for Portfolio Pertinence (P2).
@@ -228,7 +230,26 @@ async function loadReadiness(db: PoolClient, orgId: string, ids: string[]): Prom
   return out;
 }
 
-/** decisionPressure — what has NOT happened: decisions currently waiting on a person. */
+/**
+ * decisionPressure — what has NOT happened: decisions currently waiting on a person.
+ *
+ * ── D-P45-READ: THE CONTROL PLANE'S READ SIDE IS GATED TOO ──────────────────────────────────────
+ *
+ * > **When `controlPlane` is false, P45 runtime state must not become recipient-observable through
+ * > P2/P7 or other unrelated recipient-facing surfaces unless an independently governed product
+ * > contract explicitly permits that disclosure.**
+ *
+ * Two of the three sources below are ORDINARY PRODUCT STATE and are not affected: a recommended
+ * route awaiting a decision, and a recommended plan revision awaiting one. Those are P3/route
+ * semantics, they have always been recipient-facing, and nothing here changes them.
+ *
+ * The third reads `pursuit_run_approvals`, which is **P45 runtime state**. It was reachable whenever
+ * `pursuit_intelligence` was on — including with the control plane switched OFF — so the execution
+ * substrate could be disabled while its runtime state still spoke to recipients through an unrelated
+ * surface. That is the leak this correction closes, and it is a READ-SIDE reachability fix only: no
+ * approval row is written, deleted or reinterpreted, no ranking or metric semantics change, and P45
+ * itself is untouched.
+ */
 async function loadPendingDecisions(db: PoolClient, orgId: string, ids: string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   const add = (id: string, s: string) => { const l = out.get(id) ?? []; l.push(s); out.set(id, l); };
@@ -247,11 +268,19 @@ async function loadPendingDecisions(db: PoolClient, orgId: string, ids: string[]
                          where d.org_id = r.org_id and d.responds_to_revision_id = r.id)`, [orgId, ids]);
   for (const r of plans) add(r.pursuit_id, "A recommended plan is waiting for a decision");
 
-  const { rows: appr } = await db.query<{ pursuit_id: string }>(
-    `select distinct a.pursuit_id from pursuit_run_approvals a
-      where a.org_id = $1 and a.pursuit_id = any($2::uuid[]) and a.decision = 'REQUESTED'
-        and not exists (select 1 from pursuit_run_approvals t where t.request_id = a.id)`, [orgId, ids]);
-  for (const r of appr) add(r.pursuit_id, "A governed action is waiting for approval");
+  // THE GATE IS ASKED BEFORE THE TABLE IS READ, not after. Suppressing the reason afterwards would
+  // still have made P45 state reachable by this path; declining to look is the stronger form, and it
+  // means a control-plane-disabled deployment does not touch P45 tables from a recipient surface at
+  // all. Delegated to the canonical evaluator rather than reading the env directly, so that if
+  // `controlPlane` ever acquires a dependency chain this boundary follows it instead of drifting.
+  const controlPlane = vnextCapabilities(await tenantFeatures(db, orgId)).controlPlane;
+  if (controlPlane) {
+    const { rows: appr } = await db.query<{ pursuit_id: string }>(
+      `select distinct a.pursuit_id from pursuit_run_approvals a
+        where a.org_id = $1 and a.pursuit_id = any($2::uuid[]) and a.decision = 'REQUESTED'
+          and not exists (select 1 from pursuit_run_approvals t where t.request_id = a.id)`, [orgId, ids]);
+    for (const r of appr) add(r.pursuit_id, "A governed action is waiting for approval");
+  }
 
   return out;
 }
