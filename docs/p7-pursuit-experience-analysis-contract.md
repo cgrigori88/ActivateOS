@@ -856,3 +856,16 @@ no alternate pertinence, probability or shadow ranking · no cross-organization 
 no cached governance decision · no result persisted as truth · no hidden evidence in a prompt ·
 no model-authoritative permission, disclosure, metric, policy or approval · no silent fallback ·
 no partial render on governance failure · no guessed plan · no invented number.
+
+### §16G — the organization under test must be derived, not chosen
+
+> **Org/tenant assertions must derive the organization from the governed principal/context actually
+> under test. A convenient organization with equivalent feature state is not evidence for another
+> principal.**
+
+From the P7 Slice 7 hosted gate: tenant entitlement and `dynamicSurfaces` were asserted against
+*TD SYNNEX (demo)* while the governed context came entirely from *Vertex Systems*. Every assertion
+passed, because all three organizations carry identical feature state — so the check was green while
+proving nothing it claimed. Derive the principal's organization from the governed context itself (join
+the observed object ids back to `organizations`); where a posture should hold everywhere, assert it
+across *every* row rather than one convenient name.
