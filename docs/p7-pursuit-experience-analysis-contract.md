@@ -784,6 +784,33 @@ on *nothing*), §16C (asserting on *several things at once*). This one is assert
 
 ---
 
+---
+
+## 16E. Standing distinction — a clock-conditioned write is not a clock-derived observation (adopted after Slice 6)
+
+> **Clock-derived observation is not the same as a clock-conditioned write. A persistent mutation may
+> not be waived as "clock-derived" merely because the date or time determined WHEN it occurred.**
+
+CFR-1.2 and the manifest ruling established that a digest can move because a value was *recomputed*
+against a later clock while the world is unchanged — `days_since_activity`, a pertinence delta in the
+third decimal. Those are **observations**: nothing was written, and replaying the same inputs at the
+same instant reproduces the same bytes.
+
+During Slice 6 certification `pipeline_snapshots` moved 3 → 4 rows across a UTC date boundary. That is
+a different thing entirely: **a row was committed**. The clock chose *which* row; a page render chose
+*whether* there was one at all. Same canonical source state, different persistent state, decided by
+whether anybody looked (measured — see `docs/d-hist-1-read-path-write-discovery.md`).
+
+**How to apply.** When a fingerprint moves, establish which of the two it is before classifying it:
+
+- **Observation** — no row changed; a derived value was recomputed from unchanged canonical inputs
+  against a later clock. Permitted, and recomputable from those inputs plus the observation time.
+- **Clock-conditioned write** — rows changed. It must be explained by naming the *writer* and the
+  *trigger*, never by naming the clock. "It's just the date rolling over" explains the timing and
+  nothing else.
+
+A movement that cannot be attributed to a named writer on a named path is not classified yet.
+
 ## 17. What this contract forbids, in one list
 
 For review convenience — every prohibition above, collected:
