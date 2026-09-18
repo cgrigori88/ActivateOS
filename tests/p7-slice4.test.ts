@@ -229,7 +229,8 @@ test("no redirect is issued, and the transport re-checks nothing", () => {
   }
   // The route's request inputs are exactly three, and none of them is a route, path or organization.
   const params = route.match(/searchParams:\s*Promise<\{([^}]*)\}>/)?.[1] ?? "";
-  assert.deepEqual([...params.matchAll(/(\w+)\??:/g)].map((m) => m[1]).sort(), ["explain", "goto", "view"]);
+  assert.deepEqual([...params.matchAll(/(\w+)\??:/g)].map((m) => m[1]).sort(),
+    ["ask", "ctx", "explain", "goto", "propose", "view"]);
 });
 
 test("the resolver holds no database handle and no model — it imports the registry and types only", () => {

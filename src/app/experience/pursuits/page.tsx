@@ -3,6 +3,11 @@ import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
 import { executePursuitQuery, resolveGoTo } from "@/lib/experience/execute";
 import { explainPlanFor, isViewKey, PLANS, VIEW_KEYS, type ViewKey } from "@/lib/experience/plans";
 import { FIELDS, METRICS, metricKey } from "@/lib/experience/registry";
+import { buildContextManifest } from "@/lib/experience/intent/context";
+import { compileIntent } from "@/lib/experience/intent/compile";
+import { runCompiledIntent } from "@/lib/experience/intent/run";
+import { INTENT_MODEL_TIER, PROMPT_TEMPLATE_VERSION, proposeIntent } from "@/lib/experience/intent/model";
+import { CLARIFICATION_QUESTIONS } from "@/lib/experience/intent/vocabulary";
 import type { AggregateResult, Explanation, GoToOutcome, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +33,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export default async function ExperiencePursuitsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; explain?: string; goto?: string }>;
+  searchParams: Promise<{ view?: string; explain?: string; goto?: string; ask?: string; propose?: string; ctx?: string }>;
 }) {
   if (!pursuitExperienceEnabled()) notFound();   // deployment master — fast deny, no DB work
 
@@ -49,6 +54,14 @@ export default async function ExperiencePursuitsPage({
   }
 
   const view: ViewKey = isViewKey(sp.view) ? sp.view : "open-by-value";
+
+  // INTENT (Slice 5). `?ask=` asks the model for a proposal; `?propose=` supplies one directly. Both
+  // are UNTRUSTED input and go through the same deterministic compiler — which is the point: a
+  // proposal's authority does not depend on whether a model or a caller wrote it.
+  if (typeof sp.ask === "string" || typeof sp.propose === "string") {
+    return <IntentView ask={sp.ask} propose={sp.propose} ctx={sp.ctx} view={view} />;
+  }
+
   // `?explain=<id>` names WHICH object, never which organization: governance still decides whether
   // it is visible. A malformed id is simply not a plan we will build.
   const subject = typeof sp.explain === "string" && UUID.test(sp.explain) ? sp.explain : null;
@@ -154,6 +167,81 @@ function Result({ result, view }: { result: GovernedResultSet; view: ViewKey }) 
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * P7 SLICE 5 — NATURAL-LANGUAGE INTENT. TRANSPORT ONLY.
+ *
+ * The order is the whole safety argument: the CONTEXT MANIFEST is built first, from rows this
+ * principal's own governed execution returned, so every slot the model can point at was already
+ * disclosable to them. Then an untrusted proposal is compiled deterministically, and only a compiled
+ * intent executes — through boundaries certified in Slices 1–4, unchanged.
+ *
+ * Every successful execution states WHICH canonical operation ran (ruling 8), in words composed from
+ * registry metadata rather than model prose, so a substituted intent is visible to the user.
+ */
+async function IntentView({ ask, propose, ctx, view }: { ask?: string; propose?: string; ctx?: string; view: ViewKey }) {
+  // The manifest comes from a governed read for THIS principal — never from a lookup of its own.
+  const base = await executePursuitQuery(PLANS[view].plan);
+  const manifest = buildContextManifest(base.ok ? base.result.rows : []);
+
+  // An untrusted proposal, from the model or supplied directly. Malformed JSON is simply not one.
+  let proposal: unknown = null;
+  if (typeof propose === "string") {
+    try { proposal = JSON.parse(propose); } catch { proposal = null; }
+  } else if (typeof ask === "string") {
+    proposal = await proposeIntent(ask, manifest);
+  }
+
+  const compiled = compileIntent({
+    proposal,
+    manifest,
+    // A caller may state which manifest it was bound to; a mismatch refuses rather than retargeting.
+    boundContextDigest: typeof ctx === "string" ? ctx : manifest.digest,
+    modelId: INTENT_MODEL_TIER,
+    promptTemplateVersion: PROMPT_TEMPLATE_VERSION,
+  });
+
+  if (!compiled.ok) {
+    return (
+      <main className="mx-auto max-w-[1100px] px-6 py-10">
+        <h1 className="text-section font-extrabold tracking-[-0.03em]">Intent</h1>
+        <p className="mt-8 text-body text-neutral-500 dark:text-neutral-400">
+          {compiled.state === "NEEDS_CLARIFICATION"
+            ? CLARIFICATION_QUESTIONS[compiled.missing]
+            : "That isn't something this surface can do."}
+        </p>
+      </main>
+    );
+  }
+
+  const executed = await runCompiledIntent(compiled.intent);
+  return (
+    <main className="mx-auto max-w-[1100px] px-6 py-10">
+      <h1 className="text-section font-extrabold tracking-[-0.03em]">Intent</h1>
+      {/* The canonical operation that actually executed, from the registry — never model prose. */}
+      <p className="mt-2 text-copy font-semibold">Interpreted as: {compiled.intent.interpretedAs}</p>
+
+      {executed.kind === "NAVIGATION" ? (
+        <Navigation outcome={executed.outcome} />
+      ) : !executed.outcome.ok ? (
+        <p role="alert" className="mt-8 rounded-input bg-rose/12 px-4 py-3 text-copy font-medium text-rose">
+          {executed.outcome.error === "CAPABILITY_DENIED" ? "This capability is not enabled here." : "That view could not be run."}
+        </p>
+      ) : executed.outcome.explanation ? (
+        <ExplanationView explanation={executed.outcome.explanation} />
+      ) : compiled.intent.operation === "EXPLAIN" ? (
+        <p className="mt-8 text-body text-neutral-500 dark:text-neutral-400">
+          No explanation is available for that pursuit.
+        </p>
+      ) : (
+        <>
+          {executed.outcome.aggregate && <Aggregate aggregate={executed.outcome.aggregate} />}
+          <Result result={executed.outcome.result} view={(compiled.intent.request as { view: ViewKey }).view} />
+        </>
+      )}
+    </main>
   );
 }
 

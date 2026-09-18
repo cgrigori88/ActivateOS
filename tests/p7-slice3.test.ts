@@ -285,10 +285,28 @@ test("RULING 5: the cohort is fixed and code-defined; caller input cannot synthe
   const route = readFileSync(new URL("../src/app/experience/pursuits/page.tsx", import.meta.url), "utf8");
   // The request selects a plan by a validated key; it never supplies plan content.
   assert.match(route, /PLANS\[\s*view\s*\]\.plan/);
-  assert.ok(!/JSON\.parse/.test(route), "the route parses no caller-supplied structure");
+  // The route may PARSE caller-supplied structure (Slice 5 proposals), but none of it can become plan
+  // content: a plan comes only from the code-defined registry, and parsed input goes to the intent
+  // compiler, which can select a registered ViewKey and nothing else. Asserting "no JSON.parse" would
+  // be a proxy that fails for a reason unrelated to the property it names (§16A).
+  assert.ok(!/queryVersion\s*:/.test(route), "the route never constructs a plan literal");
+  // EVERY plan the route executes comes from the code-defined registry — PLANS[key].plan, or one of
+  // the two fixed plan builders. A plan assembled from request input would show up right here.
+  const executed = [...route.matchAll(/executePursuitQuery\(([^,)]+)/g)].map((m) => m[1].trim());
+  assert.ok(executed.length > 0, "the route does execute plans");
+  for (const arg of executed) {
+    assert.ok(/^PLANS\[[\w.]+\]\.plan$|^explainPlanFor\(|^goToPlanFor\(|^subject \?/.test(arg),
+      `plan argument must come from the registry, got: ${arg}`);
+  }
+  for (const parsed of [...route.matchAll(/(\w+)\s*=\s*JSON\.parse\(/g)].map((m) => m[1])) {
+    assert.ok(new RegExp(`compileIntent\\(\\{[\\s\\S]{0,80}${parsed}`).test(route)
+      || new RegExp(`${parsed}\\s*=\\s*null`).test(route),
+      `parsed input ${parsed} must flow into the intent compiler, never into a plan`);
+  }
   // Only two request inputs exist, and neither is a filter, dimension, metric or aggregate.
   const params = route.match(/searchParams:\s*Promise<\{([^}]*)\}>/)?.[1] ?? "";
-  assert.deepEqual([...params.matchAll(/(\w+)\??:/g)].map((m) => m[1]).sort(), ["explain", "goto", "view"]);
+  assert.deepEqual([...params.matchAll(/(\w+)\??:/g)].map((m) => m[1]).sort(),
+    ["ask", "ctx", "explain", "goto", "propose", "view"]);
   // An unknown view key does not become a plan; it falls back to a registered one.
   assert.equal(isViewKey("../../etc/passwd"), false);
   assert.equal(isViewKey(undefined), false);

@@ -5,6 +5,9 @@ import { executePursuitQuery, resolveGoTo } from "../src/lib/experience/execute"
 import { PLANS, explainPlanFor } from "../src/lib/experience/plans";
 import { testFixturePrincipal } from "../src/lib/experience/principal";
 import { FILTERS } from "../src/lib/experience/registry";
+import { buildContextManifest } from "../src/lib/experience/intent/context";
+import { compileIntent } from "../src/lib/experience/intent/compile";
+import { runCompiledIntent } from "../src/lib/experience/intent/run";
 import type { PursuitQuery } from "../src/lib/experience/types";
 
 /**
@@ -450,6 +453,85 @@ async function main(): Promise<void> {
   check("57: an organization smuggled into the request is refused, never honoured",
     crossOrgGoTo.ok === false && crossOrgGoTo.error === "INVALID_REQUEST",
     crossOrgGoTo.ok === false && crossOrgGoTo.error === "INVALID_REQUEST" ? crossOrgGoTo.detail : "");
+
+  // ── 8i. INTENT (Slice 5) — a compiled proposal grants nothing a plan did not ──────────────────
+  //
+  // The proofs that need a database: a proposal is untrusted input, so what matters is that compiling
+  // one adds NO authority. Everything here runs on hand-authored proposals (ruling 5) — there is no
+  // model in this suite, and the deterministic path cannot tell that there isn't.
+  const manifestFor = (o: Awaited<ReturnType<typeof asOrg>>) =>
+    buildContextManifest(o.ok ? o.result.rows : []);
+  const compileAs = (proposal: unknown, manifest: ReturnType<typeof buildContextManifest>, digest = manifest.digest) =>
+    compileIntent({ proposal, manifest, boundContextDigest: digest, modelId: "verify", promptTemplateVersion: "verify@1" });
+
+  const aList = await asOrg(w.a, plan());
+  const aManifest = manifestFor(aList);
+  const showMe = compileAs({ operation: "SHOW_ME", view: "open-by-value" }, aManifest);
+  check("58: a hand-authored proposal compiles to a canonical operation",
+    showMe.ok === true && showMe.intent.operation === "SHOW_ME",
+    showMe.ok ? showMe.intent.interpretedAs : showMe.state);
+
+  if (showMe.ok) {
+    const viaIntent = await runCompiledIntent(showMe.intent, testFixturePrincipal(w.a));
+    check("59: executing a compiled intent returns EXACTLY what the fixed plan returns directly",
+      viaIntent.kind === "RESULT" && viaIntent.outcome.ok && aList.ok &&
+      JSON.stringify(stripInstant(viaIntent.outcome.result)) === JSON.stringify(stripInstant(aList.result)));
+
+    // THE PRINCIPAL IS NOT A PROPOSAL FIELD. The same compiled intent, run as a different org, returns
+    // that org's governed result — the proposal carried no authority to move between them.
+    const asCViaIntent = await runCompiledIntent(showMe.intent, testFixturePrincipal(w.c));
+    check("60: the same compiled intent run as another principal returns THAT principal's result",
+      asCViaIntent.kind === "RESULT" && asCViaIntent.outcome.ok && asCViaIntent.outcome.result.rows.length === 0,
+      asCViaIntent.kind === "RESULT" && asCViaIntent.outcome.ok ? String(asCViaIntent.outcome.result.rows.length) : "");
+  }
+
+  // Two differently-worded proposals that compile to the same intent execute identically.
+  const p1 = compileAs({ operation: "ANALYZE", view: "open-pipeline-cohort" }, aManifest);
+  const p2 = compileAs({ view: "open-pipeline-cohort", operation: "ANALYZE" }, aManifest);
+  check("61: proposals differing only in wording compile to an identical CompiledIntent",
+    p1.ok && p2.ok && JSON.stringify(p1.intent) === JSON.stringify(p2.intent));
+  if (p1.ok && p2.ok) {
+    const [r1, r2] = [await runCompiledIntent(p1.intent, testFixturePrincipal(w.a)),
+                      await runCompiledIntent(p2.intent, testFixturePrincipal(w.a))];
+    check("62: and they execute identically, aggregate included",
+      r1.kind === "RESULT" && r2.kind === "RESULT" && r1.outcome.ok && r2.outcome.ok &&
+      JSON.stringify(r1.outcome.aggregate) === JSON.stringify(r2.outcome.aggregate),
+      r1.kind === "RESULT" && r1.outcome.ok ? String(r1.outcome.aggregate?.value) : "");
+  }
+
+  // A CONTEXT REFERENCE CANNOT REACH OUTSIDE THE PRINCIPAL'S OWN MANIFEST.
+  const cManifest = manifestFor(asC);
+  check("63: an empty context refuses a subject reference rather than searching for one",
+    compileAs({ operation: "EXPLAIN", subject: { fromContext: 0 } }, cManifest).ok === false);
+  const foreignDigest = aManifest.digest;
+  check("64: a proposal bound to another principal's context digest does not resolve",
+    compileAs({ operation: "EXPLAIN", subject: { fromContext: 0 } }, cManifest, foreignDigest).ok === false);
+
+  // An EXPLAIN compiled from A's own context equals the direct explain path for that subject.
+  const explainIntent = compileAs({ operation: "EXPLAIN", subject: { fromContext: 0 } }, aManifest);
+  if (explainIntent.ok) {
+    const viaIntent = await runCompiledIntent(explainIntent.intent, testFixturePrincipal(w.a));
+    const direct = await asOrg(w.a, explainPlanFor(aManifest.ids[0]));
+    // The explanation carries the governance instant (D-P6-1), which legitimately differs between two
+    // executions — so compare the SEMANTIC content with the instant masked, exactly as check 13 does.
+    const maskExplanation = (e: unknown) =>
+      JSON.stringify(e).replace(/"computedAt":"[^"]+"/, '"computedAt":"<instant>"');
+    check("65: EXPLAIN via intent is identical to EXPLAIN via the certified path",
+      viaIntent.kind === "RESULT" && viaIntent.outcome.ok && direct.ok &&
+      Boolean(direct.explanation) &&
+      maskExplanation(viaIntent.outcome.explanation) === maskExplanation(direct.explanation),
+      direct.ok ? String(direct.explanation?.statements.length) : "");
+  } else {
+    check("65: EXPLAIN via intent is identical to EXPLAIN via the certified path", false, explainIntent.state);
+  }
+
+  // Invalid model output executes nothing: there is no CompiledIntent to run.
+  for (const bad of [{ operation: "SHOW_ME", view: "everything" }, { operation: "SHOW_ME", orgId: w.b },
+                     { operation: "EXPLAIN", subject: { id: w.pursuitA } }, null, { operation: "DELETE" }]) {
+    const r = compileAs(bad, aManifest);
+    if (r.ok) { check(`66: invalid proposal executes nothing — ${JSON.stringify(bad)}`, false); break; }
+  }
+  check("66: invalid proposals execute nothing — none of five compiled", true);
 
   // ── 9. No P7-local write occurred ──
   const db3 = await owner.connect();
