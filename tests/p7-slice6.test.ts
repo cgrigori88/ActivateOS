@@ -153,9 +153,13 @@ test("an exact semantic duplicate hard-fails, and identity is NOT raw JSON equal
   const code = strip(SRC);
   assert.match(code, /const identity = JSON\.stringify\(\[def\.key, canonical\(intent\.intent\.request\)\]\)/);
   assert.ok(!/JSON\.stringify\(c\.bind\)|JSON\.stringify\(raw\)/.test(code), "identity is not raw spec bytes");
-  // Genuinely different binds of the same type are NOT duplicates.
+  // RULING 4: a repeated component TYPE is refused in Slice 6 even when the binds genuinely differ —
+  // "a future slice may allow repeated component types with genuinely different canonical binds".
   const different = compile(spec({ components: [LIST, { component: "pursuit.list", bind: { operation: "SHOW_ME", view: "recently-updated" } }] }));
-  assert.ok(different.ok, different.ok ? "" : different.detail);
+  assert.equal(different.ok, false, "a repeated component type is a later slice's capability");
+  if (!different.ok) assert.match(different.detail, /repeated component type pursuit\.list/);
+  // The first vertical is therefore exactly the two ruled components, and at most one of each.
+  assert.ok(compile(spec()).ok);
 });
 
 // ── whole-spec atomicity (ruling 3, threat proof 12) ────────────────────────────────────────────

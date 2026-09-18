@@ -52,8 +52,14 @@ export function compileSurface(inputs: SurfaceCompileInputs): SurfaceCompileOutc
   if (spec.components.length > MAX_COMPONENTS) return fail(`a surface may hold at most ${MAX_COMPONENTS} components`);
 
   const compiled: ValidatedSurfaceSpec["components"] = [];
-  /** Duplicate identity, decided AFTER canonical normalization of the COMPILED bind (ruling 4). */
+  /**
+   * Duplicate identity, decided AFTER canonical normalization of the COMPILED bind (ruling 4) — and
+   * in Slice 6 the component TYPE is also unique, because repeated types with genuinely different
+   * binds are explicitly deferred to a later slice. The identity set is kept because it is the
+   * semantics that survives; the type set is the narrower first-vertical rule on top of it.
+   */
   const seen = new Set<string>();
+  const seenTypes = new Set<string>();
 
   for (const raw of spec.components as unknown[]) {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return fail("each component must be an object");
@@ -86,6 +92,10 @@ export function compileSurface(inputs: SurfaceCompileInputs): SurfaceCompileOutc
     const identity = JSON.stringify([def.key, canonical(intent.intent.request)]);
     if (seen.has(identity)) return fail(`duplicate component ${def.key}`);
     seen.add(identity);
+    // Slice 6: one panel per registered component type. A second `pursuit.list` bound to a different
+    // view is a genuinely different composition, and it is a LATER slice's capability, not this one's.
+    if (seenTypes.has(def.key)) return fail(`repeated component type ${def.key}`);
+    seenTypes.add(def.key);
 
     compiled.push({ component: def.key, title: def.title, operation: def.operation, intent: intent.intent });
   }
