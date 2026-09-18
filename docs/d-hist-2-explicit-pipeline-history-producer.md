@@ -1,7 +1,7 @@
 # D-HIST-2 — explicit pipeline history producer
 
-**Status:** **PART 1 IMPLEMENTED (read-path purification). FOUR DECISIONS RETURNED FOR RULING
-BEFORE THE PRODUCER IS WIRED.** P7 Slice 6 is not reopened. Slice 7 not begun.
+**Status:** **IMPLEMENTED AND LOCALLY ACCEPTED (`25e6c7e`). HOSTED GATE BLOCKED — awaiting Vercel
+deployment capacity.** D-HIST-2 remains **OPEN**. P7 Slice 6 is not reopened. Slice 7 not begun.
 
 **Ruling recorded.** Current state: **C** — `pipeline_snapshots` is a non-canonical analytical
 materialization. Target state: **B** — ordinary read/render paths must not create it.
@@ -143,3 +143,32 @@ none is implemented.
 
 **Not implemented, per §12:** no scheduler, no new authority, no new credential, no schema change, and
 no producer wiring.
+
+
+---
+
+## Blocked state and the resume sequence
+
+**Blocker.** `vercel deploy` returns `Resource is limited - try again in 24 hours (more than 100,
+code: "api-deployments-free-per-day")`. The account's daily deployment quota is exhausted, which is
+also why `e5f123f`, `b6ccd69` and `25e6c7e` were pushed but never deployed.
+
+**Hosted state, verified and unchanged:** serving `f7b40b1` · schema **112** · **no `source` column** ·
+`pipeline_snapshots` 4 rows · Production not contacted. **Migration 0113 was deliberately NOT applied**
+— see §16F of the parent contract for why the ordering is not negotiable.
+
+**Resume exactly here when capacity returns — steps 2–4 must not be collapsed:**
+
+1. Deploy `25e6c7e`.
+2. **Prove the exact serving commit is `25e6c7e`**, from the deployment itself, before any schema change.
+3. **Verify the deployed code no longer contains the `/pipeline` render-path snapshot writer.**
+4. Only then apply migration 0113 through the normal mechanism.
+5. Establish the new post-0113 baseline (do **not** expect the 0112 world digest to survive).
+6. Run the authorized H0–H10 gate.
+
+**If `25e6c7e` fails to deploy for any reason other than the quota once the window reopens: STOP and
+return the new failure rather than applying 0113.**
+
+**While blocked, deliberately not done:** no repeated deployment probes, no change to migration 0113,
+no weakening of the `NOT NULL` / no-default provenance design, no transitional default restored to
+accommodate older deployed code, no second Preview environment, no Production, no Slice 7.

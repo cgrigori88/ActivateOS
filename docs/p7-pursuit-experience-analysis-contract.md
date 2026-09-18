@@ -811,6 +811,41 @@ whether anybody looked (measured — see `docs/d-hist-1-read-path-write-discover
 
 A movement that cannot be attributed to a named writer on a named path is not classified yet.
 
+---
+
+## 16F. Standing deployment invariant — serving state, not repository state, governs migration safety (adopted during D-HIST-2)
+
+> **Serving state, not repository state, governs migration safety.**
+
+Before applying a hosted migration whose schema is incompatible with the currently deployed
+application:
+
+1. **prove the compatible application commit is actually serving**;
+2. **prove the route affected by the migration resolves under that serving commit**;
+3. only then apply the migration.
+
+**A pushed-but-undeployed commit does not satisfy this prerequisite.** Neither does a successful `git
+push`, a build request, or a webhook acknowledgement.
+
+> **Hosted acceptance must identify and verify the actual serving commit independently of branch
+> HEAD.**
+
+**Why this is explicit now.** During D-HIST-2, three commits — `e5f123f`, `b6ccd69` and `25e6c7e` —
+were pushed and **never deployed**, because the Vercel account had silently exhausted its daily
+deployment quota. The branch tip and the serving commit had diverged by three commits with no signal
+on push, and the newest Preview deployment was still `f7b40b1`.
+
+Had the migration been applied on the strength of the push, `/pipeline` would have broken on the live
+Preview for the length of the quota window: migration 0113 makes `source` `NOT NULL` with **no
+default**, by design, while the *serving* code still contained the render-path writer that omits it.
+Every render would have attempted a NOT NULL–violating insert. The repository was correct and the
+deployment was not, and only the deployment decides what runs.
+
+**How to apply.** Read the serving commit from the deployment itself — `/api/build`, or the equivalent
+runtime fingerprint — and compare it to the commit the gate intends to certify. Where migration order
+matters, deploy first, verify serving, then migrate: the reverse order is only safe when the deploy
+can follow immediately, which is exactly the assumption a quota, an outage or a failed build breaks.
+
 ## 17. What this contract forbids, in one list
 
 For review convenience — every prohibition above, collected:
