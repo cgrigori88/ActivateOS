@@ -1,7 +1,9 @@
 # P7 Slice 10 — governed actions on component-derived subjects: contract and plan
 
-**Status:** **CONTRACT RULED — A–E APPROVED, C MODIFIED. IMPLEMENTATION AUTHORIZED.** Hosted
-acceptance requires separate authorization. The rulings as returned are recorded in §R. **Builds on:** Slices 1–9, all HOSTED ACCEPTED / CLOSED. Slice 9 is not reopened.
+**Status:** **HOSTED ACCEPTED / CLOSED** — serving `bea8e34`, migrations 113, **103/0 hosted** with a
+live model, **1 of 160 tables moved: the dispatch audit, by design**. *A component-derived identity may
+determine which governed subject an action affordance refers to. It may never carry action authority
+across the render-to-click boundary.* **Builds on:** Slices 1–9, all HOSTED ACCEPTED / CLOSED. Slice 9 is not reopened.
 
 > **A component-derived identity may determine which governed subject an action affordance refers to.
 > It may never carry action authority across the render-to-click boundary.**
