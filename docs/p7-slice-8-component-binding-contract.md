@@ -1,7 +1,10 @@
 # P7 Slice 8 — governed component-to-component binding: contract and plan
 
-**Status:** **CONTRACT RULED — A–F RETURNED, B AND F MODIFIED. IMPLEMENTATION AUTHORIZED.** The rulings
-as returned are recorded in §R; hosted acceptance requires separate authorization.
+**Status:** **HOSTED ACCEPTED / CLOSED** — serving `fb43e52` (accepted implementation `b9c1045`;
+docs-only delta), migrations 113, **110/0 hosted** with a live model, 0 of 160 fingerprints moved.
+*A component may consume an explicitly exported governed identity handle from another certified
+component. It may not consume raw rows, hidden fields, rendered text or arbitrary result values.*
+The rulings as returned are recorded in §R.
 **Builds on:** Slices 1–7 and D-HIST-2, all HOSTED ACCEPTED / CLOSED. Slice 7 is not reopened.
 
 > **A component may consume an explicitly exported governed identity handle from another certified
@@ -547,3 +550,47 @@ validated node and no executed request.
   rule that *forbids* one, which has to say "largest" in order to refuse it. What the model may emit is
   decided by the schema, so the enum is asserted instead of the prose;
 - a test-only cast that `tsc --noEmit` accepted but the full build rejected.
+
+---
+
+## W. Hosted acceptance — 110/0
+
+**Commit provenance, proven from git inside the gate.** `b9c1045` is the accepted implementation
+commit. `fb43e52` is the hosted-certification commit and is its descendant, differing by **exactly one
+file under `docs/`** — the 9-line clarification above. `git diff b9c1045 fb43e52 -- src tests supabase
+package.json` is **empty**. The divergence was returned for ruling rather than resolved unilaterally,
+and no second deployment of `b9c1045` was created once ruled.
+
+**The load-bearing results.**
+
+- **Export is per-plan and default-deny (H2).** `recently-updated` — demonstrably a working SHOW ME
+  view in the same run — **cannot export identity**, refused before execution. ANALYZE cannot export.
+- **Selection comes from the governed result (H3).** A foreign-org candidate with a far larger amount
+  never entered the recipient's result and could not become first. A bounded own-org change then moved
+  the governed order, and the selection **followed it** — the binding tracks disclosed ordering, not a
+  cached handle.
+- **Upstream visibility is not downstream authorization (H7).** With the selected pursuit moved out of
+  the cohort, the same graph no longer reached it.
+- **Zero rows is its own outcome (H8).** The bare `NO_SELECTABLE_RESULT` — not a governed absence, not
+  a defect, and **not even the legitimately empty SHOW ME**. Control: a graph with no dependency still
+  rendered the certified empty list.
+- **Thirteen invalid graphs executed nothing (H9)**, including a second-level chain, ordinals `0` and
+  `1`, result-value and field references, a raw UUID and an arbitrary path.
+- **State integrity (H16).** All four hashes identical to the accepted post-Slice-7 baseline; **0 of
+  160 fingerprints moved** after cleanup, despite 13 pursuits moved out of the cohort and back.
+
+**§16D, twice — and the fix is stronger than the original.** I twice treated the caller's own echoed
+`?surface=` query string as application disclosure. The replacement asserts that internal handle fields
+(`sourceResultDigest`, `executionDigest`, `DerivedIdentityContext`) are absent outright, and uses a
+**model-authored** dependent graph as the discriminator: there the caller typed an utterance, so
+nothing could echo the dependency — and the product disclosed none.
+
+**Recorded with this closure:**
+
+> **Upstream visibility is not downstream authorization.**
+>
+> **Identity export is a per-plan certified capability, not an inherent property of SHOW ME.**
+
+**Not begun, pending separate authorization:** actions/P5 surfaces · persistence/pinning · value-based
+selectors · arbitrary ordinal selectors · second-level chaining · generic dataflow · cross-org surfaces
+· result-to-model loops · model-authored result prose.
