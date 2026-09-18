@@ -7,6 +7,8 @@ import { type DatabasePosture, probeDatabasePosture } from "@/lib/env/db-posture
 import { buildInfo, databaseIdentity, environmentLabel, externalSendingArmed, siteMode } from "@/lib/env/environment";
 import { interpreterEnabled } from "@/lib/interpret/answer";
 import { intentCredentialPresent, intentModelEnabled } from "@/lib/experience/intent/model";
+import { vnextCapabilities } from "@/lib/env/vnext-flags";
+import { tenantFeatures } from "@/lib/pursuits/tenant-flags";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +83,35 @@ export async function GET() {
   let live: DatabasePosture = { status: "unavailable" };
   try { live = await probeDatabasePosture(getPool()); } catch { /* DATABASE_URL unset — report unavailable */ }
 
+  /**
+   * P7 Slice 6 H0 — the CANONICAL capability evaluator's own answer, per organization.
+   *
+   * Env-var names are not an authorization answer, so this reports what `vnextCapabilities` actually
+   * returns for each tenant. `withoutDynamicSurfaces` is the same evaluator run with that ONE master
+   * forced off, so the activation delta is attributable to exactly one variable rather than inferred.
+   * Booleans and organization names only — no env values, no secrets, no tenant data.
+   */
+  let capabilities: unknown = null;
+  try {
+    const pool = getPool();
+    const { rows } = await pool.query<{ id: string; name: string }>(
+      "select id, name from organizations order by name");
+    const real = process.env.VNEXT_DYNAMIC_SURFACES_ENABLED;
+    capabilities = await Promise.all(rows.map(async (org) => {
+      const client = await pool.connect();
+      try {
+        const tenant = await tenantFeatures(client, org.id);
+        const actual = vnextCapabilities(tenant);
+        // The counterfactual: identical inputs, this one master off.
+        delete process.env.VNEXT_DYNAMIC_SURFACES_ENABLED;
+        const without = vnextCapabilities(tenant);
+        if (real === undefined) delete process.env.VNEXT_DYNAMIC_SURFACES_ENABLED;
+        else process.env.VNEXT_DYNAMIC_SURFACES_ENABLED = real;
+        return { org: org.name, tenantExperience: tenant.experience, actual, withoutDynamicSurfaces: without };
+      } finally { client.release(); }
+    }));
+  } catch { capabilities = null; }
+
   return NextResponse.json(
     {
       environment: siteMode(),
@@ -117,6 +148,7 @@ export async function GET() {
         intentEnabled: intentModelEnabled(),
         intentCredentialPresent: intentCredentialPresent(),
       },
+      capabilities,
       serverTime: new Date().toISOString(),
     },
     { headers: { "cache-control": "no-store" } },
