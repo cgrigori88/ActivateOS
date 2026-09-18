@@ -420,6 +420,15 @@ Identity export becomes a **per-plan registry capability, default OFF** — `ide
 certifies **only** the `SHOW ME open pursuits` plan the first vertical needs. **No widening for
 convenience.**
 
+### Sentinel quarantine (final clarification)
+
+The compile-time sentinel one-slot context is approved **only as a structural validation artifact**. It
+may prove that a dependent Slice 5 bind is compilable before execution. It must **never** become the
+runtime selected identity, part of `executionDigest`, part of recipient-visible provenance,
+provider-visible prompt data, rendered output or persisted state. Runtime identity resolution replaces
+the validation-only sentinel path with the **actual derived execution identity** produced from the
+governed upstream result, and hosted acceptance proves that explicitly.
+
 ### Additional load-bearing rules recorded
 
 1. **Selection consumes the final governed upstream result** the recipient's certified operation
