@@ -498,9 +498,10 @@ async function main(): Promise<void> {
 
     // Pipeline is untouched by this correction.
     const pipeSrc = readFileSync(new URL("../src/app/pipeline/page.tsx", import.meta.url), "utf8");
-    check("90: D-P2-1 — Pipeline behaviour is unchanged: recency is still the default and the snapshot still takes only the org identity",
+    // D-HIST-2: the snapshot call is GONE from the render path, so this no longer asserts its shape.
+    check("90: D-P2-1 \u2014 Pipeline behaviour is unchanged: recency is still the default, and the render path writes no history",
       /qp\("sort"\) === "pertinence" \? "pertinence" : "recency"/.test(pipeSrc)
-      && /upsertCanonicalPipelineSnapshot\(db, tieOrgId\)/.test(pipeSrc)
+      && !/upsertCanonicalPipelineSnapshot\(/.test(pipeSrc)
       && !pipeSrc.includes("read-models/today"));
   } finally { db3.release(); }
 

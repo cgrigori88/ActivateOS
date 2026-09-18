@@ -52,7 +52,6 @@ import { getAccountIntel } from "@/lib/accounts/intel";
 import { IntelDrawer } from "@/components/intel/intel-drawer";
 import { formatMoney } from "@/lib/format/money";
 import { OperatingModel } from "@/components/operating-model";
-import { upsertCanonicalPipelineSnapshot } from "@/lib/pipeline/snapshot";
 
 const MEDDPICC_STATUSES: Status[] = ["unknown", "gap", "weak", "strong"];
 
@@ -444,14 +443,16 @@ export default async function PipelinePage({
         });
       }
     }
-    // Today's snapshot, idempotent — history accrues just by looking.
+    // D-HIST-2: THIS RENDER WRITES NOTHING.
     //
-    // D-P1: this passes ONLY the org identity. `open`, `total`, `weighted` and `tieOut.crmUsd` above
-    // are the RENDERED projection — narrowed by `?timeframe=` and by the ecosystem scope — and used to
-    // be written straight into the canonical `(org_id, taken_on)` row, so merely looking at a 7-day
-    // view overwrote canonical history with filtered totals. The writer now derives every persisted
-    // field itself from the org's full unfiltered set, so no page aggregate can reach the snapshot.
-    await upsertCanonicalPipelineSnapshot(db, tieOrgId);
+    // Observing canonical state may not create history as a side effect of the observation. A row in
+    // `pipeline_snapshots` used to appear here simply because somebody opened this page, so the
+    // series recorded who had been browsing rather than what the business did — and both consumers
+    // below reason about it as if it were a daily sample. The snapshot now has an explicit producer,
+    // independent of rendering; this path reads that history and never creates it.
+    //
+    // (D-P1 remains closed on its own terms: the writer still accepts no caller-computed value, so a
+    // filtered view could not poison the row even if something did call it from here.)
   }
 
   return {

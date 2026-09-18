@@ -217,14 +217,17 @@ async function main(): Promise<void> {
   // identity and nothing else — no open_count, open_usd, weighted_usd, crm_usd, timeframe or filtered set.
   const pageSrc = readFileSync(join(import.meta.dirname, "..", "src", "app", "pipeline", "page.tsx"), "utf8");
   const calls = [...pageSrc.matchAll(/upsertCanonicalPipelineSnapshot\(([^)]*)\)/g)].map((m) => m[1].trim());
-  const banned = /\b(open_count|open_usd|weighted_usd|crm_usd|timeframe|horizon|opps|visible|weighted|total)\b/;
-  check("20: /pipeline holds no pipeline_snapshots write of its own, and passes ONLY the org identity",
-    !/insert\s+into\s+pipeline_snapshots/i.test(pageSrc)
-    && !/update\s+pipeline_snapshots/i.test(pageSrc)
-    && calls.length === 1
-    && calls[0].split(",").length === 2
-    && !banned.test(calls[0]),
-    `call site: upsertCanonicalPipelineSnapshot(${calls.join(" | ")})`);
+  // D-HIST-2 SUPERSEDES D-P1 HERE, and strictly strengthens it. D-P1 asked whether the render path's
+  // ONE call passed only the org identity; the render path must now make NO call at all, so the
+  // question D-P1 asked cannot arise. Asserted positively — the page is proven to be present and to
+  // still render its pipeline — so "no call" cannot pass merely because the file failed to load.
+  check("20: /pipeline creates no pipeline history \u2014 no writer call, no insert, no update",
+    pageSrc.length > 1000
+    && /tieOut/.test(pageSrc)
+    && calls.length === 0
+    && !/insert\s+into\s+pipeline_snapshots/i.test(pageSrc)
+    && !/update\s+pipeline_snapshots/i.test(pageSrc),
+    `writer calls in the render path: ${calls.length}`);
 
   const sendAfter = (await db.query(
     `select (select count(*) from messages)::int messages, (select count(*) from action_outbox)::int action_outbox,
