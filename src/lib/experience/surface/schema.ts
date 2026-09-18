@@ -99,7 +99,14 @@ export type SurfaceOutcome =
   | { ok: true; result: SurfaceResult }
   | { ok: false; error: "CAPABILITY_DENIED" }
   | { ok: false; error: "INVALID"; detail: string }
-  | { ok: false; error: "NOT_AVAILABLE" };
+  | { ok: false; error: "NOT_AVAILABLE" }
+  /**
+   * An APPLICATION failure, and deliberately NOT `NOT_AVAILABLE`. An unexpected exception, a
+   * malformed internal result, an infrastructure or provider failure and a programming defect are
+   * not disclosure semantics, and relabelling one as governed unavailability would tell the
+   * recipient something false about governance while hiding a bug behind a disclosure word.
+   */
+  | { ok: false; error: "FAILED" };
 
 export type SurfaceCompileOutcome =
   | { ok: true; validated: ValidatedSurfaceSpec }

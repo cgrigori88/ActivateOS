@@ -343,14 +343,18 @@ async function SurfaceView({ surface, compose, ctx, view }: { surface?: string; 
   if (!compiled.ok) return notice("That surface could not be composed.");
 
   const assembled = await assembleSurface(compiled.validated);
-  // ONE SENTENCE FOR EVERY CAUSE (ruling B). Revoked, became undisclosable, disappeared, never
-  // existed and "no destination available" are the same bytes here — and the standalone GO TO
+  // ONE SENTENCE FOR EVERY GOVERNED CAUSE (ruling B). Revoked, became undisclosable, disappeared,
+  // never existed and "no destination available" are the same bytes here — and the standalone GO TO
   // distinction is deliberately NOT preserved inside a composed surface. The outcome carries no
   // component, reason or count, so this branch could not say more even if it tried to.
+  //
+  // An APPLICATION failure says something different, on purpose: reporting a defect as a governed
+  // absence would make the product describe its own bug as a decision about what the recipient may
+  // see. It still names no component and no reason.
   if (!assembled.ok) {
-    return notice(assembled.error === "NOT_AVAILABLE"
-      ? "That surface is not available."
-      : "Surfaces are not enabled here.");
+    if (assembled.error === "NOT_AVAILABLE") return notice("That surface is not available.");
+    if (assembled.error === "FAILED") return notice("That surface could not be completed.");
+    return notice("Surfaces are not enabled here.");
   }
   return <SurfaceRender result={assembled.result} />;
 }

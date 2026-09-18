@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { compileSurface } from "../src/lib/experience/surface/compile";
 import { COMPONENTS, CONTEXT_BOUND_OPERATIONS, isContextBound } from "../src/lib/experience/surface/registry";
-import { componentAvailability, surfaceAvailability, type ExecutedComponent } from "../src/lib/experience/surface/availability";
+import { componentDisposition, surfaceDisposition, type ExecutedComponent } from "../src/lib/experience/surface/availability";
 import { buildContextManifest } from "../src/lib/experience/intent/context";
 import { surfacePromptForAudit } from "../src/lib/experience/intent/model";
 import { PLANS } from "../src/lib/experience/plans";
 import type { IntentExecution } from "../src/lib/experience/intent/run";
-import type { ContextManifest, ProposalSource } from "../src/lib/experience/intent/schema";
+import type { ContextManifest, IntentOperation, ProposalSource } from "../src/lib/experience/intent/schema";
 import type { Explanation, GovernedCell, GovernedResultSet, GovernedRow } from "../src/lib/experience/types";
 
 /**
@@ -306,21 +306,21 @@ const executed = (...pairs: [string, IntentExecution][]): ExecutedComponent[] =>
   pairs.map(([operation, execution]) => ({ operation: operation as ExecutedComponent["operation"], execution }));
 
 test("a healthy first vertical is AVAILABLE", () => {
-  assert.equal(surfaceAvailability(executed(["EXPLAIN", explainOk()], ["GO_TO", goToOk()])), "AVAILABLE");
+  assert.equal(surfaceDisposition(executed(["EXPLAIN", explainOk()], ["GO_TO", goToOk()])), "AVAILABLE");
 });
 
 test("governance lost after manifest creation fails the WHOLE surface — NO SIBLING SURVIVES", () => {
   // EXPLAIN succeeded. GO TO did not. The surface is unavailable, and the healthy sibling does not
   // carry it: this is the exact partial-surface state the slice exists to make impossible.
-  assert.equal(surfaceAvailability(executed(["EXPLAIN", explainOk()], ["GO_TO", goToNotAvailable()])), "NOT_AVAILABLE");
+  assert.equal(surfaceDisposition(executed(["EXPLAIN", explainOk()], ["GO_TO", goToNotAvailable()])), "NOT_AVAILABLE");
   // And symmetrically, with the failure in the other position.
-  assert.equal(surfaceAvailability(executed(["EXPLAIN", explainNoSubject()], ["GO_TO", goToOk()])), "NOT_AVAILABLE");
+  assert.equal(surfaceDisposition(executed(["EXPLAIN", explainNoSubject()], ["GO_TO", goToOk()])), "NOT_AVAILABLE");
   // Order is irrelevant: a failure anywhere in the set decides the set.
-  assert.equal(surfaceAvailability(executed(["GO_TO", goToNotAvailable()], ["EXPLAIN", explainOk()])), "NOT_AVAILABLE");
+  assert.equal(surfaceDisposition(executed(["GO_TO", goToNotAvailable()], ["EXPLAIN", explainOk()])), "NOT_AVAILABLE");
 });
 
 test("a majority of healthy components cannot outvote one unavailable target", () => {
-  assert.equal(surfaceAvailability(executed(
+  assert.equal(surfaceDisposition(executed(
     ["SHOW_ME", showMeOk()], ["ANALYZE", showMeOk()], ["EXPLAIN", explainOk()], ["GO_TO", goToNotAvailable()],
   )), "NOT_AVAILABLE");
 });
@@ -328,24 +328,71 @@ test("a majority of healthy components cannot outvote one unavailable target", (
 test("RULING B: UNAVAILABLE_TARGET collapses to whole-surface unavailable inside a surface", () => {
   // Standalone, Slice 4 distinguishes this from NOT_AVAILABLE and says so. Composed, it does not:
   // an intentional information reduction, and the two produce the SAME value here.
-  assert.equal(surfaceAvailability(executed(["GO_TO", goToUnavailableTarget()])), "NOT_AVAILABLE");
+  assert.equal(surfaceDisposition(executed(["GO_TO", goToUnavailableTarget()])), "NOT_AVAILABLE");
   assert.equal(
-    surfaceAvailability(executed(["GO_TO", goToUnavailableTarget()])),
-    surfaceAvailability(executed(["GO_TO", goToNotAvailable()])),
+    surfaceDisposition(executed(["GO_TO", goToUnavailableTarget()])),
+    surfaceDisposition(executed(["GO_TO", goToNotAvailable()])),
     "the two causes are indistinguishable in a composed surface",
   );
 });
 
-test("every cause of unavailability produces the SAME value — no cause is distinguishable", () => {
-  const causes: IntentExecution[] = [
-    goToNotAvailable(),                                                                  // revoked / never existed
-    goToUnavailableTarget(),                                                             // no destination
-    { kind: "NAVIGATION", outcome: { ok: false, error: "INVALID_REQUEST", detail: "x" } }, // malformed
-    { kind: "RESULT", outcome: { ok: false, error: "CAPABILITY_DENIED", detail: "x" } },  // entitlement lost
-    { kind: "RESULT", outcome: { ok: false, error: "INVALID_PLAN", detail: "x" } },
+test("every GOVERNED cause produces the SAME value — no governed cause is distinguishable", () => {
+  const governed: IntentExecution[] = [
+    goToNotAvailable(),        // unauthorized OR nonexistent — already one value at the boundary
+    goToUnavailableTarget(),   // existence authorized, no usable destination
+    explainNoSubject(),        // the governed read admitted no row to explain
   ];
-  const values = new Set(causes.map((c) => surfaceAvailability(executed(["GO_TO", c]))));
-  assert.deepEqual([...values], ["NOT_AVAILABLE"], "one value for every cause");
+  const values = new Set(governed.map((c, i) =>
+    surfaceDisposition(executed([i === 2 ? "EXPLAIN" : "GO_TO", c]))));
+  assert.deepEqual([...values], ["NOT_AVAILABLE"], "one value for every governed cause");
+});
+
+/**
+ * THE CLARIFICATION, MADE EXECUTABLE.
+ *
+ * > `NOT_AVAILABLE` is the recipient-safe collapse of GOVERNED object availability, not generic
+ * > error masking.
+ *
+ * This test previously asserted the OPPOSITE — that a malformed request, a lost entitlement and an
+ * invalid plan all collapsed into governed `NOT_AVAILABLE` too. They must not: an application defect
+ * wearing a disclosure word is both a false statement about governance and a lost bug.
+ */
+test("an APPLICATION failure is never relabelled as governed unavailability", () => {
+  const defects: [string, IntentExecution][] = [
+    ["GO_TO", { kind: "NAVIGATION", outcome: { ok: false, error: "INVALID_REQUEST", detail: "x" } }],
+    ["EXPLAIN", { kind: "RESULT", outcome: { ok: false, error: "INVALID_PLAN", detail: "x" } }],
+    // The subject WAS authorized, and an explanation still did not come back: a template defect.
+    ["EXPLAIN", { kind: "RESULT", outcome: { ok: true, result: resultSet(), explanationError: "unknown explanation template" } }],
+  ];
+  for (const [op, execution] of defects) {
+    assert.equal(componentDisposition(op as IntentOperation, execution), "FAILED", `${op} defect must be FAILED`);
+    assert.equal(surfaceDisposition(executed([op, execution])), "FAILED");
+  }
+  // The entitlement conjunction keeps its OWN meaning: organization-wide, identical for every
+  // object, and therefore not a statement about any object.
+  const denied: IntentExecution = { kind: "RESULT", outcome: { ok: false, error: "CAPABILITY_DENIED", detail: "x" } };
+  assert.equal(componentDisposition("EXPLAIN", denied), "CAPABILITY_DENIED");
+  assert.equal(surfaceDisposition(executed(["EXPLAIN", denied])), "CAPABILITY_DENIED");
+});
+
+test("precedence is DEFECT-FIRST, so a bug cannot hide behind a governed absence", () => {
+  const defect: IntentExecution = { kind: "NAVIGATION", outcome: { ok: false, error: "INVALID_REQUEST", detail: "x" } };
+  // A governed absence and a defect in the same surface: the DEFECT decides, in either order.
+  assert.equal(surfaceDisposition(executed(["EXPLAIN", explainNoSubject()], ["GO_TO", defect])), "FAILED");
+  assert.equal(surfaceDisposition(executed(["GO_TO", defect], ["EXPLAIN", explainNoSubject()])), "FAILED");
+  // NEGATIVE CONTROL: without the defect the same set is governed-unavailable, so the ordering above
+  // is doing real work rather than agreeing with what would have been returned anyway.
+  assert.equal(surfaceDisposition(executed(["EXPLAIN", explainNoSubject()], ["GO_TO", goToOk()])), "NOT_AVAILABLE");
+});
+
+test("the four dispositions are distinct — none is an alias for another", () => {
+  const seen = new Set([
+    surfaceDisposition(executed(["EXPLAIN", explainOk()], ["GO_TO", goToOk()])),
+    surfaceDisposition(executed(["GO_TO", goToNotAvailable()])),
+    surfaceDisposition(executed(["EXPLAIN", { kind: "RESULT", outcome: { ok: false, error: "CAPABILITY_DENIED", detail: "x" } }])),
+    surfaceDisposition(executed(["EXPLAIN", { kind: "RESULT", outcome: { ok: false, error: "INVALID_PLAN", detail: "x" } }])),
+  ]);
+  assert.deepEqual([...seen].sort(), ["AVAILABLE", "CAPABILITY_DENIED", "FAILED", "NOT_AVAILABLE"]);
 });
 
 test("RULING B: an AVAILABLE target whose VALUES are withheld still renders — governance working", () => {
@@ -355,19 +402,19 @@ test("RULING B: an AVAILABLE target whose VALUES are withheld still renders — 
     { kind: "WITHHELD", ref: "pursuit.amount_usd", text: "This value isn't available to you." },
     { kind: "OPERATION", ref: "pursuit.explain", text: "Some statements were withheld." },
   ]);
-  assert.equal(componentAvailability("EXPLAIN", withheld), "AVAILABLE");
-  assert.equal(surfaceAvailability(executed(["EXPLAIN", withheld], ["GO_TO", goToOk()])), "AVAILABLE");
+  assert.equal(componentDisposition("EXPLAIN", withheld), "AVAILABLE");
+  assert.equal(surfaceDisposition(executed(["EXPLAIN", withheld], ["GO_TO", goToOk()])), "AVAILABLE");
 });
 
 test("an EXPLAIN with no authorized subject is NOT_AVAILABLE, not an empty success", () => {
-  assert.equal(componentAvailability("EXPLAIN", explainNoSubject()), "NOT_AVAILABLE");
+  assert.equal(componentDisposition("EXPLAIN", explainNoSubject()), "NOT_AVAILABLE");
 });
 
 test("SHOW_ME and ANALYZE bind no object, so an empty authorized set is a governed ANSWER", () => {
   const empty: IntentExecution = { kind: "RESULT", outcome: { ok: true, result: { ...resultSet(), rows: [], counts: { authorized: 0 } } } };
-  assert.equal(componentAvailability("SHOW_ME", empty), "AVAILABLE");
-  assert.equal(componentAvailability("ANALYZE", empty), "AVAILABLE");
-  assert.equal(surfaceAvailability(executed(["SHOW_ME", empty])), "AVAILABLE");
+  assert.equal(componentDisposition("SHOW_ME", empty), "AVAILABLE");
+  assert.equal(componentDisposition("ANALYZE", empty), "AVAILABLE");
+  assert.equal(surfaceDisposition(executed(["SHOW_ME", empty])), "AVAILABLE");
 });
 
 test("the atomic rule is keyed on the OPERATION, and every context-bound operation is covered", () => {
@@ -388,28 +435,36 @@ test("NEGATIVE CONTROL: classifying GO_TO as unbound would let a failed sibling 
   // Proves the rule bites. `surfaceAvailability` skips components it thinks are unbound, so a wrong
   // classification is exactly how a partial surface would reappear.
   const set = executed(["EXPLAIN", explainOk()], ["GO_TO", goToNotAvailable()]);
-  assert.equal(surfaceAvailability(set), "NOT_AVAILABLE");
+  assert.equal(surfaceDisposition(set), "NOT_AVAILABLE");
   const misclassified = set.map((e) => ({ ...e, operation: "SHOW_ME" as const }));
-  assert.equal(surfaceAvailability(misclassified), "AVAILABLE", "the control reaches the opposite state");
+  assert.equal(surfaceDisposition(misclassified), "AVAILABLE", "the control reaches the opposite state");
 });
 
 // ── THE OUTCOME CANNOT DESCRIBE THE FAILURE ─────────────────────────────────────────────────────
 
-test("the whole-surface failure carries no component, reason, index or count — STRUCTURAL", () => {
+/** Every `{ ok: false, ... }` the assembler can return carries EXACTLY `ok` and `error`. */
+const bareFailures = (src: string) => {
+  const returns = src.match(/return \{ ok: false[^}]*\}/g) ?? [];
+  return returns.length > 0 && returns.every((r) => /^return \{ ok: false, error: [A-Za-z_."]+ \}$/.test(r));
+};
+
+test("every whole-surface failure is BARE — no component, reason, index or count — STRUCTURAL", () => {
   const body = strip(ASSEMBLE);
-  const failures = body.match(/error:\s*"NOT_AVAILABLE"[^}]*/g) ?? [];
-  assert.equal(failures.length, 1, "exactly one way to fail this way");
-  assert.ok(!/NOT_AVAILABLE",\s*(detail|component|reason|operation|index|count)/.test(body));
-  // The schema itself has no field to put one in.
+  assert.ok(bareFailures(body), "every failure return carries only ok and error");
+  // The schema has no field to put one in, for either failure the atomic rule can produce.
   const schema = readFileSync(new URL("../src/lib/experience/surface/schema.ts", import.meta.url), "utf8");
-  assert.match(schema, /\{ ok: false; error: "NOT_AVAILABLE" \}/, "the failure variant is bare");
+  assert.match(schema, /\{ ok: false; error: "NOT_AVAILABLE" \}/, "the governed variant is bare");
+  assert.match(schema, /\{ ok: false; error: "FAILED" \}/, "the application variant is bare");
+  // `INVALID` is the Slice 6 COMPILE-time rejection and does carry a detail; prove it is not one of
+  // the values the assembler can return, so no execution-time detail can reach a recipient this way.
+  assert.ok(!/"INVALID"/.test(body), "the assembler cannot return the detail-carrying variant");
 });
 
 test("the assembler has exactly ONE success return, and it is guarded by the atomic decision", () => {
   const body = strip(ASSEMBLE);
   const successes = body.match(/return\s*\{\s*ok:\s*true/g) ?? [];
   assert.equal(successes.length, 1, "one way to succeed");
-  const guard = body.indexOf("surfaceAvailability(executed)");
+  const guard = body.indexOf("surfaceDisposition(executed)");
   const success = body.indexOf("return { ok: true");
   assert.ok(guard > 0, "the atomic decision is present");
   assert.ok(success > 0, "the success return is present");
@@ -440,11 +495,16 @@ test("no component markup can exist before the atomic decision — STRUCTURAL", 
   }
 });
 
-test("the failure notice names one sentence for every cause, and never the component", () => {
+test("each disposition gets ONE fixed sentence, and none names a component", () => {
   const body = strip(ROUTE);
   const view = body.slice(body.indexOf("async function SurfaceView"), body.indexOf("function SurfaceRender"));
-  assert.match(view, /NOT_AVAILABLE"\s*\n?\s*\?\s*"That surface is not available\."/);
-  // Nothing in the surface path renders a component key, an operation or a rejection detail.
+  // Governed absence and application failure say DIFFERENT things, by ruling; neither says more.
+  assert.match(view, /assembled\.error === "NOT_AVAILABLE"\) return notice\("That surface is not available\."\)/);
+  assert.match(view, /assembled\.error === "FAILED"\) return notice\("That surface could not be completed\."\)/);
+  // Every notice argument in the surface path is a STRING LITERAL — never an interpolated value.
+  const notices = view.match(/notice\([^)]*\)/g) ?? [];
+  assert.ok(notices.length >= 4, "the notices were located");
+  for (const n of notices) assert.match(n, /^notice\("[^"$`]*"\)$/, `${n} must be a fixed sentence`);
   assert.ok(!/compiled\.detail|assembled\.detail/.test(view));
   for (const leak of ["pursuit.explanation", "pursuit.destination", "EXPLAIN", "GO_TO"]) {
     assert.ok(!view.includes(leak), `the surface transport must not name ${leak}`);
@@ -585,7 +645,7 @@ test("manifest membership is identity binding, NOT durable authorization", () =>
     ["EXPLAIN", explainOk()],
     ["GO_TO", goToNotAvailable()],
   );
-  assert.equal(surfaceAvailability(sameComponents), "NOT_AVAILABLE",
+  assert.equal(surfaceDisposition(sameComponents), "NOT_AVAILABLE",
     "valid at compile time does not imply authorized at execution time");
 
   // STRUCTURAL: the validated spec carries no cached authorization decision for it to have trusted.
@@ -604,7 +664,7 @@ test("NEGATIVE CONTROL: the availability decision does not consult the compiled 
     "the decision cannot see the spec it is deciding about");
   // And it bites: identical executions decide identically regardless of which spec produced them.
   const set = executed(["EXPLAIN", explainOk()], ["GO_TO", goToNotAvailable()]);
-  assert.equal(surfaceAvailability(set), surfaceAvailability([...set].reverse()));
+  assert.equal(surfaceDisposition(set), surfaceDisposition([...set].reverse()));
 });
 
 // ── A CONTROL ON THE CHECKER ITSELF ─────────────────────────────────────────────────────────────
@@ -614,17 +674,13 @@ test("NEGATIVE CONTROL: a component-specific failure reason would be CAUGHT, not
   // worthless if it would also pass against the defect it exists to catch — so the defect is
   // constructed here, in memory, and the SAME check is re-run against it.
   const body = strip(ASSEMBLE);
-  const check = (src: string) => {
-    const failures = src.match(/error:\s*"NOT_AVAILABLE"[^}]*/g) ?? [];
-    return failures.length === 1 && !/NOT_AVAILABLE",\s*(detail|component|reason|operation|index|count)/.test(src);
-  };
-  assert.equal(check(body), true, "canonical code passes");
+  assert.equal(bareFailures(body), true, "canonical code passes");
 
-  const leaky = body.replace('error: "NOT_AVAILABLE" }', 'error: "NOT_AVAILABLE", detail: c.component }');
+  const leaky = body.replace("return { ok: false, error: disposition }", "return { ok: false, error: disposition, detail: c.component }");
   assert.notEqual(leaky, body, "the mutation actually applied");
-  assert.equal(check(leaky), false, "a leaked component key is caught");
+  assert.equal(bareFailures(leaky), false, "a leaked component key is caught");
 
-  const second = body.replace("return { ok: true", 'if (x) return { ok: false, error: "NOT_AVAILABLE", reason: "goto" };\n  return { ok: true');
+  const second = body.replace("return { ok: true", 'return { ok: false, error: "NOT_AVAILABLE", reason: "goto" };\n  return { ok: true');
   assert.notEqual(second, body, "the mutation actually applied");
-  assert.equal(check(second), false, "a second, more informative failure path is caught");
+  assert.equal(bareFailures(second), false, "a second, more informative failure path is caught");
 });

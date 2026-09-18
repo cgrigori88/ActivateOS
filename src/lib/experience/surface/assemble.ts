@@ -40,7 +40,7 @@ import { withTenant, withTenantOrg } from "@/lib/db/tenant";
 import { tenantFeatures } from "@/lib/pursuits/tenant-flags";
 import { vnextCapabilities } from "@/lib/env/vnext-flags";
 import { runCompiledIntent } from "../intent/run";
-import { surfaceAvailability, type ExecutedComponent } from "./availability";
+import { surfaceDisposition, type ExecutedComponent } from "./availability";
 import type { ExecutionPrincipal } from "../principal";
 import { principalOrgId } from "../principal";
 import type { SurfaceOutcome, ValidatedSurfaceSpec } from "./schema";
@@ -85,7 +85,11 @@ export async function assembleSurface(
   // is a property of the surface, not of a component. Everything already executed is dropped here,
   // unreturned. The outcome has nowhere to put a component, a reason or a count, so this branch
   // could not disclose which component failed even if a caller wanted it to.
-  if (surfaceAvailability(executed) === "NOT_AVAILABLE") return { ok: false, error: "NOT_AVAILABLE" };
+  //
+  // The disposition keeps GOVERNED unavailability, the entitlement conjunction and an APPLICATION
+  // defect apart, and is defect-first, so a bug can never arrive wearing a disclosure word.
+  const disposition = surfaceDisposition(executed);
+  if (disposition !== "AVAILABLE") return { ok: false, error: disposition };
 
   const components: SurfaceResultComponents = validated.components.map((c, i) => ({
     component: c.component,
