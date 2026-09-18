@@ -300,6 +300,56 @@ test("RULING 5: the cohort is fixed and code-defined; caller input cannot synthe
   assert.ok(cohortFilters[0].values.every((v) => FILTERS["pursuit.status"].values?.includes(v)));
 });
 
+// ── the empty governed cohort (ruled: EXACT 0 / members 0) ──────────────────────────────────────
+
+test("an empty governed cohort is a deterministic zero over an empty set, not UNKNOWN", () => {
+  const r = run([]);
+  assert.ok(r.ok);
+  if (r.ok) {
+    assert.equal(r.result.visibility, "EXACT");
+    assert.equal(r.result.value, 0);
+    assert.deepEqual(r.result.basis, { members: 0 });
+  }
+});
+
+test("the empty result cannot be influenced by what governance EXCLUDED", () => {
+  // `omissions` and `counts` are the only places a GovernedResultSet records that something was left
+  // out. If the analyzer read either, the existence of hidden candidates would be inferable from the
+  // aggregate — the exact channel the slice exists to close. So: same rows, wildly different
+  // omission metadata, byte-identical AggregateResult.
+  const bare = analyze(
+    { ...resultSet([]), omissions: [], counts: { authorized: 0 } },
+    AGG.id, AGG.version);
+  const surrounded = analyze(
+    {
+      ...resultSet([]),
+      omissions: Array.from({ length: 9 }, (_, i) => ({
+        objectId: `hidden-${i}`, ref: OVER, reason: "NOT_DISCLOSABLE" as const,
+      })),
+      counts: { authorized: 0 },
+    },
+    AGG.id, AGG.version);
+  assert.ok(bare.ok && surrounded.ok);
+  if (bare.ok && surrounded.ok) {
+    assert.equal(JSON.stringify(bare.result), JSON.stringify(surrounded.result));
+    assert.ok(!JSON.stringify(surrounded.result).includes("hidden-"));
+  }
+  // Structurally: the analyzer never names either field.
+  assert.ok(!/omissions|counts/.test(CODE), "analysis reads neither omissions nor counts");
+});
+
+test("zero is a claim about the governed cohort, and the registered provenance says so", () => {
+  // The number alone would be ambiguous; the provenance the surface renders beside it is what makes
+  // "0 over this cohort" not a claim about anything outside it.
+  const provenance = AGGREGATES[aggregateKey(AGG)].provenance;
+  assert.match(provenance, /members of this governed cohort/);
+  assert.match(provenance, /not a total of anything you are not authorized to see/);
+  // And a computed aggregate always carries its member count, so the scope of the claim is stated.
+  const r = run([]);
+  assert.ok(r.ok);
+  if (r.ok) assert.equal(r.result.basis?.members, 0);
+});
+
 // ── determinism and absence of a model (L10, L12) ───────────────────────────────────────────────
 
 test("L12: the same cohort twice yields a byte-identical result, basis.members included", () => {

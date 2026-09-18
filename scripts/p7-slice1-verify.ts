@@ -47,7 +47,14 @@ const check = (n: string, ok: boolean, d = ""): void => {
 
 const NS = `P7S1-${randomUUID().slice(0, 8)}`;
 
-interface World { a: string; b: string; c: string; pursuitA: string; pursuitB: string; company: string }
+interface World { a: string; b: string; c: string; d: string; pursuitA: string; pursuitB: string; company: string }
+
+/**
+ * Every pursuit this suite plants, counted by the suite itself. Check 15 asserts the database holds
+ * exactly these and no more — so "P7 wrote nothing" stays a real assertion even though later checks
+ * deliberately plant additional OWNER fixtures to create an authority contrast.
+ */
+let planted = 0;
 
 /**
  * Two organizations and a pursuit each. B participates on A's pursuit — so A's pursuit is VISIBLE to
@@ -57,8 +64,10 @@ interface World { a: string; b: string; c: string; pursuitA: string; pursuitB: s
 async function plant(db: PoolClient): Promise<World> {
   const org = async (tag: string) => String((await db.query(
     `insert into organizations (name, kind) values ($1, 'full') returning id`, [`${NS} ${tag}`])).rows[0].id);
-  const a = await org("A"), b = await org("B"), c = await org("C");
-  for (const o of [a, b, c]) {
+  // D exists to answer the empty-cohort question: an organization with NO adjacent candidates at all,
+  // whose result must be byte-identical to C's, which has them and may see none.
+  const a = await org("A"), b = await org("B"), c = await org("C"), d = await org("D");
+  for (const o of [a, b, c, d]) {
     await db.query(`insert into org_features (org_id, pursuits, facts, routing, pursuit_experience, federation)
                     values ($1, true, true, true, true, true)`, [o]);
   }
@@ -66,11 +75,7 @@ async function plant(db: PoolClient): Promise<World> {
     `insert into companies (legal_name, normalized_name) values ($1, $2) returning id`,
     [`${NS} Co`, NS.toLowerCase()])).rows[0].id);
 
-  const pursuit = async (orgId: string, key: string) => String((await db.query(
-    `insert into pursuits (org_id, account_id, dedup_key, status, pursuit_type, use_case, compelling_event)
-     values ($1, $2, $3, 'QUALIFIED', 'EXPANSION', $4, $5) returning id`,
-    [orgId, company, key, `${NS} use case`, `${NS} COMPELLING EVENT`])).rows[0].id);
-  const pursuitA = await pursuit(a, `${NS}-A`), pursuitB = await pursuit(b, `${NS}-B`);
+  const pursuitA = await plantPursuit(db, a, company, `${NS}-A`), pursuitB = await plantPursuit(db, b, company, `${NS}-B`);
 
   for (const [p, sponsor] of [[pursuitA, a], [pursuitB, b]] as const) {
     await db.query(`insert into pursuit_participants (org_id, pursuit_id, sponsor_org_id, role_key, participation_state)
@@ -85,7 +90,16 @@ async function plant(db: PoolClient): Promise<World> {
     await db.query(`insert into opportunities (org_id, company_id, pursuit_id, name, stage, amount_usd)
                     values ($1, $2, $3, $4, 'qualification', $5)`, [orgId, company, p, `${NS} opp`, amount]);
   }
-  return { a, b, c, pursuitA, pursuitB, company };
+  return { a, b, c, d, pursuitA, pursuitB, company };
+}
+
+/** One owner-planted pursuit. Counted, so check 15 stays an assertion and not an accounting. */
+async function plantPursuit(db: PoolClient, orgId: string, company: string, key: string): Promise<string> {
+  planted++;
+  return String((await db.query(
+    `insert into pursuits (org_id, account_id, dedup_key, status, pursuit_type, use_case, compelling_event)
+     values ($1, $2, $3, 'QUALIFIED', 'EXPANSION', $4, $5) returning id`,
+    [orgId, company, key, `${NS} use case`, `${NS} COMPELLING EVENT`])).rows[0].id);
 }
 
 /**
@@ -330,11 +344,64 @@ async function main(): Promise<void> {
   check("41: an unregistered aggregate is refused by the boundary, never by the database",
     badAgg.ok === false && badAgg.error === "INVALID_PLAN", badAgg.ok === false ? badAgg.detail : "");
 
+  // ── 8g. THE EMPTY GOVERNED COHORT (ruled: EXACT 0 / members 0) ───────────────────────────────
+  //
+  // Zero means "zero over the cohort you are authorized to analyze" — never a claim that no hidden
+  // business data exists elsewhere. The whole point is that the two are INDISTINGUISHABLE: an
+  // organization with adjacent undisclosable candidates and one with none must produce identical
+  // recipient-visible bytes, or the aggregate would confirm that something is being withheld.
+  const visibleBytes = (o: Awaited<ReturnType<typeof asOrg>>) =>
+    JSON.stringify(o.ok ? { rows: o.result.rows, counts: o.result.counts, agg: o.aggregate } : { error: o.error });
+
+  const emptyD = await asOrg(w.d, cohortPlan());   // no adjacent candidates at all
+  const emptyC1 = await asOrg(w.c, cohortPlan());  // adjacent candidates exist; C may see none
+  check("42: an empty governed cohort is a deterministic zero over an empty set",
+    emptyD.ok && emptyD.result.rows.length === 0 && emptyD.aggregate?.visibility === "EXACT" &&
+    emptyD.aggregate.value === 0 && emptyD.aggregate.basis?.members === 0,
+    `${String(emptyD.ok && emptyD.aggregate?.value)} over ${String(emptyD.ok && emptyD.aggregate?.basis?.members)}`);
+  check("43: hidden candidates or none — the recipient-visible result is byte-identical",
+    visibleBytes(emptyC1) === visibleBytes(emptyD));
+
+  // Now plant a genuinely new hidden candidate under A, with its own open value. C cannot see it.
+  const db7 = await owner.connect();
+  const hidden = await plantPursuit(db7, w.a, w.company, `${NS}-HIDDEN`);
+  await db7.query(`insert into pursuit_participants (org_id, pursuit_id, sponsor_org_id, role_key, participation_state)
+                   values ($1, $2, $3, 'VENDOR', 'ACTIVE')`, [w.a, hidden, w.a]);
+  await db7.query(`insert into opportunities (org_id, company_id, pursuit_id, name, stage, amount_usd)
+                   values ($1, $2, $3, $4, 'qualification', 777777)`, [w.a, w.company, hidden, `${NS} hidden`]);
+  db7.release();
+
+  const emptyC2 = await asOrg(w.c, cohortPlan());
+  check("44: a hidden candidate outside the governed cohort does not alter the empty result",
+    visibleBytes(emptyC2) === visibleBytes(emptyC1) && !visibleBytes(emptyC2).includes("777777"));
+
+  // Change only that hidden value. Nothing the recipient can see may move.
+  const db8 = await owner.connect();
+  await db8.query(`update opportunities set amount_usd = 888888 where pursuit_id = $1`, [hidden]);
+  db8.release();
+  const emptyC3 = await asOrg(w.c, cohortPlan());
+  check("45: changing only a hidden candidate's value leaves the empty result unchanged",
+    visibleBytes(emptyC3) === visibleBytes(emptyC1) && !visibleBytes(emptyC3).includes("888888"));
+
+  // …and the hidden candidate was real: the authorized principal's aggregate moved by exactly it.
+  const aAfterHidden = await asOrg(w.a, cohortPlan());
+  check("46: the hidden candidate was real — the authorized principal's aggregate moved by exactly it",
+    aAfterHidden.ok && Number(aAfterHidden.aggregate?.value) === Number(movedA.ok ? movedA.aggregate?.value : NaN) + 888888,
+    String(aAfterHidden.ok ? aAfterHidden.aggregate?.value : ""));
+  check("47: basis.members reflects only post-governance membership, on both sides of the contrast",
+    emptyC3.ok && emptyC3.aggregate?.basis?.members === 0 && emptyC3.result.counts.authorized === 0 &&
+    aAfterHidden.ok && aAfterHidden.aggregate?.basis?.members === aAfterHidden.result.rows.length,
+    `${String(emptyC3.ok && emptyC3.aggregate?.basis?.members)} vs ${String(aAfterHidden.ok && aAfterHidden.aggregate?.basis?.members)}`);
+  check("48: the empty result recovers no identifier from the cohort it may not see",
+    !visibleBytes(emptyC3).includes(NS) && !visibleBytes(emptyC3).includes(w.pursuitA) &&
+    !visibleBytes(emptyC3).includes(hidden));
+
   // ── 9. No P7-local write occurred ──
   const db3 = await owner.connect();
   const { rows: counts } = await db3.query<{ n: string }>(
     `select (select count(*) from pursuits where dedup_key like $1 || '%')::text as n`, [NS]);
-  check("15: the run wrote nothing of its own — the fixture count is unchanged", counts[0].n === "2", counts[0].n);
+  check("15: the run wrote nothing of its own — only the suite's declared owner fixtures exist",
+    counts[0].n === String(planted), `${counts[0].n} of ${planted}`);
   db3.release();
 
   console.log(`\nP7 Slice 1: ${passed} passed, ${failed} failed`);
