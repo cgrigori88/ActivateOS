@@ -269,10 +269,19 @@ test("source is PROVENANCE, never authority — both sources compile to the iden
 
 test("the route's model-off branch returns a registered notice, not a guessed proposal", () => {
   const route = readFileSync(new URL("../src/app/experience/pursuits/page.tsx", import.meta.url), "utf8");
-  const body = route.slice(route.indexOf("async function IntentView"));
-  // The gate is checked BEFORE any proposal is obtained or compiled.
-  assert.ok(body.indexOf("intentModelEnabled()") < body.indexOf("proposeIntent("), "the master is checked first");
-  assert.ok(body.indexOf("intentModelEnabled()") < body.indexOf("compileIntent("), "…and before compilation");
+  const body = route.slice(route.indexOf("async function IntentView"), route.indexOf("async function SurfaceView"));
+  // The master check lives in `proposeIntent`, which returns DISABLED before reading the credential;
+  // the route's job is to map that to the registered notice WITHOUT falling through to compilation.
+  const model = readFileSync(new URL("../src/lib/experience/intent/model.ts", import.meta.url), "utf8");
+  const fn = model.slice(model.indexOf("export async function proposeIntent"));
+  const masterAt = fn.indexOf("intentModelEnabled()");
+  const credentialAt = fn.indexOf("intentCredential()");
+  assert.ok(masterAt >= 0 && credentialAt >= 0, "both the master and the credential are read");
+  assert.ok(masterAt < credentialAt, "the master is evaluated before the credential is read");
+  const disabledAt = body.indexOf('outcome.status === "DISABLED"');
+  const compileAt = body.indexOf("compileIntent(");
+  assert.ok(disabledAt >= 0 && compileAt >= 0, "both branches are present in the route");
+  assert.ok(disabledAt < compileAt, "a disabled model returns before compilation");
   // `?propose=` is not gated by it: deterministic compilation is not what the master gates.
   assert.match(body, /const fromModel = typeof propose !== "string" && typeof ask === "string"/);
 });

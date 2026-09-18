@@ -8,6 +8,10 @@ import { compileIntent } from "@/lib/experience/intent/compile";
 import { runCompiledIntent } from "@/lib/experience/intent/run";
 import { PROMPT_TEMPLATE_VERSION, intentModelEnabled, proposeIntent, recordIntentProvenance } from "@/lib/experience/intent/model";
 import { CLARIFICATION_QUESTIONS } from "@/lib/experience/intent/vocabulary";
+import { SURFACE_PROMPT_TEMPLATE_VERSION, proposeSurface } from "@/lib/experience/intent/model";
+import { compileSurface } from "@/lib/experience/surface/compile";
+import { assembleSurface } from "@/lib/experience/surface/assemble";
+import type { SurfaceResult } from "@/lib/experience/surface/schema";
 import type { AggregateResult, Explanation, GoToOutcome, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +37,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export default async function ExperiencePursuitsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; explain?: string; goto?: string; ask?: string; propose?: string; ctx?: string }>;
+  searchParams: Promise<{ view?: string; explain?: string; goto?: string; ask?: string; propose?: string; ctx?: string; surface?: string; compose?: string }>;
 }) {
   if (!pursuitExperienceEnabled()) notFound();   // deployment master — fast deny, no DB work
 
@@ -60,6 +64,13 @@ export default async function ExperiencePursuitsPage({
   // proposal's authority does not depend on whether a model or a caller wrote it.
   if (typeof sp.ask === "string" || typeof sp.propose === "string") {
     return <IntentView ask={sp.ask} propose={sp.propose} ctx={sp.ctx} view={view} />;
+  }
+
+  // DYNAMIC SURFACES (Slice 6). `?surface=` supplies a spec directly; `?compose=` asks the model for
+  // one. Both are untrusted and converge on the same validator and assembler — the hand-authored path
+  // has no extra authority. The model master gates ONLY `?compose=` (ruling 8).
+  if (typeof sp.surface === "string" || typeof sp.compose === "string") {
+    return <SurfaceView surface={sp.surface} compose={sp.compose} ctx={sp.ctx} view={view} />;
   }
 
   // `?explain=<id>` names WHICH object, never which organization: governance still decides whether
@@ -269,6 +280,93 @@ async function IntentView({ ask, propose, ctx, view }: { ask?: string; propose?:
           <Result result={executed.outcome.result} view={(compiled.intent.request as { view: ViewKey }).view} />
         </>
       )}
+    </main>
+  );
+}
+
+/**
+ * P7 SLICE 6 — A DYNAMIC SURFACE. TRANSPORT ONLY.
+ *
+ * It reimplements no proposal compilation, no component-registry semantics, no governance, no metric
+ * logic and no surface validation (ruling 11): it obtains an untrusted spec, hands it to the
+ * deterministic compiler, hands the validated result to the headless assembler, and renders the
+ * `SurfaceResult` it gets back.
+ *
+ * WHOLE-SPEC ATOMICITY IS VISIBLE HERE: there is no branch that renders some components and omits
+ * others. Either the whole spec validated and every component ran, or nothing did.
+ */
+async function SurfaceView({ surface, compose, ctx, view }: { surface?: string; compose?: string; ctx?: string; view: ViewKey }) {
+  const notice = (text: string) => (
+    <main className="mx-auto max-w-[1100px] px-6 py-10">
+      <h1 className="text-section font-extrabold tracking-[-0.03em]">Surface</h1>
+      <p className="mt-8 text-body text-neutral-500 dark:text-neutral-400">{text}</p>
+    </main>
+  );
+
+  // `?compose=` needs the model gate; `?surface=` does not. Dynamic Surfaces must never become a
+  // second way around the Slice 5 model-invocation gate, so this is checked BEFORE the credential is
+  // read and before any provider object could exist.
+  const fromModel = typeof surface !== "string" && typeof compose === "string";
+  if (fromModel && !intentModelEnabled()) return notice("Composed surfaces are not enabled here.");
+
+  const base = await executePursuitQuery(PLANS[view].plan);
+  if (!base.ok) return notice("Surfaces are not enabled here.");
+  const manifest = buildContextManifest(base.result.rows);
+
+  let spec: unknown = null;
+  let modelId: string | null = null;
+  if (typeof surface === "string") {
+    try { spec = JSON.parse(surface); } catch { spec = null; }
+  } else if (typeof compose === "string") {
+    const outcome = await proposeSurface(compose, manifest);
+    if (outcome.status === "DISABLED") return notice("Composed surfaces are not enabled here.");
+    if (outcome.status === "UNAVAILABLE") return notice("Composed surfaces are temporarily unavailable.");
+    spec = outcome.proposal;
+    modelId = outcome.meta.model;
+  }
+
+  const compiled = compileSurface({
+    spec,
+    manifest,
+    boundContextDigest: typeof ctx === "string" ? ctx : manifest.digest,
+    source: fromModel ? "MODEL" : "HAND_AUTHORED",
+    modelId: fromModel ? modelId : null,
+    promptTemplateVersion: fromModel ? SURFACE_PROMPT_TEMPLATE_VERSION : null,
+  });
+  // One rejection for every cause: naming which component failed would describe a partial surface.
+  if (!compiled.ok) return notice("That surface could not be composed.");
+
+  const assembled = await assembleSurface(compiled.validated);
+  if (!assembled.ok) return notice("Surfaces are not enabled here.");
+  return <SurfaceRender result={assembled.result} />;
+}
+
+/** Renders a headless SurfaceResult. Every title and label is registry-owned — no model prose. */
+function SurfaceRender({ result }: { result: SurfaceResult }) {
+  return (
+    <main className="mx-auto max-w-[1100px] px-6 py-10">
+      <h1 className="text-section font-extrabold tracking-[-0.03em]">Surface</h1>
+      <div className={result.layout === "grid" ? "mt-8 grid gap-8 md:grid-cols-2" : "mt-8 flex flex-col gap-8"}>
+        {result.components.map((c, i) => (
+          <section key={`${c.component}-${i}`} data-component={c.component}>
+            <h2 className="text-title font-bold">{c.title}</h2>
+            {/* What PursuitOS actually composed, from the registry (ruling 6). */}
+            <p className="mt-1 text-body text-neutral-500 dark:text-neutral-400">{c.interpretedAs}</p>
+            {c.outcome.kind === "NAVIGATION" ? (
+              <Navigation outcome={c.outcome.outcome} />
+            ) : !c.outcome.outcome.ok ? (
+              <p className="mt-4 text-body text-neutral-500 dark:text-neutral-400">This component is not available.</p>
+            ) : (
+              <>
+                {c.outcome.outcome.aggregate && <Aggregate aggregate={c.outcome.outcome.aggregate} />}
+                {c.component === "pursuit.list" && isViewKey(c.view ?? undefined) && (
+                  <Result result={c.outcome.outcome.result} view={c.view as ViewKey} />
+                )}
+              </>
+            )}
+          </section>
+        ))}
+      </div>
     </main>
   );
 }

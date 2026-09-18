@@ -306,7 +306,7 @@ test("RULING 5: the cohort is fixed and code-defined; caller input cannot synthe
   // Only two request inputs exist, and neither is a filter, dimension, metric or aggregate.
   const params = route.match(/searchParams:\s*Promise<\{([^}]*)\}>/)?.[1] ?? "";
   assert.deepEqual([...params.matchAll(/(\w+)\??:/g)].map((m) => m[1]).sort(),
-    ["ask", "ctx", "explain", "goto", "propose", "view"]);
+    ["ask", "compose", "ctx", "explain", "goto", "propose", "surface", "view"]);
   // An unknown view key does not become a plan; it falls back to a registered one.
   assert.equal(isViewKey("../../etc/passwd"), false);
   assert.equal(isViewKey(undefined), false);
