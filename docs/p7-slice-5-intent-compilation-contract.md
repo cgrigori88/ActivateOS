@@ -1,7 +1,7 @@
 # P7 Slice 5 — natural-language intent compilation: contract and plan
 
-**Status:** **RULED AND AUTHORIZED** (rulings in §L, which supersede every recommendation above them).
-Implementation may proceed.
+**Status:** **HOSTED ACCEPTED / CLOSED** (Stage A `c422032`, Stage B0 + B1 `a6257bc`). Live model
+integration proven; the model remains non-authoritative. Rulings in §L are authoritative.
 **Builds on:** Slice 1 (`cade340`) · Slice 2 (`a6dabbb`) · Slice 3 (`7ac8c7f`) · Slice 4 (`a1dad9f`) —
 all HOSTED ACCEPTED.
 
