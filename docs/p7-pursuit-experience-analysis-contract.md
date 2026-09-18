@@ -671,6 +671,47 @@ does not import a writer — strip comments first and match a *shape* (`fwd.dele
 
 ---
 
+## 16B. Standing certification invariant — evidence before assertion (adopted after Slice 3)
+
+> **No semantic assertion may execute against missing, undefined, partially parsed or structurally
+> invalid evidence.**
+
+Before any downstream `PASS` is possible, a hosted-gate parser must first prove:
+
+1. the **expected artifact/field exists**;
+2. the **expected cardinality** is present;
+3. the **parsed type/shape** is valid;
+4. the parser **did not silently default** an absent value.
+
+**A missing expected field is FAIL / INVALID — never a value that can satisfy a negative assertion.**
+
+**Why this is a separate invariant from §16A.** §16A is about asserting on the wrong *thing*. This is
+about asserting on *nothing at all* and being told it passed. In the P7 Slice 3 hosted gate, a parser
+stripped React's `<!-- -->` text-node separators to spaces, splitting `pursuit.open_pipeline_usd@1`
+into `pursuit.open_pipeline_usd @ 1`. The aggregate regex then matched nothing, every parsed field
+came back `undefined`, and **eleven checks passed vacuously** — including
+*"the WITHHELD response exposes no `basis.members`"*, which was satisfied by `undefined === undefined`
+on a surface that had never been read. The run reported 30/12 and the twelve visible failures were the
+only reason the eleven invisible ones were ever found.
+
+The asymmetry is the danger: a negative assertion (`x === undefined`, `!bytes.includes(secret)`) is
+**satisfied by absence**. So absence must be disqualified before it can be mistaken for proof. A gate
+whose parser missed must fail loudly, not report clean.
+
+**How to apply.**
+- Extract at least one **positive** value (a number, a count, an identifier) and assert it is present
+  and well-formed *before* trusting any negative assertion built on the same parse.
+- Treat a parse miss as **INVALID**, a distinct outcome from FAIL — the same class rule CFR-1.2
+  established for transport failure, where INVALID ≠ PASS.
+- **Prefer structured evidence over parsing rendered prose or HTML wherever a governed structured
+  output already exists.** P7 produces `GovernedResultSet`, `Explanation` and `AggregateResult` as
+  structured values; a gate that can assert against those, or against a JSON boundary, should never be
+  re-deriving them from a rendered page. Parse HTML only to prove a property *of the rendered surface
+  itself* — that a withheld value is absent from the bytes a recipient receives — and then parse it
+  defensively, per the rules above.
+
+---
+
 ## 17. What this contract forbids, in one list
 
 For review convenience — every prohibition above, collected:
