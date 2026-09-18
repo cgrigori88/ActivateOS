@@ -72,7 +72,9 @@ export const COMPONENTS: Record<ComponentKey, ComponentDef> = {
    */
   "pursuit.assemble_team": {
     kind: "ACTION", key: "pursuit.assemble_team", operation: null, title: "Pursuit team",
-    exportsIdentity: false, acceptsContextIdentity: true, acceptsComponentIdentity: false,
+    // Slice 10: the action's SUBJECT may now be component-derived. It still exports nothing, so it
+    // cannot begin a chain, and its capability, substrate and permission are unchanged.
+    exportsIdentity: false, acceptsContextIdentity: true, acceptsComponentIdentity: true,
   },
 };
 

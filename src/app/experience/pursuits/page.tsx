@@ -12,7 +12,8 @@ import { SURFACE_PROMPT_TEMPLATE_VERSION, proposeSurface } from "@/lib/experienc
 import { compileSurface } from "@/lib/experience/surface/compile";
 import { assembleSurface } from "@/lib/experience/surface/assemble";
 import type { SurfaceResult } from "@/lib/experience/surface/schema";
-import { assemblePursuitTeamFormAction } from "./actions";
+import { assemblePursuitTeamFromSurface } from "./actions";
+import { currentRenderBinding } from "./binding";
 import type { AggregateResult, Explanation, GoToOutcome, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
 
 export const dynamic = "force-dynamic";
@@ -424,7 +425,7 @@ function SurfaceRender({ result }: { result: SurfaceResult }) {
  * into a generic dispatch endpoint, and a model cannot smuggle a payload through a position that
  * does not exist.
  */
-function ActionAffordance({ component }: { component: Extract<SurfaceResult["components"][number], { kind: "ACTION" }> }) {
+async function ActionAffordance({ component }: { component: Extract<SurfaceResult["components"][number], { kind: "ACTION" }> }) {
   if (!component.offered) {
     // Not offered is stated plainly in operation-level language: it names what this viewer may be
     // offered, never anything about the pursuit.
@@ -434,8 +435,20 @@ function ActionAffordance({ component }: { component: Extract<SurfaceResult["com
       </p>
     );
   }
+
+  // THE CLOSURE IS THE MECHANISM (Slice 10, ruling C). `invoke` closes over the binding rather than
+  // receiving it through `.bind()`, and the framework encrypts closed-over values with a per-build,
+  // per-action key — so the subject cannot be rewritten by the browser, and neither can the principal
+  // and scope the affordance was rendered for. A bound argument would have been plaintext, which is
+  // exactly what Slice 9's own hosted gate observed and what this slice had to stop relying on.
+  const binding = await currentRenderBinding(component.subjectId);
+  const invoke = async () => {
+    "use server";
+    await assemblePursuitTeamFromSurface(binding);
+  };
+
   return (
-    <form action={assemblePursuitTeamFormAction.bind(null, component.subjectId)} className="mt-4">
+    <form action={invoke} className="mt-4">
       <button
         type="submit"
         data-action={component.capability}

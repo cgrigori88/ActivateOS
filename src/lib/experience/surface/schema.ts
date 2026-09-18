@@ -105,8 +105,15 @@ export type ValidatedComponent =
       title: string;
       /** The registered capability this affordance stands for. Registry-owned. */
       capability: import("./actions").ActionCapability;
-      /** The governed subject, resolved from the recipient's pre-existing context at compile time. */
-      subjectId: string;
+      /**
+       * WHERE THE SUBJECT COMES FROM. Slice 9 resolved it from the recipient's pre-existing context at
+       * compile time; Slice 10 adds a component-derived subject, which by definition cannot exist
+       * until the upstream governed read has run. The union keeps the two DISTINGUISHABLE rather than
+       * collapsing a system-selected subject into one the recipient already had.
+       */
+      subject:
+        | { kind: "CONTEXT"; id: string }
+        | { kind: "DERIVED"; dependency: ComponentDependency };
     }
   | {
       kind: "STATIC";

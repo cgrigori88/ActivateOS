@@ -1,7 +1,7 @@
 # P7 Slice 10 — governed actions on component-derived subjects: contract and plan
 
-**Status:** **DESIGN AND CONTRACT ONLY — NOT AUTHORIZED FOR IMPLEMENTATION.** Decisions requiring a
-ruling are in §R. **Builds on:** Slices 1–9, all HOSTED ACCEPTED / CLOSED. Slice 9 is not reopened.
+**Status:** **CONTRACT RULED — A–E APPROVED, C MODIFIED. IMPLEMENTATION AUTHORIZED.** Hosted
+acceptance requires separate authorization. The rulings as returned are recorded in §R. **Builds on:** Slices 1–9, all HOSTED ACCEPTED / CLOSED. Slice 9 is not reopened.
 
 > **A component-derived identity may determine which governed subject an action affordance refers to.
 > It may never carry action authority across the render-to-click boundary.**
@@ -218,7 +218,78 @@ model-authored payloads.
 
 ---
 
-## R. Decisions requiring a ruling
+## R. Rulings (returned and recorded)
+
+**R-A — APPROVED.** The ACTION component is **not a required dependency** for the read surface. If the
+selected pursuit remains valid for the READs but the viewer may not be offered the action, SHOW ME,
+EXPLAIN and GO TO render and the affordance is **omitted** — the surface does not fail.
+
+> **A missing optional action affordance does not invalidate a valid read surface. A missing required
+> read dependency does.**
+
+**R-B — APPROVED.** A stale rendered action still identifies pursuit **A**. `SHOW ME` is not re-run at
+click and the action is never silently retargeted to B. The click means *"act on the subject
+represented by the affordance I actually clicked"*, and current authority for A is re-evaluated then.
+
+> **Selection identity is preserved; authority is not.** A stale selection may remain the requested
+> subject. A stale authorization may not survive.
+
+**R-C — APPROVED WITH MODIFICATION.** Use Next's existing encrypted-closure mechanism rather than
+`.bind()`. **No custom HMAC, no new signing secret, no persisted nonce table, no capability-token
+service, no P7 action session.** But the closure must capture **more than the subject**:
+
+- the selected canonical pursuit id;
+- the **render-time authenticated principal identity**;
+- the **render-time organization/scope identity** needed to distinguish that rendered affordance.
+
+On invocation: restore the closed-over values through the framework, **independently derive the
+current principal and org server-side**, verify the invocation corresponds to the principal/scope the
+affordance was rendered for, then pass the captured subject into the fixed `dispatchSkill` path and let
+current dispatch authorization decide.
+
+> **Render binding proves "this is the subject this server rendered for this principal/scope." It does
+> not prove "this principal is still authorized to act."**
+
+**R-C1 — why principal/scope binding is required.** Encryption alone prevents arbitrary modification of
+the subject; it does **not** establish that a valid payload originated in the current caller's render. A
+payload copied from another render must not let a different principal invoke a system-selected subject
+merely because they independently hold action permission. **Do not assume this property from encryption
+alone** — either prove the transport makes it structurally impossible, with exact framework evidence
+proven hosted, or keep the explicit captured-principal/scope comparison.
+
+**R-C2 — the accepted replay residual, narrowed.** The **same** principal/scope may replay a previously
+valid encrypted affordance the server genuinely rendered to them. Acceptable because the subject was
+genuinely system-selected for that principal/scope, click-time governance is re-evaluated,
+`assemble_pursuit_team@1` is business-idempotent, existing dispatch replay semantics still apply, and
+build-key rotation limits stale artefacts. **Do not claim single-use semantics. Do not add server-side
+nonce persistence in this slice.** A later non-idempotent action needs a stronger invocation contract.
+
+**R-C3 — hosted proof required.** The documentation finding is accepted as the **design basis only**;
+it has not been certified in this application. Hosted acceptance must inspect the **actual rendered
+transport and response bytes** and prove: no plaintext canonical pursuit id · no plaintext captured
+principal/org values · A → B retargeting impossible · malformed/tampered closure state rejected ·
+current server-side authentication and governance still re-run · rendering alone causes no invocation.
+**Do not infer confidentiality or integrity from framework documentation alone.**
+
+**R-D — APPROVED: MUST BE REJECTED.** A caller may not change the invocation from A to B because B is
+in the same organization, because they could otherwise act on B, or because B would pass
+`dispatchSkill`. That would make the affordance a generic `assembleTeam(anyPursuitId)` endpoint and
+destroy the meaning of system-derived selection. Under the approved design this is structurally
+unavailable; if a manipulated transport nevertheless reaches the server, **fail before business
+effect** — never fall back to "B is authorized anyway".
+
+> **Authorization answers whether the action may execute on the bound subject; it does not permit the
+> caller to redefine which subject was bound.**
+
+**R-E — APPROVED.** No anti-tamper or render-binding metadata enters `SurfaceResult`; the Slice 9
+headless contract is preserved. The integrity artefact belongs solely to the invocation transport
+generated by the framework/server rendering layer.
+
+> **Surface semantics and invocation integrity are separate layers.**
+
+---
+
+## R (original). Decisions returned for ruling
 
 **R-A — action absence vs whole-surface atomicity.** *Recommend: the action component is never a
 required dependency.* If the affordance is not offered, it is absent and the valid READ surface stands;
@@ -254,3 +325,56 @@ authority and leaves React purely presentational.
 this repo's own Next version, but Slice 9's transport used `.bind()`, so it has **not** been observed
 here. The implementation gate must prove it *hosted* — that the rendered transport contains no
 plaintext canonical id — before any claim in R-C is treated as certified.
+
+---
+
+## V. Implementation status — LOCALLY IMPLEMENTED AND PROVEN (hosted acceptance NOT authorized)
+
+**Evidence.** `p7-slice10` **21/21** · unit **765/765** · `p7-slice1` **66/66** (seeded clone) · tsc and
+`next build` clean · `certify-world` **52 suites clean, no drift** (`c9004670ffda112f`). All five ruled
+negative controls bite, four of them **on the checkers themselves** (reverting to a bound argument,
+omitting the principal/scope comparison, treating the binding as authority, and re-running SHOW ME at
+click are each constructed in memory and confirmed caught).
+
+**No database schema, environment, flag, P5, P6 or P45 change. No new secret.**
+
+| Module | Change |
+|---|---|
+| `surface/registry.ts` | `pursuit.assemble_team` gains `acceptsComponentIdentity: true` — it still exports nothing |
+| `surface/schema.ts` | the ACTION subject becomes `CONTEXT \| DERIVED`; `SurfaceResult` unchanged |
+| `surface/compile.ts` | a derived action subject validates through the **same** `validateDependency` |
+| `surface/assemble.ts` | the derived subject resolves from the export; **no subject ⇒ `NO_SELECTABLE_RESULT`** |
+| `app/experience/pursuits/binding.ts` | **new, `server-only`** — the render binding and principal derivation |
+| `app/experience/pursuits/actions.ts` | takes a `RenderBinding`; compares principal and scope **before** role and dispatch |
+| `page.tsx` | the affordance now **closes over** the binding instead of `.bind()` |
+
+**The closure is the mechanism, and the plaintext transport is gone.** `page.tsx` defines an inline
+`"use server"` function capturing the binding, so the framework encrypts it. A suite asserts
+`.bind(null, component.subjectId)` is absent and that the form renders no caller-controlled field —
+with a control that reintroduces the bound argument and confirms it is caught.
+
+**The binding module is deliberately not a `"use server"` file.** Everything exported from one becomes
+a callable endpoint, and a helper that reports who the server thinks you are has no business being one.
+It is `server-only` instead, so it cannot reach a client bundle either.
+
+**Ordering is integrity → current role → dispatch**, asserted positionally: the principal/scope
+comparison happens first, the role is resolved again at click, and `dispatchSkill` decides last. The
+suite also asserts the binding is never consulted as permission.
+
+**An action with no subject is not an action.** A derived action whose upstream exported nothing yields
+`NO_SELECTABLE_RESULT` — never an unbound affordance, and never a fallback to recipient context. That
+is distinct from the affordance merely not being *offered*, which omits it and leaves the read surface
+standing (ruling A).
+
+**What is NOT proven locally, and must be proven hosted (ruling C3):** that the deployed transport
+contains no plaintext canonical id, no plaintext principal or org, that it cannot be modified to
+retarget A → B, that malformed closure state is rejected, and that a different principal cannot reuse
+another's binding. Those are properties of the running framework, and the documentation is the design
+basis only.
+
+**Three defects of my own in the suite**, all caught before the recorded run — and all the **same class
+I have now hit four times**: a source scan that matched the prose *describing* the property rather than
+the code implementing it. The binding module's own comment explains that it is not a `"use server"`
+file; the schema's comment on `offered` says it is "not authorization"; and `bindings` in the assembler
+is Slice 8's legitimately-named execution-digest input. Each is now scoped to stripped code or to
+declared field names, with a control proving the prose still exists outside the scanned region.

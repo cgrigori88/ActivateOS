@@ -178,16 +178,33 @@ export async function assembleSurface(
   if (validated.components.some((c) => c.kind === "DYNAMIC") && bindings.length === 0) {
     return { ok: false, error: "NO_SELECTABLE_RESULT" };
   }
+  // AN ACTION WITH NO SUBJECT IS NOT AN ACTION (Slice 10, ruling §7). If the upstream export
+  // produced nothing, there is no pursuit for the affordance to refer to — so the surface reports
+  // that there was nothing to select rather than rendering an UNBOUND action. This is distinct from
+  // the affordance merely not being OFFERED, which omits it and leaves the read surface standing.
+  for (const c of validated.components) {
+    if (c.kind === "ACTION" && c.subject.kind === "DERIVED"
+        && !exported.get(c.subject.dependency.fromComponent)) {
+      return { ok: false, error: "NO_SELECTABLE_RESULT" };
+    }
+  }
 
   const components: SurfaceResultComponents = validated.components.map((c, i) => {
     if (c.kind === "ACTION") {
+      // SLICE 10: a DERIVED subject was chosen by the certified upstream export, not by the
+      // recipient. It is read here — during assembly only — purely to decide which subject the
+      // affordance represents. The handle itself goes no further: it is not rendered, not carried
+      // into the transport, and confers nothing.
+      const subjectId = c.subject.kind === "CONTEXT"
+        ? c.subject.id
+        : exported.get(c.subject.dependency.fromComponent)?.identity.id ?? null;
       return {
         kind: "ACTION" as const,
         component: c.component,
         title: c.title,
         interpretedAs: c.capability.interpretedAs,
         capability: `${c.capability.skillId}@${c.capability.version}`,
-        subjectId: c.subjectId,
+        subjectId: subjectId!,
         // A DISCLOSURE decision, not a permission. Nothing downstream may read it as authorization.
         offered: mayOffer(c.capability, role),
       };
@@ -221,6 +238,11 @@ const INTERPRETED: Record<string, string> = {
 function selectorFor(validated: ValidatedSurfaceSpec, source: ComponentKey) {
   for (const c of validated.components) {
     if (c.kind === "DYNAMIC" && c.dependency.fromComponent === source) return c.dependency.select;
+    // An ACTION consumer counts too: its subject is derived by the same certified selector, so the
+    // export must happen even when the action is the ONLY consumer of it.
+    if (c.kind === "ACTION" && c.subject.kind === "DERIVED" && c.subject.dependency.fromComponent === source) {
+      return c.subject.dependency.select;
+    }
   }
   return null;
 }

@@ -109,16 +109,27 @@ export function compileSurface(inputs: SurfaceCompileInputs): SurfaceCompileOutc
       }
       const subj = bind.subject as Record<string, unknown> | undefined;
       if (!subj || typeof subj !== "object" || Array.isArray(subj)) return fail(`component ${def.key} needs a subject`);
-      for (const k of Object.keys(subj)) {
-        // Slice 9 binds PRE-EXISTING recipient context only: no component-derived identity yet.
-        if (k !== "fromContext") return fail(`unknown action subject key ${k}`);
-      }
-      if (inputs.manifest.ids.length === 0) return fail(`component ${def.key} has no subject in context`);
-      const subjectId = resolveContextRef(inputs.manifest, inputs.boundContextDigest, subj.fromContext);
-      if (subjectId === null) return fail(`component ${def.key} could not resolve its subject`);
 
-      node = { kind: "ACTION", component: def.key, title: def.title, capability, subjectId };
-      identityKey = JSON.stringify([def.key, capability.skillId, capability.version, subjectId]);
+      // SLICE 10: the subject is EITHER pre-existing recipient context OR a component-derived
+      // identity. Both are closed shapes, and there is still no third option and no payload.
+      let subject: Extract<ValidatedComponent, { kind: "ACTION" }>["subject"];
+      if ("fromComponent" in subj) {
+        if (!def.acceptsComponentIdentity) return fail(`component ${def.key} does not accept component-derived identity`);
+        const dep = validateDependency(subj, def.key, upstream);
+        if (typeof dep === "string") return fail(dep);
+        subject = { kind: "DERIVED", dependency: dep };
+        identityKey = JSON.stringify([def.key, capability.skillId, capability.version, dep.fromComponent, dep.select]);
+      } else {
+        for (const k of Object.keys(subj)) {
+          if (k !== "fromContext") return fail(`unknown action subject key ${k}`);
+        }
+        if (inputs.manifest.ids.length === 0) return fail(`component ${def.key} has no subject in context`);
+        const subjectId = resolveContextRef(inputs.manifest, inputs.boundContextDigest, subj.fromContext);
+        if (subjectId === null) return fail(`component ${def.key} could not resolve its subject`);
+        subject = { kind: "CONTEXT", id: subjectId };
+        identityKey = JSON.stringify([def.key, capability.skillId, capability.version, subjectId]);
+      }
+      node = { kind: "ACTION", component: def.key, title: def.title, capability, subject };
     } else if (dependent) {
       const dep = validateDependency(subject as Record<string, unknown>, def.key, upstream);
       if (typeof dep === "string") return fail(dep);
@@ -256,7 +267,8 @@ function canonical(value: unknown): unknown {
 function surfaceDigest(layout: string, components: ValidatedComponent[]): string {
   return createHash("sha256")
     .update(JSON.stringify([layout, components.map((c) => c.kind === "ACTION"
-      ? [c.component, c.capability.skillId, c.capability.version, c.subjectId]
+      ? [c.component, c.capability.skillId, c.capability.version,
+         c.subject.kind === "CONTEXT" ? c.subject.id : [c.subject.dependency.fromComponent, c.subject.dependency.select]]
       : c.kind === "STATIC"
       ? [c.component, canonical(c.intent.request)]
       // A DYNAMIC node contributes its DEPENDENCY, never a resolved identity — which does not exist

@@ -61,7 +61,9 @@ test("the ruled first vertical validates: EXPLAIN + GO TO + one ACTION on one co
   assert.deepEqual(r.validated.components.map((c) => c.component),
     ["pursuit.explanation", "pursuit.destination", "pursuit.assemble_team"]);
   const a = act(r.validated.components[2]);
-  assert.equal(a.subjectId, ID0, "the action binds the SAME pre-existing context subject");
+  // Slice 10 made the action subject a union; a Slice 9 spec is still CONTEXT-bound, asserted.
+  assert.equal(a.subject.kind, "CONTEXT");
+  assert.equal(a.subject.kind === "CONTEXT" && a.subject.id, ID0, "the action binds the SAME pre-existing context subject");
   assert.equal(a.capability.skillId, "assemble_pursuit_team");
   assert.equal(a.capability.version, 1);
   assert.equal(a.title, COMPONENTS["pursuit.assemble_team"].title, "registry-owned title");
@@ -120,19 +122,33 @@ test("an arbitrary payload is structurally unrepresentable — there is no posit
     assert.equal(r.ok, false, `must be refused: ${JSON.stringify(bind)}`);
   }
   // Nor inside the subject, which is a closed ContextRef and nothing else.
-  for (const subject of [{ fromContext: 0, args: {} }, { fromContext: 0, id: ID0 }, ID0, { fromComponent: "pursuit.list", select: "first" }]) {
+  for (const subject of [{ fromContext: 0, args: {} }, { fromContext: 0, id: ID0 }, ID0, { fromComponent: "pursuit.list", select: "largest" }]) {
     const r = compile(spec([{ component: "pursuit.assemble_team", bind: { subject } }]));
     assert.equal(r.ok, false, `subject ${JSON.stringify(subject)} must be refused`);
   }
 });
 
-test("Slice 9 binds PRE-EXISTING context only — a component-derived subject is refused", () => {
-  const r = compile(spec([
+/**
+ * SUPERSEDED BY SLICE 10, deliberately and in one direction only. This asserted that a
+ * component-derived action subject was REFUSED — true while that capability was deferred. Slice 10
+ * authorizes it, so what is kept is the property that still holds: the derived subject must come from
+ * a CERTIFIED export, and the action still exports nothing itself, so it cannot begin a chain.
+ */
+test("a component-derived action subject is admitted, but only from a certified export", () => {
+  assert.equal(COMPONENTS["pursuit.assemble_team"].acceptsComponentIdentity, true);
+  assert.equal(COMPONENTS["pursuit.assemble_team"].exportsIdentity, false, "it cannot begin a chain");
+  const ok = compile(spec([
     { component: "pursuit.list", bind: { operation: "SHOW_ME", view: "open-by-value" } },
     { component: "pursuit.assemble_team", bind: { subject: { fromComponent: "pursuit.list", select: "first" } } },
   ]));
-  assert.equal(r.ok, false, "component-derived action subjects are deferred");
-  assert.equal(COMPONENTS["pursuit.assemble_team"].acceptsComponentIdentity, false);
+  assert.ok(ok.ok, ok.ok ? "" : ok.detail);
+  // An UNCERTIFIED upstream plan still cannot supply an action subject.
+  const uncertified = compile(spec([
+    { component: "pursuit.list", bind: { operation: "SHOW_ME", view: "recently-updated" } },
+    { component: "pursuit.assemble_team", bind: { subject: { fromComponent: "pursuit.list", select: "first" } } },
+  ]));
+  assert.equal(uncertified.ok, false);
+  if (!uncertified.ok) assert.match(uncertified.detail, /not certified to export identity/);
 });
 
 test("the action subject resolves through the certified resolver, with its refusals intact", () => {
@@ -202,7 +218,7 @@ test("NEGATIVE CONTROL: invoking dispatch during render would be CAUGHT", () => 
 
 test("the skill is FIXED server-side — the boundary takes no skill parameter", () => {
   const body = strip(BOUNDARY);
-  assert.match(body, /export async function assemblePursuitTeamFromSurface\(\s*pursuitId: string,?\s*\)/);
+  assert.match(body, /export async function assemblePursuitTeamFromSurface\(\s*binding: RenderBinding,?\s*\)/);
   assert.ok(!/skillId:\s*\w*skill\w*\b|function \w+\([^)]*skillId/i.test(body), "no caller-supplied skill id");
   assert.match(body, /ACTION_CAPABILITIES\["pursuit\.assemble_team"\]/, "the capability comes from the registry");
   assert.match(body, /dispatchSkill\(db, capability\.skillId,/, "and is what is dispatched");
@@ -246,7 +262,8 @@ test("the renderer makes no authority decision and posts only the subject", () =
   // It reads `offered` and renders; it computes no permission of its own.
   assert.ok(!/currentRole|mayOffer|ROLE_RANK|dispatchSkill|requiredPermission/.test(fn));
   // The form binds the subject server-side; there is no skill, args or payload input.
-  assert.match(fn, /assemblePursuitTeamFormAction\.bind\(null, component\.subjectId\)/);
+  assert.match(fn, /action=\{invoke\}/, "the form uses the CLOSURE, not a bound argument");
+  assert.ok(!/\.bind\(null, component\.subjectId\)/.test(fn), "the plaintext bound-argument transport is gone");
   assert.ok(!/<input/.test(fn), "no caller-controlled form field exists at all");
 });
 
@@ -256,7 +273,7 @@ test("a component that is not offered renders operation-level language only", ()
   assert.match(fn, /This action isn&apos;t available to you\./);
   // The not-offered branch RETURNS before anything about the object is used — it names the viewer's
   // own ability and cannot name the pursuit, because it never reaches a field that holds one.
-  const branch = fn.slice(fn.indexOf("if (!component.offered)"), fn.indexOf("return (\n    <form"));
+  const branch = fn.slice(fn.indexOf("if (!component.offered)"), fn.indexOf("const binding ="));
   assert.ok(branch.length > 40, "the not-offered branch was located");
   assert.ok(!/subjectId|capability|interpretedAs/.test(branch), "it uses no object-derived value");
 });
@@ -296,14 +313,14 @@ test("no schema, environment, P5 or P6 change", () => {
 test("NEGATIVE CONTROL: a caller-provided skill id would be CAUGHT", () => {
   const check = (src: string) => {
     const body = strip(src);
-    return /export async function assemblePursuitTeamFromSurface\(\s*pursuitId: string,?\s*\)/.test(body)
+    return /export async function assemblePursuitTeamFromSurface\(\s*binding: RenderBinding,?\s*\)/.test(body)
       && /ACTION_CAPABILITIES\["pursuit\.assemble_team"\]/.test(body)
       && /dispatchSkill\(db, capability\.skillId,/.test(body);
   };
   assert.equal(check(BOUNDARY), true, "canonical code passes");
 
   const generic = BOUNDARY
-    .replace("assemblePursuitTeamFromSurface(\n  pursuitId: string,\n)", "assemblePursuitTeamFromSurface(\n  pursuitId: string, skillId: string,\n)")
+    .replace("assemblePursuitTeamFromSurface(\n  binding: RenderBinding,\n)", "assemblePursuitTeamFromSurface(\n  binding: RenderBinding, skillId: string,\n)")
     .replace("dispatchSkill(db, capability.skillId,", "dispatchSkill(db, skillId,");
   assert.notEqual(generic, BOUNDARY, "the mutation actually applied");
   assert.equal(check(generic), false, "a generic skill-dispatch endpoint is caught");

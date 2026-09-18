@@ -9,6 +9,7 @@ import { experienceEnabledFor, tenantFeatures } from "@/lib/pursuits/tenant-flag
 import { vnextCapabilities } from "@/lib/env/vnext-flags";
 import { dispatchSkill } from "@/lib/pursuits/federation/skills";
 import { ACTION_CAPABILITIES } from "@/lib/experience/surface/actions";
+import { currentPrincipal, type RenderBinding } from "./binding";
 
 /**
  * P7 Slice 9 — THE ONE HUMAN INVOCATION BOUNDARY for a Dynamic Surface action.
@@ -36,8 +37,9 @@ import { ACTION_CAPABILITIES } from "@/lib/experience/surface/actions";
  * `dispatchSkill`, named explicitly in the action registry, and the P45 control plane stays inert.
  */
 export async function assemblePursuitTeamFromSurface(
-  pursuitId: string,
+  binding: RenderBinding,
 ): Promise<{ ok: boolean; error?: string }> {
+  const pursuitId = binding?.subjectId;
   if (!pursuitId) return { ok: false, error: "Missing pursuit." };
   if (!pursuitExperienceEnabled()) return { ok: false, error: "Pursuit experience is not enabled." };
 
@@ -52,6 +54,22 @@ export async function assemblePursuitTeamFromSurface(
     if (!vnextCapabilities(await tenantFeatures(db, orgId)).dynamicSurfaces) {
       return { ok: false as const, error: "This capability is not enabled here." };
     }
+    // ── RENDER BINDING: INTEGRITY, NOT AUTHORITY (Slice 10, ruling C1) ─────────────────────────
+    //
+    // The closed-over values were protected by the framework, so a caller cannot rewrite the
+    // subject. That is not the same as proving the payload came from THIS caller's render — a valid
+    // payload copied from someone else's render must not become their affordance merely because
+    // they independently hold the permission. So the principal and scope the server rendered FOR are
+    // compared with the ones it derives NOW, independently.
+    //
+    // This answers "is this the affordance this server rendered for this principal in this scope".
+    // It answers NOTHING about whether the action may execute: `dispatchSkill` decides that, below,
+    // and a passing comparison never substitutes for it.
+    const principal = await currentPrincipal();
+    if (binding.orgId !== orgId || binding.principal !== principal) {
+      return { ok: false as const, error: "That action is no longer available." };
+    }
+
     // Resolved AGAIN, server-side, at click time. The render-time decision is not consulted.
     const role = await currentRole(db);
     if (role !== "owner" && role !== "operator") {
@@ -90,6 +108,6 @@ export async function assemblePursuitTeamFromSurface(
  * and inventing a surface-local result banner would be the beginning of a surface-local action
  * state machine, which Slice 9 does not have.
  */
-export async function assemblePursuitTeamFormAction(pursuitId: string, _formData: FormData): Promise<void> {
-  await assemblePursuitTeamFromSurface(pursuitId);
+export async function assemblePursuitTeamFormAction(binding: RenderBinding, _formData: FormData): Promise<void> {
+  await assemblePursuitTeamFromSurface(binding);
 }
