@@ -187,7 +187,7 @@ export function intentPromptForAudit(manifest: ContextManifest): string {
 // invariant stays literally true: EXACTLY ONE production module may reach a provider. It reuses the
 // same scoped credential, the same seam and the same gating; only the vocabulary differs.
 
-export const SURFACE_PROMPT_TEMPLATE_VERSION = "p7-slice8-surface-prompt@1";
+export const SURFACE_PROMPT_TEMPLATE_VERSION = "p7-slice9-surface-prompt@1";
 
 /**
  * Mirrors SurfaceSpec. A convenience for the provider, never a control: the compiler re-validates.
@@ -201,8 +201,12 @@ const surfaceSchema = z.object({
   specVersion: z.literal(1),
   layout: z.enum(["stack", "grid"]),
   components: z.array(z.object({
-    component: z.enum(["pursuit.list", "pursuit.cohort", "pursuit.explanation", "pursuit.destination"]),
-    bind: z.object({
+    component: z.enum(["pursuit.list", "pursuit.cohort", "pursuit.explanation", "pursuit.destination",
+                       "pursuit.assemble_team"]),
+    // An ACTION component's bind has NO operation and NO arguments — only the subject. The union
+    // keeps that shape closed: there is no position here for a skill id, a payload or free-form
+    // content, so a model cannot author one even if a prompt asks it to.
+    bind: z.union([z.object({ subject: z.object({ fromContext: z.number().int() }) }).strict(), z.object({
       operation: z.enum(["SHOW_ME", "ANALYZE", "EXPLAIN", "GO_TO"]),
       view: z.string().optional(),
       // Slice 8: a subject is EITHER a recipient context index OR a component dependency. Both are
@@ -212,7 +216,7 @@ const surfaceSchema = z.object({
         z.object({ fromComponent: z.string(), select: z.enum(["first"]) }),
       ]).optional(),
       surface: z.string().optional(),
-    }),
+    })]),
   })).min(1).max(4),
 });
 
@@ -230,6 +234,7 @@ function surfacePrompt(manifest: ContextManifest): string {
     "  pursuit.cohort      \u2014 a governed cohort aggregate.       bind: { operation: ANALYZE, view }",
     "  pursuit.explanation \u2014 explains ONE pursuit in context.    bind: { operation: EXPLAIN, subject }",
     "  pursuit.destination \u2014 navigates to ONE pursuit in context. bind: { operation: GO_TO, subject, surface }",
+    "  pursuit.assemble_team \u2014 OFFERS a governed action on ONE pursuit in context. bind: { subject }",
     "",
     "A subject is ONE of exactly two shapes:",
     '  {"fromContext": <0-based index>}            \u2014 a pursuit already open in the context below',
@@ -252,6 +257,11 @@ function surfacePrompt(manifest: ContextManifest): string {
     "  most recent, a number, or a row matching a condition. If asked for one, use \"first\" or refuse.",
     "- Only pursuit.list may be depended upon, and nothing may depend on a component that itself",
     "  depends on another. There is exactly one level.",
+    "- pursuit.assemble_team OFFERS an action; including it never performs it. A person must act, and",
+    "  their authority is checked then. It takes a context subject and NOTHING else: no arguments, no",
+    "  message, no recipient, no schedule. It binds context only, never a component dependency.",
+    "- You cannot run, send, approve or schedule anything. If asked to act now, you may at most include",
+    "  the component so a person can decide.",
     "- If nothing is in context, do not compose a component that takes a subject.",
     "- Never invent a component, a view, a metric, a filter, an identifier, a URL or a title.",
     "- Never add any field beyond those shown; an unknown field rejects the whole surface.",

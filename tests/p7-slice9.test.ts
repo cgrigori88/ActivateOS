@@ -6,6 +6,7 @@ import { COMPONENTS } from "../src/lib/experience/surface/registry";
 import { ACTION_CAPABILITIES, actionCapability, mayOffer } from "../src/lib/experience/surface/actions";
 import { buildContextManifest } from "../src/lib/experience/intent/context";
 import { SKILL_REGISTRY } from "../src/lib/pursuits/federation/skills";
+import { surfacePromptForAudit } from "../src/lib/experience/intent/model";
 import type { ValidatedComponent } from "../src/lib/experience/surface/schema";
 import type { GovernedCell, GovernedRow } from "../src/lib/experience/types";
 
@@ -349,4 +350,34 @@ test("NEGATIVE CONTROL: entering the P45 runtime would be CAUGHT", () => {
     "await startAndRun({ orgId } as never);\n    const dispatch = await dispatchSkill(");
   assert.notEqual(runtime, BOUNDARY, "the mutation actually applied");
   assert.equal(check(runtime), false, "substituting the second consequential substrate is caught");
+});
+
+// ── THE MODEL BOUNDARY ──────────────────────────────────────────────────────────────────────────
+
+test("the model may PROPOSE the action component, and can author nothing about it", () => {
+  const model = strip(SRC("lib/experience/intent/model.ts"));
+  // It is offerable...
+  assert.match(model, /"pursuit\.assemble_team"/);
+  // ...and its bind is a CLOSED, STRICT object of exactly one key: the subject.
+  assert.match(model, /z\.object\(\{ subject: z\.object\(\{ fromContext: z\.number\(\)\.int\(\) \}\) \}\)\.strict\(\)/);
+  // SCOPED TO THE SCHEMA (§16A). A whole-file scan trips on the PROMPT RULE that forbids these —
+  // it has to say "no recipient, no schedule" in order to refuse them — and on an unrelated
+  // transport signature. What the model may EMIT is decided by the schema, so that is what is read.
+  const schema = model.slice(model.indexOf("const surfaceSchema"), model.indexOf("function surfacePrompt"));
+  assert.ok(schema.length > 200, "the surface schema was located");
+  for (const forbidden of ["skillId", "payload", "args", "body", "content", "recipient", "schedule", "capability"]) {
+    assert.ok(!schema.includes(forbidden), `the model schema must not offer ${forbidden}`);
+  }
+  // NEGATIVE CONTROL: the words DO appear in the file, as the rule that forbids them — so the
+  // scoping is doing real work rather than agreeing with a scan that would have passed anyway.
+  assert.ok(/recipient/.test(model) && /schedule/.test(model), "the forbidding prose exists outside the schema");
+});
+
+test("the prompt tells the model that including the action does not perform it", () => {
+  const prompt = surfacePromptForAudit(MANIFEST);
+  assert.match(prompt, /pursuit\.assemble_team/);
+  assert.match(prompt, /including it never performs it/);
+  assert.match(prompt, /You cannot run, send, approve or schedule anything/);
+  // And the prompt still carries no identifier or governed value.
+  assert.ok(!prompt.includes(ID0) && !prompt.includes(ID1));
 });

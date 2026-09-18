@@ -327,7 +327,7 @@ stable-key variant is a one-line change and I will take it instead.
 
 ## V. Implementation status — LOCALLY IMPLEMENTED AND PROVEN (hosted acceptance NOT authorized)
 
-**Evidence.** `p7-slice9` **25/25** · unit **742/742** · `p7-slice1` **66/66** (seeded clone) · tsc and
+**Evidence.** `p7-slice9` **27/27** · unit **744/744** · `p7-slice1` **66/66** (seeded clone) · tsc and
 `next build` clean · `certify-world` **52 suites clean, no drift** (`c9004670ffda112f`). All six ruled
 negative controls bite, four of them **on the checkers themselves** (dispatch during render, a generic
 caller-supplied skill id, trusting render-time permission on click, a bespoke write that skips the
@@ -364,7 +364,16 @@ implementation detail leaking as a rule. Provenance is now computed independentl
 the manifest and the inputs; the values are identical either way, so this removed a dependency rather
 than a check.
 
-**Two defects of my own in the suite**, both caught before the recorded run: an assertion that an
-action-only spec compiles (which is what surfaced the defect above — it was right and the product was
-wrong), and a not-offered text check that scanned a character window instead of the branch, now scoped
-to the branch and asserting it uses **no** object-derived value.
+**The model may PROPOSE the action component** — the closed surface schema offers
+`pursuit.assemble_team` with a **strict** bind of exactly one key, `subject`. There is no schema
+position for a skill id, a payload, content, a recipient or a schedule, so *"assemble the team now
+without asking me"* can at most place the affordance in the finalized surface.
+
+**Three defects of my own in the suite**, all caught before the recorded run: an assertion that an
+action-only spec compiles (which is what surfaced the product defect above — the test was right and
+the product was wrong); a not-offered text check that scanned a character window instead of the branch,
+now scoped to the branch and asserting it uses **no** object-derived value; and **§16A for the third
+time in two slices** — a forbidden-token scan over the whole provider module tripped on the *prompt
+rule that forbids those words*, which has to say "no recipient, no schedule" in order to refuse them.
+It is now scoped to the zod schema, which is what actually decides what the model may emit, with a
+control proving the forbidding prose still exists outside it.
