@@ -13,6 +13,12 @@
  * IT COMPILES, IT DOES NOT INTERPRET. Every component's bind goes through `compileIntent` — the Slice 5
  * compiler that is already hosted-accepted — so a surface cannot express anything an intent could not.
  * This module holds no database handle and calls no model.
+ *
+ * SLICE 7 CHANGES NOTHING HERE BUT THE VERSION STAMP. Context-bound components are compiled by the
+ * path that was ALREADY threaded through this function: the manifest and the digest a component's bind
+ * is bound to are forwarded to `compileIntent`, which resolves `{fromContext:n}` against exactly that
+ * manifest and refuses — out of range, non-integer, or a stale digest — rather than retargeting. That
+ * substrate was built in Slice 6 and simply had no component that exercised it (ruling C).
  */
 import { createHash } from "node:crypto";
 import { compileIntent } from "../intent/compile";
@@ -20,7 +26,7 @@ import { COMPONENTS, MAX_COMPONENTS, componentRegistryDigest, isComponentKey, is
 import type { ContextManifest, ProposalSource } from "../intent/schema";
 import type { SurfaceCompileOutcome, SurfaceProvenance, ValidatedSurfaceSpec } from "./schema";
 
-export const SURFACE_COMPILER_VERSION = "p7-slice6-surface@1";
+export const SURFACE_COMPILER_VERSION = "p7-slice7-surface@1";
 
 export interface SurfaceCompileInputs {
   /** The untrusted spec — from a model or a caller; neither has more authority than the other. */
@@ -135,8 +141,24 @@ function canonical(value: unknown): unknown {
 }
 
 /**
- * The digest of a VALIDATED spec: the layout and the ordered, canonically-normalized compiled
- * components. Recorded as provenance and never rendered (ruling 6).
+ * THE EXECUTION-IDENTITY DIGEST (Slice 7, ruling A).
+ *
+ * > `surfaceSpecDigest` is a POST-COMPILATION execution-identity digest, not a hash of the raw
+ * > submitted `SurfaceSpec`.
+ *
+ * It covers the layout and the ordered, canonically-normalized COMPILED components — so for a
+ * context-bound component the resolved canonical identity participates, and two manifests with
+ * identical recipient-visible labels but different objects produce DIFFERENT execution identity. That
+ * is the property replay needs, and it is why this is deliberately not redefined around the raw
+ * `{fromContext:n}` reference.
+ *
+ * The asymmetry is intentional: `SHOW_ME`/`ANALYZE` bind no object and stay identity-independent;
+ * `EXPLAIN`/`GO_TO` become identity-sensitive after resolution. Replay identity is the PAIR
+ * `surfaceSpecDigest + contextDigest`, which is why both are stamped separately below.
+ *
+ * A canonical id participating in a HASH is not a canonical id being disclosed: this is recorded as
+ * provenance, never rendered (ruling 6), and a suite proves no resolved identifier is newly
+ * serialized into any recipient-visible surface because the digest was computed from one.
  */
 function surfaceDigest(layout: string, components: ValidatedSurfaceSpec["components"]): string {
   return createHash("sha256")

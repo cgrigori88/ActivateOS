@@ -20,8 +20,8 @@ import type { IntentExecution } from "../intent/run";
 /** Closed presentation vocabulary (ruling 9). Presentation only — never an input to execution. */
 export type LayoutKey = "stack" | "grid";
 
-/** Closed component vocabulary. Two in the first vertical; a third is a reviewed code change. */
-export type ComponentKey = "pursuit.list" | "pursuit.cohort";
+/** Closed component vocabulary. Four; a fifth is a reviewed code change, never a model request. */
+export type ComponentKey = "pursuit.list" | "pursuit.cohort" | "pursuit.explanation" | "pursuit.destination";
 
 export interface ComponentSpec {
   component: ComponentKey;
@@ -87,11 +87,19 @@ export interface SurfaceResult {
  * Why a surface was not produced. `CAPABILITY_DENIED` is the flag/entitlement conjunction; `INVALID`
  * is the whole-spec rejection, and it carries no per-component detail — a surface that named which
  * component failed would be a partial surface described in words.
+ *
+ * `NOT_AVAILABLE` is Slice 7's whole-surface atomic failure (ruling B): a context-bound component
+ * could not produce its certified available result, so the ENTIRE surface is withdrawn. It is
+ * STRUCTURALLY INCAPABLE of saying more — there is no `detail`, no component key, no operation, no
+ * index and no count, so no caller can accidentally render which component failed, whether the target
+ * once existed, whether governance changed, or whether navigation specifically was unavailable. The
+ * type is the mechanism, not a convention a renderer is asked to respect.
  */
 export type SurfaceOutcome =
   | { ok: true; result: SurfaceResult }
   | { ok: false; error: "CAPABILITY_DENIED" }
-  | { ok: false; error: "INVALID"; detail: string };
+  | { ok: false; error: "INVALID"; detail: string }
+  | { ok: false; error: "NOT_AVAILABLE" };
 
 export type SurfaceCompileOutcome =
   | { ok: true; validated: ValidatedSurfaceSpec }

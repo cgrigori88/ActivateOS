@@ -52,12 +52,29 @@ test("the ruled first vertical compiles: SHOW ME open pursuits + ANALYZE open pi
   }
 });
 
-test("the registry holds exactly the two ruled components, each bound to one certified operation", () => {
-  assert.deepEqual(Object.keys(COMPONENTS).sort(), ["pursuit.cohort", "pursuit.list"]);
+/**
+ * SUPERSEDED IN PART BY SLICE 7 (ruling D), deliberately and in one direction only.
+ *
+ * This test originally asserted a TWO-component registry and that no EXPLAIN or GO TO component
+ * existed — the Slice 6 first vertical. Slice 7 adds exactly those two, so that clause is now false
+ * by ruling rather than by drift. What it was actually protecting is kept and strengthened: the
+ * registry is CLOSED, each component binds exactly ONE certified operation, and no operation is
+ * registered twice — so a component still cannot quietly become a different one.
+ */
+test("the registry is closed, and each component binds exactly one certified operation", () => {
+  assert.deepEqual(Object.keys(COMPONENTS).sort(),
+    ["pursuit.cohort", "pursuit.destination", "pursuit.explanation", "pursuit.list"]);
   assert.equal(COMPONENTS["pursuit.list"].operation, "SHOW_ME");
   assert.equal(COMPONENTS["pursuit.cohort"].operation, "ANALYZE");
-  // No EXPLAIN or GO TO component in the first dynamic surface (ruling 4).
-  assert.ok(!Object.values(COMPONENTS).some((c) => c.operation === "EXPLAIN" || c.operation === "GO_TO"));
+  assert.equal(COMPONENTS["pursuit.explanation"].operation, "EXPLAIN");
+  assert.equal(COMPONENTS["pursuit.destination"].operation, "GO_TO");
+  // Every entry's key matches its own registry slot — no aliasing, no second name for one component.
+  for (const [k, def] of Object.entries(COMPONENTS)) assert.equal(def.key, k);
+  // One component per operation: no operation is reachable through two different component names.
+  const ops = Object.values(COMPONENTS).map((c) => c.operation);
+  assert.equal(new Set(ops).size, ops.length, "no operation is registered twice");
+  // There is no generic component, and no component without a registry-owned title.
+  for (const def of Object.values(COMPONENTS)) assert.ok(def.title.length > 0);
   assert.deepEqual([...LAYOUTS], ["stack", "grid"]);
 });
 

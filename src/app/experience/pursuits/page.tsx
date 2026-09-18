@@ -294,6 +294,12 @@ async function IntentView({ ask, propose, ctx, view }: { ask?: string; propose?:
  *
  * WHOLE-SPEC ATOMICITY IS VISIBLE HERE: there is no branch that renders some components and omits
  * others. Either the whole spec validated and every component ran, or nothing did.
+ *
+ * SLICE 7 — THE SECOND ATOMIC MOMENT. A context-bound component can compile and then find, at
+ * execution, that its target is no longer disclosable. The assembler withdraws the WHOLE surface and
+ * returns `NOT_AVAILABLE`; this function renders one sentence for it. Nothing is awaited after that
+ * decision and no component markup exists before it, so no partial surface can reach the recipient —
+ * the transport invariant is satisfied by construction, not by care.
  */
 async function SurfaceView({ surface, compose, ctx, view }: { surface?: string; compose?: string; ctx?: string; view: ViewKey }) {
   const notice = (text: string) => (
@@ -337,11 +343,26 @@ async function SurfaceView({ surface, compose, ctx, view }: { surface?: string; 
   if (!compiled.ok) return notice("That surface could not be composed.");
 
   const assembled = await assembleSurface(compiled.validated);
-  if (!assembled.ok) return notice("Surfaces are not enabled here.");
+  // ONE SENTENCE FOR EVERY CAUSE (ruling B). Revoked, became undisclosable, disappeared, never
+  // existed and "no destination available" are the same bytes here — and the standalone GO TO
+  // distinction is deliberately NOT preserved inside a composed surface. The outcome carries no
+  // component, reason or count, so this branch could not say more even if it tried to.
+  if (!assembled.ok) {
+    return notice(assembled.error === "NOT_AVAILABLE"
+      ? "That surface is not available."
+      : "Surfaces are not enabled here.");
+  }
   return <SurfaceRender result={assembled.result} />;
 }
 
-/** Renders a headless SurfaceResult. Every title and label is registry-owned — no model prose. */
+/**
+ * Renders a headless SurfaceResult. Every title and label is registry-owned — no model prose.
+ *
+ * IT DECIDES NOTHING (Slice 7, ruling D). By the time this runs, availability has already been settled
+ * by the assembler: a surface containing an unavailable context-bound component never reaches here at
+ * all. So this function never asks whether a target exists, never hides or shows a component of its
+ * own accord, and has no branch that could omit one — it renders the components it was handed.
+ */
 function SurfaceRender({ result }: { result: SurfaceResult }) {
   return (
     <main className="mx-auto max-w-[1100px] px-6 py-10">
@@ -353,9 +374,15 @@ function SurfaceRender({ result }: { result: SurfaceResult }) {
             {/* What PursuitOS actually composed, from the registry (ruling 6). */}
             <p className="mt-1 text-body text-neutral-500 dark:text-neutral-400">{c.interpretedAs}</p>
             {c.outcome.kind === "NAVIGATION" ? (
+              /* Reachable ONLY in its `ok` form here: an unresolved target withdrew the whole
+                 surface upstream, so the Slice 4 absence branches cannot be entered from a surface. */
               <Navigation outcome={c.outcome.outcome} />
             ) : !c.outcome.outcome.ok ? (
               <p className="mt-4 text-body text-neutral-500 dark:text-neutral-400">This component is not available.</p>
+            ) : c.outcome.outcome.explanation ? (
+              /* The already-certified Slice 2 explanation, unchanged — WITHHELD statements included,
+                 because a withheld VALUE inside an available target is governance working. */
+              <ExplanationView explanation={c.outcome.outcome.explanation} />
             ) : (
               <>
                 {c.outcome.outcome.aggregate && <Aggregate aggregate={c.outcome.outcome.aggregate} />}

@@ -8,6 +8,11 @@
  *
  * TITLES ARE REGISTRY-OWNED (ruling 6). There is no `title` field anywhere in a `SurfaceSpec`, so
  * arbitrary model prose cannot sit beside a governed number even by accident.
+ *
+ * SLICE 7 adds exactly two entries — `pursuit.explanation` and `pursuit.destination` — so the registry
+ * now spans all four certified operations. The two new ones are CONTEXT-BOUND: their compiled request
+ * names a canonical object resolved from the manifest, which is what brings them under the
+ * whole-surface atomicity rule below.
  */
 import { createHash } from "node:crypto";
 import type { ComponentKey, LayoutKey } from "./schema";
@@ -22,9 +27,24 @@ export interface ComponentDef {
 }
 
 export const COMPONENTS: Record<ComponentKey, ComponentDef> = {
-  "pursuit.list":   { key: "pursuit.list",   operation: "SHOW_ME", title: "Pursuits" },
-  "pursuit.cohort": { key: "pursuit.cohort", operation: "ANALYZE", title: "Cohort total" },
+  "pursuit.list":        { key: "pursuit.list",        operation: "SHOW_ME", title: "Pursuits" },
+  "pursuit.cohort":      { key: "pursuit.cohort",      operation: "ANALYZE", title: "Cohort total" },
+  "pursuit.explanation": { key: "pursuit.explanation", operation: "EXPLAIN", title: "Explanation" },
+  "pursuit.destination": { key: "pursuit.destination", operation: "GO_TO",   title: "Go to" },
 };
+
+/**
+ * THE OPERATIONS THAT BIND A CANONICAL OBJECT (Slice 7, ruling B).
+ *
+ * Keyed on the OPERATION, never on the component key, so a component added later cannot escape the
+ * whole-surface atomicity rule by being named something else: it inherits the rule from the certified
+ * operation it registers. A suite proves every component whose compiled request carries an object
+ * reference is classified here.
+ */
+export const CONTEXT_BOUND_OPERATIONS: readonly IntentOperation[] = ["EXPLAIN", "GO_TO"];
+
+export const isContextBound = (operation: IntentOperation): boolean =>
+  CONTEXT_BOUND_OPERATIONS.includes(operation);
 
 /** Closed layout vocabulary (ruling 9). No sizes, spans, styles or per-component configuration. */
 export const LAYOUTS: readonly LayoutKey[] = ["stack", "grid"];
