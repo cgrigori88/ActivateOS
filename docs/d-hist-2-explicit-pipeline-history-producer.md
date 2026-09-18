@@ -1,7 +1,8 @@
 # D-HIST-2 — explicit pipeline history producer
 
-**Status:** **IMPLEMENTED AND LOCALLY ACCEPTED (`25e6c7e`). HOSTED GATE BLOCKED — awaiting Vercel
-deployment capacity.** D-HIST-2 remains **OPEN**. P7 Slice 6 is not reopened. Slice 7 not begun.
+**Status:** **HOSTED ACCEPTED / CLOSED** (`25e6c7e`, migrations 113, 65/0 hosted). *Pipeline reads are
+state-preserving. Pipeline analytical history is produced explicitly, provenance-bound, UTC-defined
+and first-write-wins. Historical consumers make no claim unsupported by valid scheduled samples.* P7 Slice 6 is not reopened. Slice 7 not begun.
 
 **Ruling recorded.** Current state: **C** — `pipeline_snapshots` is a non-canonical analytical
 materialization. Target state: **B** — ordinary read/render paths must not create it.
