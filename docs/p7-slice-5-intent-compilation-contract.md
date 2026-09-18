@@ -478,6 +478,70 @@ one. Stopped here and returned for ruling, as §0 of the Stage B authorization r
    (defaulting to today's behaviour, so no existing caller changes). Flagged rather than done, because
    it touches a module other features depend on.
 
+---
+
+## N. Pre-provisioning preflight — env semantics (measured) and the reach of each switch
+
+### N.1 The canonical values, measured by exercising the real parsers
+
+Both flags are read by the same idiom — `(process.env.X ?? <default>).trim().toLowerCase()`, then
+membership in a fixed TRUE set. They differ **only in the default when unset**. Measured, not read:
+
+| Value | `INTERPRETER_ENABLED` | `PURSUIT_INTENT_ENABLED` |
+|---|---|---|
+| **(unset)** | **ON** — default `"on"` | **OFF** — default `""` |
+| `true` / `TRUE` · `1` · `on` / `ON` · `yes` · `" on "` | ON | ON |
+| `false` / `FALSE` · `0` · `off` / `OFF` · `no` · `""` · `"  "` · `disabled` | OFF | OFF |
+
+**There is no OFF vocabulary** — only a TRUE set of exactly `true`, `1`, `on`, `yes` (trimmed,
+case-insensitive). Everything else, including the empty string and whitespace, is OFF.
+
+- **`INTERPRETER_ENABLED` OFF → set it explicitly to `off`.** Leaving it unset means **ON**, because
+  its default is `"on"`. `false`, `0`, `no` and `""` all work identically; `off` is recommended because
+  it states the intent.
+- **`PURSUIT_INTENT_ENABLED` ON → `on`** (or `true`/`1`/`yes`). **OFF → `off`**, or simply unset.
+
+### N.2 What each switch actually reaches — and what neither does
+
+> **`INTERPRETER_ENABLED` is checked at exactly ONE call site**, `src/lib/interpret/answer.ts:277`,
+> inside the shared `answerQuestion` stack.
+
+That one site covers **all three** legacy interpreter entry points: the `/ask` page, its server action
+(`agents/ask.ts` → `answerQuestion`), and `/api/palette`. Setting it `off` disables the model tier for
+every one of them. Good.
+
+**But it does not cover the other deployed surfaces that can reach the provider.** Twelve App Router
+files import a provider-capable module; these are the ones that can actually reach
+`completeStructured*`, none of them gated by either flag:
+
+| Deployed surface | Module | Trigger |
+|---|---|---|
+| `mapping/actions.ts`, `motions/actions.ts` | `agents/motion-designer` | server action |
+| `campaigns/actions.ts`, `campaigns/[id]/actions.ts` | `agents/campaign-email` | server action |
+| `briefs/[motionId]/actions.ts` | `agents/email-generator` | server action |
+| `api/research/route.ts` | `intel/research-runner` → `intel/providers/*` | API route |
+| `api/mcp/route.ts`, `admin/actions.ts` | `agents/mcp-tools` | API route / server action |
+
+**Nothing fires without a deliberate request.** There is no `vercel.json` and no scheduled job in the
+repository, and **no page render reaches a model-calling module** — the two pages that import `intel/`
+(`accounts/[id]`, `provider-health`) both resolve to database reads (`company-intel`,
+`provider-health`), neither of which calls a provider.
+
+So the B0 property holds in its literal form — *credential presence alone activates nothing* — but it
+is worth stating precisely what changes the moment a Preview key exists: those user-triggered surfaces
+go from **failing closed** to **capable**. Two of them (campaign email, brief email) are generation
+surfaces. Sending remains its own armed lane and is unaffected.
+
+**Returned for ruling before provisioning**, because the stated intent is that credential availability
+must not implicitly activate unrelated product capability, and `INTERPRETER_ENABLED=off` alone does not
+achieve that. Options, for the owner to choose:
+
+1. **Accept it** — those surfaces require a deliberate action by a signed-in operator on an unlinked
+   Preview, and B0/B1 can prove the two named legacy surfaces stay disabled as specified.
+2. **Widen the isolation** — add a single explicit master (or reuse one) gating the agent/intel model
+   paths for Stage B, so that credential presence provably activates *only* Slice 5. This is a code
+   change to non-P7 surfaces and would need its own authorization.
+
 ## What this plan does not authorize
 
 No Dynamic Pursuit Surfaces · no new fields · no new metrics · no new aggregates · no arbitrary
