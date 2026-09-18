@@ -753,6 +753,37 @@ it into the same boolean. Prefer a failing gate that says *which* thing broke ov
 
 ---
 
+## 16D. Standing certification invariant — assert within the region that owns the property (adopted after Slice 5)
+
+> **Security assertions must be scoped to the semantic region that owns the asserted property.**
+> Application-shell and navigation content must not satisfy or fail an assertion about governed
+> result content. **Prefer structured result-region evidence over whole-document substring scans.**
+
+**Why.** The Stage B1 gate reported 69/6, and all six failures were one assertion scanning the whole
+HTML document for `/admin` while claiming to test *"no arbitrary route is emitted"* by a hostile
+prompt. `/admin` is the **app shell's own navigation link** — present on every page including benign
+ones, and never inside the result region. The model had emitted nothing; the chrome had.
+
+A whole-document scan answers a different question from the one its name states. It can fail on
+chrome (a false alarm that costs a cycle) and, worse, it can **pass** on chrome — if the string
+happens to be absent from the shell, the assertion reports success without ever having looked at the
+region that could actually carry a violation.
+
+This is the third member of a family: §16A (asserting on the wrong *kind* of thing), §16B (asserting
+on *nothing*), §16C (asserting on *several things at once*). This one is asserting in the wrong
+*place*.
+
+**How to apply.**
+- Extract the region that owns the property — `<main>`, a named section, a parsed structure — and
+  assert inside it. Prefer a governed structured value over rendered markup wherever one exists.
+- When the property genuinely concerns the whole document (a withheld amount must appear in **no**
+  byte), say so explicitly and keep it separate from region-scoped claims.
+- Assert the **control** alongside: that the shell content which would otherwise confound the check
+  is present in the document and absent from the region. Without that control, "the region is clean"
+  and "the extractor returned nothing" look identical (§16B).
+
+---
+
 ## 17. What this contract forbids, in one list
 
 For review convenience — every prohibition above, collected:
