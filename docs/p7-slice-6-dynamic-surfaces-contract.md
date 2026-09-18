@@ -465,6 +465,100 @@ restored before the recorded run.**
 arbitrary filters · new metrics or aggregates · cross-org ranking · multi-row EXPLAIN ·
 result-to-model prose · context references between components · new schema · P5/P6 changes.
 
+---
+
+## O. Capability-activation blast-radius discovery (pre-hosted, no environment changed)
+
+**Disposition: A — SAFE TO ENABLE FOR SLICE 6.** And the premise of the question turned out to be
+wrong in my favour: **three of the four masters are already set and already ON.**
+
+### O.1 The four masters, traced through the canonical graph
+
+All four are read by one helper, `vnextEnvEnabled(flag)` in `src/lib/env/vnext-flags.ts`:
+`(process.env[ENV_VAR[flag]] ?? "").trim().toLowerCase()`, TRUE for `true` / `1` / `on` / `yes`,
+**default OFF** when unset. Composition happens only in `vnextCapabilities(tenant)`:
+
+| Master | Direct capability | Transitively unlocks |
+|---|---|---|
+| `VNEXT_PURSUIT_STATE_ENABLED` | `pursuitState` | a conjunct of `pursuitIntelligence` |
+| `VNEXT_PURSUIT_MEMORY_ENABLED` | `pursuitMemory` | a conjunct of `pursuitIntelligence` |
+| `VNEXT_PURSUIT_INTELLIGENCE_ENABLED` | `pursuitIntelligence` (∧ state ∧ memory) | `nextBestAction`, `pursuitCoordination`, `dynamicSurfaces` — each still gated by **its own** master |
+| `VNEXT_DYNAMIC_SURFACES_ENABLED` | `dynamicSurfaces` (∧ intelligence) | nothing — it is a leaf |
+
+`pursuitState` and `pursuitMemory` have **zero production consumers**. `pursuitIntelligence` has
+three: `app/page.tsx` (Today pertinence), `app/pipeline/page.tsx` (pertinence sort),
+`app/pursuits/[id]/page.tsx` (the *What matters now* context block). `dynamicSurfaces` has exactly
+one — the Slice 6 gate.
+
+### O.2 Measured Preview posture (names and booleans only)
+
+Env presence, from a listing whose control passed (`DATABASE_URL` = 3 entries, exit 0):
+
+| Master | Preview |
+|---|---|
+| `VNEXT_CONTEXT_HEALTH_ENABLED` · `VNEXT_PURSUIT_STATE_ENABLED` · `VNEXT_PURSUIT_MEMORY_ENABLED` · `VNEXT_PURSUIT_INTELLIGENCE_ENABLED` · `VNEXT_PURSUIT_COORDINATION_ENABLED` · `VNEXT_PURSUIT_ATTENTION_ENABLED` | **present** |
+| `VNEXT_NEXT_BEST_ACTION_ENABLED` · `VNEXT_CONTROL_PLANE_ENABLED` · `VNEXT_DYNAMIC_SURFACES_ENABLED` | **not set** |
+
+Presence is not truth, so the effective values were measured from the **deployed runtime** using
+server-rendered structural markers, each with its own control (§16B/D):
+
+- control — the pursuit-detail shell rendered (`id="whynow"` present): **yes**
+- `pursuitIntelligence` — the *What matters now* panel renders only behind it: **ON**
+- `pursuitCoordination` — `id="plan"` + the *Pursuit plan* panel render only behind it: **ON**
+
+A pipeline probe was discarded as **INVALID rather than read as evidence**: its control returned zero
+sibling controls because `QuerySelect` is a client component, so the marker was never in the
+server-rendered HTML. It measured the wrong artifact and proved nothing either way.
+
+Tenant state (owner read, booleans only): **all three orgs** — TD SYNNEX (demo), Meridian, Vertex —
+have `pursuits ∧ facts ∧ routing ∧ pursuit_experience` true, so `tenant.experience` is **true**.
+P7 posture, from `/api/build`: `intentEnabled` **true**, `intentCredentialPresent` **true**,
+`interpreterEnabled` **false**, global model credential **absent**.
+
+### O.3 The delta — what actually changes
+
+Because `pursuitState`, `pursuitMemory` and `pursuitIntelligence` are **already true**, the only
+variable that needs to change is **`VNEXT_DYNAMIC_SURFACES_ENABLED`**, and the delta is:
+
+| Capability | Now | After |
+|---|---|---|
+| `dynamicSurfaces` | false | **true** |
+| every other capability | unchanged | unchanged |
+
+**Nothing else becomes satisfiable.** `nextBestAction` is RESERVED and never implemented, and its
+master is unset; `controlPlane`'s master is unset; `pursuitCoordination` and `pursuitAttention` are
+already on and are not affected. **No capability becomes newly available but tenant-blocked**, because
+every tenant already satisfies the chain.
+
+### O.4 Passive or active?
+
+**Passive.** Setting the master alone causes no database write, no worker or background execution, no
+provider call, no external send, no P5 action and no automatic state transition. Traced rather than
+assumed: the only consumer is `dynamicSurfacesEnabled()`, which performs one read
+(`tenantFeatures`) and is reached only from `assembleSurface`, which is reached only from the
+`?surface=` / `?compose=` transport on an unlinked route behind an authenticated session. There is no
+cron (`vercel.json` absent), no scheduled job, and no page render reaches it.
+
+The intelligence read-models that a hypothetical intelligence flip would have exercised
+(`portfolio.ts`, `context-loaders.ts`, `pursuit-context.ts`, `missing-context.ts`) contain **no**
+insert, update, delete, provider call or action dispatch — the two files that matched such a grep
+matched inside **comments**. That question is moot here anyway, since intelligence is already on.
+
+### O.5 Tenant constraint
+
+Every capability except one is gated by the tenant: `vnextCapabilities` returns all-off before reading
+any env var unless `tenant.experience`. **The exception is `controlPlane`**, which is computed before
+that early return and is therefore **env-only, not tenant-constrained**. It is not among the four, its
+master is unset, and it has zero production consumers — but it is the one place where branch-scoped env
+enablement would be broader than one tenant, and it is recorded here rather than left to be found later.
+
+### O.6 Correction to my own earlier statement
+
+I previously told the reviewer that hosted acceptance would need **four** branch-scoped masters
+provisioned. That was wrong: it inferred the env state from the absence of a `dynamicSurfaces`
+consumer rather than measuring it. Three of the four are already present and on. **One variable is
+needed: `VNEXT_DYNAMIC_SURFACES_ENABLED`.**
+
 ## What this plan does not authorize
 
 No actions or P5 execution · no writes · no pinning · no persistence · no exports · no historical
