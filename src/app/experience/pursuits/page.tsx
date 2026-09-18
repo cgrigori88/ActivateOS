@@ -6,7 +6,7 @@ import { FIELDS, METRICS, metricKey } from "@/lib/experience/registry";
 import { buildContextManifest } from "@/lib/experience/intent/context";
 import { compileIntent } from "@/lib/experience/intent/compile";
 import { runCompiledIntent } from "@/lib/experience/intent/run";
-import { INTENT_MODEL_TIER, PROMPT_TEMPLATE_VERSION, intentModelEnabled, proposeIntent } from "@/lib/experience/intent/model";
+import { PROMPT_TEMPLATE_VERSION, intentModelEnabled, proposeIntent, recordIntentProvenance } from "@/lib/experience/intent/model";
 import { CLARIFICATION_QUESTIONS } from "@/lib/experience/intent/vocabulary";
 import type { AggregateResult, Explanation, GoToOutcome, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
 
@@ -203,6 +203,8 @@ async function IntentView({ ask, propose, ctx, view }: { ask?: string; propose?:
 
   // An untrusted proposal, from the model or supplied directly. Malformed JSON is simply not one.
   let proposal: unknown = null;
+  // The ACTUAL provider model, as the call reported it — never a guess and never the tier name.
+  let modelId: string | null = null;
   if (typeof propose === "string") {
     try { proposal = JSON.parse(propose); } catch { proposal = null; }
   } else if (typeof ask === "string") {
@@ -212,6 +214,7 @@ async function IntentView({ ask, propose, ctx, view }: { ask?: string; propose?:
     if (outcome.status === "DISABLED") return notice("Natural-language requests are not enabled here.");
     if (outcome.status === "UNAVAILABLE") return notice("Natural-language requests are temporarily unavailable.");
     proposal = outcome.proposal;
+    modelId = outcome.meta.model;
   }
 
   const compiled = compileIntent({
@@ -222,7 +225,7 @@ async function IntentView({ ask, propose, ctx, view }: { ask?: string; propose?:
     // Provenance, not authority: both paths compile identically. A hand-authored proposal records
     // no model, because a provider that was never called is not provenance.
     source: fromModel ? "MODEL" : "HAND_AUTHORED",
-    modelId: fromModel ? INTENT_MODEL_TIER : null,
+    modelId: fromModel ? modelId : null,
     promptTemplateVersion: fromModel ? PROMPT_TEMPLATE_VERSION : null,
   });
 
@@ -239,6 +242,8 @@ async function IntentView({ ask, propose, ctx, view }: { ask?: string; propose?:
     );
   }
 
+  // Recorded for operators before execution; it reaches no recipient-visible surface.
+  recordIntentProvenance(compiled.intent.provenance);
   const executed = await runCompiledIntent(compiled.intent);
   return (
     <main className="mx-auto max-w-[1100px] px-6 py-10">

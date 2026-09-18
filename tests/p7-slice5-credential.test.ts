@@ -196,8 +196,17 @@ test("the route distinguishes disabled, unavailable and unsupported", () => {
 
 test("no provider error, prompt or model output reaches the recipient", () => {
   const route = readFileSync(new URL("../src/app/experience/pursuits/page.tsx", import.meta.url), "utf8");
-  for (const forbidden of ["systemPrompt", "intentPromptForAudit", "err.message", "String(err)", "meta.model"]) {
-    assert.ok(!route.includes(forbidden), `the route must not render ${forbidden}`);
+  for (const forbidden of ["systemPrompt", "intentPromptForAudit", "err.message", "String(err)"]) {
+    assert.ok(!route.includes(forbidden), `the route must not reference ${forbidden}`);
+  }
+  // The provider's model name is READ for provenance and must never be RENDERED. Asserting that it
+  // is absent from the file would now fail for a reason unrelated to the property (§16A), so assert
+  // the property: it appears in no JSX expression.
+  // JSX renders a value as `{expr}` immediately inside markup, so those are the forms to forbid.
+  // A broader "the file must not mention meta.model" would fail for a reason unrelated to the
+  // property it names (§16A) — the route legitimately READS it for provenance.
+  for (const rendered of [/\{\s*modelId\s*\}/, /\{\s*outcome\.meta\.model\s*\}/, /\{\s*compiled\.intent\.provenance/]) {
+    assert.ok(!rendered.test(route), `the route must not render ${rendered}`);
   }
 });
 
@@ -207,4 +216,57 @@ test("the capability switch still defaults OFF and the credential does not switc
   const off = await withEnv({ PURSUIT_INTENT_ENABLED: undefined, [INTENT_CREDENTIAL_VAR]: "sk-test-scoped" },
     () => intentModelEnabled());
   assert.equal(off, false, "credential presence alone confers no capability");
+});
+
+// ── provenance recording (Stage B1) ─────────────────────────────────────────────────────────────
+
+test("the provenance record carries compiler metadata only — no utterance, id, value or secret", async () => {
+  const { recordIntentProvenance } = await import("../src/lib/experience/intent/model");
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => { lines.push(String(args[0])); };
+  try {
+    recordIntentProvenance({
+      proposalSchemaVersion: 1, source: "MODEL", compilerVersion: "p7-slice5-compiler@1",
+      promptTemplateVersion: "p7-slice5-prompt@1", vocabularyDigest: "abcd1234abcd1234",
+      contextDigest: "beef1234beef1234", modelId: "claude-haiku-4-5", operation: "SHOW_ME", view: "open-by-value",
+    });
+  } finally { console.log = original; }
+
+  assert.equal(lines.length, 1, "exactly one record per compiled intent");
+  const record = JSON.parse(lines[0]);
+  assert.equal(record.event, "p7.intent.compiled");
+  // Every required field is present…
+  for (const k of ["source", "operation", "modelId", "promptTemplateVersion", "compilerVersion",
+                   "proposalSchemaVersion", "vocabularyDigest", "contextDigest"]) {
+    assert.ok(record[k] !== undefined, `provenance must record ${k}`);
+  }
+  assert.equal(record.source, "MODEL");
+  // …and nothing else is. The record's key set is closed.
+  assert.deepEqual(Object.keys(record).sort(),
+    ["compilerVersion", "contextDigest", "event", "modelId", "operation", "promptTemplateVersion",
+     "proposalSchemaVersion", "source", "view", "vocabularyDigest"].sort());
+  // Structurally: the record reads ONLY provenance fields, so a subject id, an utterance or a
+  // credential cannot travel with it. Asserting on substrings would be wrong here — "proposal" is a
+  // substring of the legitimate `proposalSchemaVersion` (§16A) — so assert the FIELD SET it reads.
+  const src = readFileSync(new URL("../src/lib/experience/intent/model.ts", import.meta.url), "utf8");
+  const fn = src.slice(src.indexOf("export function recordIntentProvenance"));
+  const body = fn.slice(0, fn.indexOf("\n}"));
+  const fieldsRead = [...new Set([...body.matchAll(/\bp\.(\w+)/g)].map((m) => m[1]))].sort();
+  assert.deepEqual(fieldsRead,
+    ["compilerVersion", "contextDigest", "modelId", "operation", "promptTemplateVersion",
+     "proposalSchemaVersion", "source", "view", "vocabularyDigest"].sort(),
+    "the record reads provenance fields and nothing else");
+  // And it is handed only the provenance object — never the intent, request or proposal.
+  assert.match(fn, /^export function recordIntentProvenance\(p: IntentProvenance\): void/);
+});
+
+test("the route records the ACTUAL provider model, never the tier name", () => {
+  const route = readFileSync(new URL("../src/app/experience/pursuits/page.tsx", import.meta.url), "utf8");
+  assert.match(route, /modelId = outcome\.meta\.model/);
+  assert.ok(!route.includes("INTENT_MODEL_TIER"), "the tier name is not a model identifier");
+  // Provenance is recorded before execution and still never rendered.
+  const body = route.slice(route.indexOf("async function IntentView"));
+  assert.ok(body.indexOf("recordIntentProvenance(") < body.indexOf("runCompiledIntent("));
+  assert.ok(!/\{compiled\.intent\.provenance/.test(route), "provenance must not be rendered");
 });

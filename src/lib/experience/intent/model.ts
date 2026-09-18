@@ -21,7 +21,7 @@ import { completeStructuredScoped, scopedCredential, type CallMeta, type ScopedC
 import { z } from "zod";
 import { compilerVocabulary } from "./vocabulary";
 import { toPrompt } from "./context";
-import type { ContextManifest } from "./schema";
+import type { ContextManifest, IntentProvenance } from "./schema";
 
 /** Bumped whenever the instructions below change. Stamped into provenance, never read for authority. */
 export const PROMPT_TEMPLATE_VERSION = "p7-slice5-prompt@1";
@@ -147,6 +147,30 @@ export async function proposeIntent(
     // A refusal, a timeout, a credential rejection or a schema failure are one answer: no proposal.
     return { status: "UNAVAILABLE" };
   }
+}
+
+/**
+ * RECORD the compiler-owned provenance of a compiled intent, for operators.
+ *
+ * Provenance is not rendered to the recipient (Stage A certified that), so it is recorded here
+ * instead: one structured line carrying ONLY compiler-owned metadata. Deliberately absent: the
+ * utterance, any canonical identifier, any governed value, the prompt text, the model's output, and
+ * anything resembling a credential. It is a record of WHICH COMPILER RAN, never of what was asked or
+ * what was returned.
+ */
+export function recordIntentProvenance(p: IntentProvenance): void {
+  console.log(JSON.stringify({
+    event: "p7.intent.compiled",
+    source: p.source,
+    operation: p.operation,
+    view: p.view ?? null,
+    modelId: p.modelId,
+    promptTemplateVersion: p.promptTemplateVersion,
+    compilerVersion: p.compilerVersion,
+    proposalSchemaVersion: p.proposalSchemaVersion,
+    vocabularyDigest: p.vocabularyDigest,
+    contextDigest: p.contextDigest,
+  }));
 }
 
 /** Placeholder metadata for the injected-transport path; never produced by a real provider call. */
