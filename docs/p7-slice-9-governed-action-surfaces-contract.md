@@ -1,7 +1,9 @@
 # P7 Slice 9 — governed action surfaces: discovery, contract and plan
 
-**Status:** **CONTRACT RULED — A–F APPROVED. LOCALLY IMPLEMENTED AND PROVEN.** Hosted acceptance
-requires separate authorization. The rulings as returned are recorded in §R. **Builds on:** Slices 1–8, all HOSTED ACCEPTED / CLOSED. Slice 8 is not reopened.
+**Status:** **HOSTED ACCEPTED / CLOSED** — serving `1c3c739` (accepted chain `6fd8a47 → 1c3c739`),
+migrations 113, **90/0 hosted** with a live model, **1 of 160 tables moved: the dispatch audit, by
+design**. *AI may propose that a human be shown an action. Only an explicit human invocation, through
+the registered consequential substrate and current governance, can cause the action.* **Builds on:** Slices 1–8, all HOSTED ACCEPTED / CLOSED. Slice 8 is not reopened.
 
 > **A Dynamic Surface may present a governed action affordance. It may not execute, authorize or
 > approve the action. Every consequential action remains a P5 operation under current authority.**
