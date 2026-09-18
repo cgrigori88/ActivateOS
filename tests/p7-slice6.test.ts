@@ -74,16 +74,19 @@ test("the ruled first vertical compiles: SHOW ME open pursuits + ANALYZE open pi
  */
 test("the registry is closed, and each component binds exactly one certified operation", () => {
   assert.deepEqual(Object.keys(COMPONENTS).sort(),
-    ["pursuit.cohort", "pursuit.destination", "pursuit.explanation", "pursuit.list"]);
+    ["pursuit.assemble_team", "pursuit.cohort", "pursuit.destination", "pursuit.explanation", "pursuit.list"]);
   assert.equal(COMPONENTS["pursuit.list"].operation, "SHOW_ME");
   assert.equal(COMPONENTS["pursuit.cohort"].operation, "ANALYZE");
   assert.equal(COMPONENTS["pursuit.explanation"].operation, "EXPLAIN");
   assert.equal(COMPONENTS["pursuit.destination"].operation, "GO_TO");
   // Every entry's key matches its own registry slot — no aliasing, no second name for one component.
   for (const [k, def] of Object.entries(COMPONENTS)) assert.equal(def.key, k);
-  // One component per operation: no operation is reachable through two different component names.
-  const ops = Object.values(COMPONENTS).map((c) => c.operation);
+  // One component per READ operation: no operation is reachable through two different names. An
+  // ACTION component binds no intent operation at all (Slice 9) — its capability is its identity.
+  const ops = Object.values(COMPONENTS).filter((c) => c.kind === "READ").map((c) => c.operation);
   assert.equal(new Set(ops).size, ops.length, "no operation is registered twice");
+  assert.ok(Object.values(COMPONENTS).every((c) => (c.kind === "ACTION") === (c.operation === null)),
+    "an ACTION component binds no intent operation, and a READ component always binds one");
   // There is no generic component, and no component without a registry-owned title.
   for (const def of Object.values(COMPONENTS)) assert.ok(def.title.length > 0);
   assert.deepEqual([...LAYOUTS], ["stack", "grid"]);

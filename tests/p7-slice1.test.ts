@@ -120,12 +120,48 @@ const P7_TREE = [
 ];
 const codeOf = (f: string) => readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-test("no P7 module writes: no INSERT, UPDATE, DELETE or writer import", () => {
+test("NO P7 MODULE WRITES DIRECTLY: no INSERT, UPDATE or DELETE anywhere in the tree", () => {
+  // Unchanged and unweakened. P7 has no SQL mutation of its own, in any slice — an action reaches
+  // the certified mutation authority, it does not become one.
   for (const f of P7_TREE) {
-    const code = codeOf(f);
-    assert.ok(!/\b(insert\s+into|update\s+\w+\s+set|delete\s+from)\b/i.test(code), `${f} must not mutate`);
-    assert.ok(!/dispatchSkill|startRun|resumeRun|setOrgFeature|proposeGrant|acceptGrant/.test(code),
-      `${f} must not reach an action or write path in Slice 1`);
+    assert.ok(!/\b(insert\s+into|update\s+\w+\s+set|delete\s+from)\b/i.test(codeOf(f)), `${f} must not mutate`);
+  }
+});
+
+/**
+ * NARROWED BY SLICE 9, in the same shape Slice 5 used for the model — and strengthened, not relaxed.
+ *
+ * The original clause said NO P7 module may reach an action path, which was true while P7 was
+ * read-only. Slice 9 introduces exactly one human invocation boundary, so the property becomes the
+ * one that actually matters: the action boundary is EXACTLY ONE NAMED FILE, and the surface that
+ * renders an affordance can reach no dispatcher at all.
+ *
+ * That is stronger than the original in the way that counts, because it also pins WHICH file — the
+ * old assertion would have been satisfied by any arrangement with no dispatcher, including one that
+ * moved a dispatch somewhere less visible later.
+ */
+test("EXACTLY ONE P7 module may reach a consequential path, and it is the named invocation boundary", () => {
+  const BOUNDARY = "src/app/experience/pursuits/actions.ts";
+  const CONSEQUENTIAL = /dispatchSkill|startAndRun|continueRun|startRun|resumeRun|decideApproval|setOrgFeature|proposeGrant|acceptGrant/;
+  const reaching = P7_TREE.filter((f) => CONSEQUENTIAL.test(codeOf(f)))
+    .map((f) => f.slice(f.indexOf("src/"))).sort();
+  assert.deepEqual(reaching, [BOUNDARY],
+    "exactly one P7 module may reach a consequential path, and every other must be read-only");
+});
+
+test("RENDERING IS NOT INVOKING: the whole surface/assembly path reaches no dispatcher", () => {
+  // Every module the surface uses to VALIDATE, ASSEMBLE or RENDER a result. If any of these could
+  // reach a dispatcher, "rendering an action is not invoking an action" would be a convention.
+  const SURFACE = P7_TREE.filter((f) => f.includes("/lib/experience/"));
+  assert.ok(SURFACE.length > 10, "the surface tree was located");
+  for (const f of SURFACE) {
+    assert.ok(!/dispatchSkill|startAndRun|continueRun|resumeRun|decideApproval/.test(codeOf(f)),
+      `${f} must not reach a consequential path`);
+  }
+  // And the P45 runtime is not reachable from the surface tree at all — the second substrate cannot
+  // be entered by accident because both are "actions".
+  for (const f of SURFACE) {
+    assert.ok(!/@\/lib\/runtime|lib\/runtime\//.test(codeOf(f)), `${f} must not reach the P45 runtime`);
   }
 });
 

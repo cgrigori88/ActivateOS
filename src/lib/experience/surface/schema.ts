@@ -22,7 +22,8 @@ import type { IntentExecution } from "../intent/run";
 export type LayoutKey = "stack" | "grid";
 
 /** Closed component vocabulary. Four; a fifth is a reviewed code change, never a model request. */
-export type ComponentKey = "pursuit.list" | "pursuit.cohort" | "pursuit.explanation" | "pursuit.destination";
+export type ComponentKey = "pursuit.list" | "pursuit.cohort" | "pursuit.explanation" | "pursuit.destination"
+  | "pursuit.assemble_team";
 
 /**
  * SLICE 8 — the ONLY shape that expresses a component dependency. Closed, typed, and referencing a
@@ -93,6 +94,20 @@ export interface SurfaceProvenance {
  * is outstanding, and a value is data, not a validation input.
  */
 export type ValidatedComponent =
+  /**
+   * SLICE 9. An ACTION node is validated to a CAPABILITY and a SUBJECT, and nothing else. There is
+   * no `intent`, because an action is deliberately not an intent: the Slice 5 grammar stays
+   * read-only by construction, so nothing consequential can ever arrive through it.
+   */
+  | {
+      kind: "ACTION";
+      component: ComponentKey;
+      title: string;
+      /** The registered capability this affordance stands for. Registry-owned. */
+      capability: import("./actions").ActionCapability;
+      /** The governed subject, resolved from the recipient's pre-existing context at compile time. */
+      subjectId: string;
+    }
   | {
       kind: "STATIC";
       component: ComponentKey;
@@ -119,19 +134,44 @@ export interface ValidatedSurfaceSpec {
   provenance: SurfaceProvenance;
 }
 
+/**
+ * ONE component's headless result. Slice 9 makes it a union, because an ACTION component produced no
+ * governed output — it produced a governed AFFORDANCE, and giving it an empty `outcome` would invite
+ * a renderer to treat the two as the same kind of thing.
+ */
+export type SurfaceComponentResult =
+  | {
+      kind: "READ";
+      component: ComponentKey;
+      title: string;
+      /** Deterministic, registry-composed: what this component actually ran. */
+      interpretedAs: string;
+      /** The registered ViewKey this component bound, where its operation takes one. Registry data. */
+      view: string | null;
+      /** The ALREADY-GOVERNED Slice 1–4 output. */
+      outcome: IntentExecution;
+    }
+  | {
+      kind: "ACTION";
+      component: ComponentKey;
+      title: string;
+      interpretedAs: string;
+      /** The registered capability key, for the transport to name. NOT authority. */
+      capability: string;
+      /** The governed subject the affordance refers to. Untrusted routing input on the way back. */
+      subjectId: string;
+      /**
+       * Whether the affordance is OFFERED to this viewer — a disclosure decision taken at render.
+       * It is emphatically not a permission: the real decision happens again, on click, inside the
+       * certified dispatch pipeline. Nothing downstream may read this as authorization.
+       */
+      offered: boolean;
+    };
+
 /** The HEADLESS result. No React, no HTML, no framework type (ruling 11). */
 export interface SurfaceResult {
   layout: LayoutKey;
-  components: {
-    component: ComponentKey;
-    title: string;
-    /** Deterministic, registry-composed: what this component actually ran. */
-    interpretedAs: string;
-    /** The registered ViewKey this component bound, where its operation takes one. Registry data. */
-    view: string | null;
-    /** The ALREADY-GOVERNED Slice 1–4 output. */
-    outcome: IntentExecution;
-  }[];
+  components: SurfaceComponentResult[];
   provenance: SurfaceProvenance;
 }
 

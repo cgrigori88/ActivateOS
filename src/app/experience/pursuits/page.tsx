@@ -12,6 +12,7 @@ import { SURFACE_PROMPT_TEMPLATE_VERSION, proposeSurface } from "@/lib/experienc
 import { compileSurface } from "@/lib/experience/surface/compile";
 import { assembleSurface } from "@/lib/experience/surface/assemble";
 import type { SurfaceResult } from "@/lib/experience/surface/schema";
+import { assemblePursuitTeamFormAction } from "./actions";
 import type { AggregateResult, Explanation, GoToOutcome, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
 
 export const dynamic = "force-dynamic";
@@ -381,7 +382,9 @@ function SurfaceRender({ result }: { result: SurfaceResult }) {
             <h2 className="text-title font-bold">{c.title}</h2>
             {/* What PursuitOS actually composed, from the registry (ruling 6). */}
             <p className="mt-1 text-body text-neutral-500 dark:text-neutral-400">{c.interpretedAs}</p>
-            {c.outcome.kind === "NAVIGATION" ? (
+            {c.kind === "ACTION" ? (
+              <ActionAffordance component={c} />
+            ) : c.outcome.kind === "NAVIGATION" ? (
               /* Reachable ONLY in its `ok` form here: an unresolved target withdrew the whole
                  surface upstream, so the Slice 4 absence branches cannot be entered from a surface. */
               <Navigation outcome={c.outcome.outcome} />
@@ -403,6 +406,48 @@ function SurfaceRender({ result }: { result: SurfaceResult }) {
         ))}
       </div>
     </main>
+  );
+}
+
+/**
+ * P7 SLICE 9 — A GOVERNED ACTION AFFORDANCE. PRESENTATION ONLY.
+ *
+ * > **Rendering an action is not invoking an action.**
+ *
+ * This renders a form, and a form is not an execution. It makes NO authority decision: `offered` was
+ * decided by the headless assembler as a DISCLOSURE question, and the real decision happens again —
+ * server-side, inside the certified dispatch pipeline — when a person submits. A stale button is not
+ * authority, so nothing here is carried forward and nothing here is trusted on the other side.
+ *
+ * The form posts only the canonical subject. There is no skill field, no argument field and no
+ * payload field, because the server action fixes the capability itself: a browser cannot turn this
+ * into a generic dispatch endpoint, and a model cannot smuggle a payload through a position that
+ * does not exist.
+ */
+function ActionAffordance({ component }: { component: Extract<SurfaceResult["components"][number], { kind: "ACTION" }> }) {
+  if (!component.offered) {
+    // Not offered is stated plainly in operation-level language: it names what this viewer may be
+    // offered, never anything about the pursuit.
+    return (
+      <p className="mt-4 text-body text-neutral-500 dark:text-neutral-400">
+        This action isn&apos;t available to you.
+      </p>
+    );
+  }
+  return (
+    <form action={assemblePursuitTeamFormAction.bind(null, component.subjectId)} className="mt-4">
+      <button
+        type="submit"
+        data-action={component.capability}
+        className="rounded-full border border-accent bg-accent/10 px-4 py-1.5 text-body font-semibold text-accent"
+      >
+        {component.interpretedAs}
+      </button>
+      <p className="mt-2 text-body text-neutral-500 dark:text-neutral-400">
+        {/* Operation-level, from the registry: what will be attempted, decided again when you act. */}
+        {component.capability} · your authority is checked when you act
+      </p>
+    </form>
   );
 }
 

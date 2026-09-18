@@ -1,7 +1,7 @@
 # P7 Slice 9 — governed action surfaces: discovery, contract and plan
 
-**Status:** **DISCOVERY AND PLAN ONLY — NOT AUTHORIZED FOR IMPLEMENTATION.** Decisions requiring a
-ruling are in §R. **Builds on:** Slices 1–8, all HOSTED ACCEPTED / CLOSED. Slice 8 is not reopened.
+**Status:** **CONTRACT RULED — A–F APPROVED. LOCALLY IMPLEMENTED AND PROVEN.** Hosted acceptance
+requires separate authorization. The rulings as returned are recorded in §R. **Builds on:** Slices 1–8, all HOSTED ACCEPTED / CLOSED. Slice 8 is not reopened.
 
 > **A Dynamic Surface may present a governed action affordance. It may not execute, authorize or
 > approve the action. Every consequential action remains a P5 operation under current authority.**
@@ -227,7 +227,62 @@ surfaces.
 
 ---
 
-## R. Decisions requiring a ruling
+## R. Rulings (returned and recorded)
+
+> **A Dynamic Surface may expose more than one consequential substrate over time, but the substrate is
+> an explicit part of the registered action contract. P7 may not substitute one mutation/runtime
+> substrate for another merely because both are "actions."**
+
+**R-A — APPROVED.** `assemble_pursuit_team@1` through `dispatchSkill`. `VNEXT_CONTROL_PLANE_ENABLED`
+and `org_features.governed_action` stay **off**; no P45 plan, run, approval or UI is created, and
+`controlPlane=false` remains part of the hosted posture. This slice proves **governed explicit mutation
+from a Dynamic Surface**, not P45 orchestration.
+
+**R-B — APPROVED WITH A BOUNDARY.** Render the affordance only when the surface is available, the
+component is registered, its subject came from the currently governed recipient context, and the viewer
+satisfies the registered permission — so the affordance may reflect the viewer's own ability to be
+offered it, and is not shown to users who could never perform it. But **render-time eligibility is
+disclosure logic, not execution authorization**: P7 must not reproduce the dispatch pipeline, and
+rendering must never invoke `dispatchSkill`, because **a dispatch records an attempt and an attempt is
+consequential state**. No P7-local `authorized=true`, capability token, cached permission or
+preauthorization record.
+
+> **May disclose an action affordance ≠ may execute the action later.**
+
+**R-C — APPROVED WITH A NARROWER TRANSPORT.** A Next server action following
+`src/app/pursuits/[id]/actions.ts`. The canonical pursuit id is **untrusted subject input** — not
+secret authority, not a bearer capability, not proof of org or role, not durable authorization. The
+server re-derives principal, organization, role and subject, then enters `dispatchSkill`. **No
+caller-supplied `skillId`:** a dedicated action with the capability **fixed server-side**, so a browser
+cannot turn one affordance into a generic dispatch endpoint. A generic dispatcher needs its own ruling
+once multiple action components exist. **No signed opaque action handle.**
+
+**R-D — APPROVED.** No approval state exists here. P7 must not call `decide()`, render approve/reject
+controls, create an approval record or simulate approval state. Recorded for later: *if a registered
+surface action requires approval, P7 reuses that substrate's certified approval/runtime semantics and
+may not invent a surface-local approval system.*
+
+**R-E — APPROVED.** Zero caller- or model-authored arguments, made **structural**: no `args`, `payload`,
+`body`, free-form content or arbitrary JSON position exists. The registry supplies the capability, the
+governed subject supplies the identity, and `assembleTeam` derives everything else through existing
+product logic. **A hostile prompt cannot smuggle a payload because no payload position exists.** The
+schema is not generalized for future actions yet.
+
+**R-F — APPROVED, WITH NO NEW STABLE-KEY SEMANTIC.** Preserve `dispatchSkill`'s existing
+`(org_id, skill_id, idempotency_key)` mechanism and the per-submission/correlation pattern: the same
+submission replays safely, a **new explicit click may create a new attempt**. Acceptable here only
+because `assemble_pursuit_team@1` is idempotent at the business-effect level. A permanent
+`(subject, capability)` key is **not** adopted — it would turn *never double-execute accidentally* into
+*cannot intentionally run this again later*, a different product semantic. Recorded instead:
+
+> **Registry eligibility for future non-idempotent actions requires an explicit
+> invocation/idempotency contract before that action can be surfaced** — nonce, generation, finite
+> window, stable operation instance or P45 semantics, chosen per action rather than generically.
+
+UI disabling while a submission is pending is presentation hygiene only; correctness does not depend
+on it.
+
+## R (original). Decisions returned for ruling
 
 **R-A — which P5 capability, and on which substrate.** *Recommend `assemble_pursuit_team@1`, dispatched
 through `dispatchSkill`.* The decisive property is that it accepts **no caller-supplied arguments**,
@@ -267,3 +322,49 @@ re-executes* — which is correct here only because `assembleTeam` is itself ide
 non-idempotent action must use a **stable** key per (subject, capability), and I would rather have that
 recorded now than discovered later. If you prefer double-submit protection in Slice 9 regardless, the
 stable-key variant is a one-line change and I will take it instead.
+
+---
+
+## V. Implementation status — LOCALLY IMPLEMENTED AND PROVEN (hosted acceptance NOT authorized)
+
+**Evidence.** `p7-slice9` **25/25** · unit **742/742** · `p7-slice1` **66/66** (seeded clone) · tsc and
+`next build` clean · `certify-world` **52 suites clean, no drift** (`c9004670ffda112f`). All six ruled
+negative controls bite, four of them **on the checkers themselves** (dispatch during render, a generic
+caller-supplied skill id, trusting render-time permission on click, a bespoke write that skips the
+dispatcher, and entering the P45 runtime are each constructed in memory and confirmed caught).
+
+**No database schema, environment, flag, P5 or P6 change.** `controlPlane` stays false.
+
+| Module | Change |
+|---|---|
+| `surface/actions.ts` | **new, declarative** — the closed action capability registry and `mayOffer` |
+| `surface/registry.ts` | `kind: READ \| ACTION`; `pursuit.assemble_team` |
+| `surface/schema.ts` | the ACTION validated node; `SurfaceComponentResult` as a union |
+| `surface/compile.ts` | ACTION bind validation (subject only); provenance no longer anchored on a node |
+| `surface/assemble.ts` | the ACTION branch executes nothing; `offered` decided from role |
+| `app/experience/pursuits/actions.ts` | **new** — the single human invocation boundary |
+| `page.tsx` | the affordance, as a form with no caller-controlled field |
+
+**An action never becomes an "intent".** The ACTION bind is validated in the surface compiler, not
+through `compileIntent` — so the Slice 5 grammar that Slices 1–8 certified as incapable of writing
+stays read-only by construction, and nothing consequential can arrive through it.
+
+**The Slice 1 no-writes invariant was narrowed in the Slice 5 shape, and strengthened.** It said *no P7
+module may reach an action path*, which was true while P7 was read-only. It now asserts that the action
+boundary is **exactly one named file** and that the entire `lib/experience` surface/assembly tree
+reaches **no** dispatcher and **no** P45 runtime. That pins *which* file, which the original did not —
+the old assertion would have been satisfied by any arrangement with no dispatcher, including one that
+later moved a dispatch somewhere less visible. The raw-SQL clause is unchanged and still applies to
+every P7 file.
+
+**One real product defect found by the suite and fixed.** An action-only surface could not compile:
+provenance was being lifted off whichever node happened to be directly bound, so a surface composed of
+an ACTION alone was refused with *"a surface needs at least one directly-bound component"* — an
+implementation detail leaking as a rule. Provenance is now computed independently from the vocabulary,
+the manifest and the inputs; the values are identical either way, so this removed a dependency rather
+than a check.
+
+**Two defects of my own in the suite**, both caught before the recorded run: an assertion that an
+action-only spec compiles (which is what surfaced the defect above — it was right and the product was
+wrong), and a not-offered text check that scanned a character window instead of the branch, now scoped
+to the branch and asserting it uses **no** object-derived value.

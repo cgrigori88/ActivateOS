@@ -43,6 +43,14 @@
  * THE SELECTION CONSUMES THE GOVERNED RESULT — the very object the upstream component produced, not
  * a fresh, broader query run to find an identity. There is no second read here to govern.
  *
+ * SLICE 9 — RENDERING AN ACTION IS NOT INVOKING AN ACTION. An ACTION component produces a governed
+ * AFFORDANCE and performs no execution whatsoever: it is not run through `runCompiledIntent`, and
+ * this module imports no dispatcher of any kind. The eligibility question it answers is a DISCLOSURE
+ * question — may this viewer be OFFERED the operation — decided from the registered capability and
+ * the viewer's own role. It deliberately does NOT reproduce the dispatch pipeline, because a
+ * dispatch records an attempt and an attempt is consequential state: a rendered button must not
+ * write an audit row. The real decision happens again on explicit click.
+ *
  * THE CAPABILITY GATE IS THE CANONICAL ONE (ruling 1). `vnextCapabilities` owns the Dynamic Surfaces
  * dependency chain; this module asks it rather than restating it, so the conjunction cannot drift.
  * Tenant Pursuit Experience entitlement is ALSO enforced independently inside each component's
@@ -56,6 +64,8 @@ import { vnextCapabilities } from "@/lib/env/vnext-flags";
 import { runCompiledIntent } from "../intent/run";
 import { compileIntent } from "../intent/compile";
 import { surfaceDisposition, type ExecutedComponent } from "./availability";
+import { mayOffer } from "./actions";
+import { currentRole } from "@/lib/auth/org";
 import { asResolutionContext, executionDigest, selectIdentity, type DerivedIdentityContext } from "./identity";
 import type { ComponentKey } from "./schema";
 import type { ExecutionPrincipal } from "../principal";
@@ -96,8 +106,19 @@ export async function assembleSurface(
   const results: (Awaited<ReturnType<typeof runCompiledIntent>> | null)[] = [];
   const exported = new Map<ComponentKey, DerivedIdentityContext>();
   const bindings: { consumer: ComponentKey; derived: DerivedIdentityContext }[] = [];
+  // Read ONCE, for disclosure only. Never consulted as authority, and never cached beyond this
+  // request — the click path resolves the role again, server-side, through the certified pipeline.
+  const role = validated.components.some((c) => c.kind === "ACTION")
+    ? await withTenant(async (db) => currentRole(db))
+    : null;
 
   for (const c of validated.components) {
+    // An ACTION component EXECUTES NOTHING. It contributes an affordance and moves on.
+    if (c.kind === "ACTION") {
+      results.push(null);
+      continue;
+    }
+
     let intent;
     if (c.kind === "STATIC") {
       intent = c.intent;
@@ -158,13 +179,28 @@ export async function assembleSurface(
     return { ok: false, error: "NO_SELECTABLE_RESULT" };
   }
 
-  const components: SurfaceResultComponents = validated.components.map((c, i) => ({
-    component: c.component,
-    title: c.title,
-    interpretedAs: c.kind === "STATIC" ? c.intent.interpretedAs : INTERPRETED[c.operation],
-    view: c.kind === "STATIC" ? (c.intent.provenance.view ?? null) : null,
-    outcome: results[i]!,
-  }));
+  const components: SurfaceResultComponents = validated.components.map((c, i) => {
+    if (c.kind === "ACTION") {
+      return {
+        kind: "ACTION" as const,
+        component: c.component,
+        title: c.title,
+        interpretedAs: c.capability.interpretedAs,
+        capability: `${c.capability.skillId}@${c.capability.version}`,
+        subjectId: c.subjectId,
+        // A DISCLOSURE decision, not a permission. Nothing downstream may read it as authorization.
+        offered: mayOffer(c.capability, role),
+      };
+    }
+    return {
+      kind: "READ" as const,
+      component: c.component,
+      title: c.title,
+      interpretedAs: c.kind === "STATIC" ? c.intent.interpretedAs : INTERPRETED[c.operation],
+      view: c.kind === "STATIC" ? (c.intent.provenance.view ?? null) : null,
+      outcome: results[i]!,
+    };
+  });
 
   const provenance = { ...validated.provenance, executionDigest: executionDigest(bindings) };
 

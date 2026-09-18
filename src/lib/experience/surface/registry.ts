@@ -20,8 +20,14 @@ import type { IntentOperation } from "../intent/schema";
 
 export interface ComponentDef {
   key: ComponentKey;
-  /** The ONE certified operation this component may bind. */
-  operation: IntentOperation;
+  /**
+   * SLICE 9. A READ component produces governed output; an ACTION component produces a governed
+   * AFFORDANCE and nothing else. Declared, never inferred from the name, and the discriminator the
+   * assembler switches on — so a read path cannot acquire consequential behaviour by being renamed.
+   */
+  kind: "READ" | "ACTION";
+  /** The ONE certified operation this component may bind. ACTION components bind none. */
+  operation: IntentOperation | null;
   /** Recipient-facing title. Registry-owned, deterministic, never authored by a model. */
   title: string;
   /**
@@ -41,22 +47,32 @@ export interface ComponentDef {
 
 export const COMPONENTS: Record<ComponentKey, ComponentDef> = {
   "pursuit.list": {
-    key: "pursuit.list", operation: "SHOW_ME", title: "Pursuits",
+    kind: "READ", key: "pursuit.list", operation: "SHOW_ME", title: "Pursuits",
     exportsIdentity: true, acceptsContextIdentity: false, acceptsComponentIdentity: false,
   },
   // ANALYZE EXPORTS NOTHING (ruling 13). An aggregate is a statement about a cohort, not an object,
   // and no component may consume one — enforced by the flag validation reads, not by convention.
   "pursuit.cohort": {
-    key: "pursuit.cohort", operation: "ANALYZE", title: "Cohort total",
+    kind: "READ", key: "pursuit.cohort", operation: "ANALYZE", title: "Cohort total",
     exportsIdentity: false, acceptsContextIdentity: false, acceptsComponentIdentity: false,
   },
   "pursuit.explanation": {
-    key: "pursuit.explanation", operation: "EXPLAIN", title: "Explanation",
+    kind: "READ", key: "pursuit.explanation", operation: "EXPLAIN", title: "Explanation",
     exportsIdentity: false, acceptsContextIdentity: true, acceptsComponentIdentity: true,
   },
   "pursuit.destination": {
-    key: "pursuit.destination", operation: "GO_TO", title: "Go to",
+    kind: "READ", key: "pursuit.destination", operation: "GO_TO", title: "Go to",
     exportsIdentity: false, acceptsContextIdentity: true, acceptsComponentIdentity: true,
+  },
+  /**
+   * THE FIRST ACTION COMPONENT. Its capability, substrate and permission live in `actions.ts`; this
+   * entry says only that it exists, that it is an ACTION, and that it binds recipient context. It
+   * exports no identity and accepts no component-derived identity — an action subject stays
+   * pre-existing recipient context in Slice 9.
+   */
+  "pursuit.assemble_team": {
+    kind: "ACTION", key: "pursuit.assemble_team", operation: null, title: "Pursuit team",
+    exportsIdentity: false, acceptsContextIdentity: true, acceptsComponentIdentity: false,
   },
 };
 
@@ -87,6 +103,6 @@ export const isLayoutKey = (v: unknown): v is LayoutKey =>
 /** A digest of the component vocabulary, stamped into provenance so a surface is reproducible. */
 export function componentRegistryDigest(): string {
   return createHash("sha256")
-    .update(JSON.stringify(Object.values(COMPONENTS).map((c) => [c.key, c.operation, c.title])))
+    .update(JSON.stringify(Object.values(COMPONENTS).map((c) => [c.key, c.kind, c.operation, c.title])))
     .digest("hex").slice(0, 16);
 }

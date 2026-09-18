@@ -438,7 +438,7 @@ test("the atomic rule is keyed on the OPERATION, and every context-bound operati
   if (!r.ok) return;
   for (const c of r.validated.components) {
     const carriesObject = JSON.stringify(stat(c).intent.request).includes(ID0);
-    assert.equal(carriesObject, isContextBound(c.operation), `${c.component} classification must match its request`);
+    assert.equal(carriesObject, isContextBound(stat(c).operation), `${c.component} classification must match its request`);
   }
 });
 
@@ -617,8 +617,8 @@ test("hand-authored and model-authored identical specs compile to identical exec
   if (!hand.ok || !model.ok) return;
   // The EXECUTION is identical; only provenance records which path produced it.
   assert.deepEqual(
-    hand.validated.components.map((c) => [c.component, c.operation, stat(c).intent.request, stat(c).intent.interpretedAs]),
-    model.validated.components.map((c) => [c.component, c.operation, stat(c).intent.request, stat(c).intent.interpretedAs]),
+    hand.validated.components.map((c) => [c.component, stat(c).operation, stat(c).intent.request, stat(c).intent.interpretedAs]),
+    model.validated.components.map((c) => [c.component, stat(c).operation, stat(c).intent.request, stat(c).intent.interpretedAs]),
   );
   assert.equal(hand.validated.provenance.surfaceSpecDigest, model.validated.provenance.surfaceSpecDigest);
   assert.equal(hand.validated.provenance.source, "HAND_AUTHORED");

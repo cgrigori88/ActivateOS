@@ -24,11 +24,14 @@ import { createHash } from "node:crypto";
 import { compileIntent } from "../intent/compile";
 import { COMPONENTS, MAX_COMPONENTS, componentRegistryDigest, isComponentKey, isLayoutKey } from "./registry";
 import { mayExportIdentity } from "./identity";
+import { actionCapability } from "./actions";
+import { resolveContextRef } from "../intent/context";
 import { isSelectorKey } from "../plans";
+import { vocabularyDigest } from "../intent/vocabulary";
 import type { ContextManifest, ProposalSource } from "../intent/schema";
 import type { ComponentDependency, SurfaceCompileOutcome, SurfaceProvenance, ValidatedSurfaceSpec, ValidatedComponent } from "./schema";
 
-export const SURFACE_COMPILER_VERSION = "p7-slice8-surface@1";
+export const SURFACE_COMPILER_VERSION = "p7-slice9-surface@1";
 
 export interface SurfaceCompileInputs {
   /** The untrusted spec — from a model or a caller; neither has more authority than the other. */
@@ -90,7 +93,33 @@ export function compileSurface(inputs: SurfaceCompileInputs): SurfaceCompileOutc
     let node: ValidatedComponent;
     let identityKey: string;
 
-    if (dependent) {
+    // ── SLICE 9: an ACTION component. Validated HERE, never through `compileIntent` ─────────────
+    //
+    // The Slice 5 intent grammar stays READ-ONLY by construction. An action deliberately never
+    // becomes an "intent", so no consequential operation can ever arrive through the compiler that
+    // Slices 1–8 certified as incapable of writing.
+    if (def.kind === "ACTION") {
+      const capability = actionCapability(def.key);
+      if (!capability) return fail(`component ${def.key} declares no capability`);
+      if (!bind) return fail(`component ${def.key} needs a bind`);
+      // EXACTLY ONE KEY. There is no position for args, a payload, a body, free-form content, a
+      // skill id or arbitrary JSON — a payload is UNREPRESENTABLE here, not merely rejected.
+      for (const k of Object.keys(bind)) {
+        if (k !== "subject") return fail(`unknown action bind key ${k}`);
+      }
+      const subj = bind.subject as Record<string, unknown> | undefined;
+      if (!subj || typeof subj !== "object" || Array.isArray(subj)) return fail(`component ${def.key} needs a subject`);
+      for (const k of Object.keys(subj)) {
+        // Slice 9 binds PRE-EXISTING recipient context only: no component-derived identity yet.
+        if (k !== "fromContext") return fail(`unknown action subject key ${k}`);
+      }
+      if (inputs.manifest.ids.length === 0) return fail(`component ${def.key} has no subject in context`);
+      const subjectId = resolveContextRef(inputs.manifest, inputs.boundContextDigest, subj.fromContext);
+      if (subjectId === null) return fail(`component ${def.key} could not resolve its subject`);
+
+      node = { kind: "ACTION", component: def.key, title: def.title, capability, subjectId };
+      identityKey = JSON.stringify([def.key, capability.skillId, capability.version, subjectId]);
+    } else if (dependent) {
       const dep = validateDependency(subject as Record<string, unknown>, def.key, upstream);
       if (typeof dep === "string") return fail(dep);
       if (!def.acceptsComponentIdentity) return fail(`component ${def.key} does not accept component-derived identity`);
@@ -151,9 +180,20 @@ export function compileSurface(inputs: SurfaceCompileInputs): SurfaceCompileOutc
     upstream.set(def.key, node);
   }
 
-  const anchor = compiled.find((c) => c.kind === "STATIC");
-  if (!anchor || anchor.kind !== "STATIC") return fail("a surface needs at least one directly-bound component");
-  const stamped = anchor.intent.provenance;
+  /**
+   * Provenance is computed INDEPENDENTLY of the components, not lifted from whichever node happens
+   * to have compiled. Reading it off a directly-bound node was convenient while every surface had
+   * one; Slice 9 can compose a surface of an ACTION alone, and a surface should not be refused
+   * because of where a digest was being copied from. The values are identical either way — the
+   * intent compiler stamps exactly these — so this removes a dependency, not a check.
+   */
+  const fromModel = inputs.source === "MODEL";
+  const stamped = {
+    vocabularyDigest: vocabularyDigest(),
+    contextDigest: inputs.manifest.digest,
+    modelId: fromModel ? (inputs.modelId ?? null) : null,
+    promptTemplateVersion: fromModel ? (inputs.promptTemplateVersion ?? null) : null,
+  };
 
   const provenance: SurfaceProvenance = {
     specVersion: 1,
@@ -215,7 +255,9 @@ function canonical(value: unknown): unknown {
  */
 function surfaceDigest(layout: string, components: ValidatedComponent[]): string {
   return createHash("sha256")
-    .update(JSON.stringify([layout, components.map((c) => c.kind === "STATIC"
+    .update(JSON.stringify([layout, components.map((c) => c.kind === "ACTION"
+      ? [c.component, c.capability.skillId, c.capability.version, c.subjectId]
+      : c.kind === "STATIC"
       ? [c.component, canonical(c.intent.request)]
       // A DYNAMIC node contributes its DEPENDENCY, never a resolved identity — which does not exist
       // at compile time. Its resolved identity lives in `executionDigest` instead (ruling E), which
