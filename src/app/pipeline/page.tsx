@@ -396,10 +396,19 @@ export default async function PipelinePage({
         .sort((a, b) => Math.abs(b.crm - b.live) - Math.abs(a.crm - a.live)
           || a.account.localeCompare(b.account) || a.companyId.localeCompare(b.companyId))
         .slice(0, 5);
+      // D-HIST-2 — AN EXACT SAMPLE, OR NOTHING.
+      //
+      // This used to take "the most recent row at least six days old", which silently turns a row
+      // from three weeks ago into "last week" whenever the series has a gap — and under the old
+      // read-triggered writer, gaps meant nobody had opened the page. It now requires the valid
+      // sample at exactly UTC today minus seven days. Absent, there is no comparison: no nearest
+      // neighbour, no interpolation, no zero. `source` excludes legacy observation rows entirely,
+      // because their production semantics cannot support a daily claim.
       const { rows: weekAgoRows } = await db.query<{ open_usd: string; taken_on: string }>(
         `select open_usd, taken_on::text from pipeline_snapshots
-         where org_id = $1 and taken_on <= (now() - interval '6 days')::date
-         order by taken_on desc limit 1`,
+         where org_id = $1
+           and source = 'scheduled_daily_v1'
+           and taken_on = ((now() at time zone 'utc')::date - 7)`,
         [tieOrgId],
       );
       tieOut = {
@@ -409,16 +418,25 @@ export default async function PipelinePage({
         deltas,
         weekAgo: weekAgoRows[0] ? { openUsd: Number(weekAgoRows[0].open_usd), takenOn: weekAgoRows[0].taken_on } : null,
       };
+      // D-HIST-2 — THE MOST CONSERVATIVE COVERAGE THAT MAKES NO UNSUPPORTED STATEMENT.
+      //
+      // The buckets used to be open-ended ("anything at least 55 / 25 days old"), so a single stale
+      // row could stand in for a 60-day horizon it was never sampled at. Each bucket now requires the
+      // valid scheduled sample at EXACTLY that horizon — UTC today minus 60, minus 30 — and a bucket
+      // without one is simply absent from the card. No legacy substitution, no nearest row, no
+      // interpolation, and absence is never rendered as zero.
+      //
       // Forecast calibration (meets/beats batch): what the weighted pipeline
       // said N days ago vs what actually closed since. The forecast is
       // measured against reality, not just displayed.
       const { rows: calRows } = await db.query<{ taken_on: string; weighted_usd: string; open_usd: string }>(
         `select distinct on (bucket) taken_on::text, weighted_usd, open_usd
          from (
-           select *, case when taken_on <= (now() - interval '55 days')::date then 60
-                          when taken_on <= (now() - interval '25 days')::date then 30
+           select *, case when taken_on = ((now() at time zone 'utc')::date - 60) then 60
+                          when taken_on = ((now() at time zone 'utc')::date - 30) then 30
                      end as bucket
-           from pipeline_snapshots where org_id = $1
+           from pipeline_snapshots
+           where org_id = $1 and source = 'scheduled_daily_v1'
          ) x where bucket is not null
          order by bucket, taken_on desc`,
         [tieOrgId],

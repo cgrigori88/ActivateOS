@@ -56,7 +56,7 @@ export async function loadPortfolioCandidates(
   const ids = pursuits.map((p) => p.id);
 
   // ── PIPELINE magnitude: stage-weighted OPEN opportunity value, using the ORG'S OWN editable stage
-  //    curve with per-partner overrides — the same source `upsertCanonicalPipelineSnapshot` and
+  //    curve with per-partner overrides — the same source `producePipelineSnapshot` and
   //    /pipeline use. Never the STAGE_PROBABILITY constant (the D-P1 lesson).
   const stageWeights = await loadStageWeights(db, caller.orgId);
   const { rows: opps } = await db.query<{

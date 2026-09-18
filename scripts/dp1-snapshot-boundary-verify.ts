@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { assertSeededClone } from "./seeded-clone";
-import { upsertCanonicalPipelineSnapshot } from "../src/lib/pipeline/snapshot";
+import { producePipelineSnapshot } from "../src/lib/pipeline/snapshot";
 import { STAGE_PROBABILITY, type Stage } from "../src/lib/opportunities/lifecycle";
 
 /**
@@ -14,7 +14,7 @@ import { STAGE_PROBABILITY, type Stage } from "../src/lib/opportunities/lifecycl
  * `pipeline_snapshots (org_id, taken_on)`. Simply LOOKING at a 7-day view overwrote the canonical row
  * with filtered totals. A read mutated canonical history.
  *
- * THE FIX. `upsertCanonicalPipelineSnapshot(db, orgId)` accepts NO caller-computed value and derives
+ * THE FIX. `producePipelineSnapshot(db, orgId)` accepts NO caller-computed value and derives
  * every persisted field itself from the org's FULL unfiltered opportunity set. Poisoning is impossible
  * by API shape rather than by caller discipline.
  *
@@ -43,7 +43,9 @@ const OPEN_STAGES = ["discovery", "qualification", "business_validation", "propo
 type Row = { stage: string; amount: number; close: string | null };
 
 /** The canonical row as stored, for byte-identity comparison. */
-const snapshotOf = async (db: Pool | PoolClient, orgId: string, day = "now()::date") =>
+const UTC_TODAY = "(now() at time zone 'utc')::date";
+/** The canonical row as stored. The day expression is UTC per D-HIST-2 D4, not session-local. */
+const snapshotOf = async (db: Pool | PoolClient, orgId: string, day = UTC_TODAY) =>
   (await db.query<{ j: string }>(
     `select coalesce(row_to_json(t)::text, 'ABSENT') j from (
        select open_count, open_usd::text, weighted_usd::text, crm_usd::text
@@ -101,9 +103,9 @@ async function main(): Promise<void> {
     `open_count=${expOpenCount} open_usd=${expOpenUsd} weighted=${expWeighted} crm=${expCrm}`);
 
   // ── 2 / 11-14: the writer persists exactly those canonical values ───────────────────────────────
-  await upsertCanonicalPipelineSnapshot(db, ORG);
+  await producePipelineSnapshot(db, ORG);
   const written = (await db.query<{ open_count: number; open_usd: string; weighted_usd: string; crm_usd: string | null }>(
-    `select open_count, open_usd::text, weighted_usd::text, crm_usd::text from pipeline_snapshots where org_id=$1 and taken_on = now()::date`, [ORG])).rows[0];
+    `select open_count, open_usd::text, weighted_usd::text, crm_usd::text from pipeline_snapshots where org_id=$1 and taken_on = (now() at time zone 'utc')::date`, [ORG])).rows[0];
   check("2+11: open_count is canonical", written.open_count === expOpenCount, `${written.open_count} vs ${expOpenCount}`);
   check("12: open_usd is canonical", Number(written.open_usd) === expOpenUsd, `${written.open_usd} vs ${expOpenUsd}`);
   check("13: weighted_usd is canonical", Number(written.weighted_usd) === expWeighted, `${written.weighted_usd} vs ${expWeighted}`);
@@ -123,7 +125,7 @@ async function main(): Promise<void> {
   for (const days of [7, 30, 90]) {
     const fm = filteredMetrics(days);
     // The page now calls the writer with (db, orgId) ONLY — the filtered projection cannot reach it.
-    await upsertCanonicalPipelineSnapshot(db, ORG);
+    await producePipelineSnapshot(db, ORG);
     const after = await snapshotOf(db, ORG);
     check(`${days === 7 ? 3 : days === 30 ? 4 : 5}: ?timeframe=${days} leaves the canonical snapshot byte-identical`,
       after === canonical, `filtered view would have written open_count=${fm.count}, open_usd=${fm.usd}`);
@@ -134,12 +136,12 @@ async function main(): Promise<void> {
   // ── 6: other view filters likewise cannot reach the writer ─────────────────────────────────────
   // Structural: the writer takes (db, orgId). Exercised by calling it the only way it can be called.
   check("6: the writer's public API accepts no filter/aggregate — arity is (db, orgId)",
-    upsertCanonicalPipelineSnapshot.length === 2, `arity=${upsertCanonicalPipelineSnapshot.length}`);
+    producePipelineSnapshot.length === 2, `arity=${producePipelineSnapshot.length}`);
   check("6: no other pipeline view state can reach the snapshot (no third parameter exists)",
     (await snapshotOf(db, ORG)) === canonical);
 
   // ── 7/8: repeated filtered renders cause zero movement; nothing needs repairing ─────────────────
-  for (let i = 0; i < 5; i++) await upsertCanonicalPipelineSnapshot(db, ORG);
+  for (let i = 0; i < 5; i++) await producePipelineSnapshot(db, ORG);
   check("7: five repeated renders cause ZERO snapshot content movement", (await snapshotOf(db, ORG)) === canonical);
   check("8: returning to the unfiltered view repairs nothing, because nothing was damaged",
     (await snapshotOf(db, ORG)) === canonical);
@@ -148,32 +150,50 @@ async function main(): Promise<void> {
   console.log("\nnegative control (pre-fix flow, disposable data only)");
   const fm7 = filteredMetrics(7);
   await db.query(
-    `insert into pipeline_snapshots (org_id, taken_on, open_count, open_usd, weighted_usd, crm_usd)
-     values ($1, now()::date, $2, $3, $4, $5)
+    `insert into pipeline_snapshots (org_id, taken_on, open_count, open_usd, weighted_usd, crm_usd, source)
+     values ($1, (now() at time zone 'utc')::date, $2, $3, $4, $5, 'legacy_observation')
      on conflict (org_id, taken_on) do update
        set open_count = excluded.open_count, open_usd = excluded.open_usd,
-           weighted_usd = excluded.weighted_usd, crm_usd = excluded.crm_usd`,
+           weighted_usd = excluded.weighted_usd, crm_usd = excluded.crm_usd,
+           -- The pre-fix writer predates the provenance column, so anything it wrote is legacy.
+           source = 'legacy_observation'`,
     [ORG, fm7.count, fm7.usd, 0, expCrm]);
   const poisoned = await snapshotOf(db, ORG);
   check("9: the PRE-FIX flow DOES poison the canonical row with 7-day filtered totals",
     poisoned !== canonical && JSON.parse(poisoned).open_count === fm7.count,
     `canonical open_count=${expOpenCount} → poisoned open_count=${fm7.count}`);
-  await upsertCanonicalPipelineSnapshot(db, ORG);
-  check("9: the FIXED writer restores canonical values and cannot reproduce that mutation",
+  // D-HIST-2 SUPERSEDES THE REPAIR PROPERTY. D-P1's writer repaired a poisoned row because it
+  // upserted last-write-wins; the producer is now first-write-wins, so it will NOT overwrite a row
+  // that already exists for the day — and must not, or a retry could revise a recorded sample.
+  // The protection is stronger and earlier: nothing can poison the row, because no render writes it,
+  // and a row produced by anything else is classified `legacy_observation` and excluded by both
+  // consumers. Asserted as the two facts that now hold.
+  await producePipelineSnapshot(db, ORG);
+  check("9: the FIXED writer does not overwrite an existing row — first-write-wins is preserved",
+    (await snapshotOf(db, ORG)) === poisoned);
+  const poisonedSource = (await db.query<{ source: string }>(
+    `select source from pipeline_snapshots where org_id = $1 and taken_on = (now() at time zone 'utc')::date`,
+    [ORG])).rows[0]?.source;
+  check("9b: …and such a row is classified legacy_observation, so no consumer may use it",
+    poisonedSource === "legacy_observation", poisonedSource);
+  // Restore the day to a producer-written sample for the checks that follow.
+  await db.query(`delete from pipeline_snapshots where org_id = $1 and taken_on = (now() at time zone 'utc')::date`, [ORG]);
+  await producePipelineSnapshot(db, ORG);
+  check("9c: with the day clear, the producer writes the INDEPENDENT canonical recomputation",
     (await snapshotOf(db, ORG)) === canonical);
 
   // ── 10: concurrency — simultaneous "filtered" and "unfiltered" requests ────────────────────────
   console.log("\nconcurrency");
   await Promise.all(Array.from({ length: 6 }, async () => {
     const c = await owner.connect();
-    try { await upsertCanonicalPipelineSnapshot(c, ORG); } finally { c.release(); }
+    try { await producePipelineSnapshot(c, ORG); } finally { c.release(); }
   }));
   check("10: six concurrent requests cannot leave a filtered value persisted — all writers agree",
     (await snapshotOf(db, ORG)) === canonical);
 
   // ── 15/16: tenant isolation under app_rw ───────────────────────────────────────────────────────
   console.log("\ntenant / app_rw");
-  await upsertCanonicalPipelineSnapshot(db, ORG_B);
+  await producePipelineSnapshot(db, ORG_B);
   const bBefore = await snapshotOf(db, ORG_B);
   const rwc = await rw.connect();
   let refused = false;
@@ -198,12 +218,12 @@ async function main(): Promise<void> {
 
   // ── 17/18/19: prior-date immutability, new-date row, CFR-1.1 ───────────────────────────────────
   console.log("\ndate semantics / CFR-1.1");
-  await db.query(`insert into pipeline_snapshots (org_id, taken_on, open_count, open_usd, weighted_usd, crm_usd)
-                  values ($1, (now() - interval '1 day')::date, 1, 1, 1, 1)`, [ORG]);
-  const yBefore = await snapshotOf(db, ORG, "(now() - interval '1 day')::date");
-  for (let i = 0; i < 3; i++) await upsertCanonicalPipelineSnapshot(db, ORG);
+  await db.query(`insert into pipeline_snapshots (org_id, taken_on, open_count, open_usd, weighted_usd, crm_usd, source)
+                  values ($1, ((now() at time zone 'utc')::date - 1), 1, 1, 1, 1, 'legacy_observation')`, [ORG]);
+  const yBefore = await snapshotOf(db, ORG, "((now() at time zone 'utc')::date - 1)");
+  for (let i = 0; i < 3; i++) await producePipelineSnapshot(db, ORG);
   check("17: prior-date rows remain byte-identical through repeated writes",
-    (await snapshotOf(db, ORG, "(now() - interval '1 day')::date")) === yBefore);
+    (await snapshotOf(db, ORG, "((now() at time zone 'utc')::date - 1)")) === yBefore);
   check("18: today's row still equals the INDEPENDENT canonical recomputation",
     (await snapshotOf(db, ORG)) === canonical);
   const perDay = (await db.query<{ n: string }>(
@@ -216,7 +236,7 @@ async function main(): Promise<void> {
   // values. `/pipeline` must hold no snapshot INSERT of its own, and its single call must pass the org
   // identity and nothing else — no open_count, open_usd, weighted_usd, crm_usd, timeframe or filtered set.
   const pageSrc = readFileSync(join(import.meta.dirname, "..", "src", "app", "pipeline", "page.tsx"), "utf8");
-  const calls = [...pageSrc.matchAll(/upsertCanonicalPipelineSnapshot\(([^)]*)\)/g)].map((m) => m[1].trim());
+  const calls = [...pageSrc.matchAll(/producePipelineSnapshot\(([^)]*)\)/g)].map((m) => m[1].trim());
   // D-HIST-2 SUPERSEDES D-P1 HERE, and strictly strengthens it. D-P1 asked whether the render path's
   // ONE call passed only the org identity; the render path must now make NO call at all, so the
   // question D-P1 asked cannot arise. Asserted positively — the page is proven to be present and to

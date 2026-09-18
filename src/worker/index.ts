@@ -15,6 +15,7 @@ import { registerOutreachExecutor } from "../lib/comms/governed-send";
 import { drainRecomputeQueue } from "../lib/pursuits/federation/events";
 import { suggestCampaigns } from "../lib/comms/suggest";
 import { runDueRoutines } from "../lib/routines/routines";
+import { producePipelineSnapshot } from "../lib/pipeline/snapshot";
 
 /**
  * Pipeline worker (Railway). A single long-lived process that drives the
@@ -51,6 +52,33 @@ async function runScreen(limit = SWEEP_LIMIT) {
   const db = await pool.connect();
   try {
     return await runScreeningSweepAllOrgs(db, { limit });
+  } finally {
+    db.release();
+  }
+}
+
+/**
+ * D-HIST-2 — the explicit daily pipeline analytical sample.
+ *
+ * TENANT ENUMERATION LIVES HERE, at the worker boundary that already has all-org authority for
+ * screening and backups — not inside the producer, which stays org-scoped. No new scheduler, no new
+ * credential, no new cross-tenant path: this rides the sweep that already runs once per UTC day.
+ *
+ * Failure isolation follows the worker's existing policy: one organization's failure is logged and
+ * the sweep continues. No retry or orchestration subsystem is introduced for this.
+ */
+async function runPipelineSnapshots() {
+  const pool = getOwnerPool();
+  const db = await pool.connect();
+  try {
+    const { rows: orgs } = await db.query<{ id: string; name: string }>(
+      "select id, name from organizations order by name");
+    let produced = 0; const failed: string[] = [];
+    for (const org of orgs) {
+      try { await producePipelineSnapshot(db, org.id); produced++; }
+      catch (err) { failed.push(`${org.name}: ${err instanceof Error ? err.message : String(err)}`); }
+    }
+    return { orgs: orgs.length, produced, failed };
   } finally {
     db.release();
   }
@@ -286,6 +314,7 @@ function startScheduler(): void {
   const autosend = process.env.OUTREACH_AUTOSEND === "on";
   let lastResearch = Date.now(); // first research fires after one interval
   let lastScreenDay = ""; // YYYY-MM-DD of the last screening sweep
+  let lastSnapshotDay = ""; // YYYY-MM-DD (UTC) of the last pipeline analytical sample
   let lastBackupDay = ""; // YYYY-MM-DD of the last nightly backup
 
   log("scheduler on", { screenHour, researchIntervalHours: researchIntervalMs / 3_600_000, outreachAutosend: autosend });
@@ -349,6 +378,18 @@ function startScheduler(): void {
         log("cron: screen", s.locked ? { locked: true } : { screened: s.screened, enqueued: s.enqueued });
       } catch (err) {
         log("cron: screen error", { error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    // D-HIST-2: the daily pipeline analytical sample, on the SAME once-per-UTC-day guard the sweep
+    // above uses. `day` is already UTC, and the producer writes an explicitly UTC `taken_on`, so the
+    // guard and the row agree about which day this is.
+    if (now.getUTCHours() === screenHour && lastSnapshotDay !== day) {
+      lastSnapshotDay = day;
+      try {
+        const p = await runPipelineSnapshots();
+        log("cron: pipeline snapshot", p);
+      } catch (err) {
+        log("cron: pipeline snapshot error", { error: err instanceof Error ? err.message : String(err) });
       }
     }
   };

@@ -501,7 +501,7 @@ async function main(): Promise<void> {
     // D-HIST-2: the snapshot call is GONE from the render path, so this no longer asserts its shape.
     check("90: D-P2-1 \u2014 Pipeline behaviour is unchanged: recency is still the default, and the render path writes no history",
       /qp\("sort"\) === "pertinence" \? "pertinence" : "recency"/.test(pipeSrc)
-      && !/upsertCanonicalPipelineSnapshot\(/.test(pipeSrc)
+      && !/producePipelineSnapshot\(/.test(pipeSrc)
       && !pipeSrc.includes("read-models/today"));
   } finally { db3.release(); }
 

@@ -6,7 +6,7 @@ import type { Stage } from "@/lib/opportunities/lifecycle";
 type Db = Pool | PoolClient;
 
 /**
- * The canonical daily pipeline snapshot writer (D-P1).
+ * The explicit daily pipeline ANALYTICAL sample producer (D-P1 · D-HIST-2).
  *
  * WHAT ONE ROW MEANS. `pipeline_snapshots` is keyed `(org_id, taken_on)` — one row per org per day —
  * and it means exactly one thing: **the canonical, unfiltered daily pipeline state for that org**.
@@ -26,16 +26,35 @@ type Db = Pool | PoolClient;
  * every persisted field itself from the org's FULL unfiltered opportunity set. Filtered-view
  * poisoning is impossible by API shape, not by caller discipline.
  *
- * Deliberately unchanged: the canonical business rules (what counts as open, how amounts aggregate,
- * the stage-weight curve with per-partner overrides, the CRM tie-out) and the read-triggered write
- * ("history accrues just by looking"). Only today's row is ever written — `taken_on` is the database's
- * `now()::date` and is never caller-supplied — so prior-date rows are immutable by construction.
+ * D-HIST-2 — WHAT CHANGED, AND WHY.
  *
- * CONCURRENCY. Two requests may still race on the primary key, but because every writer recomputes
- * the SAME canonical state, every racing write carries identical values. Last-write-wins becomes
- * harmless and the upsert is genuinely idempotent; no locking is needed.
+ * This is no longer reachable from a render. "History accrues just by looking" meant a row existed
+ * because somebody opened the page, so the series recorded the audience rather than the business,
+ * while both consumers reason about it as a daily sample. It is now driven by the worker's existing
+ * daily sweep, and it is ANALYTICAL history — a derived sample of canonical state, never canonical
+ * truth, and never evidence that a user visited anything.
+ *
+ * THREE PROPERTIES THE CONTRACT TURNS ON:
+ *
+ *   · PROVENANCE IS EXPLICIT. Every row states `scheduled_daily_v1`. The column has no default, so a
+ *     producer that forgets fails instead of quietly writing legacy-looking data.
+ *   · THE DATE IS UTC, EXPLICITLY. `taken_on` is `(now() at time zone 'utc')::date`, not the session's
+ *     idea of today — the local clone and the deployed runtime disagreed by five to six hours a day.
+ *   · FIRST WRITE WINS. `on conflict do nothing`: the day's sample is the FIRST successful producer
+ *     run for that org on that UTC date. A retry cannot revise it, because otherwise page-view timing
+ *     would simply have been replaced by job-retry timing.
+ *
+ * It is a daily sample keyed to a UTC date — NOT a midnight snapshot. The producer runs when the
+ * worker's sweep runs, and no claim is made that the instant is midnight.
+ *
+ * Deliberately unchanged: the canonical business rules (what counts as open, how amounts aggregate,
+ * the stage-weight curve with per-partner overrides, the CRM tie-out). Prior-date rows remain
+ * immutable by construction, since only today's UTC date is ever written.
+ *
+ * TENANT ENUMERATION IS NOT THIS FUNCTION'S JOB. It takes one `orgId`. The worker owns deciding which
+ * organizations are due, using the all-org authority it already has for screening and backups.
  */
-export async function upsertCanonicalPipelineSnapshot(db: Db, orgId: string): Promise<void> {
+export async function producePipelineSnapshot(db: Db, orgId: string): Promise<void> {
   // The org's FULL opportunity set — no ecosystem scope, no timeframe horizon, no board filters.
   // The `join companies` mirrors the page's canonical source exactly.
   const { rows } = await db.query<{ stage: string; amount_usd: string | null; partner_id: string | null }>(
@@ -74,13 +93,12 @@ export async function upsertCanonicalPipelineSnapshot(db: Db, orgId: string): Pr
   );
   const crmUsd = crmRows[0]?.crm == null ? null : Number(crmRows[0].crm);
 
-  // Today's row only. `taken_on` comes from the database, never from a caller.
+  // Today's UTC row only, with explicit provenance, and FIRST WRITE WINS. `taken_on` comes from the
+  // database in UTC, never from a caller and never from the session's timezone.
   await db.query(
-    `insert into pipeline_snapshots (org_id, taken_on, open_count, open_usd, weighted_usd, crm_usd)
-     values ($1, now()::date, $2, $3, $4, $5)
-     on conflict (org_id, taken_on) do update
-       set open_count = excluded.open_count, open_usd = excluded.open_usd,
-           weighted_usd = excluded.weighted_usd, crm_usd = excluded.crm_usd`,
+    `insert into pipeline_snapshots (org_id, taken_on, open_count, open_usd, weighted_usd, crm_usd, source)
+     values ($1, (now() at time zone 'utc')::date, $2, $3, $4, $5, 'scheduled_daily_v1')
+     on conflict (org_id, taken_on) do nothing`,
     [orgId, openCount, openUsd, weightedUsd, crmUsd],
   );
 }
