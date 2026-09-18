@@ -703,6 +703,14 @@ whose parser missed must fail loudly, not report clean.
   and well-formed *before* trusting any negative assertion built on the same parse.
 - Treat a parse miss as **INVALID**, a distinct outcome from FAIL — the same class rule CFR-1.2
   established for transport failure, where INVALID ≠ PASS.
+- **Route/inventory existence must be proven from structured build or runtime metadata, never from
+  source-text matching.** Adopted with Slice 4, which reads the App Router's own emitted route
+  inventory. **The exact filename is implementation-specific evidence, not an architectural
+  contract** — it may change with the framework, and a gate that pins it is pinning a build detail. If
+  the expected structured inventory is **missing, unreadable, or its schema cannot be validated**, the
+  result is **INVALID/FAIL — never PASS, and never "the destination is absent."** Keep a sanity control
+  proving a known-present entry exists *before* testing the registered ones, so a manifest that loaded
+  but means something else cannot quietly answer "no" to every question.
 - **Prefer structured evidence over parsing rendered prose or HTML wherever a governed structured
   output already exists.** P7 produces `GovernedResultSet`, `Explanation` and `AggregateResult` as
   structured values; a gate that can assert against those, or against a JSON boundary, should never be
