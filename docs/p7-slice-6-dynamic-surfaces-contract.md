@@ -1,7 +1,8 @@
 # P7 Slice 6 — Dynamic Pursuit Surfaces: contract and plan
 
-**Status:** **RULED AND AUTHORIZED** (rulings in §N, which supersede every recommendation above them).
-Implementation may proceed.
+**Status:** **HOSTED ACCEPTED / CLOSED** (`f7b40b1`, 131/0 hosted with a live model). Rulings in §N
+remain authoritative. *AI composes certified PursuitOS capabilities; it does not define their
+semantics or authority.*
 **Builds on:** Slices 1–5, all HOSTED ACCEPTED / CLOSED (`cade340` · `a6dabbb` · `7ac8c7f` ·
 `a1dad9f` · `a6257bc`).
 
