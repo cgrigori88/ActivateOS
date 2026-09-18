@@ -1,6 +1,7 @@
 # P7 Slice 5 — natural-language intent compilation: contract and plan
 
-**Status:** **PLAN ONLY — NOT AUTHORIZED FOR IMPLEMENTATION.** Decisions requiring a ruling are in §K.
+**Status:** **RULED AND AUTHORIZED** (rulings in §L, which supersede every recommendation above them).
+Implementation may proceed.
 **Builds on:** Slice 1 (`cade340`) · Slice 2 (`a6dabbb`) · Slice 3 (`7ac8c7f`) · Slice 4 (`a1dad9f`) —
 all HOSTED ACCEPTED.
 
@@ -332,6 +333,85 @@ aggregate, view or surface.
    already governed. Ruling needed on whether that residual is acceptable without an additional
    confirmation step, and whether the rendered surface must always state **which canonical operation
    actually ran** so a substituted intent is visible to the user.
+
+---
+
+## L. Ruling record (authoritative — supersedes any recommendation above it)
+
+> **THE GOVERNING INVARIANT: the model proposes intent. PursuitOS determines meaning and execution.**
+>
+> `user utterance → model proposal → deterministic compiler → canonical certified P7 operation →
+> existing governed execution`. **Model output is untrusted input.**
+
+1. **Model selects a `ViewKey` — APPROVED.** The model may **not** author a `PursuitQuery`; it selects
+   from a closed registry of code-defined `ViewKey`s whose canonical plans already exist. It therefore
+   cannot express arbitrary filters, arbitrary metrics, caller-defined cohorts, historical `asOf`,
+   cross-org comparison, unregistered projection or new routing behaviour. If a requested capability
+   cannot be represented by an existing `ViewKey`, the answer is `UNSUPPORTED` or
+   `NEEDS_CLARIFICATION` — **never an approximation with a broader or different view.**
+2. **Governed context references — APPROVED.** The model emits `{ fromContext: n }` and never a
+   canonical UUID. **Before the model call**, deterministic code builds an **immutable
+   `ContextManifest`** from already recipient-authorized context; each slot exposes only recipient-safe
+   metadata required for interpretation, and the manifest carries a **stable digest/version**. The
+   compiler resolves `{fromContext:n}` **only against the exact manifest associated with that
+   proposal**. Rejected: out-of-range indexes · stale or mismatched context digest · model-authored
+   UUIDs · arbitrary identifiers · references to entries not in the supplied manifest. **The model must
+   not become an object-existence probe.**
+3. **No model-authored answer prose in Slice 5.** The planning model **never receives the governed
+   execution result**. The existing deterministic P7 surfaces render it. Slice 5 compiles intent only.
+4. **Two-layer envelope — APPROVED.** `ModelProposal` is authored by the model and treated as
+   untrusted; `CompiledIntent` is produced **only** by deterministic application code after validation.
+   Compiler-stamped provenance may include the proposal schema version, compiler version,
+   model/provider identifier, prompt/template version, `ContextManifest` digest, selected `ViewKey` and
+   canonical operation. **The model cannot supply or override any provenance field.**
+5. **Certification and the model — TWO STAGES.** The deterministic certification suite runs **entirely
+   on hand-authored `ModelProposal` fixtures** and proves compiler semantics independently of any
+   provider; **a live model response must never make deterministic certification PASS or FAIL by virtue
+   of wording or nondeterminism.** Slice 5 is **not fully HOSTED ACCEPTED until the deployed Preview
+   model path has been exercised**:
+   - **Stage A — deterministic compiler acceptance** (`PURSUIT_INTENT_ENABLED=OFF`): proposal parsing,
+     context binding, compiler behaviour and execution against hand-authored proposals.
+   - **Stage B — live-model integration acceptance** (master enabled in Preview only): a bounded gate
+     proving the real model is invoked · only the allowed registry/context vocabulary enters the prompt ·
+     returned content is treated as `ModelProposal` only · malformed or unknown output is rejected
+     without execution · no model output bypasses deterministic validation · a successful proposal
+     compiles to a canonical operation and then uses the already-certified execution path.
+     **It tests the boundary, not model intelligence** — no probabilistically exact wording or
+     per-utterance proposal is required.
+6. **Gating.** Add `PURSUIT_INTENT_ENABLED` as an **environment master, default OFF**. It gates
+   **calling the intent model**, not the underlying deterministic P7 capabilities. The existing
+   `pursuit_experience` tenant entitlement still applies. **No new `org_features` column.** **Not
+   coupled to `dynamic_surfaces`.** Turning intent OFF must leave the previously certified
+   deterministic P7 grammar unchanged.
+7. **Clarification text is deterministic only.** The model may return `NEEDS_CLARIFICATION` and a
+   **closed missing/ambiguity key**; application code renders the corresponding **registered** question.
+   The model may not author clarification prose, and clarification copy must **never enumerate hidden
+   objects or imply undisclosed alternatives**.
+8. **Prompt-injection residual — ACCEPTED EXPLICITLY.** *Prompt injection may cause a different
+   already-permitted read operation to be proposed than the user intended. It may not increase
+   authority or create a capability.* **No confirmation step is required for Slice 5**, because every
+   executable outcome is read-only and already governed. **But every successful execution must visibly
+   render a deterministic canonical operation disclosure** — e.g. *"Interpreted as: Analyze open
+   pipeline for this governed pursuit set"* — composed **from canonical registry metadata, never from
+   model prose**, so the user can tell which operation actually executed. It must **not** display hidden
+   implementation details, ids or governance reasons merely to satisfy this. **Any future action or
+   write capability invalidates this no-confirmation ruling** and must enter the P5 action/approval
+   contract.
+
+**Required negative proofs** (in addition to §"Safety properties to prove"): the model cannot emit an
+organization or principal · cannot emit a UUID · cannot emit a URL or path · an unknown `ViewKey`
+rejects **before DB execution** · an out-of-range or stale `ContextRef` rejects **before DB execution** ·
+context order or digest mismatch cannot retarget a reference · prompt text cannot define a new
+`ViewKey` · prompt injection cannot introduce a field, metric, filter, cohort, route or action ·
+malformed structured output executes nothing · `NEEDS_CLARIFICATION` executes nothing · `UNSUPPORTED`
+executes nothing · identical compiled intents produce identical downstream behaviour regardless of
+model wording · hand-authored and model-produced proposals compiling to the same `CompiledIntent`
+execute identically · compiler-stamped provenance cannot be forged from `ModelProposal` fields · **the
+operation shown to the user exactly matches the canonical operation actually executed.**
+
+**Slice 5 remains:** pursuit only · read-only · no model-authored result prose · no arbitrary query
+authoring · no fuzzy search · no hidden object lookup · no actions · no pinning · no exports · no
+historical queries · no Dynamic Pursuit Surfaces · no schema · no P5/P6 changes.
 
 ---
 
