@@ -288,7 +288,7 @@ test("RULING 5: the cohort is fixed and code-defined; caller input cannot synthe
   assert.ok(!/JSON\.parse/.test(route), "the route parses no caller-supplied structure");
   // Only two request inputs exist, and neither is a filter, dimension, metric or aggregate.
   const params = route.match(/searchParams:\s*Promise<\{([^}]*)\}>/)?.[1] ?? "";
-  assert.deepEqual([...params.matchAll(/(\w+)\??:/g)].map((m) => m[1]).sort(), ["explain", "view"]);
+  assert.deepEqual([...params.matchAll(/(\w+)\??:/g)].map((m) => m[1]).sort(), ["explain", "goto", "view"]);
   // An unknown view key does not become a plan; it falls back to a registered one.
   assert.equal(isViewKey("../../etc/passwd"), false);
   assert.equal(isViewKey(undefined), false);

@@ -39,6 +39,30 @@ export function explainPlanFor(pursuitId: string): PursuitQuery {
   };
 }
 
+/**
+ * THE GO TO PLAN (Slice 4). GO TO issues no query of its own (ruling 5): it runs the ordinary
+ * governed boundary with this fixed plan, so the existence of a row IS the authorization, decided by
+ * P6 and nothing else. There is no second read path to govern, audit or keep in sync.
+ *
+ * The projection is the minimum the destination can use: the identity, and the one registered cell
+ * that may label the target if it survives disclosure. No metrics — a navigation request must not
+ * cause a derivation.
+ */
+export function goToPlanFor(pursuitId: string): PursuitQuery {
+  return {
+    queryVersion: 1,
+    subject: { class: "pursuit", ids: [pursuitId] },
+    scope: ALL_SCOPE,
+    filters: [],
+    metrics: [],
+    projection: ["pursuit.id", "pursuit.account_name"],
+    limit: 1,
+    asOf: null,
+    explain: false,
+    aggregate: false,
+  };
+}
+
 export const PLANS: Record<ViewKey, { label: string; plan: PursuitQuery }> = {
   "open-by-value": {
     label: "Open pursuits by open pipeline",

@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
-import { executePursuitQuery } from "@/lib/experience/execute";
+import { executePursuitQuery, resolveGoTo } from "@/lib/experience/execute";
 import { explainPlanFor, isViewKey, PLANS, VIEW_KEYS, type ViewKey } from "@/lib/experience/plans";
 import { FIELDS, METRICS, metricKey } from "@/lib/experience/registry";
-import type { AggregateResult, Explanation, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
+import type { AggregateResult, Explanation, GoToOutcome, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +28,26 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export default async function ExperiencePursuitsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; explain?: string }>;
+  searchParams: Promise<{ view?: string; explain?: string; goto?: string }>;
 }) {
   if (!pursuitExperienceEnabled()) notFound();   // deployment master — fast deny, no DB work
 
   const sp = await searchParams;
+
+  // GO TO (Slice 4). Transport only: it names WHICH object and nothing else — no path, no route, no
+  // organization — and it does not pre-filter the id, because refusing a malformed one is the
+  // boundary's job and that is where the proof lives. No redirect is issued: this renders the
+  // resolved target as a link, and only after governance succeeded.
+  if (typeof sp.goto === "string") {
+    const outcome = await resolveGoTo({ requestVersion: 1, ref: { class: "pursuit", id: sp.goto }, surface: "canonical" });
+    return (
+      <main className="mx-auto max-w-[1100px] px-6 py-10">
+        <h1 className="text-section font-extrabold tracking-[-0.03em]">Go to</h1>
+        <Navigation outcome={outcome} />
+      </main>
+    );
+  }
+
   const view: ViewKey = isViewKey(sp.view) ? sp.view : "open-by-value";
   // `?explain=<id>` names WHICH object, never which organization: governance still decides whether
   // it is visible. A malformed id is simply not a plan we will build.
@@ -139,6 +154,38 @@ function Result({ result, view }: { result: GovernedResultSet; view: ViewKey }) 
         </p>
       )}
     </>
+  );
+}
+
+/**
+ * The resolved navigation target. TRANSPORT ONLY — it re-checks nothing and could not: it receives a
+ * value, not a query, and holds no database handle.
+ *
+ * THREE OUTCOMES AND NO FOURTH. A governed target renders as a link. `UNAVAILABLE_TARGET` acknowledges
+ * the object — permitted, because governance already established that this recipient may know it
+ * exists — in operation-level language naming no reason and no hidden attribute. Everything else
+ * renders the ONE recipient-safe absence: unauthorized, nonexistent and malformed are the same bytes,
+ * so naming an id reveals nothing about whether it exists (ruling 7).
+ */
+function Navigation({ outcome }: { outcome: GoToOutcome }) {
+  if (outcome.ok) {
+    return (
+      <section className="mt-8">
+        <p className="text-copy">
+          <a className="text-accent underline" href={outcome.target.path}>{outcome.target.label}</a>
+        </p>
+        <p className="mt-3 text-body text-neutral-500 dark:text-neutral-400">
+          {outcome.target.ref.class}@{outcome.target.surface}
+        </p>
+      </section>
+    );
+  }
+  return (
+    <p className="mt-8 text-body text-neutral-500 dark:text-neutral-400">
+      {outcome.error === "UNAVAILABLE_TARGET"
+        ? "This pursuit has no destination available for you."
+        : "That pursuit is not available."}
+    </p>
   );
 }
 

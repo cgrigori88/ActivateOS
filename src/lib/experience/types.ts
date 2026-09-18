@@ -138,6 +138,53 @@ export interface AggregateResult {
   provenance: string;
 }
 
+// ── GO TO (Slice 4) ─────────────────────────────────────────────────────────────────────────────
+
+/** The registered destination vocabulary. Slice 4 has exactly one, and a second is a code change. */
+export type SurfaceKey = "canonical";
+
+/**
+ * A canonical navigation request.
+ *
+ * `ref` is the SAME shape `GovernedRow.objectRef` already emits — GO TO does not invent a second
+ * object model, because a reference navigation can name but a governed result cannot is a second way
+ * to talk about objects, and every invariant proven about `GovernedRow` would stop covering it.
+ *
+ * What this type CANNOT express, structurally (ruling 1): a pathname · a URL · a template · a query
+ * string · a fragment · a slug · a route parameter · an organization · a scope · a label. There is
+ * nothing to sanitize because there is nothing to accept.
+ */
+export interface GoToRequest {
+  requestVersion: 1;
+  ref: { class: ObjectClass; id: string };
+  surface: SurfaceKey;
+}
+
+/**
+ * The canonical destination descriptor — NOT an HTTP redirect, a `Response`, or a framework call.
+ *
+ * Web renders it as a link, an API returns it, MCP returns it. No transport re-checks authorization,
+ * and structurally none can: they receive a value, not a query, and hold no database handle. That is
+ * what makes "transports duplicate no authorization logic" provable rather than conventional.
+ */
+export interface NavigationTarget {
+  ref: { class: ObjectClass; id: string };
+  surface: SurfaceKey;
+  /** Formed by `pathFor()` — the single path-forming function. Carries only the canonical id. */
+  path: string;
+  /** Governed (ruling 4): a disclosed registered cell, or the destination's class-generic fallback. */
+  label: string;
+}
+
+export type GoToOutcome =
+  | { ok: true; target: NavigationTarget }
+  /** Unauthorized OR nonexistent — ONE value, and the distinction never crosses this boundary. */
+  | { ok: false; error: "NOT_AVAILABLE" }
+  /** Existence authorized, the registered surface has no usable destination (ruling 2). */
+  | { ok: false; error: "UNAVAILABLE_TARGET" }
+  /** The caller's own input was malformed. Describes the request, never stored state. */
+  | { ok: false; error: "INVALID_REQUEST"; detail: string };
+
 // ── EXPLAIN (Slice 2) ───────────────────────────────────────────────────────────────────────────
 
 /** A plan asks for an explanation by naming a REGISTERED template. `false` means none. */

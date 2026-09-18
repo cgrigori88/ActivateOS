@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 import { assertSeededClone } from "./seeded-clone";
-import { executePursuitQuery } from "../src/lib/experience/execute";
+import { executePursuitQuery, resolveGoTo } from "../src/lib/experience/execute";
 import { PLANS, explainPlanFor } from "../src/lib/experience/plans";
 import { testFixturePrincipal } from "../src/lib/experience/principal";
 import { FILTERS } from "../src/lib/experience/registry";
@@ -395,6 +395,61 @@ async function main(): Promise<void> {
   check("48: the empty result recovers no identifier from the cohort it may not see",
     !visibleBytes(emptyC3).includes(NS) && !visibleBytes(emptyC3).includes(w.pursuitA) &&
     !visibleBytes(emptyC3).includes(hidden));
+
+  // ── 8h. GO TO (Slice 4) — resolution under real RLS, participation and disclosure ─────────────
+  //
+  // The proof that needs a database: an object that genuinely EXISTS but that this principal may not
+  // see must be indistinguishable from one that does not exist. Only RLS and `can_see_pursuit` can
+  // create that contrast honestly.
+  const goTo = (orgId: string, id: string) =>
+    resolveGoTo({ requestVersion: 1, ref: { class: "pursuit", id }, surface: "canonical" }, testFixturePrincipal(orgId));
+  const NONEXISTENT = "11111111-2222-4333-8444-999999999999";
+
+  const ownTarget = await goTo(w.a, w.pursuitA);
+  check("49: the owner resolves its own pursuit to a governed navigation target",
+    ownTarget.ok === true && ownTarget.target.path === `/pursuits/${w.pursuitA}`,
+    ownTarget.ok ? ownTarget.target.path : ownTarget.error);
+  check("50: the label never exceeds disclosure — it equals the governed cell the same principal sees",
+    ownTarget.ok === true && ownTarget.target.label === String(aRow?.cells["pursuit.account_name"]?.value),
+    ownTarget.ok ? ownTarget.target.label : "");
+
+  // AN EXISTING BUT INVISIBLE OBJECT AND A NONEXISTENT ONE MUST BE THE SAME ANSWER.
+  const invisible = await goTo(w.c, w.pursuitA);
+  const nonexistent = await goTo(w.c, NONEXISTENT);
+  check("51: an unauthorized object and a nonexistent one are byte-identical at the boundary",
+    JSON.stringify(invisible) === JSON.stringify(nonexistent) && invisible.ok === false,
+    JSON.stringify(invisible));
+  check("52: neither answer carries a reason, a path or the id that was named",
+    !JSON.stringify(invisible).includes(w.pursuitA) && !JSON.stringify(invisible).includes("/pursuits/") &&
+    invisible.ok === false && Object.keys(invisible).sort().join(",") === "error,ok");
+
+  // A participant may SEE the foreign pursuit, so it resolves — participation, not ownership.
+  const participantTarget = await goTo(w.b, w.pursuitA);
+  check("53: a participant resolves the foreign pursuit it is authorized to see",
+    participantTarget.ok === true, participantTarget.ok ? participantTarget.target.label : participantTarget.error);
+  check("54: no withheld value reaches the navigation target",
+    !JSON.stringify(participantTarget).includes("COMPELLING EVENT") &&
+    !JSON.stringify(participantTarget).includes("750000") &&
+    !JSON.stringify(participantTarget).includes("888888"));
+
+  // Changing only data hidden from C must not change C's navigation answer.
+  const db9 = await owner.connect();
+  await db9.query(`update pursuits set use_case = $1 where id = $2`, [`${NS} moved`, w.pursuitA]);
+  db9.release();
+  const invisibleAgain = await goTo(w.c, w.pursuitA);
+  check("55: changing only hidden target data does not change the recipient-visible answer",
+    JSON.stringify(invisibleAgain) === JSON.stringify(invisible));
+
+  // Determinism, and the org is never a request parameter.
+  const twice = await goTo(w.a, w.pursuitA);
+  check("56: the same principal and the same canonical reference yield the same target",
+    JSON.stringify(twice) === JSON.stringify(ownTarget));
+  const crossOrgGoTo = await resolveGoTo(
+    { requestVersion: 1, ref: { class: "pursuit", id: w.pursuitA }, surface: "canonical", orgId: w.a } as unknown,
+    testFixturePrincipal(w.c));
+  check("57: an organization smuggled into the request is refused, never honoured",
+    crossOrgGoTo.ok === false && crossOrgGoTo.error === "INVALID_REQUEST",
+    crossOrgGoTo.ok === false && crossOrgGoTo.error === "INVALID_REQUEST" ? crossOrgGoTo.detail : "");
 
   // ── 9. No P7-local write occurred ──
   const db3 = await owner.connect();

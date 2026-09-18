@@ -13,7 +13,7 @@
 import type { Audience } from "@/lib/pursuits/federation/disclosure";
 import { PURSUIT_STATUSES, TERMINAL_STATUSES } from "@/lib/pursuits/lifecycle";
 import { PURSUIT_TYPES } from "@/lib/pursuits/model";
-import type { FieldRef, FilterDimension, FilterOperator, MetricRef, ObjectClass } from "./types";
+import type { FieldRef, FilterDimension, FilterOperator, MetricRef, ObjectClass, SurfaceKey } from "./types";
 
 /** The canonical relation a class reads from. Referenced by the loader; never by a plan. */
 export const OBJECT_CLASSES: Record<ObjectClass, { table: string; identity: string }> = {
@@ -176,6 +176,61 @@ export const AGGREGATES: Record<string, AggregateDef> = {
 };
 
 export const aggregateKey = (a: { id: string; version: number }): string => `${a.id}@${a.version}`;
+
+/**
+ * THE NAVIGATION REGISTRY (Slice 4) — inside the SAME registry, never a second one.
+ *
+ * WHY THIS EXISTS. `/pursuits/${id}` is composed at fifteen call sites in this repo today, with
+ * hand-written fragments appended ad hoc. Each is a place where a route can drift, and where a link
+ * can be built for an object the caller never proved it may see. Here there is one mapping, reviewed
+ * and versioned, and exactly one function that forms a path.
+ *
+ * A ROUTE IS PRESENTATION METADATA, NEVER AUTHORITY. `/pursuits/<id>` grants nothing — the detail page
+ * enforces its own governance when it renders, exactly as it does today. What Slice 4 changes is that
+ * a *link to it* is no longer produced for an object whose visibility was never established.
+ *
+ * This registry owns MAPPING, not the destination route's business logic (ruling 6).
+ */
+export interface DestinationDef {
+  class: ObjectClass;
+  surface: SurfaceKey;
+  /** A code-defined pattern whose ONLY substitution is the canonical id. No slug, no fragment. */
+  pathTemplate: `/${string}:id${string}`;
+  /** Refs that must be present AND existence-AUTHORIZED in the governed row, or the target is not usable. */
+  requires: readonly FieldRef[];
+  /** The ONE registered cell that may label this target — used only if it survived disclosure (ruling 4). */
+  labelFrom: FieldRef;
+  /** The class-generic fallback. Fixed text: it describes the class, never the object. */
+  fallbackLabel: string;
+}
+
+export const DESTINATIONS: Record<string, DestinationDef> = {
+  "pursuit@canonical": {
+    class: "pursuit",
+    surface: "canonical",
+    pathTemplate: "/pursuits/:id",
+    requires: ["pursuit.id"],
+    labelFrom: "pursuit.account_name",
+    fallbackLabel: "Pursuit",
+  },
+};
+
+export const destinationKey = (cls: string, surface: string): string => `${cls}@${surface}`;
+
+/**
+ * THE ONE PLACE A PATH IS FORMED.
+ *
+ * The only variable part is a canonical id that already passed validation and that came back from
+ * governance. The guard is not defensive politeness: it is the reason open redirect is impossible
+ * here, so it refuses rather than substituting anything it cannot vouch for.
+ */
+export function pathFor(def: DestinationDef, id: string): string {
+  if (!CANONICAL_ID.test(id)) throw new Error("pathFor requires a canonical id");
+  return def.pathTemplate.replace(":id", id);
+}
+
+/** Canonical uuid. Shared by request validation and by path formation, so they cannot disagree. */
+export const CANONICAL_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Ordering keys. `pursuit.id asc` is always appended, so every ordering is total and reproducible. */
 export const ORDERABLE = new Set<string>(["pursuit.updated_at", "metric:pursuit.open_pipeline_usd@1"]);

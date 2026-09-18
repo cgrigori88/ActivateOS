@@ -27,7 +27,9 @@ import { validatePlan } from "./validate";
 import { principalOrgId, type ExecutionPrincipal } from "./principal";
 import { explain } from "./explain";
 import { analyze } from "./analyze";
-import type { AggregateResult, ExecuteOutcome, Explanation, FieldRef, GovernedCell, GovernedResultSet, GovernedRow, MetricRef, PursuitQuery } from "./types";
+import { navigate, validateGoToRequest } from "./navigate";
+import { goToPlanFor } from "./plans";
+import type { AggregateResult, ExecuteOutcome, Explanation, FieldRef, GoToOutcome, GovernedCell, GovernedResultSet, GovernedRow, MetricRef, PursuitQuery } from "./types";
 
 /** One candidate row as the canonical loader returns it — pre-governance, never leaves this module. */
 interface CandidateRow {
@@ -131,6 +133,36 @@ export async function executePursuitQuery(candidate: unknown, principal?: Execut
     return withTenantOrg(orgId, (db) => run(db, orgId));
   }
   return withTenant((db, orgId) => run(db, orgId));
+}
+
+/**
+ * P7 Slice 4 — RESOLVE A CANONICAL NAVIGATION REQUEST.
+ *
+ *   principal → fixed PursuitQuery → existing governance/disclosure → governed row → NavigationTarget
+ *
+ * This performs NO read of its own (ruling 5). It runs `executePursuitQuery` with the fixed
+ * `goToPlanFor` plan, so authorization is decided by exactly the machinery that decides it everywhere
+ * else, and a target is formed only from a row that machinery admitted.
+ *
+ * ONE ABSENCE AT THIS BOUNDARY (ruling 7). Unauthorized and nonexistent both return `NOT_AVAILABLE`,
+ * and the distinction does not cross the boundary in any form — no reason code, no shape difference,
+ * no second field. A capability denial collapses here too: it is a property of the organization, not
+ * of the object, identical for every id, and answering it differently would make the object-level
+ * answer vary by something other than the object.
+ */
+export async function resolveGoTo(candidate: unknown, principal?: ExecutionPrincipal): Promise<GoToOutcome> {
+  // Validation FIRST, before any connection: a malformed id never becomes query input, and an
+  // unregistered class or surface never causes a database round trip.
+  const v = validateGoToRequest(candidate);
+  if (!v.ok) return { ok: false, error: "INVALID_REQUEST", detail: v.detail };
+
+  const outcome = await executePursuitQuery(goToPlanFor(v.request.ref.id), principal);
+  if (!outcome.ok) return { ok: false, error: "NOT_AVAILABLE" };
+
+  const row = outcome.result.rows.find((r) => r.objectRef.id === v.request.ref.id);
+  if (!row) return { ok: false, error: "NOT_AVAILABLE" };
+
+  return navigate(row, v.request, v.destination);
 }
 
 /**
