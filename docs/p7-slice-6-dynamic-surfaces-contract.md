@@ -1,6 +1,7 @@
 # P7 Slice 6 — Dynamic Pursuit Surfaces: contract and plan
 
-**Status:** **PLAN ONLY — NOT AUTHORIZED FOR IMPLEMENTATION.** Decisions requiring a ruling are in §M.
+**Status:** **RULED AND AUTHORIZED** (rulings in §N, which supersede every recommendation above them).
+Implementation may proceed.
 **Builds on:** Slices 1–5, all HOSTED ACCEPTED / CLOSED (`cade340` · `a6dabbb` · `7ac8c7f` ·
 `a1dad9f` · `a6257bc`).
 
@@ -377,6 +378,92 @@ component-registry validation, authority isolation, or spec binding is deliberat
    cleanly and weakens a guard that has already caught things.
 
 ---
+
+---
+
+## N. Ruling record (authoritative — supersedes any recommendation above it)
+
+> **Generated interfaces may compose PursuitOS. They may not redefine PursuitOS.**
+> `SurfaceSpec proposal → FULL deterministic validation → certified P7 component executions →
+> deterministic SurfaceResult → transport rendering.` **No component executes before the complete spec
+> is valid.**
+
+1. **The existing capability dependency stays unchanged.** The `pursuitIntelligence` dependency is
+   neither removed nor weakened because this vertical does not consume every intelligence capability.
+   **The canonical `dynamic_surfaces` helper is the authority** — P7 does not duplicate the dependency
+   expression, and tests prove representative required dependencies fail closed **without hard-coding
+   a parallel list that could drift** from the canonical implementation. Tenant Pursuit Experience
+   entitlement remains independently required through the existing governed component path. **No new
+   feature flag.**
+2. **Component binding grammar — APPROVED.** Each component binds through a Slice 5 `ModelProposal`;
+   there is **no second query or component grammar**, and a component may reference only what Slice 5
+   can already compile. If Dynamic Surfaces ever needs more, **Slice 5 must be deliberately widened
+   first** — filters, metrics, queries, ids, routes and authority may never be smuggled through
+   `SurfaceSpec`.
+3. **Whole-spec atomicity — APPROVED.** Before any governed execution: parse the whole spec, validate
+   version, layout, every component type and every bind, compile every proposal, validate cardinality,
+   and reject duplicates. Any failure rejects the **entire** surface with **zero** component
+   executions. No partial surface, no best effort, no remove-after-execution, no hidden layout gap.
+   Per-component degradation is **explicitly deferred**.
+4. **Cardinality and repetition.** `MAX_COMPONENTS = 4`, and **exact semantic duplicates are
+   rejected**. Duplicate identity is decided **after canonical normalization** of component type +
+   **compiled** bind + permitted presentation configuration — **never raw JSON byte equality**. A
+   later slice may allow repeated types with genuinely different canonical binds. The first vertical's
+   registry is exactly two components: **SHOW ME — open pursuits** and **ANALYZE — open pipeline
+   across open pursuits**. **No EXPLAIN or GO TO on the first dynamic surface.**
+5. **Transport — APPROVED**, on the existing unlinked route: `?surface=<spec>` (hand-authored,
+   untrusted) and `?compose=<utterance>` (model-authored). **No new route.** Both are untrusted and
+   converge on the same validator and assembler; **the hand-authored path has no extra authority**.
+   Caller-supplied spec text echoed by router state **is not governed disclosure**, and gate
+   assertions must distinguish echo from result-region output under §16A–D.
+6. **Composition disclosure — APPROVED.** Every rendered component visibly identifies the canonical
+   operation composed, using the **registry-owned title** and the **deterministic registered
+   `interpretedAs`**. No model-authored title or result prose. **The SurfaceSpec digest is NOT
+   rendered** — it is provenance only, alongside spec version, component-registry digest, vocabulary
+   digest, context digest, compiler version and model/provider/prompt provenance. **None of those
+   fields confer authority.**
+7. **Provider boundary.** The model call stays inside the existing quarantined `intent/model.ts`, with
+   a **second strict prompt/schema path** for `SurfaceSpec`. The structural invariant holds: **exactly
+   one production module may reach the provider.** No `surface/model.ts`, no duplicated client logic,
+   and the **scoped P7 credential** continues to be the only one consumed.
+8. **Model gating is separate from deterministic assembly.** `?surface=` requires the canonical
+   Dynamic Surfaces conjunction and tenant entitlement but **no model call**. `?compose=` additionally
+   requires `PURSUIT_INTENT_ENABLED=on` and the scoped credential. **Dynamic Surfaces must not become
+   a second way around the Slice 5 model-invocation gate.** With the intent master OFF, `?surface=`
+   still operates if Dynamic Surfaces is enabled, and `?compose=` returns the deterministic disabled
+   state **before reading the credential or contacting the provider**. **No global Anthropic fallback.**
+9. **The first vocabulary stays tiny:** one spec version, the two ruled bindings, the minimal closed
+   layout vocabulary needed to render them, registry-owned labels, and **no** arbitrary styling, text
+   blocks, URLs, fragments, raw ids, caller-defined filters or component-to-component data binding.
+10. **No result data returns to the model.** The model proposes the spec **before** component
+    execution and never receives a `GovernedResultSet`, a component result, a metric or amount, or any
+    business value produced by execution. Deterministic code executes the accepted spec after model
+    involvement ends.
+11. **Headless assembler.** `ValidatedSurfaceSpec → SurfaceResult`, consumed by the renderer. The web
+    route carries **transport and rendering only** and reimplements no proposal compilation, component
+    registry semantics, governance, metric logic or surface validation.
+
+**Required proofs** (in addition to the contract's): unknown component type hard-fails · duplicate
+semantic component hard-fails · a fifth component hard-fails · malformed layout hard-fails · **one
+invalid component means zero component executions** · the model cannot create a component Slice 5
+cannot express · cannot author a field, metric, aggregate, filter or cohort · cannot select
+organization or principal · cannot insert a UUID, path, URL or fragment · cannot smuggle query
+semantics through layout or configuration · component order changes presentation order but **not**
+execution semantics · components execute independently against canonical governed state · no component
+consumes another's output · no suppressed data appears in a title, placeholder, layout gap or surface
+metadata · a rejected spec produces no partial `SurfaceResult` · the same validated spec + principal +
+canonical state yields the same headless result modulo certified clock-derived values · hand-authored
+and model-authored identical specs produce identical governed surfaces · replaying without a model
+produces the same surface · **no surface state is persisted** · **no P7 write occurs**.
+
+**Gate quality:** §16A–D throughout, with bounded negative controls for at least — accepting an unknown
+component · executing before full-spec validation · accepting a duplicate · letting layout config
+mutate query semantics · allowing a second provider-reaching production module. **Canonical code is
+restored before the recorded run.**
+
+**Slice 6 remains excluded from:** actions/P5 · pinning · persistence · exports · historical queries ·
+arbitrary filters · new metrics or aggregates · cross-org ranking · multi-row EXPLAIN ·
+result-to-model prose · context references between components · new schema · P5/P6 changes.
 
 ## What this plan does not authorize
 
