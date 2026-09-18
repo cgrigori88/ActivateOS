@@ -1,7 +1,9 @@
 # P7 Slice 7 — context-bound Dynamic Surfaces: contract and plan
 
-**Status:** **CONTRACT RULED — A/B/C/D APPROVED. IMPLEMENTATION AUTHORIZED.** The rulings as returned
-are recorded verbatim in §R; hosted acceptance requires separate authorization.
+**Status:** **HOSTED ACCEPTED / CLOSED** (serving `1afcef1`, migrations 113, **106/0 hosted** with a live
+model, 0 of 160 fingerprints moved). *A generated surface may bind to an already-governed context
+object. It may not discover, manufacture or inherit identity or authority from another component.*
+The rulings as returned are recorded verbatim in §R.
 **Builds on:** Slices 1–6 and D-HIST-2, all HOSTED ACCEPTED / CLOSED.
 
 > **A generated surface may bind to an already-governed context object. It may not discover,
@@ -436,3 +438,50 @@ binds exactly one certified operation, and **no operation is registered twice**.
 
 **Not done, and deliberately:** no hosted deployment, no Preview change, no `?compose=` live-model run,
 no Production contact. **Hosted acceptance requires separate authorization.**
+
+---
+
+## V. Hosted acceptance — 106/0 on `1afcef1`
+
+**Posture.** Preview/demo only · serving commit proven `1afcef1` from the running deployment (full SHA
+agrees) · ref `mejokqxriwyawfhawuxu` · `app_rw` · `bypassRls false` · `tenantEnforcement true` · sending
+disarmed · `PURSUIT_INTENT_ENABLED=true` · scoped credential present · **global Anthropic credential
+absent** · `INTERPRETER_ENABLED=false` · migrations **113 → 113** · **no Production contact**.
+
+**The load-bearing results.**
+
+- **H3 — manifest possession is not authority.** A bounded reversible governance change moved one
+  pursuit out of the governed cohort; the **same bound spec no longer reached the same object**, and a
+  pinned stale context executed nothing. Restored exactly.
+- **H4 — atomicity, proven non-vacuously.** The identical first component was rendered **alone and
+  successfully** first, so it was a genuine survivor candidate; with an unbindable sibling, **zero**
+  components rendered — no title, path, statement, placeholder, gap or count.
+- **H5 — no partial transport**, asserted on raw response **bytes**: no component markup, no
+  serialized payload, no canonical path, no streaming boundary requiring retraction.
+- **H12 — manifest, world, business and security hashes all identical** to the accepted post-0113
+  baseline; **0 of 160 fingerprints moved**; policies, RLS, grants, functions and triggers identical.
+
+**Two properties established rather than assumed.** The ContextManifest is drawn from exactly one
+organization (**11/11 own-org**), so within a request the manifest and its components share **one**
+governance evaluation — a slot cannot outlive its authority mid-request. Consequently a governed
+**value-absence** inside a context-bound surface is **unreachable in this product configuration**: the
+bounded fixture (a foreign-owned opportunity on an own pursuit) was correctly neutralised by RLS before
+governance had to decide, leaving the derived metric unchanged. That branch rests on the unit proof,
+not on a manufactured configuration.
+
+**Five gate defects of my own, all caught and fixed before the recorded run** — the most serious being
+that I asserted the capability posture of an organization that was **not the principal's**: the manifest
+belongs to *Vertex Systems*, while I had keyed on *TD SYNNEX (demo)*, which owns zero pursuits. It
+passed, but proved nothing it claimed. The principal's org is now derived from the governed context.
+The others: a whole-file scan conflating a compile **input** with rendered output; two assertions
+treating **caller echo in the URL** as application disclosure; and an H6 regex looking for the wrong
+certified absence text.
+
+**Recorded with this closure:**
+
+> **Read-only composed surfaces may establish atomic recipient output after execution. Action-bearing
+> surfaces will require pre-execution transactional/authorization semantics through P5.**
+
+**Not begun, pending separate authorization:** component-to-component binding · actions/P5 surfaces ·
+pinning/persistence · arbitrary filters · new metrics/aggregates · cross-org surfaces · model-authored
+result prose · result-to-model loops.
