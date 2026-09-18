@@ -73,16 +73,31 @@ export interface ContextManifest {
 }
 
 /**
+ * Where a proposal came from. **Provenance only — never an authority distinction.** A hand-authored
+ * proposal and a model-authored one pass through the identical parse → validate → compile → govern
+ * path and can express exactly the same things; this field records which happened, and nothing reads
+ * it to decide what may run.
+ */
+export type ProposalSource = "HAND_AUTHORED" | "MODEL";
+
+/**
  * Compiler-stamped provenance. Enough to reproduce which compiler produced a proposal, and read by no
- * authorization or disclosure path — a suite proves that. The model cannot write any of it.
+ * authorization or disclosure path — a suite proves that. The model cannot write any of it, and a
+ * caller that tries to supply it is refused by the closed proposal schema.
+ *
+ * Model fields are `null` for a hand-authored proposal rather than fabricated: recording a model that
+ * was never called would make provenance a story instead of a record.
  */
 export interface IntentProvenance {
   proposalSchemaVersion: 1;
+  source: ProposalSource;
   compilerVersion: string;
-  promptTemplateVersion: string;
+  /** null unless a model actually produced this proposal. */
+  promptTemplateVersion: string | null;
   vocabularyDigest: string;
   contextDigest: string;
-  modelId: string;
+  /** null unless a model actually produced this proposal. */
+  modelId: string | null;
   operation: IntentOperation;
   view?: ViewKey;
 }

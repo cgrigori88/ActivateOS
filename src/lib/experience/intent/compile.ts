@@ -21,7 +21,7 @@ import { DESTINATIONS, destinationKey } from "../registry";
 import { resolveContextRef } from "./context";
 import { CLARIFICATIONS, interpretedAs, vocabularyDigest } from "./vocabulary";
 import type {
-  ClarificationKey, CompileOutcome, ContextManifest, IntentProvenance, ModelProposal, ViewKey,
+  ClarificationKey, CompileOutcome, ContextManifest, IntentProvenance, ModelProposal, ProposalSource, ViewKey,
 } from "./schema";
 
 /** Bumped when the compiler's semantics change. Stamped into provenance; never read for authority. */
@@ -33,9 +33,17 @@ export interface CompileInputs {
   /** The manifest the proposal is bound to, and the digest it was issued against. */
   manifest: ContextManifest;
   boundContextDigest: string;
-  /** Provenance the COMPILER stamps. The model cannot supply or override any of it (ruling 4). */
-  modelId: string;
-  promptTemplateVersion: string;
+  /**
+   * Provenance the COMPILER stamps. The model cannot supply or override any of it (ruling 4), and a
+   * caller that puts these in the proposal is refused by the closed schema below.
+   *
+   * `source` is provenance, never authority: both sources traverse the identical path and can express
+   * exactly the same things.
+   */
+  source: ProposalSource;
+  /** Ignored unless `source` is MODEL — a hand-authored proposal never records a model that did not run. */
+  modelId?: string | null;
+  promptTemplateVersion?: string | null;
 }
 
 const unsupported = (): CompileOutcome => ({ ok: false, state: "UNSUPPORTED" });
@@ -70,13 +78,17 @@ export function compileIntent(inputs: CompileInputs): CompileOutcome {
     return clarify(missing as ClarificationKey);
   }
 
+  const fromModel = inputs.source === "MODEL";
   const stamp = (operation: IntentProvenance["operation"], view?: ViewKey): IntentProvenance => ({
     proposalSchemaVersion: 1,
+    source: inputs.source,
     compilerVersion: COMPILER_VERSION,
-    promptTemplateVersion: inputs.promptTemplateVersion,
+    // A hand-authored proposal records NO model and NO prompt: a provider that was never called is
+    // not provenance, it is fiction. Forced here rather than trusted from the caller.
+    promptTemplateVersion: fromModel ? (inputs.promptTemplateVersion ?? null) : null,
     vocabularyDigest: vocabularyDigest(),
     contextDigest: inputs.manifest.digest,
-    modelId: inputs.modelId,
+    modelId: fromModel ? (inputs.modelId ?? null) : null,
     operation,
     ...(view ? { view } : {}),
   });

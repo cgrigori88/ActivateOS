@@ -6,7 +6,7 @@ import { FIELDS, METRICS, metricKey } from "@/lib/experience/registry";
 import { buildContextManifest } from "@/lib/experience/intent/context";
 import { compileIntent } from "@/lib/experience/intent/compile";
 import { runCompiledIntent } from "@/lib/experience/intent/run";
-import { INTENT_MODEL_TIER, PROMPT_TEMPLATE_VERSION, proposeIntent } from "@/lib/experience/intent/model";
+import { INTENT_MODEL_TIER, PROMPT_TEMPLATE_VERSION, intentModelEnabled, proposeIntent } from "@/lib/experience/intent/model";
 import { CLARIFICATION_QUESTIONS } from "@/lib/experience/intent/vocabulary";
 import type { AggregateResult, Explanation, GoToOutcome, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
 
@@ -182,6 +182,21 @@ function Result({ result, view }: { result: GovernedResultSet; view: ViewKey }) 
  * registry metadata rather than model prose, so a substituted intent is visible to the user.
  */
 async function IntentView({ ask, propose, ctx, view }: { ask?: string; propose?: string; ctx?: string; view: ViewKey }) {
+  // THE MASTER GATES THE MODEL CALL, AND NOTHING ELSE (ruling 6). With it off, a natural-language
+  // request says so plainly — it does not fall through to a guessed proposal, a default view or an
+  // execution. `?propose=` is unaffected, because deterministic compilation is not what this gates.
+  const fromModel = typeof propose !== "string" && typeof ask === "string";
+  if (fromModel && !intentModelEnabled()) {
+    return (
+      <main className="mx-auto max-w-[1100px] px-6 py-10">
+        <h1 className="text-section font-extrabold tracking-[-0.03em]">Intent</h1>
+        <p className="mt-8 text-body text-neutral-500 dark:text-neutral-400">
+          Natural-language requests are not enabled here.
+        </p>
+      </main>
+    );
+  }
+
   // The manifest comes from a governed read for THIS principal — never from a lookup of its own.
   const base = await executePursuitQuery(PLANS[view].plan);
   const manifest = buildContextManifest(base.ok ? base.result.rows : []);
@@ -199,8 +214,11 @@ async function IntentView({ ask, propose, ctx, view }: { ask?: string; propose?:
     manifest,
     // A caller may state which manifest it was bound to; a mismatch refuses rather than retargeting.
     boundContextDigest: typeof ctx === "string" ? ctx : manifest.digest,
-    modelId: INTENT_MODEL_TIER,
-    promptTemplateVersion: PROMPT_TEMPLATE_VERSION,
+    // Provenance, not authority: both paths compile identically. A hand-authored proposal records
+    // no model, because a provider that was never called is not provenance.
+    source: fromModel ? "MODEL" : "HAND_AUTHORED",
+    modelId: fromModel ? INTENT_MODEL_TIER : null,
+    promptTemplateVersion: fromModel ? PROMPT_TEMPLATE_VERSION : null,
   });
 
   if (!compiled.ok) {

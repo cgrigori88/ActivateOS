@@ -336,6 +336,21 @@ aggregate, view or surface.
 
 ---
 
+**Post-review addenda (recorded with the Stage A authorization).**
+
+- **`?propose=` is ACCEPTED and is NOT a separately privileged path.** A `ModelProposal` is untrusted
+  regardless of who authored it, and a hand-authored one gains no authority a model-authored one lacks:
+  both traverse the identical *parse → validate → compile → canonical operation → governed execution*
+  boundary. `PURSUIT_INTENT_ENABLED` gates **calling the model**, not deterministic compilation and not
+  the already-certified P7 operations — so `?propose=` with the master OFF is not a feature-flag bypass.
+- **Provenance records proposal ORIGIN.** `IntentProvenance.source` is a closed value — `HAND_AUTHORED`
+  or `MODEL` — owned by the compiler; neither a caller nor a model may set or override it, and the
+  closed proposal schema refuses any attempt to supply it. For Stage A, `source` is stamped
+  deterministically as hand-authored and the model/provider fields are **null rather than fabricated**:
+  recording a provider that was never called would make provenance a story instead of a record. The
+  compiler/schema/context/vocabulary versions and digests are stamped regardless. **This is provenance
+  only and is never an authority distinction.**
+
 ## L. Ruling record (authoritative — supersedes any recommendation above it)
 
 > **THE GOVERNING INVARIANT: the model proposes intent. PursuitOS determines meaning and execution.**

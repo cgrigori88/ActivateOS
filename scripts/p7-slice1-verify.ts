@@ -462,7 +462,7 @@ async function main(): Promise<void> {
   const manifestFor = (o: Awaited<ReturnType<typeof asOrg>>) =>
     buildContextManifest(o.ok ? o.result.rows : []);
   const compileAs = (proposal: unknown, manifest: ReturnType<typeof buildContextManifest>, digest = manifest.digest) =>
-    compileIntent({ proposal, manifest, boundContextDigest: digest, modelId: "verify", promptTemplateVersion: "verify@1" });
+    compileIntent({ proposal, manifest, boundContextDigest: digest, source: "HAND_AUTHORED" });
 
   const aList = await asOrg(w.a, plan());
   const aManifest = manifestFor(aList);

@@ -30,8 +30,10 @@ const row = (id: string, account: GovernedCell = cell("Acme Corporation")): Gove
   ({ objectRef: { class: "pursuit", id }, cells: { "pursuit.account_name": account } });
 
 const MANIFEST = buildContextManifest([row(ID0), row(ID1, cell("Initech Holdings"))]);
-const compile = (proposal: unknown, manifest = MANIFEST, digest = manifest.digest) =>
-  compileIntent({ proposal, manifest, boundContextDigest: digest, modelId: "test-model", promptTemplateVersion: PROMPT_TEMPLATE_VERSION });
+const compile = (proposal: unknown, manifest = MANIFEST, digest = manifest.digest,
+                 source: "HAND_AUTHORED" | "MODEL" = "HAND_AUTHORED",
+                 modelId: string | null = null, promptTemplateVersion: string | null = null) =>
+  compileIntent({ proposal, manifest, boundContextDigest: digest, source, modelId, promptTemplateVersion });
 
 // ── what the model can say at all ───────────────────────────────────────────────────────────────
 
@@ -213,11 +215,66 @@ test("provenance cannot be forged from ModelProposal fields", () => {
   assert.ok(real.ok);
   if (real.ok) {
     assert.equal(real.intent.provenance.compilerVersion, COMPILER_VERSION);
-    assert.equal(real.intent.provenance.modelId, "test-model");
+    assert.equal(real.intent.provenance.source, "HAND_AUTHORED");
+    assert.equal(real.intent.provenance.modelId, null, "no model is recorded for a hand-authored proposal");
+    assert.equal(real.intent.provenance.promptTemplateVersion, null);
     assert.equal(real.intent.provenance.contextDigest, MANIFEST.digest);
     assert.equal(real.intent.provenance.vocabularyDigest, vocabularyDigest());
     assert.equal(real.intent.provenance.proposalSchemaVersion, 1);
   }
+});
+
+test("a caller cannot supply provenance, and a hand-authored proposal fabricates no model", () => {
+  for (const key of ["source", "provenance", "compilerVersion", "modelId", "promptTemplateVersion", "vocabularyDigest", "contextDigest"]) {
+    const r = compile({ operation: "SHOW_ME", view: "open-by-value", [key]: "forged" });
+    assert.equal(r.ok, false, `${key} must be refused by the closed schema`);
+  }
+  // Stage A: source is stamped hand-authored, and no provider is invented.
+  const hand = compile({ operation: "SHOW_ME", view: "open-by-value" });
+  assert.ok(hand.ok);
+  if (hand.ok) {
+    assert.equal(hand.intent.provenance.source, "HAND_AUTHORED");
+    assert.equal(hand.intent.provenance.modelId, null);
+    assert.equal(hand.intent.provenance.promptTemplateVersion, null);
+  }
+  // Even if a caller passes model fields alongside a hand-authored source, they are not recorded.
+  const lying = compile({ operation: "SHOW_ME", view: "open-by-value" }, MANIFEST, MANIFEST.digest,
+    "HAND_AUTHORED", "claude-opus-5", "fake@9");
+  assert.ok(lying.ok);
+  if (lying.ok) {
+    assert.equal(lying.intent.provenance.modelId, null, "a model that never ran is not provenance");
+    assert.equal(lying.intent.provenance.promptTemplateVersion, null);
+  }
+  // A genuine model proposal does record them.
+  const model = compile({ operation: "SHOW_ME", view: "open-by-value" }, MANIFEST, MANIFEST.digest,
+    "MODEL", "claude-haiku-4-5", PROMPT_TEMPLATE_VERSION);
+  assert.ok(model.ok);
+  if (model.ok) {
+    assert.equal(model.intent.provenance.source, "MODEL");
+    assert.equal(model.intent.provenance.modelId, "claude-haiku-4-5");
+  }
+});
+
+test("source is PROVENANCE, never authority — both sources compile to the identical request", () => {
+  const hand = compile({ operation: "ANALYZE", view: "open-pipeline-cohort" });
+  const model = compile({ operation: "ANALYZE", view: "open-pipeline-cohort" }, MANIFEST, MANIFEST.digest,
+    "MODEL", "claude-haiku-4-5", PROMPT_TEMPLATE_VERSION);
+  assert.ok(hand.ok && model.ok);
+  if (hand.ok && model.ok) {
+    assert.deepEqual(hand.intent.request, model.intent.request);
+    assert.equal(hand.intent.operation, model.intent.operation);
+    assert.equal(hand.intent.interpretedAs, model.intent.interpretedAs);
+  }
+});
+
+test("the route's model-off branch returns a registered notice, not a guessed proposal", () => {
+  const route = readFileSync(new URL("../src/app/experience/pursuits/page.tsx", import.meta.url), "utf8");
+  const body = route.slice(route.indexOf("async function IntentView"));
+  // The gate is checked BEFORE any proposal is obtained or compiled.
+  assert.ok(body.indexOf("intentModelEnabled()") < body.indexOf("proposeIntent("), "the master is checked first");
+  assert.ok(body.indexOf("intentModelEnabled()") < body.indexOf("compileIntent("), "…and before compilation");
+  // `?propose=` is not gated by it: deterministic compilation is not what the master gates.
+  assert.match(body, /const fromModel = typeof propose !== "string" && typeof ask === "string"/);
 });
 
 test("no governance path reads provenance", () => {
