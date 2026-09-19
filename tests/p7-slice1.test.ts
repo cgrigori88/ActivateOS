@@ -120,11 +120,37 @@ const P7_TREE = [
 ];
 const codeOf = (f: string) => readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-test("NO P7 MODULE WRITES DIRECTLY: no INSERT, UPDATE or DELETE anywhere in the tree", () => {
-  // Unchanged and unweakened. P7 has no SQL mutation of its own, in any slice — an action reaches
-  // the certified mutation authority, it does not become one.
-  for (const f of P7_TREE) {
-    assert.ok(!/\b(insert\s+into|update\s+\w+\s+set|delete\s+from)\b/i.test(codeOf(f)), `${f} must not mutate`);
+/**
+ * NARROWED BY SLICE 12, in the same shape Slice 5 used for the model and Slice 9 for the dispatcher —
+ * and strengthened in the way that matters.
+ *
+ * Through Slice 11 this said P7 performs NO SQL mutation anywhere, which was true because P7 owned no
+ * durable state. Slice 12 gives it exactly one table of its own — saved surface DEFINITIONS — so the
+ * blanket form is no longer honest. What replaces it is narrower, not looser:
+ *
+ *   • P7 may mutate EXACTLY ONE table, and only from EXACTLY ONE named module;
+ *   • every other P7 file still performs no SQL mutation at all;
+ *   • no P7 file may mutate canonical business state, in any slice.
+ *
+ * The original assertion would have been satisfied by any arrangement with no writes. This one also
+ * pins WHERE the single write path is, so moving it somewhere less visible fails certification.
+ */
+test("P7 MUTATES EXACTLY ONE TABLE, FROM EXACTLY ONE MODULE — and no canonical business state", () => {
+  const MUTATOR = "src/lib/experience/surface/pin-repository.ts";
+  const MUTATES = /\b(insert\s+into|update\s+\w+\s+set|delete\s+from)\b/i;
+  const mutating = P7_TREE.filter((f) => MUTATES.test(codeOf(f)))
+    .map((f) => f.slice(f.indexOf("src/"))).sort();
+  assert.deepEqual(mutating, [MUTATOR],
+    "exactly one P7 module may mutate, and every other must be read-only");
+
+  // That module writes to its OWN table and nothing else — canonical business state is untouchable.
+  const body = codeOf(P7_TREE.find((f) => f.endsWith("pin-repository.ts"))!);
+  const targets = [...body.matchAll(/(?:insert\s+into|update|delete\s+from)\s+([a-z_]+)/gi)].map((m) => m[1].toLowerCase());
+  assert.deepEqual([...new Set(targets)], ["pinned_surface_definitions"], targets.join(", "));
+  for (const canonical of ["pursuits", "opportunities", "companies", "organizations", "org_features",
+                           "change_ledger", "pipeline_snapshots", "governed_action_invocations"]) {
+    assert.ok(!new RegExp(`(insert\\s+into|update|delete\\s+from)\\s+${canonical}\\b`, "i").test(body),
+      `P7 must never mutate ${canonical}`);
   }
 });
 

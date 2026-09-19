@@ -227,10 +227,16 @@ test("no redirect is issued, and the transport re-checks nothing", () => {
   for (const forbidden of ["mayDerive", "resolveDisclosure", "buildFederationViewer", "withTenant", "can_see_pursuit"]) {
     assert.ok(!route.includes(forbidden), `the transport must not contain ${forbidden}`);
   }
-  // The route's request inputs are exactly three, and none of them is a route, path or organization.
+  // The route's request inputs are enumerated EXACTLY, and the property they protect is unchanged:
+  // not one of them is a route, a path, an organization or a principal. Slice 12 added `pin` (a
+  // display name) and `open` (a saved-definition id, which the repository re-scopes to the caller's
+  // org and creator), so the list grows by review rather than drifting.
   const params = route.match(/searchParams:\s*Promise<\{([^}]*)\}>/)?.[1] ?? "";
-  assert.deepEqual([...params.matchAll(/(\w+)\??:/g)].map((m) => m[1]).sort(),
-    ["ask", "compose", "ctx", "explain", "goto", "propose", "surface", "view"]);
+  const inputs = [...params.matchAll(/(\w+)\??:/g)].map((m) => m[1]).sort();
+  assert.deepEqual(inputs,
+    ["ask", "compose", "ctx", "explain", "goto", "open", "pin", "propose", "surface", "view"]);
+  assert.ok(!inputs.some((k) => /path|url|route|org|role|principal|token/i.test(k)),
+    "no request input names a route, path, organization, role or principal");
 });
 
 test("the resolver holds no database handle and no model — it imports the registry and types only", () => {

@@ -3,7 +3,7 @@ import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
 import { executePursuitQuery, resolveGoTo } from "@/lib/experience/execute";
 import { explainPlanFor, isViewKey, PLANS, VIEW_KEYS, type ViewKey } from "@/lib/experience/plans";
 import { FIELDS, METRICS, metricKey } from "@/lib/experience/registry";
-import { buildContextManifest } from "@/lib/experience/intent/context";
+import { buildContextManifest, EMPTY_MANIFEST } from "@/lib/experience/intent/context";
 import { compileIntent } from "@/lib/experience/intent/compile";
 import { runCompiledIntent } from "@/lib/experience/intent/run";
 import { PROMPT_TEMPLATE_VERSION, intentModelEnabled, proposeIntent, recordIntentProvenance } from "@/lib/experience/intent/model";
@@ -13,7 +13,9 @@ import { compileSurface } from "@/lib/experience/surface/compile";
 import { assembleSurface } from "@/lib/experience/surface/assemble";
 import type { SurfaceResult } from "@/lib/experience/surface/schema";
 import { assemblePursuitTeamFromSurface } from "./actions";
-import { currentRenderBinding } from "./binding";
+import { currentRenderBinding, currentPrincipal } from "./binding";
+import { toPersistedDefinition, toSurfaceSpec } from "@/lib/experience/surface/persisted";
+import { createPin, loadPin } from "@/lib/experience/surface/pin-repository";
 import type { AggregateResult, Explanation, GoToOutcome, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +41,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export default async function ExperiencePursuitsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; explain?: string; goto?: string; ask?: string; propose?: string; ctx?: string; surface?: string; compose?: string }>;
+  searchParams: Promise<{ view?: string; explain?: string; goto?: string; ask?: string; propose?: string; ctx?: string; surface?: string; compose?: string; pin?: string; open?: string }>;
 }) {
   if (!pursuitExperienceEnabled()) notFound();   // deployment master — fast deny, no DB work
 
@@ -71,8 +73,14 @@ export default async function ExperiencePursuitsPage({
   // DYNAMIC SURFACES (Slice 6). `?surface=` supplies a spec directly; `?compose=` asks the model for
   // one. Both are untrusted and converge on the same validator and assembler — the hand-authored path
   // has no extra authority. The model master gates ONLY `?compose=` (ruling 8).
+  // PINNED DEFINITIONS (Slice 12). `?open=<id>` executes a SAVED definition; `?pin=<name>` saves the
+  // definition the caller just described. Neither is a privileged path: an opened definition is
+  // revalidated and compiled by the SAME certified compiler, under a FRESHLY derived principal, and
+  // a saved one carries no authority forward from the moment it was written.
+  if (typeof sp.open === "string") return <OpenPinView id={sp.open} />;
+
   if (typeof sp.surface === "string" || typeof sp.compose === "string") {
-    return <SurfaceView surface={sp.surface} compose={sp.compose} ctx={sp.ctx} view={view} />;
+    return <SurfaceView surface={sp.surface} compose={sp.compose} ctx={sp.ctx} view={view} pin={sp.pin} />;
   }
 
   // `?explain=<id>` names WHICH object, never which organization: governance still decides whether
@@ -303,7 +311,7 @@ async function IntentView({ ask, propose, ctx, view }: { ask?: string; propose?:
  * decision and no component markup exists before it, so no partial surface can reach the recipient —
  * the transport invariant is satisfied by construction, not by care.
  */
-async function SurfaceView({ surface, compose, ctx, view }: { surface?: string; compose?: string; ctx?: string; view: ViewKey }) {
+async function SurfaceView({ surface, compose, ctx, view, pin }: { surface?: string; compose?: string; ctx?: string; view: ViewKey; pin?: string }) {
   const notice = (text: string) => (
     <main className="mx-auto max-w-[1100px] px-6 py-10">
       <h1 className="text-section font-extrabold tracking-[-0.03em]">Surface</h1>
@@ -343,6 +351,12 @@ async function SurfaceView({ surface, compose, ctx, view }: { surface?: string; 
   });
   // One rejection for every cause: naming which component failed would describe a partial surface.
   if (!compiled.ok) return notice("That surface could not be composed.");
+
+  // SAVING PERSISTS THE QUESTION, NOT THE ANSWER. It happens from the PRE-execution spec, so there
+  // is no code path by which a governed result or a resolved identity could reach persistence.
+  if (typeof pin === "string") {
+    return <PinResult spec={spec} source={fromModel ? "MODEL" : "HAND_AUTHORED"} name={pin} />;
+  }
 
   const assembled = await assembleSurface(compiled.validated);
   // ONE SENTENCE FOR EVERY GOVERNED CAUSE (ruling B). Revoked, became undisclosable, disappeared,
@@ -408,6 +422,85 @@ function SurfaceRender({ result }: { result: SurfaceResult }) {
       </div>
     </main>
   );
+}
+
+/**
+ * P7 SLICE 12 — SAVING A DEFINITION. TRANSPORT ONLY.
+ *
+ * > **Persist the question/workspace, never the answer or the authority.**
+ *
+ * It converts the PRE-EXECUTION spec — never the validated or compiled one, which carries resolved
+ * canonical identity — and refuses anything not persistable rather than silently dropping it. The
+ * creator is the server-derived principal; there is no field through which a caller could nominate
+ * one.
+ */
+async function PinResult({ spec, source, name }: { spec: unknown; source: "HAND_AUTHORED" | "MODEL"; name: string }) {
+  const notice = (text: string) => (
+    <main className="mx-auto max-w-[1100px] px-6 py-10">
+      <h1 className="text-section font-extrabold tracking-[-0.03em]">Saved surface</h1>
+      <p className="mt-8 text-body text-neutral-500 dark:text-neutral-400">{text}</p>
+    </main>
+  );
+  const s = spec as { layout?: unknown; components?: unknown } | null;
+  const built = toPersistedDefinition(s?.layout, s?.components, source);
+  if (!built.ok) return notice("That surface can't be saved.");
+
+  const principal = await currentPrincipal();
+  if (!principal) return notice("Saving a surface needs a signed-in person.");
+  const saved = await createPin(principal, name, built.definition);
+  if (!saved.ok) return notice("That surface could not be saved.");
+  return (
+    <main className="mx-auto max-w-[1100px] px-6 py-10">
+      <h1 className="text-section font-extrabold tracking-[-0.03em]">Saved surface</h1>
+      <p className="mt-2 text-copy font-semibold">{saved.value.name}</p>
+      <p className="mt-6 text-body">
+        <a className="text-accent underline" href={`/experience/pursuits?open=${saved.value.id}`}>Open it</a>
+      </p>
+    </main>
+  );
+}
+
+/**
+ * P7 SLICE 12 — OPENING A SAVED DEFINITION. TRANSPORT ONLY.
+ *
+ * The saved definition is revalidated against the CURRENT registry, compiled by the SAME certified
+ * compiler, and executed under a FRESHLY derived principal. Nothing about the moment it was saved
+ * survives: not the authority, not the results, not a disclosure decision. No provider is called.
+ */
+async function OpenPinView({ id }: { id: string }) {
+  const notice = (text: string) => (
+    <main className="mx-auto max-w-[1100px] px-6 py-10">
+      <h1 className="text-section font-extrabold tracking-[-0.03em]">Surface</h1>
+      <p className="mt-8 text-body text-neutral-500 dark:text-neutral-400">{text}</p>
+    </main>
+  );
+  const principal = await currentPrincipal();
+  if (!principal) return notice("That surface is not available.");
+  const pin = await loadPin(principal, id);
+  // Not found, not yours and no-longer-valid are DIFFERENT causes, and only the last says so —
+  // existence of someone else's pin must not be probeable.
+  if (!pin.ok) {
+    return notice(pin.error === "DEFINITION_UNAVAILABLE"
+      ? "That saved surface can no longer be opened."
+      : "That surface is not available.");
+  }
+
+  // A PINNED DEFINITION NEEDS NO RECIPIENT CONTEXT, by construction: context-bound components are
+  // refused at save time (ruling B). So this reads nothing to build one — the empty manifest is the
+  // honest input, and any definition that somehow required context would fail to compile rather
+  // than silently resolve against whatever context this request happens to have.
+  const compiled = compileSurface({
+    spec: toSurfaceSpec(pin.value.definition),
+    manifest: EMPTY_MANIFEST,
+    boundContextDigest: EMPTY_MANIFEST.digest,
+    // A SAVED definition is executed as a hand-authored one whatever produced it originally: its
+    // provenance is audit metadata, and re-deriving it from a model is exactly what pinning avoids.
+    source: "HAND_AUTHORED",
+  });
+  if (!compiled.ok) return notice("That saved surface can no longer be opened.");
+  const assembled = await assembleSurface(compiled.validated);
+  if (!assembled.ok) return notice("That surface is not available.");
+  return <SurfaceRender result={assembled.result} />;
 }
 
 /**

@@ -1,7 +1,8 @@
 # P7 Slice 12 — reusable / pinned Dynamic Surface definitions: contract and plan
 
-**Status:** **DESIGN AND DISCOVERY ONLY — NOT AUTHORIZED FOR IMPLEMENTATION.** No code, no migration,
-no DB mutation. Decisions requiring a ruling are in §R. **Builds on:** Slices 1–10 and D-P45-READ, all
+**Status:** **CONTRACT RULED — A–H APPROVED (E, F MODIFIED). LOCALLY IMPLEMENTED; LOCAL EVIDENCE
+INCOMPLETE — the seeded-clone harness database is not running (see §V).** Migration **0114** is written
+and **not applied anywhere**. Hosted migration and certification require separate authorization. Decisions requiring a ruling are in §R. **Builds on:** Slices 1–10 and D-P45-READ, all
 HOSTED ACCEPTED / CLOSED. Slice 11 remains blocked and is not resumed.
 
 > **A pinned surface may persist a validated presentation/query definition. It may not persist
@@ -226,3 +227,58 @@ DTO), `definition_digest`, the save-time registry/vocabulary digests and compile
 `created_at`. Immutable rows; a semantic edit inserts a new one. **No column for results, identity,
 principal, role, authority or execution state** — the schema itself should make the forbidden content
 unrepresentable, not merely unwritten.
+
+
+---
+
+## V. Implementation status
+
+**Rulings recorded.** A — a separate closed `PersistedSurfaceDefinition`; persistence is **opt-in by
+field**, never inherited from `SurfaceSpec`. B — context-bound components are **refused**, in the
+strong form; no canonical subject id as a workaround; "pin this exact pursuit" is a different,
+separately-ruled feature. C — a domain-separated `definitionDigest`; `surfaceSpecDigest` is execution
+identity and is not reused. D — validate at save **and** at open; no silent upgrade, substitution,
+replacement, migration or repair; incompatible primitive → `DEFINITION_UNAVAILABLE` before execution.
+E — **organization isolation is RLS-enforced; creator visibility is application-enforced, and is not
+called RLS-private.** F — create / open / rename / hard delete only; rename is metadata and leaves the
+digest untouched; no revision chains. G — ACTION components structurally non-persistable, exhaustively.
+H — one table, with the forbidden content unrepresentable.
+
+| Module | Role |
+|---|---|
+| `surface/persisted.ts` | the closed type, the exhaustive persistability map, save/load validation, `definitionDigest` |
+| `surface/pin-repository.ts` | the **only** production access path; every statement scoped by org **and** creator |
+| `supabase/migrations/0114_…sql` | one additive table; org RLS; no column for results, identity, authority or execution state |
+| `page.tsx` | `?pin=<name>` saves from the **pre-execution** spec; `?open=<id>` revalidates, compiles and executes fresh |
+
+**Two things I changed in the product rather than in a test.** Opening a pin now compiles against the
+**empty** manifest — a persisted definition has no context-bound components by construction, so
+reading recipient context for it would have been both unnecessary and misleading. And the Slice 1
+no-writes invariant was **narrowed in the Slice 5/9 shape and strengthened**: P7 may now mutate
+**exactly one table from exactly one named module**, every other P7 file still performs no SQL
+mutation, and a list of canonical tables is asserted untouchable. The blanket form was no longer
+honest once P7 owned durable state; the replacement also pins *where* the write path is.
+
+**Evidence so far.** `p7-slice12` **25/25** · unit **802/802** · tsc and `next build` clean.
+
+**Evidence NOT yet obtained, and why.** The seeded-clone verifier and `certify-world` require the local
+harness database at `127.0.0.1:5433` (`pursuit_demo`, role `postgres`). It was running earlier in this
+session — `certify-world` passed on it — and is now down. I did **not** guess at how it is provisioned:
+I briefly started Homebrew's `postgresql@17`, found it binds `:5432` with no `postgres` role and is
+therefore **not** the harness instance, and stopped it again, leaving the machine exactly as found
+(`postgresql@17 none`, no listener). **Migration 0114 has been applied nowhere.**
+
+**Five defects of my own in the suite**, all fixed before the recorded run — and four were the **same
+§16A trap for the fifth time in this engagement**: assertions that scanned text containing the prose
+which *explains* the property. The migration's own comments say why there is no `auth.uid()` policy and
+no visibility/metadata column, so a raw scan found those words in the text forbidding them; structural
+assertions now read **comment-stripped DDL**, with the prose asserted separately on purpose. The fifth
+was a substring scan for `"value"` that collided with the legitimate view key `open-by-value` — now
+asserted on **field names** rather than serialized bytes.
+
+**Proposed deployment order (§16F), for authorization — not taken.** Migration 0114 is purely additive
+and referenced by no existing object, so the currently serving application is unaffected by the table
+existing. The safe order is therefore: **deploy the implementation commit → prove the serving commit
+independently → apply 0114 → establish a new baseline → certify.** Deploying first also means the pin
+feature is the only thing that could fail in the window, and it fails closed. **Production is not
+touched.**

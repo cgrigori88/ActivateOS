@@ -303,10 +303,15 @@ test("RULING 5: the cohort is fixed and code-defined; caller input cannot synthe
       || new RegExp(`${parsed}\\s*=\\s*null`).test(route),
       `parsed input ${parsed} must flow into the intent compiler, never into a plan`);
   }
-  // Only two request inputs exist, and neither is a filter, dimension, metric or aggregate.
+  // The request inputs are enumerated EXACTLY, and the property is unchanged: not one of them is a
+  // filter, dimension, metric or aggregate. Slice 12 added `pin` (a display name) and `open` (a
+  // saved-definition id), so the list grows by review rather than by drift.
   const params = route.match(/searchParams:\s*Promise<\{([^}]*)\}>/)?.[1] ?? "";
-  assert.deepEqual([...params.matchAll(/(\w+)\??:/g)].map((m) => m[1]).sort(),
-    ["ask", "compose", "ctx", "explain", "goto", "propose", "surface", "view"]);
+  const inputs = [...params.matchAll(/(\w+)\??:/g)].map((m) => m[1]).sort();
+  assert.deepEqual(inputs,
+    ["ask", "compose", "ctx", "explain", "goto", "open", "pin", "propose", "surface", "view"]);
+  assert.ok(!inputs.some((k) => /filter|dimension|metric|aggregate|cohort|scope/i.test(k)),
+    "no request input names a filter, dimension, metric, aggregate, cohort or scope");
   // An unknown view key does not become a plan; it falls back to a registered one.
   assert.equal(isViewKey("../../etc/passwd"), false);
   assert.equal(isViewKey(undefined), false);
