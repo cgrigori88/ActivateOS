@@ -81,5 +81,25 @@ export async function webSessionPrincipal(): Promise<ExecutionPrincipal> {
   return mint(orgId, "web-session");
 }
 
+/**
+ * THE API-CREDENTIAL RESOLVER (Slice 14).
+ *
+ * The transport this module's header anticipated in Slice 1 — *"a FUTURE API/MCP transport, which
+ * must add a resolver here that derives the org from its own authenticated credential"* — and the
+ * `"api-credential"` source has been sitting unused ever since, waiting for it.
+ *
+ * `orgId` comes from the API key's own record, resolved server-side by `resolve_api_key()` before
+ * any tenant scope exists. It is never a request field: an MCP caller cannot name an organization,
+ * because the credential already names one. **Selection and authority are the same act — issuing
+ * the key.**
+ *
+ * NO HUMAN USER IS SYNTHESIZED. An API key is a service credential bound to an organization, and
+ * `ExecutionPrincipal` is organization-scoped by construction, so the shapes already match. Inventing
+ * a person here to satisfy a type would be inventing authority.
+ */
+export function apiCredentialPrincipal(orgId: string): ExecutionPrincipal {
+  return mint(orgId, "api-credential");
+}
+
 /** Read-only accessor, so callers need no knowledge of the brand. */
 export const principalOrgId = (p: ExecutionPrincipal): string => p.orgId;

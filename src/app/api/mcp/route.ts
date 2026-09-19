@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/db/client";
 import { rateLimited } from "@/lib/security/rate-limit";
 import { MCP_TOOLS, resolveKey } from "@/lib/agents/mcp-tools";
+import { GOVERNED_MCP_TOOLS } from "@/lib/agents/mcp-governed";
 import { decideToolScope } from "@/lib/agents/ask-scope";
 
 /**
@@ -16,6 +17,35 @@ import { dispatchSkill, type Actor } from "@/lib/pursuits/federation/skills";
 /** A resolved MCP key's scope maps to a governed Actor role (R1-G1). */
 type ResolvedKey = { orgId: string; keyId: string; scope: string };
 function keyRole(scope: string): Actor["role"] { return scope === "read" ? "viewer" : "operator"; }
+
+/**
+ * SLICE 14 — TOOL SCOPE, ENFORCED AT THE TRANSPORT.
+ *
+ * A tool requiring `operator` is neither advertised to nor callable by a read-scoped key. Before
+ * this, the only barrier was `dispatchSkill`'s role rank: it correctly refused the EFFECT, but the
+ * call was still accepted, dispatched and recorded as a rejected attempt — so a read key could
+ * produce durable audit state by naming a write tool. Refusing here means the dispatch never
+ * happens. `dispatchSkill`'s own check remains untouched as defense in depth.
+ */
+const toolScope = (t: { scope?: "read" | "operator"; write?: boolean }): "read" | "operator" =>
+  t.scope ?? (t.write ? "operator" : "read");
+const scopeAllows = (keyScope: string, need: "read" | "operator"): boolean =>
+  need === "read" || keyScope !== "read";
+
+/**
+ * What this key may see. Governed P7 tools first: `pipeline_summary` is now the canonical answer and
+ * the legacy opportunity implementation has been renamed, so no two advertised tools claim the same
+ * business concept.
+ */
+function visibleTools(keyScope: string) {
+  const governed = GOVERNED_MCP_TOOLS
+    .filter((t) => scopeAllows(keyScope, t.scope))
+    .map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
+  const legacy = MCP_TOOLS
+    .filter((t) => scopeAllows(keyScope, toolScope(t)))
+    .map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
+  return [...governed, ...legacy];
+}
 
 export const dynamic = "force-dynamic";
 
@@ -67,13 +97,31 @@ async function handleMessage(msg: RpcRequest, key: ResolvedKey): Promise<Record<
     case "ping":
       return rpcResult(id, {});
     case "tools/list":
-      return rpcResult(id, {
-        tools: MCP_TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
-      });
+      return rpcResult(id, { tools: visibleTools(key.scope) });
     case "tools/call": {
       const name = String(msg.params?.name ?? "");
+
+      // ── GOVERNED P7 READ TOOLS ────────────────────────────────────────────────────────────────
+      // They receive NO database handle — only the credential's organization — so this branch
+      // cannot reach SQL, dispatchSkill or P45 even by mistake.
+      const governed = GOVERNED_MCP_TOOLS.find((t) => t.name === name);
+      if (governed) {
+        try {
+          const result = await governed.run(orgId);
+          return rpcResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], isError: false });
+        } catch {
+          // Never leak compiler detail, DB posture, SQL or a stack to an external caller.
+          return rpcResult(id, { content: [{ type: "text", text: JSON.stringify({ status: "FAILED" }, null, 2) }], isError: true });
+        }
+      }
+
       const tool = MCP_TOOLS.find((t) => t.name === name);
       if (!tool) return rpcError(id, -32602, `Unknown tool: ${name}`);
+      // SCOPE IS CHECKED BEFORE ANYTHING ELSE HAPPENS — before dispatch, before a governed actor is
+      // built, before any attempt is recorded. Naming a tool a key may not hold is simply refused.
+      if (!scopeAllows(key.scope, toolScope(tool))) {
+        return rpcError(id, -32602, `Unknown tool: ${name}`);
+      }
       const args = (msg.params?.arguments as Record<string, unknown>) ?? {};
       try {
         // RISK-1: scope the tool's queries to the key's org via the GUC (org
@@ -136,6 +184,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
   }
   if (rateLimited(`mcp-key:${key.keyId}`, 60, 60_000)) {
+    return NextResponse.json(rpcError(null, -32000, "Rate limited"), { status: 429 });
+  }
+  // SLICE 14 — AN ORGANIZATION-LEVEL BOUND, not only a per-key one. Keys are org-scoped and an
+  // organization may hold several, so a per-key ceiling multiplies with the number of credentials
+  // issued; the governed P7 read is the expensive path and should not be trivially multiplied that
+  // way. Deliberately looser than the per-key bound: it is a ceiling for the tenant, not a second
+  // per-caller limit. The limiter's own honestly-stated weakness still applies — counters are
+  // per-instance (see rate-limit.ts), so this narrows abuse rather than eliminating it.
+  if (rateLimited(`mcp-org:${key.orgId}`, 240, 60_000)) {
     return NextResponse.json(rpcError(null, -32000, "Rate limited"), { status: 429 });
   }
 

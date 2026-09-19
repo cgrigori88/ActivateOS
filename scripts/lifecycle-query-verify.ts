@@ -131,7 +131,9 @@ async function main() {
     const globexId = await cid("Globex");
     const starkId = await cid("Stark");
     const accountTool = MCP_TOOLS.find((t) => t.name === "account_brief")!;
-    const orgTool = MCP_TOOLS.find((t) => t.name === "pipeline_summary")!;
+    // SLICE 14: renamed from `pipeline_summary`, which is now the canonical GOVERNED P7 tool. The
+    // opportunity-level implementation this suite exercises is unchanged apart from its name.
+    const orgTool = MCP_TOOLS.find((t) => t.name === "opportunity_pipeline_summary")!;
 
     const noScope = await decideToolScope(db, org, accountTool, { account: "Globex" }, null);
     ok("/ask with scope ALL behaves exactly as before (no narrowing)", noScope.allowed);

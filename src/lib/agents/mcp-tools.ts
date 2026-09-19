@@ -56,14 +56,25 @@ export interface McpToolDef {
    *  through dispatchSkill; their `run` is never invoked for writes (it refuses). */
   write?: boolean;
   skillId?: string;
+  /**
+   * SLICE 14. The credential scope a key must hold to see OR call this tool. Absent means "read".
+   * The MCP route enforces this BEFORE dispatch — previously the only check was `dispatchSkill`'s
+   * role rank, which correctly refused the effect but still accepted the call and recorded a
+   * rejected attempt. Hiding a tool from `tools/list` was never enough: a stale or hostile client
+   * already knows the name.
+   */
+  scope?: "read" | "operator";
   run(pool: Pool | PoolClient, orgId: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
 export const MCP_TOOLS: McpToolDef[] = [
   {
-    name: "pipeline_summary",
+    name: "opportunity_pipeline_summary",
     description:
-      "Open pipeline for this tenant: opportunities with stage, amount, and weighted value using the org's editable stage weights (per-partner overrides applied). Read-only.",
+      "Opportunity-level pipeline based on opportunity amounts and stage-weighted forecasting, using "
+      + "the org's editable stage weights (per-partner overrides applied). This is DISTINCT from "
+      + "PursuitOS canonical pursuit open pipeline — for that authoritative figure use "
+      + "pipeline_summary. Read-only.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     async run(pool, orgId) {
       const { rows } = await pool.query<{
@@ -103,7 +114,10 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "account_brief",
     description:
-      "Brief for one account by name: propensity score, open opportunities, latest weekly digest items, and recent verified evidence. Read-only.",
+      "Brief for one account by name: propensity score, open opportunities, latest weekly digest "
+      + "items, and recent verified evidence. `openOpportunities` contains opportunity RECORDS "
+      + "associated with the account; it is not the PursuitOS canonical open-pipeline metric, and no "
+      + "total derived from it is canonical. Read-only.",
     inputSchema: {
       type: "object",
       properties: { account: { type: "string", description: "Account (company) name, fuzzy matched" } },
@@ -191,6 +205,7 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "draft_touch",
     write: true,
+    scope: "operator",
     skillId: "draft_campaign_touch",
     description:
       "A WRITE TOOL (governed): add a DRAFT email touch to an existing campaign (matched by name). Nothing is sent — the draft lands behind the same human approval gate as every touch. Routed through the governed action boundary. Returns the created draft.",
@@ -291,6 +306,7 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "request_warm_intro",
     write: true,
+    scope: "operator",
     skillId: "request_warm_intro",
     description:
       "A CROSS-TENANT WRITE TOOL (governed): ask the partner for a warm introduction into one named-overlap account. This CREATES A REQUEST the partner must decide — accepting is itself the disclosure (they pick exactly one contact to reveal). Requires an active partnership with the named rung approved and the account on it. Routed through the governed action boundary; the consent fabric, not this tool, decides what is ultimately shared.",

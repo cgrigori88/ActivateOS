@@ -92,7 +92,9 @@ export async function directProbes(pool: Pool, ctx: ProbeCtx): Promise<void> {
 
   // ── MCP tools (an API key resolves to the sponsor) ────────────────────────────────────────────
   const tool = (name: string) => MCP_TOOLS.find((t) => t.name === name)!;
-  await read("MCP pipeline_summary", (db) => tool("pipeline_summary").run(db, sponsor, {}));
+  // SLICE 14: renamed; the canonical `pipeline_summary` is now the governed P7 tool, which takes no
+  // database handle and therefore cannot be probed through this pool-based harness.
+  await read("MCP opportunity_pipeline_summary", (db) => tool("opportunity_pipeline_summary").run(db, sponsor, {}));
   await read("MCP account_brief (Globex)", (db) => tool("account_brief").run(db, sponsor, { account: "Globex" }));
   await read("MCP deal_context (Globex)", (db) => tool("deal_context").run(db, sponsor, { account: "Globex" }));
   await read("MCP initiative_status", (db) => tool("initiative_status").run(db, sponsor, {}));
