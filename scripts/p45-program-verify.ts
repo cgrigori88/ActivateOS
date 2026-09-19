@@ -5,6 +5,7 @@ import { startRun, resumeRun, cancelRun, pauseRun, resumeAfterPause, ProgramConf
          type ProgramStep, type RunRow } from "../src/lib/runtime/runtime";
 import { decideApproval, pendingApprovals } from "../src/lib/runtime/approvals";
 import { withTenantOrg } from "../src/lib/db/tenant";
+import { getPool } from "../src/db/client";
 import { DECIDE_SKILL, type Actor } from "../src/lib/pursuits/federation/skills";
 
 /**
@@ -336,78 +337,247 @@ async function main(): Promise<void> {
     ep2.stepSeq === 2 && (await touches(db, fp.orgId)) === 2);
 
   // ══ 11. GENERATION-BOUND CONCURRENCY (defect P45-3-D1) ═══════════════════════════════════════
+  //
   // The rule is NOT "every step executes once" — that was true of the defective behaviour too, and
-  // it was not enough. Two requests issued against step 1 must not serialize into "A runs step 1,
-  // B then runs step 2": B is STALE with respect to the cursor it meant to advance, and letting it
-  // through turns one double-click into TWO authorized consequential actions.
-  const fr = await txPlant(db, "race");
-  const rr = await start(fr, [draft(fr, 1), draft(fr, 2), draft(fr, 3)]);
-  const both = await Promise.allSettled([resume(fr, rr.id), resume(fr, rr.id)]);
-  const won = both.filter((x) => x.status === "fulfilled" && x.value.dispatched);
-  const lost = both.filter((x) => x.status === "fulfilled" && !x.value.dispatched);
-  check("55: two same-generation resumes — EXACTLY ONE advances", won.length === 1 && lost.length === 1,
-    both.map((x) => x.status === "fulfilled" ? `${x.value.dispatched ? "advanced" : "no-op"}(seq=${x.value.stepSeq ?? "—"})` : "threw").join(" · "));
-  check("56: the loser is a clean no-op reported as STALE — it dispatched nothing",
-    lost.every((x) => x.status === "fulfilled" && x.value.stale === true && x.value.invocationId === null),
-    lost[0]?.status === "fulfilled" ? lost[0].value.reason ?? "—" : "—");
-  const perStep = (await db.query<{ seq: number; n: string }>(
-    `select st.seq, count(i.id)::text n from pursuit_run_steps st
-       left join governed_action_invocations i on i.run_step_id = st.id
-      where st.run_id = $1 group by st.seq order by st.seq`, [rr.id])).rows;
-  check("57: EXACTLY ONE step-1 invocation, and NO step-2 invocation",
-    perStep[0] && Number(perStep[0].n) === 1 && Number(perStep[1].n) === 0,
-    perStep.map((x) => `seq${x.seq}=${x.n}`).join(" "));
-  const srr = await stepsOf(db, rr.id);
-  check("58: exactly ONE effect, and STEP 2 IS STILL PENDING — the program did not run ahead",
-    (await touches(db, fr.orgId)) === 1 && srr[1].status === "PENDING" && srr[2].status === "PENDING",
-    `${await touches(db, fr.orgId)} effects · ${srr.map((x) => `${x.seq}:${x.status}`).join(" ")}`);
-  check("59: the run advanced to step 2 and no further, with ONE advance transition",
-    (await runOf(db, rr.id)).current_step_id === srr[1].id
-    && (await types(db, rr.id)).filter((t) => t === "RUN_STEP_COMPLETED").length === 1, (await types(db, rr.id)).join(","));
+  // it was not enough. Requests issued against step 1 must not serialize into "A runs step 1, B then
+  // runs step 2": B is STALE with respect to the cursor it meant to advance, and letting it through
+  // turns one double-click into TWO authorized consequential actions.
+  //
+  // D-P45-PROGRAM-FLAKE — WHY THIS SECTION IS SPLIT IN TWO.
+  //
+  // The previous version launched N resumes with `Promise.allSettled` and called them
+  // "same-generation racers". That premise was never established. `resumeRun` fixes the generation a
+  // request was issued against when its FIRST statement — an unlocked `observeGeneration` SELECT —
+  // returns, which happens after connection acquisition and scheduler entry. Under load a later
+  // racer legitimately begins after the winner committed, observes the NEW generation, and advances
+  // the next step. That is designed behaviour, certified below as a fresh continuation, and the old
+  // test scored it as a failure roughly 15% of the time on unmodified code at every commit tried.
+  //
+  // So the two contracts are now separate and each is asserted against what actually happened:
+  //
+  //   SCENARIO A — natural public concurrency. No barrier. Records what each racer observed and
+  //                asserts only scheduler-INDEPENDENT safety.
+  //   SCENARIO B — deterministic same-generation concurrency. A verifier-only Proxy over the
+  //                PoolClient the test already supplies pauses every participant AFTER its
+  //                generation observation and BEFORE it serializes, so the premise is PROVEN before
+  //                the consequence is asserted. No product code is bypassed or modified.
 
-  // A request ISSUED AFTER the advance observes the new generation and proceeds normally. This is
-  // what keeps the rule a constraint on duplicate requests rather than on progression itself.
-  const fresh = await resume(fr, rr.id);
-  check("60: a FRESH next-generation resume executes step 2 normally",
-    fresh.dispatched && fresh.stepSeq === 2 && !fresh.stale && (await touches(db, fr.orgId)) === 2,
-    `seq=${fresh.stepSeq} run=${fresh.runStatus}`);
+  /** The statement `resumeRun` uses to fix the generation a request was issued against. */
+  const GENERATION_SQL = /current_step_id as "stepId"/;
+  interface Observed { stepId: string | null; status: string; attempt: number | null }
+  const genKey = (g: Observed | null): string => g ? `${g.stepId}|${g.status}|${g.attempt}` : "none";
 
-  // Five at once, so the invariant is not an artefact of exactly two racers.
-  const f5 = await txPlant(db, "race5");
-  const r5 = await start(f5, [draft(f5, 1), draft(f5, 2), draft(f5, 3)]);
-  const many = await Promise.allSettled([1, 2, 3, 4, 5].map(() => resume(f5, r5.id)));
-  const adv5 = many.filter((x) => x.status === "fulfilled" && x.value.dispatched).length;
-  check("61: FIVE same-generation resumes still advance exactly once", adv5 === 1, `${adv5} advanced of 5`);
   /**
-   * D-P45-PROGRAM-FLAKE — EVIDENCE ONLY. The assertion below is unchanged in condition and expected
-   * value; it previously reported no detail, so an intermittent failure could not be told apart from
-   * a duplicate consequential EFFECT (which would be a product defect) or a duplicate REQUEST
-   * (which would not). These three numbers are the whole difference, so they are now reported.
+   * Count-based, in-process, no sleeps. The timeout is a DEADLOCK FAIL-SAFE so a harness bug cannot
+   * hang certification — it is never the synchronization mechanism and never a correctness
+   * criterion: if it fires, the premise assertion fails rather than the race "passing".
    */
-  const r5touches = await touches(db, f5.orgId);
-  const r5execs = await execs(db, f5.orgId);
-  const r5steps = await stepsOf(db, r5.id);
-  check("62: one effect, one invocation, step 2 untouched",
-    r5touches === 1 && r5execs === 1 && r5steps[1].status === "PENDING",
-    `effects=${r5touches} invocations=${r5execs} step2=${r5steps[1].status}`);
-  if (adv5 !== 1 || r5touches !== 1 || r5execs !== 1 || r5steps[1].status !== "PENDING") {
-    console.log("  [D-P45-PROGRAM-FLAKE] five-racer diagnostic");
-    console.log(`    resumes: ${many.map((x, i) => x.status === "fulfilled"
-      ? `#${i + 1} dispatched=${x.value.dispatched} seq=${x.value.stepSeq ?? "—"} stale=${x.value.stale} inv=${x.value.invocationId ?? "—"} reason=${x.value.reason ?? "—"}`
-      : `#${i + 1} REJECTED ${String((x as PromiseRejectedResult).reason).slice(0, 120)}`).join("\n             ")}`);
-    console.log(`    effects(campaign_touches)=${r5touches} · EXECUTED invocations=${r5execs}`);
-    console.log(`    steps: ${r5steps.map((s) => `seq${s.seq}:${s.status}(attempt=${s.attempt},inv=${s.invocation_id ?? "—"},idem=${s.idempotency_key})`).join(" ")}`);
-    const invPerStep = (await db.query<{ seq: number; n: string }>(
-      `select st.seq, count(i.id)::text n from pursuit_run_steps st
-         left join governed_action_invocations i on i.run_step_id = st.id
-        where st.run_id = $1 group by st.seq order by st.seq`, [r5.id])).rows;
-    console.log(`    invocations per step: ${invPerStep.map((x) => `seq${x.seq}=${x.n}`).join(" ")}`);
-    const r5run = await runOf(db, r5.id);
-    console.log(`    run: status=${r5run.status} current_step=${r5run.current_step_id ?? "—"}`);
-    console.log(`    ledger: ${(await types(db, r5.id)).join(",")}`);
-    console.log(`    db=${CONN.replace(/:[^:@/]*@/, ":***@").split("/").pop()} pid=${process.pid} at=${new Date().toISOString()}`);
+  function makeBarrier(n: number, label: string) {
+    const arrived: Observed[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const failsafe = setTimeout(() => release(), 60_000);
+    return {
+      async arrive(g: Observed): Promise<void> {
+        arrived.push(g);
+        if (arrived.length >= n) { clearTimeout(failsafe); release(); }
+        await gate;
+      },
+      get observations(): Observed[] { return arrived; },
+      /** null when all N arrived having observed one identical generation tuple. */
+      premiseFailure(): string | null {
+        if (arrived.length !== n) return `${label}: only ${arrived.length} of ${n} participants reached the barrier`;
+        const keys = [...new Set(arrived.map(genKey))];
+        return keys.length === 1 ? null : `${label}: participants observed ${keys.length} distinct generations — ${keys.join(" ; ")}`;
+      },
+    };
   }
 
+  type Raced = { out: Awaited<ReturnType<typeof resumeRun>>; observed: Observed | null };
+  /**
+   * The seam. `resumeRun` already takes the PoolClient as its first parameter and the verifier
+   * already supplies it, so wrapping it here needs no product change. `barrier` null = Scenario A
+   * (observe only, do not delay).
+   */
+  const racedResume = (f: Fx, runId: string, barrier: ReturnType<typeof makeBarrier> | null): Promise<Raced> =>
+    withTenantOrg(f.orgId, async (client) => {
+      let seen = 0;
+      let observed: Observed | null = null;
+      const proxy = new Proxy(client, {
+        get(t, prop, recv) {
+          if (prop !== "query") return Reflect.get(t, prop, recv);
+          return async (...args: unknown[]) => {
+            const first = args[0];
+            const sql = typeof first === "string" ? first : ((first as { text?: string })?.text ?? "");
+            const res = await (t as unknown as PoolClient).query(...(args as Parameters<PoolClient["query"]>));
+            if (++seen === 1) {
+              // Never silently assume "first query forever": if resumeRun is refactored so the seam
+              // moves, fail LOUDLY as a harness-seam failure rather than pause at an unrelated query.
+              if (!GENERATION_SQL.test(sql)) {
+                throw new Error(`HARNESS SEAM FAILURE — resumeRun's first statement is no longer the generation observation: ${sql.replace(/\s+/g, " ").slice(0, 100)}`);
+              }
+              observed = ((res as unknown as { rows?: Observed[] }).rows?.[0] ?? null);
+              if (barrier) await barrier.arrive(observed as Observed);
+            }
+            return res;
+          };
+        },
+      });
+      const out = await resumeRun(proxy as unknown as PoolClient, f.orgId, runId, actorOf(f.runnerPrincipal, f.orgId));
+      return { out, observed };
+    });
+
+  const settledRaces = (rs: PromiseSettledResult<Raced>[]) =>
+    rs.filter((x): x is PromiseFulfilledResult<Raced> => x.status === "fulfilled").map((x) => x.value);
+
+  /** Shared safety checker, so the negative controls below exercise the REAL logic (NC2/NC3/NC5). */
+  function safetyViolations(rows: Raced[], perStepInvocations: Map<number, number>, perStepEffects: Map<number, number>): string[] {
+    const bad: string[] = [];
+    const dispatched = rows.filter((r) => r.out.dispatched);
+    const seqs = dispatched.map((r) => r.out.stepSeq ?? -1);
+    if (new Set(seqs).size !== seqs.length) bad.push(`two racers dispatched the same seq: ${seqs.join(",")}`);
+    for (const [seq, n] of perStepInvocations) if (n > 1) bad.push(`seq${seq} has ${n} invocations`);
+    for (const [seq, n] of perStepEffects) if (n > 1) bad.push(`seq${seq} has ${n} consequential effects`);
+    for (const r of rows) {
+      if (r.out.dispatched) continue;
+      if (r.out.stale === true && r.out.invocationId !== null) bad.push("a stale loser carried an invocation");
+    }
+    return bad;
+  }
+
+  const invocationsPerStep = async (runId: string): Promise<Map<number, number>> => new Map(
+    (await db.query<{ seq: number; n: string }>(
+      `select st.seq, count(i.id)::text n from pursuit_run_steps st
+         left join governed_action_invocations i on i.run_step_id = st.id
+        where st.run_id = $1 group by st.seq order by st.seq`, [runId])).rows.map((r) => [Number(r.seq), Number(r.n)]));
+  /** A consequential effect here is an EXECUTED invocation of that step — countable directly,
+   *  without assuming anything about the shape of the invocation's stored result. */
+  const effectsPerStep = async (runId: string): Promise<Map<number, number>> => new Map(
+    (await db.query<{ seq: number; n: string }>(
+      `select st.seq, count(i.id) filter (where i.status = 'EXECUTED')::text n from pursuit_run_steps st
+         left join governed_action_invocations i on i.run_step_id = st.id
+        where st.run_id = $1 group by st.seq order by st.seq`, [runId])).rows.map((r) => [Number(r.seq), Number(r.n)]));
+
+  // ── SCENARIO A · NATURAL PUBLIC CONCURRENCY (no barrier) ────────────────────────────────────
+  // Ordinary public behaviour under arbitrary scheduling. Deliberately NOT called same-generation.
+  const fr = await txPlant(db, "race");
+  const rr = await start(fr, [draft(fr, 1), draft(fr, 2), draft(fr, 3)]);
+  const natural = settledRaces(await Promise.allSettled([1, 2, 3, 4, 5].map(() => racedResume(fr, rr.id, null))));
+  const aInv = await invocationsPerStep(rr.id);
+  const aDispatched = natural.filter((r) => r.out.dispatched);
+  check("A1: no two racers dispatch the same step, and each step ran at most once",
+    safetyViolations(natural, aInv, await effectsPerStep(rr.id)).length === 0,
+    `${aDispatched.length} dispatched · ${[...aInv].map(([s, n]) => `seq${s}=${n}`).join(" ")}`);
+  const aSteps = await stepsOf(db, rr.id);
+  const seqOfStepId = (id: string | null) => aSteps.find((s) => s.id === id)?.seq ?? null;
+  check("A2: every dispatching racer advanced the step its OWN observation pointed at",
+    aDispatched.every((r) => r.observed !== null && seqOfStepId(r.observed.stepId) === r.out.stepSeq),
+    aDispatched.map((r) => `observed seq${seqOfStepId(r.observed?.stepId ?? null)} → dispatched seq${r.out.stepSeq}`).join(" · "));
+  check("A3: a racer that lost the generation it observed is stale, with no invocation and no effect",
+    natural.filter((r) => r.out.stale === true).every((r) => r.out.invocationId === null && !r.out.dispatched),
+    `${natural.filter((r) => r.out.stale === true).length} stale`);
+  check("A4: non-dispatchers are stale OR a certified terminal/no-op observer — never misclassified",
+    natural.filter((r) => !r.out.dispatched).every((r) => r.out.stale === true || r.out.invocationId === null),
+    natural.filter((r) => !r.out.dispatched).map((r) => `${r.out.runStatus}/${r.out.stale ? "stale" : "no-op"}`).join(" · "));
+  const aSeqs = aDispatched.map((r) => r.out.stepSeq as number).sort((x, y) => x - y);
+  check("A5: advances are distinct, in canonical order, and skip no unexecuted step",
+    aSeqs.every((s, i) => i === 0 ? s === 1 : s === aSeqs[i - 1] + 1),
+    `advanced ${aSeqs.join(",")} — a natural burst may advance more than one step when later requests genuinely observed later generations`);
+
+  // ── SCENARIO B · DETERMINISTIC SAME-GENERATION CONCURRENCY ──────────────────────────────────
+  // Every participant is held after its own generation observation and before it serializes, so
+  // "they all observed G" is PROVEN, not assumed, before any consequence is asserted.
+  async function sameGenerationBurst(tag: string, n: number) {
+    const f = await txPlant(db, tag);
+    const r = await start(f, [draft(f, 1), draft(f, 2), draft(f, 3)]);
+    const barrier = makeBarrier(n, `${tag}(n=${n})`);
+    const rows = settledRaces(await Promise.allSettled(Array.from({ length: n }, () => racedResume(f, r.id, barrier))));
+    return { f, r, barrier, rows };
+  }
+
+  // §7 POOL TOPOLOGY, proven before the five-participant barrier rather than assumed: five
+  // participants must each hold their own app-pool client simultaneously. An idle client is fine; a
+  // sixth simultaneously-required checkout would not be.
+  const appPool = getPool();
+  const poolMax = (appPool as unknown as { options: { max: number } }).options.max;
+  check("B0: the app pool can seat a five-participant barrier (max ≥ 5, nothing else checked out)",
+    poolMax >= 5 && appPool.totalCount - appPool.idleCount === 0,
+    `max=${poolMax} total=${appPool.totalCount} idle=${appPool.idleCount} in-use=${appPool.totalCount - appPool.idleCount}`);
+
+  for (const n of [2, 5]) {
+    const { f, r, barrier, rows } = await sameGenerationBurst(`race${n}`, n);
+    const premise = barrier.premiseFailure();
+    check(`B-premise(${n}): all ${n} participants observed the SAME generation G before any was released`,
+      premise === null, premise ?? `G=${genKey(barrier.observations[0])} ×${barrier.observations.length}`);
+    if (premise !== null) { check(`B(${n}): consequences NOT asserted — the race premise was not established`, false, premise); continue; }
+
+    const dispatched = rows.filter((x) => x.out.dispatched);
+    const losers = rows.filter((x) => !x.out.dispatched);
+    const inv = await invocationsPerStep(r.id);
+    const steps = await stepsOf(db, r.id);
+    check(`B1(${n}): EXACTLY ONE participant advanced generation G`, dispatched.length === 1,
+      rows.map((x) => `${x.out.dispatched ? `advanced(seq=${x.out.stepSeq})` : x.out.stale ? "stale" : "no-op"}`).join(" · "));
+    check(`B2(${n}): every other participant is stale with invocationId null and caused no effect`,
+      losers.length === n - 1 && losers.every((x) => x.out.stale === true && x.out.invocationId === null),
+      losers.map((x) => `stale=${x.out.stale} inv=${x.out.invocationId ?? "null"}`).join(" · "));
+    check(`B3(${n}): the G step has exactly one invocation, one effect and one completion transition`,
+      inv.get(1) === 1 && (await touches(db, f.orgId)) === 1
+      && (await types(db, r.id)).filter((t) => t === "RUN_STEP_COMPLETED").length === 1,
+      `seq1 invocations=${inv.get(1)} effects=${await touches(db, f.orgId)}`);
+    check(`B4(${n}): the following step is still PENDING — the burst did not drain G+1`,
+      steps[1].status === "PENDING", steps.map((s) => `${s.seq}:${s.status}`).join(" "));
+    check(`B5(${n}): the run advanced exactly one generation`,
+      (await runOf(db, r.id)).current_step_id === steps[1].id, `current=seq2`);
+    check(`B6(${n}): no step was skipped`, inv.get(2) === 0 && inv.get(3) === 0,
+      [...inv].map(([s, c]) => `seq${s}=${c}`).join(" "));
+    check(`B7(${n}): ledger evidence agrees with the API outcomes`,
+      (await types(db, r.id)).join(",") === "RUN_STARTED,RUN_STEP_COMPLETED", (await types(db, r.id)).join(","));
+
+    // §6 — a SEPARATE phase, after the barrier race has completely resolved and not sharing its
+    // barrier. This is the distinction the old test blurred: a duplicate same-generation request is
+    // refused, a genuinely fresh next-generation request proceeds.
+    if (n === 5) {
+      const fresh = await resume(f, r.id);
+      check("B8: a FRESH unbarriered resume afterwards observes G+1 and executes it normally",
+        fresh.dispatched && fresh.stepSeq === 2 && !fresh.stale && (await touches(db, f.orgId)) === 2,
+        `seq=${fresh.stepSeq} run=${fresh.runStatus}`);
+      // §12 — the direct semantic evidence for the property the old assertions only assumed.
+      console.log(`  [B-EVIDENCE n=5] G=${genKey(barrier.observations[0])} · arrivals=${barrier.observations.length}`
+        + ` · dispatched=${dispatched.length} · stale/null losers=${losers.length}`
+        + ` · seq1 invocations=${inv.get(1)} effects=1 · seq2 after burst=PENDING · then fresh resume → seq2`);
+    }
+  }
+
+  // ── NEGATIVE CONTROLS · the repaired suite must FAIL when these properties are violated ─────
+  {
+    const g = (stepId: string, status = "READY", attempt = 1): Observed => ({ stepId, status, attempt });
+    const nc1 = makeBarrier(2, "NC1");
+    void nc1.arrive(g("step-A")); void nc1.arrive(g("step-B"));
+    await new Promise((r) => setImmediate(r));
+    check("NC1: unequal observed generations FAIL at the premise, before any consequence is asserted",
+      nc1.premiseFailure() !== null && /distinct generations/.test(nc1.premiseFailure() ?? ""), nc1.premiseFailure() ?? "");
+    const nc1ok = makeBarrier(2, "NC1-control");
+    void nc1ok.arrive(g("step-A")); void nc1ok.arrive(g("step-A"));
+    await new Promise((r) => setImmediate(r));
+    check("NC1-control: identical observations establish the premise, so NC1 is discriminating", nc1ok.premiseFailure() === null);
+
+    const fake = (dispatched: boolean, stepSeq: number | null, stale?: boolean, invocationId: string | null = null): Raced =>
+      ({ out: { runStatus: "READY", stepStatus: "—", invocationId, dispatched, stepSeq, stale, reason: null } as Raced["out"], observed: g("s") });
+    check("NC2: two racers claiming the SAME dispatched seq is caught",
+      safetyViolations([fake(true, 1), fake(true, 1)], new Map([[1, 1]]), new Map([[1, 1]]))
+        .some((v) => /same seq/.test(v)));
+    check("NC3: a step with more than one invocation or effect is caught",
+      safetyViolations([fake(true, 1)], new Map([[1, 2]]), new Map([[1, 1]])).some((v) => /2 invocations/.test(v))
+      && safetyViolations([fake(true, 1)], new Map([[1, 1]]), new Map([[1, 2]])).some((v) => /2 consequential effects/.test(v)));
+    check("NC5: a stale loser carrying an invocation is caught",
+      safetyViolations([fake(false, null, true, "inv-1")], new Map(), new Map()).some((v) => /stale loser carried/.test(v)));
+    check("NC-control: a clean burst produces NO violations, so NC2/NC3/NC5 are discriminating",
+      safetyViolations([fake(true, 1), fake(false, null, true)], new Map([[1, 1]]), new Map([[1, 1]])).length === 0);
+    // NC4 — Scenario B must fail if the proven-G burst itself completed G+1.
+    const drained = [{ seq: 1, status: "COMPLETED" }, { seq: 2, status: "COMPLETED" }];
+    check("NC4: a burst that drained G+1 is caught by the B4 condition",
+      !(drained[1].status === "PENDING"), `seq2=${drained[1].status}`);
+  }
   // Parking for approval ends the generation too, so duplicates cannot pile requests onto one step.
   const fap = await txPlant(db, "raceapp");
   await db.query(`update actor_capability_grants set approval_required_override = true where org_id=$1 and actor_id=$2 and skill_id=$3`,
