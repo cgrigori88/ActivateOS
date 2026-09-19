@@ -923,3 +923,47 @@ so the focused gate required one more explicit alias transition to serve `3449c5
 
 The lesson is not "avoid manual aliases". It is that the fix for one of these four states is a change
 to another, and a gate that reasons about only one of them is reasoning about the wrong thing.
+
+### §16J — a concurrency test must deterministically establish the race premise it relies on
+
+> **"Requests were created concurrently" does not prove "requests observed the same generation."**
+
+`p45-program` launched N resumes with `Promise.allSettled` and called them same-generation racers. It
+never established that. `resumeRun` fixes the generation a request was issued against when its first
+statement — an unlocked `observeGeneration` SELECT — returns, which happens after connection
+acquisition and scheduler entry. Under load a later racer legitimately began after the winner had
+committed, observed the NEW generation and advanced the next step. **The product invariant held; the
+test premise did not**, and the suite failed roughly 15% of runs on unmodified code.
+
+When semantics depend on an observed generation, version or state:
+
+> **Identify the exact point at which that observation becomes fixed.**
+> **Establish the required shared observation deterministically if the assertion depends on it.**
+> **Only then assert the race consequence.**
+> **Distinguish legitimate later-generation work from stale same-generation duplication.**
+> **Never use sleeps, Promise creation order, machine load, connection-pool starvation or retries as
+> proof of concurrency state.**
+
+**The harness must prove the precondition before asserting the semantic consequence.** That is the
+concurrency analogue of §16B (asserting on nothing) and §16D/§16H (asserting on the wrong region):
+the same failure — an assertion whose subject was never actually established — wearing a different
+costume.
+
+The repair split one conflated test into two honest ones. **Scenario A** is ordinary public
+concurrency with no barrier: scheduler-dependent by design, asserting only what is true under any
+scheduling — no duplicate step dispatch, at most one invocation and one effect per step, each
+dispatcher aligned with the generation it actually observed, stale losers carrying nothing, terminal
+observers not misclassified, no step skipped. **Scenario B** is the deterministic proof, and it is
+where the guarantee lives: a Proxy over the `PoolClient` the verifier already supplies pauses every
+participant after its own observation and before it serializes, so *all N observed G* is proven
+before *G advances at most once* is asserted.
+
+**The seam must fail loudly, not silently.** The Proxy verifies the intercepted statement really is
+the generation observation; if a later refactor moves it, the test reports a harness-seam failure
+rather than pausing at an unrelated query and quietly proving nothing.
+
+**A diagnostic note recorded because the wrong version of it was believed for a while.** `verify-run`
+was **not** totals-only — the failing assertion names were already in its MATRIX `reason` column, and
+an over-narrow grep omitted that row. The genuine, separate weakness is that `runSuite` discarded a
+failing suite's stdout; `VERIFY_DUMP_ON_FAIL` corrects that opt-in, leaving default behaviour and
+pass/fail semantics unchanged and introducing no retry.
