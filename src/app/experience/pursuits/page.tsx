@@ -16,6 +16,7 @@ import { assemblePursuitTeamFromSurface } from "./actions";
 import { currentRenderBinding, currentPrincipal } from "./binding";
 import { toPersistedDefinition, toSurfaceSpec } from "@/lib/experience/surface/persisted";
 import { createPin, loadPin } from "@/lib/experience/surface/pin-repository";
+import { deletePinnedSurface, renamePinnedSurface } from "./pin-actions";
 import type { AggregateResult, Explanation, GoToOutcome, GovernedCell, GovernedResultSet } from "@/lib/experience/types";
 
 export const dynamic = "force-dynamic";
@@ -387,7 +388,7 @@ async function SurfaceView({ surface, compose, ctx, view, pin }: { surface?: str
  * all. So this function never asks whether a target exists, never hides or shows a component of its
  * own accord, and has no branch that could omit one — it renders the components it was handed.
  */
-function SurfaceRender({ result }: { result: SurfaceResult }) {
+function SurfaceRender({ result, lifecycle }: { result: SurfaceResult; lifecycle?: React.ReactNode }) {
   return (
     <main className="mx-auto max-w-[1100px] px-6 py-10">
       <h1 className="text-section font-extrabold tracking-[-0.03em]">Surface</h1>
@@ -420,7 +421,44 @@ function SurfaceRender({ result }: { result: SurfaceResult }) {
           </section>
         ))}
       </div>
+      {/* Present ONLY for a saved definition the caller owns — a composed surface has no lifecycle. */}
+      {lifecycle}
     </main>
+  );
+}
+
+/**
+ * P7 SLICE 12 — THE LIFECYCLE CONTROLS for an opened, owned definition.
+ *
+ * The smallest product surface that makes rename and hard-delete real: they belong to the pin you
+ * are looking at, so they live here rather than in a pin-management application this slice has not
+ * been asked for. There is no list, no browsing, no search, no sharing and no ordering.
+ *
+ * BOTH ARE POST-ONLY FORMS. Rendering this markup performs nothing; only a submitted form reaches
+ * `pin-actions.ts`. The id travels in a hidden field precisely because it is untrusted routing
+ * input — it names the row and confers nothing, and the repository re-derives org and creator.
+ */
+function PinLifecycle({ id, name }: { id: string; name: string }) {
+  return (
+    <div className="mt-10 border-t border-neutral-200 pt-6 dark:border-neutral-800" data-pin-lifecycle={id}>
+      <form action={renamePinnedSurface} className="flex flex-wrap items-center gap-3">
+        <input type="hidden" name="id" value={id} />
+        <label className="text-body text-neutral-500 dark:text-neutral-400" htmlFor="pin-name">Name</label>
+        <input
+          id="pin-name" name="name" defaultValue={name} maxLength={120} required
+          className="rounded border border-neutral-300 px-3 py-1.5 text-body dark:border-neutral-700 dark:bg-neutral-900"
+        />
+        <button type="submit" className="rounded border border-neutral-300 px-3 py-1.5 text-body dark:border-neutral-700">
+          Rename
+        </button>
+      </form>
+      <form action={deletePinnedSurface} className="mt-3">
+        <input type="hidden" name="id" value={id} />
+        <button type="submit" className="text-body text-neutral-500 underline dark:text-neutral-400">
+          Delete this saved surface
+        </button>
+      </form>
+    </div>
   );
 }
 
@@ -500,7 +538,7 @@ async function OpenPinView({ id }: { id: string }) {
   if (!compiled.ok) return notice("That saved surface can no longer be opened.");
   const assembled = await assembleSurface(compiled.validated);
   if (!assembled.ok) return notice("That surface is not available.");
-  return <SurfaceRender result={assembled.result} />;
+  return <SurfaceRender result={assembled.result} lifecycle={<PinLifecycle id={pin.value.id} name={pin.value.name} />} />;
 }
 
 /**

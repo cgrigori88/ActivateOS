@@ -357,3 +357,167 @@ test("the pin path writes nothing outside its own table", () => {
     assert.ok(!body.includes(forbidden), `the repository must not touch ${forbidden}`);
   }
 });
+
+// ── THE LIFECYCLE MUTATIONS: RENAME AND HARD DELETE ─────────────────────────────────────────────
+//
+// > **Opening/rendering a pin is read-only. Rename and delete require explicit user mutation intent.**
+//
+// The property these tests exist for is NOT "rename works". It is that a GET cannot rename or delete
+// — because a render is issued by crawlers, prefetchers and link previews, and durable state must
+// not be destroyable by anything that merely follows a URL.
+
+const ACTIONS = SRC("app/experience/pursuits/pin-actions.ts");
+const PAGE = SRC("app/experience/pursuits/page.tsx");
+
+test("rename and delete exist as explicit POST-only server actions", () => {
+  assert.match(ACTIONS.split("\n")[0], /^"use server";$/, "the module is a server-action module");
+  const body = strip(ACTIONS);
+  assert.match(body, /export async function renamePinnedSurface\(formData: FormData\)/);
+  assert.match(body, /export async function deletePinnedSurface\(formData: FormData\)/);
+  // A server action is POST-only by construction; the forms that reach it are the only entry points.
+  assert.match(strip(PAGE), /<form action=\{renamePinnedSurface\}/);
+  assert.match(strip(PAGE), /<form action=\{deletePinnedSurface\}/);
+});
+
+test("NO GET/render path can rename or delete", () => {
+  const page = strip(PAGE);
+  // 1. The route accepts no rename/delete search parameter at all.
+  const params = page.slice(page.indexOf("searchParams: Promise<{"), page.indexOf("}>;") + 3);
+  for (const forbidden of ["rename", "delete", "remove", "forget", "destroy"]) {
+    assert.ok(!params.includes(forbidden), `?${forbidden}= must not be a route parameter`);
+  }
+  // 2. The render path never CALLS a mutating function — the actions appear only as form targets.
+  for (const fn of ["renamePinnedSurface", "deletePinnedSurface"]) {
+    const called = new RegExp(`(?:await\\s+)?${fn}\\s*\\(`).test(page);
+    assert.equal(called, false, `${fn} must never be invoked during render`);
+    assert.match(page, new RegExp(`action=\\{${fn}\\}`), `${fn} is reachable only as a form action`);
+  }
+  // 3. No render-path module reaches the mutating repository functions directly.
+  assert.ok(!/\brenamePin\b|\bdeletePin\b/.test(page), "the page never calls the repository mutators itself");
+});
+
+test("the lifecycle actions derive principal and org SERVER-SIDE, and accept neither", () => {
+  const body = strip(ACTIONS);
+  // The PROPERTY is "the creator is derived server-side", not any particular call syntax.
+  assert.match(body, /from "\.\/binding"/, "the principal comes from the server-only binding module");
+  assert.match(body, /currentPrincipal\(\)/, "the creator is derived, never supplied");
+  // The org is never named at all here: it arrives inside the repository via withTenant.
+  assert.ok(!/orgId|org_id/.test(body), "no organization may be nominated by a caller");
+  assert.ok(!/created_by|creator/.test(body.replace(/currentPrincipal/g, "")), "no creator may be nominated");
+  // Exactly two values are read from the request, and they are the two the ruling allows.
+  const keys = [...body.matchAll(/formData\.get\("([a-z]+)"\)/g)].map((m) => m[1]).sort();
+  assert.deepEqual([...new Set(keys)], ["id", "name"], `only the pin id and display name are accepted: ${keys}`);
+  // Nothing semantic can arrive: there is no path for definition bytes or a digest.
+  for (const forbidden of ["definition", "digest", "components", "layout", "source", "specVersion"]) {
+    assert.ok(!body.includes(forbidden), `the action must not accept ${forbidden}`);
+  }
+});
+
+test("the lifecycle actions write ONLY through the ruled repository", () => {
+  const body = strip(ACTIONS);
+  assert.match(body, /from "@\/lib\/experience\/surface\/pin-repository"/, "it uses the one persistence module");
+  assert.ok(!body.includes("pinned_surface_definitions"), "it never names the table — no second persistence path");
+  assert.ok(!/getPool|PoolClient|db\.query|withTenant/.test(body), "it issues no SQL of its own");
+  // And it re-asks the same two gates the read path passes, so a mutation cannot outlive the feature.
+  assert.match(body, /pursuitExperienceEnabled\(\)/);
+  assert.match(body, /dynamicSurfacesEnabled\(\)/);
+});
+
+test("rename is metadata only — it cannot reach the definition or its digest", () => {
+  const body = strip(ACTIONS);
+  const rename = body.slice(body.indexOf("export async function renamePinnedSurface"), body.indexOf("export async function deletePinnedSurface"));
+  assert.match(rename, /await renamePin\(principal, id, name\)/, "it calls the scoped repository rename");
+  assert.ok(!/deletePin|createPin|loadPin/.test(rename), "rename reaches no other operation");
+  // The repository statement it reaches sets name and updated_at and nothing else.
+  const stmt = strip(REPO).slice(strip(REPO).indexOf("update pinned_surface_definitions"));
+  assert.match(stmt.slice(0, 200), /set name = \$4, updated_at = now\(\)/);
+  assert.ok(!/definition\s*=/.test(stmt.slice(0, 200)), "the definition column is not in the rename statement");
+  assert.ok(!/definition_digest\s*=/.test(stmt.slice(0, 200)), "the digest column is not in the rename statement");
+});
+
+test("delete is a hard delete of the owned row only", () => {
+  const body = strip(ACTIONS);
+  const del = body.slice(body.indexOf("export async function deletePinnedSurface"));
+  assert.match(del, /await deletePin\(principal, id\)/);
+  assert.ok(!/renamePin|createPin/.test(del), "delete reaches no other operation");
+  const stmt = strip(REPO).slice(strip(REPO).indexOf("delete from pinned_surface_definitions"));
+  assert.match(stmt.slice(0, 200), /where org_id = \$1 and created_by_user_id = \$2 and id = \$3/);
+  // No tombstone, no archive, no recovery.
+  for (const forbidden of ["deleted_at", "archived", "tombstone", "restore", "undelete"]) {
+    assert.ok(!REPO.includes(forbidden) && !DDL.includes(forbidden), `no ${forbidden} state exists`);
+  }
+});
+
+test("neither outcome is distinguishable — a peer cannot probe existence through the mutation boundary", () => {
+  const body = strip(ACTIONS);
+  // Both actions redirect to a fixed destination regardless of whether anything happened.
+  assert.match(body, /redirect\(`\/experience\/pursuits\?open=\$\{id\}`\)/);
+  assert.match(body, /redirect\("\/experience\/pursuits"\)/);
+  // No branch reports the repository's outcome back to the caller.
+  assert.ok(!/NOT_AVAILABLE|error:|\.ok \?/.test(body), "the action surfaces no distinguishing outcome");
+});
+
+test("NEGATIVE CONTROL: a ?rename= route parameter would be CAUGHT", () => {
+  const check = (src: string) => {
+    const page = strip(src);
+    const params = page.slice(page.indexOf("searchParams: Promise<{"), page.indexOf("}>;") + 3);
+    return !["rename", "delete"].some((k) => params.includes(k));
+  };
+  assert.equal(check(PAGE), true, "canonical code passes");
+  const leaky = PAGE.replace("open?: string }>;", "open?: string; rename?: string }>;");
+  assert.notEqual(leaky, PAGE, "the mutation actually applied");
+  assert.equal(check(leaky), false, "a rename search parameter is caught");
+});
+
+test("NEGATIVE CONTROL: invoking a lifecycle action during render would be CAUGHT", () => {
+  const check = (src: string) => !/(?:await\s+)?deletePinnedSurface\s*\(/.test(strip(src));
+  assert.equal(check(PAGE), true, "canonical code passes");
+  const leaky = PAGE.replace(
+    "  return <SurfaceRender result={assembled.result} lifecycle=",
+    "  await deletePinnedSurface(new FormData());\n  return <SurfaceRender result={assembled.result} lifecycle=");
+  assert.notEqual(leaky, PAGE, "the mutation actually applied");
+  assert.equal(check(leaky), false, "a render-time invocation is caught");
+});
+
+test("NEGATIVE CONTROL: a rename that mutated definition bytes would be CAUGHT", () => {
+  const check = (src: string) => {
+    const stmt = strip(src).slice(strip(src).indexOf("update pinned_surface_definitions"), strip(src).indexOf("update pinned_surface_definitions") + 200);
+    return !/definition\s*=/.test(stmt);
+  };
+  assert.equal(check(REPO), true, "canonical code passes");
+  const leaky = REPO.replace("set name = $4, updated_at = now()", "set name = $4, definition = $5, updated_at = now()");
+  assert.notEqual(leaky, REPO, "the mutation actually applied");
+  assert.equal(check(leaky), false, "a definition write inside rename is caught");
+});
+
+test("NEGATIVE CONTROL: a lifecycle action reaching a canonical table would be CAUGHT", () => {
+  const check = (src: string) => {
+    const tables = [...strip(src).matchAll(/(?:from|into|update|delete from)\s+([a-z_]+)/g)].map((m) => m[1]);
+    return [...new Set(tables)].every((t) => t === "pinned_surface_definitions");
+  };
+  assert.equal(check(REPO), true, "canonical code passes");
+  const leaky = REPO.replace("delete from pinned_surface_definitions",
+                             "delete from pursuits where 1=0; delete from pinned_surface_definitions");
+  assert.notEqual(leaky, REPO, "the mutation actually applied");
+  assert.equal(check(leaky), false, "a canonical-table write is caught");
+});
+
+test("the access-path inventory now covers the lifecycle module too", () => {
+  // pin-actions.ts must reach the table ONLY through the repository, so it must not name the table.
+  assert.ok(!ACTIONS.includes("pinned_surface_definitions"));
+  // And the repository's importers are a closed, classified set.
+  const files: string[] = [];
+  const walk = (dir: string) => readdirSync(dir).forEach((e) => {
+    const p = join(dir, e);
+    if (statSync(p).isDirectory()) walk(p);
+    else if (/\.(ts|tsx)$/.test(p)) files.push(p);
+  });
+  walk(new URL("../src", import.meta.url).pathname);
+  const importers = files.filter((f) => /pin-repository/.test(readFileSync(f, "utf8")))
+    .map((f) => f.slice(f.indexOf("src/"))).sort()
+    .filter((f) => f !== "src/lib/experience/surface/pin-repository.ts");
+  assert.deepEqual(importers, [
+    "src/app/experience/pursuits/page.tsx",
+    "src/app/experience/pursuits/pin-actions.ts",
+  ], "a new importer of the persistence module appeared — classify it before shipping");
+});
