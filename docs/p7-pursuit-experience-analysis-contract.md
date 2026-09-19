@@ -967,3 +967,39 @@ was **not** totals-only — the failing assertion names were already in its MATR
 an over-narrow grep omitted that row. The genuine, separate weakness is that `runSuite` discarded a
 failing suite's stdout; `VERIFY_DUMP_ON_FAIL` corrects that opt-in, leaving default behaviour and
 pass/fail semantics unchanged and introducing no retry.
+
+### §16K — an equivalence test must hold the security substrate constant
+
+> **The trusted execution boundary establishes both WHO is asking and the governed substrate on
+> which execution occurs. An identity object alone does not determine governed semantics.**
+
+Slice 13 asserted that web and headless execution produce the same governed result. The first attempt
+compared a direct run connected as the database **owner** against the deployed web path running as
+**`app_rw`** — two intentionally different security contexts. It returned 12 governed rows against 11,
+and I recorded that as *"two independent layers, same refusal"*.
+
+That framing was wrong, and the way it was wrong is the lesson: it conflated **no field values
+disclosed** with **the same semantic object**. RLS removed the row before P6 ever saw it on one path;
+P6 admitted the row and suppressed every value on the other. Neither disclosed a value — and the two
+results were still different, because **row membership is part of the semantic contract**.
+
+> **Differing membership under differing substrates proves nothing about interface parity, in either
+> direction.** A comparison whose two sides differ in a variable the property is sensitive to is not a
+> test of that property.
+
+**The corollary is a product rule, not only a testing one.** If a substrate can change the answer,
+then a caller who can choose the substrate can choose the answer — so the substrate must be
+established by the trusted boundary and not by ambient process configuration. Slice 13's canonical
+executor therefore refuses to run unless the pool is the certified application role, and does so
+before context resolution, any governed read, compilation or assembly.
+
+**Two supporting rules learned the same day:**
+
+- **Certification caches are keyed by identity, never by a process-global flag.** `certified = true`
+  lets one legal pool bless every later one; a `WeakSet` keyed on the pool answers *"has THIS pool
+  been certified"*, and the entry dies with the pool it describes.
+- **A conventional guarantee is not a structural one.** Five verifiers already pinned
+  `DATABASE_URL = app_rw` with the comment *"exactly like the app"*, and the deployed runtime was
+  `app_rw` — but nothing refused a differently configured process. The convention existed precisely
+  to prevent the mistake I made by ignoring it, which is the clearest possible argument for making it
+  structural.

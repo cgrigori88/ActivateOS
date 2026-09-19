@@ -1,7 +1,7 @@
 # P7 Slice 13 — Headless / interface-independent Pursuit Experience
 
-**Status: LOCAL IMPLEMENTATION COMPLETE — awaiting hosted authorization.** No schema, no migration,
-no alias movement, no P45, no hosted action. The certified Preview runtime remains `3449c56`.
+**Status: HOSTED ACCEPTED / CLOSED. Certified runtime `d59eb21`, hosted schema 114.**
+D-S13-EXEC-CONTEXT: **CLOSED**. No migration, no P45, Production untouched.
 
 **Sections 0–6 and "Decisions requiring ruling" below are the ORIGINAL DESIGN BRIEF, retained as
 history** — they were written before implementation and say "no implementation" because that was
@@ -422,3 +422,114 @@ object*: one result contained the row, the other did not.
 app"* — existed precisely to prevent this, and I did not follow it. Connecting as owner was not a
 harmless harness convenience; it silently changed the semantics under test. The gate that exposed it
 is the reason the product boundary is now structural rather than conventional.
+
+---
+
+# P7 SLICE 13 — HOSTED ACCEPTED / CLOSED
+
+**Certified runtime `d59eb21` · hosted schema 114 · Preview posture: `app_rw`, non-superuser,
+`rolbypassrls = false`, tenant enforcement active, sending disarmed, P45 inactive, Production
+untouched.**
+
+> **P7 owns governed experience semantics independent of interface. An adapter may transport or
+> render those semantics; it may not redefine truth, authority, metrics, selectors, state transitions
+> or write behavior.**
+
+## The governing invariants
+
+1. **The request describes what experience is requested; the trusted execution boundary establishes
+   both who is asking and the governed application substrate on which execution occurs.**
+2. **A caller may not choose the application principal, tenant authority, database role, RLS posture
+   or governance substrate.**
+3. **Headless means independent of presentation framework, not independent of the governed
+   application runtime.**
+4. **Web is an adapter over the same canonical P7 execution boundary.**
+5. **`SurfaceResult` is the single recipient-safe semantic result model.**
+6. **A bound context digest is a staleness precondition — not context, identity or authority.**
+7. **The canonical Slice 13 execution substrate is `app_rw`, non-BYPASSRLS, non-superuser, with
+   tenant enforcement active.**
+
+## Evidence
+
+**M0 5/0 · hosted + substrate/parity 125/0 — 130 assertions, 0 failures.**
+
+```
+p7-slice13 27/27 · unit 841/841 · tsc clean · build clean
+ordering-determinism 46/46 · seeded-clone 66/66 · p45-program 100/100 · certify-world 52/52
+protected world digest d43fe13b1f194132 — unchanged start to end
+```
+
+### 1 · The canonical substrate guard
+
+`executeExperience` refuses unless the pool certifies as `app_rw`, non-BYPASSRLS, non-superuser, with
+tenant enforcement active — **before** context resolution, governed reads, compilation and assembly.
+Proven live against the real Preview database on the certified commit: an owner-connected process is
+refused with `{ok:false, error:"FAILED"}`, keys exactly `["ok","error"]`, disclosing no role,
+connection, owner status or RLS detail.
+
+### 2 · Pool-scoped certification
+
+`WeakSet`-by-pool-identity is sound because `getPool()` is a singleton, one connection string defines
+every connection in that pool, production code performs no `SET ROLE` or `SET SESSION AUTHORIZATION`,
+the tenant helpers change only `app.org_id`, and a new or replaced pool object requires fresh
+certification. Proven empirically: a legal pool certifies, a different illegal pool object is
+evaluated independently and refused, and a recreated pool is certified afresh.
+
+### 3 · Same-substrate parity
+
+Under the same request, branded principal, world, `app_rw` substrate and RLS posture, web and direct
+canonical execution produced **exact semantic parity: 11 rows / 66 cells**, identical membership,
+order and applicable digests.
+
+### 4 · NC-RLS — security-substrate discrimination, **not** parity
+
+```
+owner / BYPASSRLS → 12 rows        app_rw / RLS → 11 rows (strict subset)
+```
+
+This is why the substrate assertion exists. Canonical `executeExperience` now refuses the owner side
+**before** that differing semantic result could become a legal P7 result.
+
+### 5 · Existing product classes preserved
+
+The common executor preserved the context-bearing `SurfaceView`, the Slice 12 pinned-surface
+create/open/delete lifecycle, the Slice 9/10 action-bearing presentation path, and bound-context
+staleness behaviour. **No consequential action was invoked. No P45 state was created.**
+
+### 6 · Mutation accounting
+
+Only the bounded pin lifecycle temporarily moved `pinned_surface_definitions`. After cleanup **no
+table moved across the gate**; P45 and audit remained zero.
+
+## The hosted parity limitation — recorded, not a blocker
+
+**Preview exposes no separate `app_rw` session outside the deployed web process**, so direct-vs-web
+parity could not be executed as two independent hosted clients. Therefore:
+
+- hosted evidence proves the deployed web process is itself canonical `app_rw`;
+- controlled clone evidence proves exact direct-vs-web semantic parity under a genuine `app_rw` login;
+- the canonical executor structurally refuses non-canonical substrates.
+
+**Direct hosted parity was not performed, and is not claimed.** This is an evidence-environment
+limitation, not an unresolved product-governance gap.
+
+## The H2 / H3 correction, preserved rather than rewritten
+
+The original owner-vs-`app_rw` result **did not prove parity**. What it proved is that RLS removed a
+row before P6 under `app_rw`, while owner/BYPASSRLS admitted that row and P6 suppressed all of its
+field values. Both prevented value disclosure; they produced **different semantic objects**, because
+row membership differed.
+
+> **A parity test must hold the security substrate constant.** (§16K)
+
+The original owner-backed **H2 remains valid only for**: React independence, route and browser
+independence, provider independence, headless execution mechanics, field suppression, and zero-write
+behaviour. **It did not prove production-equivalent RLS semantics.** The same-`app_rw` proof supplies
+that.
+
+## What Slice 13 does NOT certify
+
+No REST or public API · no MCP · no Slack · no Teams · no external agents · no external action
+invocation · no P45 runtime entry. It certifies the **internal canonical governed execution boundary**
+those future adapters must use. Existing action-bearing web surfaces traverse the executor internally,
+but **no new headless action interface has been authorized.**
