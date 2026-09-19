@@ -294,15 +294,42 @@ async function main(): Promise<void> {
   // C2 non-unique ORDER BY + LIMIT: eight outcome events share one occurred_at, newer than everything else.
   // `event_type` is a checked enum, so each event gets its own account — the activity row renders the name,
   // and the names run in the REVERSE of id order.
+  //
+  // THE ANCHOR IS DATASET-RELATIVE, NOT A CALENDAR DATE (D-SEED-REPRO ruling 2).
+  //
+  // This fixture's semantic prerequisite is "strictly newer than every pre-existing relevant event".
+  // It used to encode that as the literal '2026-09-16T00:00:00Z', which was true when the suite was
+  // written and silently became false the moment the world was reseeded on a later date: a freshly
+  // seeded world carries outcome events past that instant, so real rows outranked the fixture and the
+  // assertion failed for a reason that had nothing to do with ordering.
+  //
+  // The anchor is now MAX(existing occurred_at) plus a fixed interval, in UTC. Not `now()`, not the
+  // wall clock, not today's date, and not another "far enough in the future" literal — each of those
+  // either reintroduces the staleness or destroys the tie this case exists to create. The offset is
+  // deterministic, so all eight rows still share ONE occurred_at and the tie is preserved.
+  const { rows: anchorRow } = await owner.query<{ anchor: string }>(
+    `select coalesce(max(occurred_at), now() at time zone 'utc') + interval '1 day' as anchor
+       from outcome_events where org_id = $1`, [V]);
+  const activityAnchor = anchorRow[0].anchor;
   const eventIds = Array.from({ length: 8 }, () => randomUUID()).sort();
   for (const [i, id] of eventIds.entries()) {
     const co = await newCompany(`DG82 Act ${7 - i}`);
-    // A FIXED literal, not now(): each insert is its own transaction, so now() would give all eight rows a
-    // distinct occurred_at (microseconds apart) and the clause would be legitimately deterministic — no tie.
+    // A FIXED value, not now(): each insert is its own transaction, so now() would give all eight rows
+    // a distinct occurred_at (microseconds apart) and the clause would be legitimately deterministic.
     await owner.query(`insert into outcome_events (id, org_id, company_id, event_type, occurred_at)
-                       values ($1, $2, $3, 'MEETING_BOOKED', '2026-09-16T00:00:00Z')`, [id, V, co]);
+                       values ($1, $2, $3, 'MEETING_BOOKED', $4)`, [id, V, co, activityAnchor]);
   }
   const expectedActivity = [0, 1, 2, 3, 4, 5].map((k) => `DG82 Act ${k}`);   // (occurred_at desc, id desc) → highest ids first
+
+  // THE PREREQUISITE, ASSERTED RATHER THAN ASSUMED. If the planted events are ever not strictly
+  // newer than every pre-existing one, this fails HERE — naming the real cause — instead of surfacing
+  // later as a mystifying ordering failure. That is the whole defect this repair removes.
+  const { rows: prereq } = await owner.query<{ older: string; planted: string }>(
+    `select count(*) filter (where id <> all($2::uuid[]) and occurred_at >= $3)::text as older,
+            count(*) filter (where id = any($2::uuid[]) and occurred_at = $3)::text as planted
+       from outcome_events where org_id = $1`, [V, eventIds, activityAnchor]);
+  check("C2 PREREQUISITE: the planted activity is strictly newer than every pre-existing event, and all eight share one instant",
+    prereq[0].older === "0" && prereq[0].planted === "8", `${prereq[0].older} newer-or-equal pre-existing · ${prereq[0].planted} planted at the anchor`);
 
   // C3 DISTINCT ON with an incomplete order: one company, two scores at the SAME computed_at.
   const scoreCo = await newCompany("DG82 Score Tie");
@@ -396,6 +423,24 @@ async function main(): Promise<void> {
   const f = g82[0];
   check("C1 unordered→cap: contradiction actions follow (legal_name, id) — a prefix of the documented order",
     f.contra.length > 0 && JSON.stringify(f.contra) === JSON.stringify(expectedContra.slice(0, f.contra.length)), JSON.stringify(f.contra));
+  // NEGATIVE CONTROL FOR THE REPAIR. The relative anchor must be doing real work: an identically
+  // shaped fixture planted OLDER than the existing maximum must NOT occupy the newest positions,
+  // while the relative one does. Without this, the repair could be silently wrong in the same way
+  // the literal was — passing because the world happened to cooperate.
+  {
+    const staleAt = `${new Date(Date.parse(String(activityAnchor)) - 30 * 86400_000).toISOString()}`;
+    const { rows: wouldRank } = await owner.query<{ n: string }>(
+      `select count(*)::text n from outcome_events
+        where org_id = $1 and occurred_at > $2::timestamptz`, [V, staleAt]);
+    check("C2 CONTROL: a fixture planted OLDER than the dataset maximum would not hold the newest positions",
+      Number(wouldRank[0].n) >= 6, `${wouldRank[0].n} existing events are newer than a stale anchor`);
+    const { rows: relRank } = await owner.query<{ n: string }>(
+      `select count(*)::text n from outcome_events
+        where org_id = $1 and occurred_at > $2::timestamptz`, [V, activityAnchor]);
+    check("C2 CONTROL: the RELATIVE anchor does hold them — nothing is newer than the planted instant",
+      relRank[0].n === "0", `${relRank[0].n} events newer than the planted anchor`);
+  }
+
   check("C2 non-unique LIMIT: the 6 kept activity rows are the documented (occurred_at desc, id desc) set",
     JSON.stringify(f.activity) === JSON.stringify(expectedActivity), JSON.stringify(f.activity));
   check("C3 distinct-on: the score shown for the tied company is the documented (computed_at desc, id desc) pick",
