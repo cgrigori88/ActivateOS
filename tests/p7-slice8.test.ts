@@ -336,7 +336,7 @@ test("every downstream component re-runs its own certified governance", () => {
   // Each node — derived or not — reaches execution through the same single call.
   const calls = body.match(/runCompiledIntent\(/g) ?? [];
   assert.equal(calls.length, 1, "one execution path for every component");
-  assert.match(body, /runCompiledIntent\(intent, principal\)/, "under the CURRENT principal");
+  assert.match(body, /runCompiledIntent\(intent, principal[,)]/, "under the CURRENT principal");
   // Nothing skips execution because an upstream row was visible.
   assert.ok(!/skip|alreadyAuthorized|trusted/i.test(body));
 });
@@ -473,12 +473,12 @@ test("NEGATIVE CONTROL: a handle that skipped downstream execution would be CAUG
   // Exactly one execution call, reached by every node, under the current principal.
   const check = (src: string) =>
     (src.match(/runCompiledIntent\(/g) ?? []).length === 1
-    && /runCompiledIntent\(intent, principal\)/.test(src)
+    && /runCompiledIntent\(intent, principal(, policy)?\)/.test(src)
     && !/if \(derived\) (continue|return)/.test(src);
   assert.equal(check(asm), true, "canonical code passes");
 
-  const shortCircuit = asm.replace("const outcome = await runCompiledIntent(intent, principal);",
-    "if (derived) continue;\n    const outcome = await runCompiledIntent(intent, principal);");
+  const CALL = "const outcome = await runCompiledIntent(intent, principal, policy);";
+  const shortCircuit = asm.replace(CALL, `if (derived) continue;\n    ${CALL}`);
   assert.notEqual(shortCircuit, asm, "the mutation actually applied");
   assert.equal(check(shortCircuit), false, "trusting the handle instead of re-running governance is caught");
 });

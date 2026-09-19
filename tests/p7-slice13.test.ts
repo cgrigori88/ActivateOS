@@ -29,7 +29,9 @@ const PRINCIPAL = SRC("lib/experience/principal.ts");
 
 test("one canonical executor exists, taking a request and a branded principal as SEPARATE inputs", () => {
   const body = strip(EXECUTOR);
-  assert.match(body, /export async function executeExperience\(\s*request: PursuitExperienceRequest,\s*principal: ExecutionPrincipal,?\s*\)/,
+  // D-S14-EXECUTION-BOUND added a third parameter. WHAT / WHO stay separate, and the new one is
+  // neither — it is HOW MUCH, and it is optional, so the two-parameter form still type-checks.
+  assert.match(body, /export async function executeExperience\(\s*request: PursuitExperienceRequest,\s*principal: ExecutionPrincipal,\s*(policy\?: ExecutionPolicy,\s*)?\)/,
     "the request says WHAT; the principal says WHO — they are different parameters");
   assert.match(body, /Promise<SurfaceOutcome>/, "and the canonical result model is returned unchanged");
 });
@@ -113,7 +115,7 @@ test("the context source is CLOSED — a plan key, or nothing", () => {
 test("NONE yields the empty manifest; PLAN derives context through the governed query path", () => {
   const body = strip(EXECUTOR);
   assert.match(body, /if \(source\.kind === "NONE"\) return \{ ok: true, manifest: EMPTY_MANIFEST \}/);
-  assert.match(body, /executePursuitQuery\(PLANS\[source\.planKey\]\.plan, principal\)/,
+  assert.match(body, /executePursuitQuery\(PLANS\[source\.planKey\]\.plan, principal[,)]/,
     "the context plan runs under the SAME principal");
   assert.match(body, /buildContextManifest\(base\.result\.rows\)/,
     "and the manifest is built from GOVERNED rows, never from a payload");
@@ -272,7 +274,10 @@ test("the substrate is asserted BEFORE any semantic execution", () => {
   // file, so searching the whole module finds its definition rather than the call and compares two
   // unrelated positions.
   const body = strip(EXECUTOR).slice(strip(EXECUTOR).indexOf("export async function executeExperience"));
-  const guard = body.indexOf("assertCanonicalSubstrate(getPool())");
+  // D-S14-EXECUTION-BOUND added a second argument (the execution policy). The ORDERING claim this
+  // test makes is unchanged; only the call's arity moved, so the anchor matches the callee and the
+  // acquired pool rather than the full argument list.
+  const guard = body.indexOf("assertCanonicalSubstrate(getPool()");
   assert.ok(guard > 0, "the canonical boundary asserts its substrate");
   for (const later of ["resolveExperienceContext(", "compileSurface(", "assembleSurface(", "executePursuitQuery("]) {
     const at = body.indexOf(later);
@@ -329,7 +334,17 @@ test("NO product-capable substrate bypass exists", () => {
       `${label} must expose no substrate escape hatch`);
   }
   // And the assertion takes no options at all — there is nothing for a caller to pass.
-  assert.match(strip(POSTURE), /assertCanonicalSubstrate\(pool: Pick<pg\.Pool, "query">\): Promise<void>/);
+  // D-S14-EXECUTION-BOUND added a second parameter. The property this guards is that no caller can
+  // select the SUBSTRATE — so the assertion now pins the parameter list exactly: a pool, and an
+  // ExecutionPolicy carrying nothing but a timeout. Anything else appearing here fails.
+  assert.match(strip(POSTURE), /assertCanonicalSubstrate\(\s*pool: PostureSource, policy\?: ExecutionPolicy,\s*\): Promise<void>/);
+  assert.match(strip(POSTURE), /type PostureSource = Pick<pg\.Pool, "query"> & Partial<Pick<pg\.Pool, "connect">>/);
+  const policyFields = strip(SRC("lib/db/execution-policy.ts"));
+  const iface = policyFields.slice(policyFields.indexOf("export interface ExecutionPolicy"),
+                                   policyFields.indexOf("export const MIN_STATEMENT_TIMEOUT_MS"));
+  assert.match(iface, /statementTimeoutMs\?: number/);
+  assert.ok(!/role|user|bypass|rls|owner|pool|url|connection/i.test(iface),
+    "the policy carries a timeout and nothing that could name a substrate");
 });
 
 test("no caller-visible field can select the role, RLS posture or assertion result", () => {
@@ -339,7 +354,7 @@ test("no caller-visible field can select the role, RLS posture or assertion resu
     assert.ok(!new RegExp(`\\b${forbidden}\\b`, "i").test(iface), `a request must not carry ${forbidden}`);
   }
   // The pool comes from the process, not from the call.
-  assert.match(body, /assertCanonicalSubstrate\(getPool\(\)\)/, "the pool is acquired, never supplied");
+  assert.match(body, /assertCanonicalSubstrate\(getPool\(\)[,)]/, "the pool is acquired, never supplied");
   assert.ok(!/pool[,:]/.test(body.slice(body.indexOf("export async function executeExperience"), body.indexOf("{", body.indexOf("export async function executeExperience")))),
     "executeExperience takes no pool parameter");
 });

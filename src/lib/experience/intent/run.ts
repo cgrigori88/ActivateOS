@@ -13,6 +13,7 @@
 import { executePursuitQuery, resolveGoTo } from "../execute";
 import { PLANS, explainPlanFor } from "../plans";
 import type { ExecutionPrincipal } from "../principal";
+import type { ExecutionPolicy } from "@/lib/db/execution-policy";
 import type { CompiledIntent } from "./schema";
 import type { ExecuteOutcome, GoToOutcome } from "../types";
 
@@ -20,20 +21,22 @@ export type IntentExecution =
   | { kind: "RESULT"; outcome: ExecuteOutcome }
   | { kind: "NAVIGATION"; outcome: GoToOutcome };
 
-export async function runCompiledIntent(intent: CompiledIntent, principal?: ExecutionPrincipal): Promise<IntentExecution> {
+export async function runCompiledIntent(
+  intent: CompiledIntent, principal?: ExecutionPrincipal, policy?: ExecutionPolicy,
+): Promise<IntentExecution> {
   switch (intent.operation) {
     case "SHOW_ME":
     case "ANALYZE": {
       // The fixed, code-defined plan — the same object the `?view=` transport runs. The compiler
       // chose WHICH registered plan; it did not author one.
       const { view } = intent.request as { view: keyof typeof PLANS };
-      return { kind: "RESULT", outcome: await executePursuitQuery(PLANS[view].plan, principal) };
+      return { kind: "RESULT", outcome: await executePursuitQuery(PLANS[view].plan, principal, policy) };
     }
     case "EXPLAIN": {
       const { subjectId } = intent.request as { subjectId: string };
-      return { kind: "RESULT", outcome: await executePursuitQuery(explainPlanFor(subjectId), principal) };
+      return { kind: "RESULT", outcome: await executePursuitQuery(explainPlanFor(subjectId), principal, policy) };
     }
     case "GO_TO":
-      return { kind: "NAVIGATION", outcome: await resolveGoTo(intent.request, principal) };
+      return { kind: "NAVIGATION", outcome: await resolveGoTo(intent.request, principal, policy) };
   }
 }

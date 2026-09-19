@@ -1,6 +1,23 @@
 import type { PoolClient } from "pg";
 import { getPool } from "@/db/client";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
+import { statementTimeoutOf, type ExecutionPolicy } from "./execution-policy";
+
+/**
+ * D-S14-EXECUTION-BOUND. Both helpers below already own a transaction, so neither needs the shared
+ * `withStatementBound` primitive — they need one extra transaction-local setting. Applied right
+ * after `app.org_id` and before the callback, so EVERY workload-bearing statement the callback
+ * issues is bounded; `begin` and the two `set_config` calls are fixed control statements that
+ * necessarily precede the bound existing.
+ *
+ * Omitting the policy leaves both helpers exactly as they were — no statement is added, and the
+ * server default applies. That is what keeps every existing web call site unchanged.
+ */
+async function applyStatementBound(db: PoolClient, policy?: ExecutionPolicy): Promise<void> {
+  const ms = statementTimeoutOf(policy);
+  if (ms === null) return;
+  await db.query(`select set_config('statement_timeout', $1, true)`, [String(ms)]);
+}
 
 /**
  * Per-request tenant scoping for the RISK-1 cutover (task #67).
@@ -53,12 +70,14 @@ export async function sessionOrgId(db: PoolClient): Promise<string | null> {
 export async function withTenantOrg<T>(
   orgId: string,
   fn: (db: PoolClient) => Promise<T>,
+  policy?: ExecutionPolicy,
 ): Promise<T> {
   if (!orgId) throw new Error("withTenantOrg requires an org id.");
   const db = await getPool().connect();
   try {
     await db.query("begin");
     await db.query(`select set_config('app.org_id', $1, true)`, [orgId]);
+    await applyStatementBound(db, policy);
     const result = await fn(db);
     await db.query("commit");
     return result;
@@ -83,10 +102,16 @@ export async function withTenantOrg<T>(
  */
 export async function withTenant<T>(
   fn: (db: PoolClient, orgId: string) => Promise<T>,
+  policy?: ExecutionPolicy,
 ): Promise<T> {
   const db = await getPool().connect();
   try {
     await db.query("begin");
+    // The bound goes FIRST here, unlike withTenantOrg. This helper resolves the org with a real
+    // query of its own (`resolve_user_org`), which is workload-bearing and would otherwise run
+    // before any bound existed — so the setting is established before the first such statement
+    // rather than after `app.org_id`.
+    await applyStatementBound(db, policy);
     const orgId = await sessionOrgId(db);
     if (!orgId) {
       throw new Error("No organization in scope — refusing to run a tenant query unscoped.");

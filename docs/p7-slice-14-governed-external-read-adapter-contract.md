@@ -457,3 +457,415 @@ before any Production promotion if compatibility matters.
 behaviour is unchanged where no bound is passed. That touches shared tenant infrastructure used by
 every governed read, so it is a separate ruling rather than something to smuggle into Slice 14.
 **No timeout was implemented, and none is claimed.**
+
+---
+
+# D-S14-EXECUTION-BOUND — seam analysis
+
+**Discovery only. Nothing implemented.** `9e5e9d4` unchanged, certified runtime `d59eb21`.
+
+## A · Every database transaction reachable from one canonical `pipeline_summary`
+
+```
+MCP pipeline_summary  →  apiCredentialPrincipal(orgId)  →  fixed PursuitExperienceRequest
+  → executeExperience
+      1. assertCanonicalSubstrate(getPool())   pool.query(POSTURE_SQL)   — memoized per pool
+      2. resolveExperienceContext {kind:"NONE"}                          — NO database
+      3. compileSurface                                                  — pure, NO database
+      4. assembleSurface
+           a. dynamicSurfacesEnabled(principal) → withTenantOrg          — TRANSACTION 1
+           b. role read                                                  — ACTION-only; not reached
+           c. runCompiledIntent → executePursuitQuery → withTenantOrg    — TRANSACTION 2
+```
+
+**Measured, not assumed.** Counting pool `acquire` events (every `withTenant*` checks out a client and
+wraps it in one `BEGIN…COMMIT`, so a checkout *is* a tenant transaction):
+
+```
+tenant transactions per call: 2   (40 checkouts over 20 calls, exactly)
+```
+
+*(`pg_stat_database.xact_commit` was tried first and read ~0 — its flush lag is larger than an 11 ms
+call, so it silently under-reports. The checkout event has no such delay.)*
+
+Statements inside transaction 2: `begin` · `set_config(app.org_id)` · `experienceEnabledFor` ·
+`resolveScope` · `loadCandidates` · `transaction_timestamp()` · `commit`. Transaction 1 is
+`begin` · `set_config` · one `org_features` read · `commit`. **A bound placed on only the first query
+would miss the governed read entirely** — this is why the policy must cover both.
+
+## B · Tenant-helper transaction semantics
+
+```ts
+const db = await getPool().connect();
+await db.query("begin");
+await db.query(`select set_config('app.org_id', $1, true)`, [orgId]);   // is_local = true
+const result = await fn(db);                                            // same client throughout
+await db.query("commit");                                               // catch → rollback; finally → release
+```
+
+`BEGIN` precedes the GUC; the GUC is transaction-local; the callback receives that same checked-out
+client and every statement inside runs on it; `COMMIT`/`ROLLBACK` ends it and the client is released.
+
+**Therefore a `select set_config('statement_timeout', $1, true)` issued immediately after the org GUC
+would govern every statement in that transaction and be discarded at commit or rollback.** It is the
+right primitive.
+
+## C · How a trusted limit reaches *both* transactions — recommendation
+
+The bound is **not request semantics**, so it must not appear in MCP arguments,
+`PursuitExperienceRequest`, `SurfaceSpec`, `ContextManifest` or any model/compiler input. It belongs
+to the trusted execution boundary, beside the principal.
+
+| | Option 1 — explicit policy parameter | Option 2 — AsyncLocalStorage scope |
+|---|---|---|
+| Blast radius | 7 optional params across 6 files | 2–3 files |
+| Explicitness | total — visible at every hop | ambient |
+| Cross-request leakage | impossible (no shared state) | relies on ALS correctness |
+| Covers future components | **no — a new loader that forgets the param silently escapes** | yes, automatically |
+| Testability | direct | needs isolation tests |
+
+**Recommended: Option 1, plus a structural inventory test.** Explicit propagation matches the
+codebase's grain and makes leakage impossible by construction. Its one real weakness — *silent escape*
+when a future governed read opens a transaction without threading the policy — is exactly the failure
+mode this codebase already closes with inventory tests (see the Slice 12 access-path inventory). A
+test that enumerates every `withTenant`/`withTenantOrg` call site reachable from `executeExperience`
+and asserts each accepts and forwards the policy converts a silent escape into a failing build.
+
+I record the counter-argument rather than hiding it: Option 2 covers future paths automatically, and
+a resource bound can only ever *narrow*, so it is not the authority-shaped ambient state P7 fought
+over `ExecutionPrincipal`. If churn is judged unacceptable, Option 2 is defensible — but it needs its
+own isolation proof.
+
+## D · Exact files and signatures Option 1 would change
+
+All additions are **optional parameters**; every existing caller behaves identically.
+
+```
+src/lib/db/tenant.ts                          withTenantOrg(orgId, fn, opts?: { statementTimeoutMs })
+                                              withTenant(fn, opts?)
+src/lib/experience/execute.ts                 executePursuitQuery(candidate, principal?, policy?)
+                                              resolveGoTo(candidate, principal?, policy?)
+src/lib/experience/intent/run.ts              runCompiledIntent(intent, principal?, policy?)
+src/lib/experience/surface/assemble.ts        dynamicSurfacesEnabled(principal?, policy?)
+                                              assembleSurface(validated, principal?, policy?)
+src/lib/experience/surface/execute-experience.ts  executeExperience(request, principal, policy?)
+src/lib/agents/mcp-governed.ts                supplies the policy (the only production caller that does)
+```
+
+Validation belongs in `tenant.ts`: the value is clamped to a fixed internal range, and a
+zero/negative/absent value means *no bound*, exactly as today. It is set with the repository's
+parameterized `set_config($1, true)` pattern — never string interpolation — and the pool is never
+configured globally.
+
+## E · Is a per-statement bound sufficient here? **Yes for this tool — and it is not a deadline**
+
+`statement_timeout` bounds each statement, not the request. For this **fixed** vertical that is
+enough, because the work is closed:
+
+- the tool takes **no arguments**, so a caller cannot widen the query;
+- the plan is registry-closed with `limit: 50`;
+- the statement count is fixed and small — **2 transactions, ~11 statements total**;
+- worst case is therefore bounded by `statements × timeout`, not unbounded.
+
+**I will not call that a wall-clock deadline, because it is not one.** A hard per-request deadline
+would additionally need server-side cancellation, which does not exist here.
+
+Worth recording: the MCP route sets no `maxDuration`, so the **platform function timeout already
+bounds the HTTP response** — but it terminates the *response*, not the database work, which is
+precisely why a DB-level bound is still required.
+
+## F · Proposed value — from measurement
+
+```
+canonical pipeline_summary, warm pool, 11-pursuit seeded org:
+  samples (ms): 9, 10, 10, 11, 11, 11, 11   ·   median 11 ms   ·   max 11 ms
+  2 tenant transactions per call
+```
+
+**Proposed external statement timeout: 5,000 ms** — roughly 450× the observed median, leaving
+substantial headroom for hosted network latency, a colder pool and a larger tenant, while still
+bounding a pathological statement far below the platform function timeout. It is a resource-control
+number, not a product constant, and belongs beside the rate limits rather than in P7 semantics.
+
+## G · Timeout failure semantics — already correct, and it should stay that way
+
+PostgreSQL raises `57014 query_canceled` — *"canceling statement due to statement timeout"*. Then:
+
+1. `withTenantOrg`'s `catch` issues `ROLLBACK` and rethrows; `finally` releases the client.
+2. The error propagates out of `executeExperience` — it is **not** converted into a governed outcome,
+   which is right: a resource refusal is not `WITHHELD`, not `NOT_AVAILABLE`, not `INVALID`, and
+   certainly not a zero pipeline.
+3. The MCP governed branch already catches it and returns `{ status: "FAILED" }` with no message.
+
+So no partial `SurfaceResult` is emitted and no SQL, role or stack reaches the caller. **The only
+addition needed is internal diagnostic classification** — recognising `57014` so a timeout is
+distinguishable in logs from an unexpected defect, without that distinction reaching the recipient.
+
+## H · Pool/session leakage test design
+
+```
+1. run a bounded transaction with a deliberately tiny timeout against a slow statement
+      → expect 57014, ROLLBACK, client released, no durable mutation
+2. immediately run an ORDINARY unbounded tenant transaction on the SAME pool
+      → expect normal success under the default policy
+3. assert the second transaction's `current_setting('statement_timeout')` is the server default
+```
+
+Step 2 is the discriminatory one: it fails if the transaction-local setting leaked to the next
+borrower. Plus a mutation check across both, proving a timeout produces no canonical, action or P45
+state.
+
+## I · Org rate-limit mechanics (reported, not redesigned)
+
+```
+key bucket:  `mcp-key:${key.keyId}`   60 / 60s
+org bucket:  `mcp-org:${key.orgId}`  240 / 60s
+```
+
+`key.orgId` comes from `resolve_api_key()` — the credential record — and never from request input;
+the route reads `const orgId = key.orgId` and no caller field can influence it. **Both bounds apply**,
+key first then org. State is the existing **in-memory, per-instance** limiter, whose own header states
+the limitation honestly: on serverless the effective ceiling is `limit × concurrent instances`. No
+defect found in the trace; not redesigned.
+
+## D-S14-EXECUTION-BOUND — completed whole-request graph
+
+The earlier trace began at `executeExperience` and estimated ~11 statements. **Measured end to end,
+with authentication included, the real figure is 44 — and the count scales with result rows.** That
+revision changes the timeout arithmetic materially, so it is reported before anything is built.
+
+### A · Every statement in one warm external request — 44, measured
+
+```
+ 1.  select org_id, key_id, scope from public.resolve_api_key($1)   ← AUTH, pool-level, UNBOUNDED
+ 2–5.  TRANSACTION 1  begin · set_config(app.org_id) · org_features read · commit
+ 6–44. TRANSACTION 2  begin · set_config(app.org_id) · org_features read · loadCandidates
+                      · then THREE statements PER ROW × 11 rows = 33
+                      · transaction_timestamp() · commit
+```
+
+The per-row triple is `pursuits org check` · `context_grants scope` · `opportunities amount` — the
+governance and metric computation for each pursuit.
+
+**Counting method:** every statement is tagged on the client returned by the pool's `acquire` event.
+A first attempt wrapped `pool.query` *as well* and double-counted, because pg's `Pool.query` checks
+out a client internally; and a first run reported `CAPABILITY_NOT_ENABLED` because the capability
+conjunction was not armed in the child, so the vertical short-circuited before the governed query.
+Both were measurement defects, corrected.
+
+**The closed formula:** `1 (auth) + 4 (tx1) + 6 + 3 × rows (tx2)` → **`11 + 3 × rows`**, plus one
+cold-start posture query. The plan's `limit: 50` closes it: **worst case 162 statements.**
+
+### B · Unbounded externally-triggerable statements today
+
+| Statement | Where | Bounded today? |
+|---|---|---|
+| `resolve_api_key($1)` | `resolveKey`, `pool.query` | **No.** Preceded only by the IP limiter (120/60s) — the key/org limiters run *after* it |
+| `POSTURE_SQL` | `assertCanonicalSubstrate`, `pool.query` | **No.** Once per pool — cold start, new instance, recreated pool |
+| all 42 tenant statements | two `withTenantOrg` transactions | **No** |
+
+A bearer that does not begin with `pos_` is rejected **before** any database work; an invalid key that
+*does* carry the prefix still reaches `resolve_api_key`.
+
+### C · One shared primitive is justified — two call sites, identical need
+
+`resolve_api_key` and `POSTURE_SQL` are each a single statement issued on the *pool*, so neither is
+inside a transaction and neither can carry a transaction-local GUC. Both need the same thing: check
+out one client, `BEGIN`, set the local bound, run, `COMMIT`, release. That is the ruling's own test
+for extracting `withStatementBound(pool, timeoutMs, fn)` — **multiple** pre-tenant statements needing
+the same mechanism, not abstraction for its own sake.
+
+`withTenantOrg` does **not** need to be refactored onto it: it already owns a transaction and need only
+add one more `set_config` when a policy is present.
+
+### D · Propagation graph
+
+```
+POST /api/mcp
+  ip rate limit                                  (no DB)
+  EXTERNAL_READ_POLICY = { statementTimeoutMs }  server-owned constant, never caller input
+  resolveKey(pool, bearer, policy)               → withStatementBound
+  key + org rate limits                          (no DB)
+  governed.run(orgId, policy)
+    executeExperience(request, principal, policy)
+      assertCanonicalSubstrate(pool, policy)     → withStatementBound (uncached path only)
+      assembleSurface(validated, principal, policy)
+        dynamicSurfacesEnabled(principal, policy) → withTenantOrg(…, policy)
+        runCompiledIntent(intent, principal, policy)
+          executePursuitQuery(plan, principal, policy) → withTenantOrg(…, policy)
+```
+
+### E · Files and signatures
+
+```
+src/lib/db/execution-policy.ts   NEW — ExecutionPolicy { statementTimeoutMs?: number }, clamped
+src/lib/db/tenant.ts             withStatementBound(pool, ms, fn)  NEW
+                                 withTenantOrg(orgId, fn, policy?) · withTenant(fn, policy?)
+src/lib/env/db-posture.ts        assertCanonicalSubstrate(pool, policy?)
+src/lib/agents/mcp-tools.ts      resolveKey(pool, bearer, policy?)
+src/lib/agents/mcp-governed.ts   GovernedToolDef.run(orgId, policy?) — supplies the constant
+src/app/api/mcp/route.ts         owns the constant; passes it to resolveKey and run
+src/lib/experience/execute.ts    executePursuitQuery(…, policy?) · resolveGoTo(…, policy?)
+src/lib/experience/intent/run.ts runCompiledIntent(…, policy?)
+src/lib/experience/surface/assemble.ts  dynamicSurfacesEnabled(…, policy?) · assembleSurface(…, policy?)
+src/lib/experience/surface/execute-experience.ts  executeExperience(…, policy?)
+```
+
+`ExecutionPolicy` lives under `src/lib/db/` so `tenant.ts` and `db-posture.ts` can use it without
+importing from `experience/` — the wrong direction. All parameters optional; web callers unchanged.
+
+### F · The finite bound, stated exactly
+
+> **`11 + 3 × rows` statements, `rows ≤ 50` by the registry-closed plan, plus one cold posture query
+> and one authentication query — a maximum of 162 externally-triggerable statements per request, each
+> individually bounded by a PostgreSQL `statement_timeout`.**
+
+It is **not** a request deadline. Worst-case database *work* is `162 × timeout`.
+
+### G · The 5,000 ms value should be revised **down**
+
+5,000 ms was accepted before the statement count was known. The arithmetic now:
+
+| Per-statement bound | Worst-case DB work | Headroom vs observed |
+|---|---|---|
+| 5,000 ms | **810 s** | 20,000× per statement |
+| 1,000 ms | 162 s | 4,000× |
+| **500 ms** | **81 s** | **2,000× per statement; ~45× the whole warm request** |
+
+Observed: 44 statements in ~11 ms — roughly **0.25 ms per statement**. Hosted adds pooler round-trip
+latency per statement (tens of ms), so 500 ms still leaves well over an order of magnitude.
+
+**Recommended: 500 ms.** The pool holds `max: 5` connections, so bounding how long one external
+request can occupy a connection is the point; 5,000 ms would let a single pathological request hold
+one for over a minute per statement.
+
+**A finding I am not proposing to fix here:** the three-statements-per-row pattern is an N+1 in the
+governed read path. It predates Slice 14 and is why a per-statement bound multiplies. Reducing it is a
+P7 performance change, out of scope for this slice, and it is the reason a per-request deadline would
+be strictly better than a per-statement bound if one ever becomes available.
+
+### G (cont.) · Two further facts found while checking the arithmetic
+
+`src/db/client.ts:92` — the pool is `max: 5` (`PG_POOL_MAX`), **and it already sets
+`connectionTimeoutMillis: 5_000`**. That existing 5,000 ms bounds *checking a connection out*, which
+is a different thing from bounding a statement. Giving the statement bound the same number would put
+two unrelated limits at one value in every log and trace; that alone argues for a distinct figure.
+
+The comment at `client.ts:74` also notes each serverless instance builds its own pool, so `max: 5`
+is per instance — connection-hold time is the scarce resource, which is what a per-statement bound
+is actually protecting.
+
+---
+
+## D-S14-EXECUTION-BOUND — IMPLEMENTED
+
+### The invariant, phrased exactly
+
+> **Every workload-bearing PostgreSQL statement reachable from the governed external
+> `pipeline_summary` request is subject to the trusted per-statement PostgreSQL execution bound.**
+
+Not *every* statement. A transaction must execute `begin` and a transaction-local
+`set_config('statement_timeout', …)` **before that bound exists at all**. Those are fixed control
+statements — identical on every call, carrying no caller-shaped work — and claiming they are bounded
+would be false. Measured: **11 control statements, 38 workload-bearing**, and every one of the 38 ran
+under an established bound.
+
+### The arithmetic changed when the bound was added, and the earlier figure was wrong
+
+The seam analysis reported `11 + 3 × rows` (max 162). That was measured **before** the bound existed
+and it counted the tool without authentication. Re-measured on a real `app_rw` substrate with the
+policy in force:
+
+| | per request | at `rows = 50` |
+|---|---|---|
+| **Total statements** | `16 + 3 × rows` = **49** at 11 rows | **166** |
+| — workload-bearing (what the bound covers) | `5 + 3 × rows` = **38** | **155** |
+| — control (`begin`/`commit` ×3, `app.org_id` ×2, `statement_timeout` ×3) | **11** | 11 |
+| Cold substrate certification, when uncached | +4 (1 workload-bearing) | +4 |
+
+Three bounded transactions per request: authentication, capability, governed query.
+
+**Worst-case sequential bounded database work: 155 × 500 ms ≈ 77.5 s** (≈78 s including a cold
+posture read). That is an upper-bound reasoning aid — **not** an SLA, **not** a request timeout and
+**not** a latency prediction. Measured normal execution is **11 ms**. The bound exists to stop one
+statement from holding one of the pool's five connections indefinitely.
+
+### Evidence — 47 checks, 0 failures, on an isolated `app_rw` scratch clone
+
+**§13 A–D — the primitive.** A 5 s statement under a 500 ms bound was cancelled at **510 ms** with
+PostgreSQL `57014`. The same connection (`max: 1`, so provably the same one) then served the next
+query — which *is* the rollback proof, since an un-rolled-back transaction answers `25P02`.
+`statement_timeout` was back to the server default, and an ordinary transaction on that connection
+carried the default. Concurrency was sequenced with **advisory locks and verified through `pg_locks`**
+— the bounded transaction was observed *actually waiting* before the assertion was made, rather than
+inferred from a sleep: the concurrent ordinary transaction kept its own default. No connection was
+destroyed to recover, and a new bounded transaction worked immediately afterwards.
+
+Two negative controls bite: an unbounded 1 s statement on the same pool **completes** (1002 ms), and
+the same slow fixture without a policy runs to **5003 ms**. The bound, not the environment, is what
+stops the work.
+
+**§14 — authentication.** A null bearer and a wrong-prefix bearer each cost **zero** database
+statements. A syntactically valid unknown key runs exactly four — `begin`, `set_config`, `resolve`,
+`commit` — and yields no principal. A valid key resolves through the same four. A deliberately slow
+resolver (the function replaced **in the scratch database only**, then restored — no product SQL
+touched, no bypass added) is cancelled at **503 ms** with no principal established.
+
+**§15 — substrate.** An owner pool is refused, and refused *again* — a failed posture never enters the
+WeakSet. The `app_rw` pool certifies through a bounded transaction, and a second certification issues
+**no statement at all**, so the fast path is intact. For the timeout case `pg_roles` was shadowed for
+one probe connection via `search_path` in the connection options: the posture read was cancelled at
+508 ms, refused *because the statement was cancelled* rather than because posture was wrong, and that
+pool stayed uncertified. A fresh pool then certified normally.
+
+**§16 — the whole request.** 49 statements, 38 workload-bearing, **0 unbounded**, 0 executed outside a
+transaction, and the canonical answer unchanged: `DISCLOSED 6,250,000`. Semantic discrimination
+re-run separately, 17/0 — canonical 6,250,000 vs opportunity 8,040,000, MCP/web parity intact, scope
+still refused before dispatch, zero mutations.
+
+### The inventory test is load-bearing — proven by mutation
+
+Three mutations were applied and each was caught:
+
+| mutation | caught by |
+|---|---|
+| drop `policy` from the governed query's `withTenantOrg` | inventory · transactions passed the policy |
+| add a **new** unbounded `withTenantOrg` to the assembly path | inventory · transactions passed the policy |
+| let a caller-supplied `timeout` reach the policy | inventory · transport elects the policy **and** no caller input reaches the bound |
+
+The sweep parses call sites with a depth-zero argument splitter rather than matching strings, and
+carries an anti-vacuity guard asserting it found at least six transactions — the failure mode where
+an extractor silently matches nothing and every assertion passes by looking at zero call sites.
+
+### One §16A repeat, caught in my own instrument
+
+The "no ambient state" scan matched `execution-policy.ts` — on its own prose explaining that
+`AsyncLocalStorage` was **rejected**. The file was failing for documenting the ruling it obeys.
+Scoped to stripped code, with a control asserting the prose still exists.
+
+### Not fixed, and deliberately so
+
+The governed query issues **three statements per result row**. It predates Slice 14 and is why the
+finite graph grows to 166 at the row limit. It is **existing P7 performance debt** — not a Slice 14
+semantic defect, not a governance defect, and not a reason to redesign the query during this slice.
+A later performance task may reduce the count without changing canonical semantics.
+
+### Rate bounds — unchanged, and honestly stated
+
+IP 120/60 s before any credential database work; key 60/60 s; org 240/60 s; the org comes only from
+the trusted API-key record. Counters remain **in-memory and per-instance** (see `rate-limit.ts`), so
+these narrow abuse rather than eliminating it. That is a real limitation of the serverless deployment
+and is not claimed to be a distributed rate limit. No limiter was redesigned here.
+
+### Regression
+
+`tsc` clean · `next build` clean · unit **873/873** · `certify-world` **52 suites clean, 0 failures**,
+world digest `d43fe13b1f194132` identical before and after · Slice 14 behavioural **17/0** ·
+D-S14 bound evidence **47/0**.
+
+Eleven unit assertions across Slices 6–13 pinned call text like `runCompiledIntent(intent, principal)`
+and broke on the added parameter. Each was updated to match the callee and ordering it was actually
+asserting; none was weakened. The Slice 13 assertion that `assertCanonicalSubstrate` "takes no options
+at all" was the one that needed real care — it guarded against a caller selecting the substrate, so it
+now pins the parameter list exactly and additionally asserts that `ExecutionPolicy` carries a timeout
+and nothing that could name a role, pool or connection.

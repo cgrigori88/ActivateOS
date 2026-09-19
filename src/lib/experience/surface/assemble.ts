@@ -1,3 +1,4 @@
+import type { ExecutionPolicy } from "@/lib/db/execution-policy";
 /**
  * P7 Slice 6 — THE HEADLESS ASSEMBLER.
  *
@@ -80,14 +81,16 @@ import type { SurfaceOutcome, ValidatedSurfaceSpec } from "./schema";
  * pursuit_intelligence, which requires pursuit_state and pursuit_memory, all beneath the tenant's
  * experience entitlement) stays the single source of truth.
  */
-export async function dynamicSurfacesEnabled(principal?: ExecutionPrincipal): Promise<boolean> {
+export async function dynamicSurfacesEnabled(
+  principal?: ExecutionPrincipal, policy?: ExecutionPolicy,
+): Promise<boolean> {
   const read = async (db: Parameters<typeof tenantFeatures>[0], orgId: string) =>
     vnextCapabilities(await tenantFeatures(db, orgId)).dynamicSurfaces;
   if (principal) {
     const orgId = principalOrgId(principal);
-    return withTenantOrg(orgId, (db) => read(db, orgId));
+    return withTenantOrg(orgId, (db) => read(db, orgId), policy);
   }
-  return withTenant((db, orgId) => read(db, orgId));
+  return withTenant((db, orgId) => read(db, orgId), policy);
 }
 
 /**
@@ -95,9 +98,9 @@ export async function dynamicSurfacesEnabled(principal?: ExecutionPrincipal): Pr
  * either produces every component or produces none.
  */
 export async function assembleSurface(
-  validated: ValidatedSurfaceSpec, principal?: ExecutionPrincipal,
+  validated: ValidatedSurfaceSpec, principal?: ExecutionPrincipal, policy?: ExecutionPolicy,
 ): Promise<SurfaceOutcome> {
-  if (!(await dynamicSurfacesEnabled(principal))) return { ok: false, error: "CAPABILITY_DENIED" };
+  if (!(await dynamicSurfacesEnabled(principal, policy))) return { ok: false, error: "CAPABILITY_DENIED" };
 
   // EVERY component executes first, into LOCALS that never escape on a failure path. Each runs
   // against canonical state under the CURRENT principal; only IDENTITY flows between them, and only
@@ -109,7 +112,7 @@ export async function assembleSurface(
   // Read ONCE, for disclosure only. Never consulted as authority, and never cached beyond this
   // request — the click path resolves the role again, server-side, through the certified pipeline.
   const role = validated.components.some((c) => c.kind === "ACTION")
-    ? await withTenant(async (db) => currentRole(db))
+    ? await withTenant(async (db) => currentRole(db), policy)
     : null;
 
   for (const c of validated.components) {
@@ -147,7 +150,7 @@ export async function assembleSurface(
       bindings.push({ consumer: c.component, derived });
     }
 
-    const outcome = await runCompiledIntent(intent, principal);
+    const outcome = await runCompiledIntent(intent, principal, policy);
     executed.push({ operation: c.operation, execution: outcome });
     results.push(outcome);
 

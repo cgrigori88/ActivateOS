@@ -1,4 +1,5 @@
 import type pg from "pg";
+import { statementTimeoutOf, withStatementBound, type ExecutionPolicy } from "@/lib/db/execution-policy";
 
 /**
  * Live runtime database posture (H1B Gate 6 proof).
@@ -69,6 +70,13 @@ export async function probeDatabasePosture(db: Pick<pg.Pool, "query">, timeoutMs
  */
 export const CANONICAL_APP_ROLE = "app_rw";
 
+/**
+ * What this function needs of a pool. `query` is required; `connect` is optional so a test double
+ * that only answers queries still type-checks — the bounded path simply does not engage for one,
+ * which is honest, because there is no connection to bound.
+ */
+type PostureSource = Pick<pg.Pool, "query"> & Partial<Pick<pg.Pool, "connect">>;
+
 /** An internal configuration failure. Never a governed outcome, and never recipient-facing. */
 export class IllegalExecutionSubstrate extends Error {
   constructor(detail: string) { super(`illegal P7 execution substrate — ${detail}`); this.name = "IllegalExecutionSubstrate"; }
@@ -90,10 +98,23 @@ const certifiedPools = new WeakSet<object>();
  * diagnostic material — the canonical boundary converts it into a recipient-safe failure, and no
  * role name, connection string or membership detail reaches a recipient.
  */
-export async function assertCanonicalSubstrate(pool: Pick<pg.Pool, "query">): Promise<void> {
+export async function assertCanonicalSubstrate(
+  pool: PostureSource, policy?: ExecutionPolicy,
+): Promise<void> {
+  // THE FAST PATH IS UNCHANGED AND STILL FIRST. A pool already certified issues no statement at
+  // all, so the bound is irrelevant to it — this is the uncached path only.
   if (certifiedPools.has(pool as object)) return;
+  const ms = statementTimeoutOf(policy);
   let row: PostureRow | undefined;
-  try { row = (await pool.query<PostureRow>(POSTURE_SQL)).rows[0]; }
+  try {
+    row = ms !== null && typeof pool.connect === "function"
+      ? await withStatementBound(pool as Pick<pg.Pool, "connect">, ms,
+          async (db) => (await db.query<PostureRow>(POSTURE_SQL)).rows[0])
+      : (await pool.query<PostureRow>(POSTURE_SQL)).rows[0];
+  }
+  // A TIMEOUT HERE MEANS THE POOL IS NOT CERTIFIED — the same as any other failure to establish
+  // posture. It throws, and control never reaches the WeakSet insertion below, so a pool whose
+  // posture read was cancelled can never be blessed by having been asked.
   catch (e) { throw new IllegalExecutionSubstrate(`posture could not be established: ${(e as Error).message}`); }
   if (!row) throw new IllegalExecutionSubstrate("posture could not be established: no catalogue row");
   const p = derivePosture(row);

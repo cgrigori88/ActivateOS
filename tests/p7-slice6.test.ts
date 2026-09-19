@@ -221,7 +221,7 @@ test("validation is TOTAL and precedes execution — the compiler cannot execute
   assert.ok(execAt >= 0, "the execution call is present in assembleSurface");
   assert.ok(gateAt < execAt, "the capability gate precedes execution");
   // …and it denies rather than falling through: the denial is the function's first outcome.
-  assert.match(body, /if \(!\(await dynamicSurfacesEnabled\(principal\)\)\) return \{ ok: false, error: "CAPABILITY_DENIED" \};/);
+  assert.match(body, /if \(!\(await dynamicSurfacesEnabled\(principal(, policy)?\)\)\) return \{ ok: false, error: "CAPABILITY_DENIED" \};/);
 });
 
 test("a rejected spec produces no partial SurfaceResult, whatever the cause", () => {

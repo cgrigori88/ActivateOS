@@ -1,6 +1,7 @@
 import { executeExperience } from "@/lib/experience/surface/execute-experience";
 import { apiCredentialPrincipal } from "@/lib/experience/principal";
 import type { SurfaceOutcome } from "@/lib/experience/surface/schema";
+import type { ExecutionPolicy } from "@/lib/db/execution-policy";
 
 /**
  * P7 Slice 14 — THE GOVERNED EXTERNAL READ ADAPTER.
@@ -43,8 +44,13 @@ export interface GovernedToolDef {
   inputSchema: Record<string, unknown>;
   /** Every governed tool is read-scoped. There is no operator variant of this type. */
   readonly scope: "read";
-  /** No pool, no client, no args that could carry authority — only the credential's organization. */
-  run(orgId: string): Promise<unknown>;
+  /**
+   * No pool, no client, no args that could carry authority — only the credential's organization and
+   * the server-owned execution policy. The policy is RESOURCE metadata, not authority: it cannot
+   * name an org, select a plan, widen a scope or change a number. It is separate from `orgId` for
+   * exactly that reason.
+   */
+  run(orgId: string, policy?: ExecutionPolicy): Promise<unknown>;
 }
 
 /** The certified operation this tool exposes. Fixed here, never assembled from caller input. */
@@ -118,7 +124,7 @@ export const GOVERNED_MCP_TOOLS: GovernedToolDef[] = [
       + "opportunity-level, stage-weighted forecast — a different concept — see "
       + "opportunity_pipeline_summary. Read-only.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
-    async run(orgId: string) {
+    async run(orgId: string, policy?: ExecutionPolicy) {
       // The request is FIXED here. A caller supplies no spec, no plan key, no context, no metric
       // argument and no organization — the credential already established the organization, and the
       // operation is the one this tool is named for.
@@ -130,7 +136,7 @@ export const GOVERNED_MCP_TOOLS: GovernedToolDef[] = [
         modelId: null,
         promptTemplateVersion: null,
         boundContextDigest: null,
-      }, apiCredentialPrincipal(orgId));
+      }, apiCredentialPrincipal(orgId), policy);
       return serializeOpenPipeline(outcome);
     },
   },

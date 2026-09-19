@@ -12,6 +12,7 @@ import { listInitiatives } from "../partnerships/initiatives";
 import { listEvidenceShares } from "../partnerships/evidence-shares";
 import { settlementStatement } from "../partnerships/settlement";
 import { resolveCompanyIdentity } from "@/lib/identity/lookup";
+import { statementTimeoutOf, withStatementBound, type ExecutionPolicy } from "@/lib/db/execution-policy";
 
 /**
  * BYO-bot tool surface (task #76). The tools a personal agent may call
@@ -31,9 +32,26 @@ export function mintKey(): { plaintext: string; hash: string } {
   return { plaintext, hash: createHash("sha256").update(plaintext).digest("hex") };
 }
 
-export async function resolveKey(pool: Pool | PoolClient, bearer: string | null): Promise<{ orgId: string; keyId: string; scope: string } | null> {
+export async function resolveKey(
+  pool: Pool | PoolClient, bearer: string | null, policy?: ExecutionPolicy,
+): Promise<{ orgId: string; keyId: string; scope: string } | null> {
+  // A bearer that is not even shaped like one of our keys costs NO database work. This stays the
+  // first thing that happens, ahead of the bound, because the cheapest refusal is the one that
+  // never opens a transaction.
   if (!bearer || !bearer.startsWith("pos_")) return null;
   const hash = createHash("sha256").update(bearer).digest("hex");
+  // D-S14-EXECUTION-BOUND. Credential resolution is the FIRST database statement an unauthenticated
+  // external caller can cause, so it is bounded like every statement after it — and this matters
+  // most for INVALID credentials, which reach exactly this statement and no further. The bearer is
+  // a query PARAMETER (hashed); it does not and cannot influence the bound.
+  const ms = statementTimeoutOf(policy);
+  if (ms !== null && typeof (pool as Pool).connect === "function") {
+    const rows = await withStatementBound(pool as Pool, ms, async (db) =>
+      (await db.query<{ org_id: string; key_id: string; scope: string }>(
+        `select org_id, key_id, scope from public.resolve_api_key($1)`, [hash])).rows);
+    if (!rows[0]) return null;
+    return { orgId: rows[0].org_id, keyId: rows[0].key_id, scope: rows[0].scope ?? "write" };
+  }
   // RISK-1: resolve_api_key() (migration 0062) is SECURITY DEFINER — it looks up
   // the key's org and stamps last_used_at in owner context, so this works before
   // any tenant scope is set and under app_rw (which cannot read api_keys itself).

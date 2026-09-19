@@ -1,3 +1,4 @@
+import type { ExecutionPolicy } from "@/lib/db/execution-policy";
 /**
  * P7 Slice 1 — THE HEADLESS EXECUTION BOUNDARY.
  *
@@ -53,7 +54,9 @@ interface CandidateRow {
  * The boundary could not tell the difference, so it must not offer the choice: interface possession
  * does not confer authority.
  */
-export async function executePursuitQuery(candidate: unknown, principal?: ExecutionPrincipal): Promise<ExecuteOutcome> {
+export async function executePursuitQuery(
+  candidate: unknown, principal?: ExecutionPrincipal, policy?: ExecutionPolicy,
+): Promise<ExecuteOutcome> {
   const v = validatePlan(candidate);
   if (!v.ok) return { ok: false, error: "INVALID_PLAN", detail: v.detail };
   const plan = v.plan;
@@ -128,11 +131,15 @@ export async function executePursuitQuery(candidate: unknown, principal?: Execut
     return { ok: true as const, result: resultSet, explanation, explanationError, aggregate };
   };
 
+  // THE POLICY RIDES THE SAME EDGE AS THE PRINCIPAL. Both describe how this execution is allowed to
+  // happen rather than what it means, and both are supplied by the trusted caller — so the tenant
+  // transaction that carries the org carries the bound too, and the per-row governed loaders inside
+  // `run` are bounded by inheriting that transaction rather than by each taking a parameter.
   if (principal) {
     const orgId = principalOrgId(principal);
-    return withTenantOrg(orgId, (db) => run(db, orgId));
+    return withTenantOrg(orgId, (db) => run(db, orgId), policy);
   }
-  return withTenant((db, orgId) => run(db, orgId));
+  return withTenant((db, orgId) => run(db, orgId), policy);
 }
 
 /**
@@ -150,13 +157,15 @@ export async function executePursuitQuery(candidate: unknown, principal?: Execut
  * of the object, identical for every id, and answering it differently would make the object-level
  * answer vary by something other than the object.
  */
-export async function resolveGoTo(candidate: unknown, principal?: ExecutionPrincipal): Promise<GoToOutcome> {
+export async function resolveGoTo(
+  candidate: unknown, principal?: ExecutionPrincipal, policy?: ExecutionPolicy,
+): Promise<GoToOutcome> {
   // Validation FIRST, before any connection: a malformed id never becomes query input, and an
   // unregistered class or surface never causes a database round trip.
   const v = validateGoToRequest(candidate);
   if (!v.ok) return { ok: false, error: "INVALID_REQUEST", detail: v.detail };
 
-  const outcome = await executePursuitQuery(goToPlanFor(v.request.ref.id), principal);
+  const outcome = await executePursuitQuery(goToPlanFor(v.request.ref.id), principal, policy);
   if (!outcome.ok) return { ok: false, error: "NOT_AVAILABLE" };
 
   const row = outcome.result.rows.find((r) => r.objectRef.id === v.request.ref.id);

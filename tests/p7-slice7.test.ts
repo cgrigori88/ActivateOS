@@ -581,7 +581,7 @@ test("only IDENTITY flows between components — never a result, row or payload"
   // No component's cells are read anywhere in the assembler.
   assert.ok(!/\.cells\b/.test(body), "the assembler never reads a governed cell");
   // Execution still takes a COMPILED intent only; there is no path from an outcome back into a bind.
-  assert.match(body, /runCompiledIntent\(intent, principal\)/);
+  assert.match(body, /runCompiledIntent\(intent, principal[,)]/);
 });
 
 test("an empty manifest makes context-bound components uncomposable — not silently empty", () => {
@@ -635,8 +635,8 @@ test("hand-authored and model-authored identical specs compile to identical exec
 
 test("EXPLAIN and GO TO execute through the Slice 2 and Slice 4 boundaries, unchanged", () => {
   const run = strip(readFileSync(new URL("../src/lib/experience/intent/run.ts", import.meta.url), "utf8"));
-  assert.match(run, /executePursuitQuery\(explainPlanFor\(subjectId\), principal\)/);
-  assert.match(run, /resolveGoTo\(intent\.request, principal\)/);
+  assert.match(run, /executePursuitQuery\(explainPlanFor\(subjectId\), principal[,)]/);
+  assert.match(run, /resolveGoTo\(intent\.request, principal[,)]/);
   // No plan is authored and no path is formed in the execution path Slice 7 uses.
   assert.ok(!/JSON\.parse|`\/pursuits\//.test(run));
 });

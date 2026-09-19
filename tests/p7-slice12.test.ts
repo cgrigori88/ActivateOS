@@ -352,7 +352,7 @@ test("opening derives a FRESH principal and re-governs", () => {
   assert.match(open, /await webSessionPrincipal\(\)/, "under a freshly resolved execution principal");
   const executor = strip(SRC("lib/experience/surface/execute-experience.ts"));
   assert.match(executor, /compileSurface\(/, "and the executor compiles it fresh");
-  assert.match(executor, /assembleSurface\(compiled\.validated, principal\)/, "and assembles under that principal");
+  assert.match(executor, /assembleSurface\(compiled\.validated, principal[,)]/, "and assembles under that principal");
 });
 
 test("the pin path writes nothing outside its own table", () => {

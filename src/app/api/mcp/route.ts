@@ -4,6 +4,26 @@ import { rateLimited } from "@/lib/security/rate-limit";
 import { MCP_TOOLS, resolveKey } from "@/lib/agents/mcp-tools";
 import { GOVERNED_MCP_TOOLS } from "@/lib/agents/mcp-governed";
 import { decideToolScope } from "@/lib/agents/ask-scope";
+import type { ExecutionPolicy } from "@/lib/db/execution-policy";
+
+/**
+ * D-S14-EXECUTION-BOUND — THE EXTERNAL READ POLICY, ELECTED HERE.
+ *
+ * The transport is where this belongs: it is the boundary that knows a request came from outside,
+ * and a resource ceiling is a property of that fact, not of what the request means. P7 does not
+ * choose it, the credential does not carry it, and the caller cannot name it — there is no MCP
+ * argument, header or parameter that reaches this constant.
+ *
+ * 500 ms per workload-bearing PostgreSQL statement. Derived from measurement, not taste: the whole
+ * warm request is ~11 ms across 44 statements (~0.25 ms each), so this is ~2,000× observed
+ * per-statement headroom. It is NOT a request deadline and NOT a latency target — it stops one
+ * statement from holding one of the pool's five connections indefinitely.
+ *
+ * Deliberately not 5,000: `connectionTimeoutMillis` in src/db/client.ts is already 5,000 and bounds
+ * something else entirely (acquiring a connection). Two unrelated limits sharing one number would be
+ * indistinguishable in every log and trace that reports it.
+ */
+const EXTERNAL_READ_POLICY: ExecutionPolicy = { statementTimeoutMs: 500 };
 
 /**
  * The authorized company set for an MCP key. API keys are org-scoped and carry no ecosystem
@@ -107,7 +127,7 @@ async function handleMessage(msg: RpcRequest, key: ResolvedKey): Promise<Record<
       const governed = GOVERNED_MCP_TOOLS.find((t) => t.name === name);
       if (governed) {
         try {
-          const result = await governed.run(orgId);
+          const result = await governed.run(orgId, EXTERNAL_READ_POLICY);
           return rpcResult(id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], isError: false });
         } catch {
           // Never leak compiler detail, DB posture, SQL or a stack to an external caller.
@@ -176,7 +196,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // chicken-and-egg solved for users by resolve_user_org(). It now calls the
   // SECURITY DEFINER resolve_api_key() (migration 0062), so it works under
   // app_rw (which cannot read api_keys itself) as well as on the owner pool.
-  const key = await resolveKey(getPool(), bearer);
+  const key = await resolveKey(getPool(), bearer, EXTERNAL_READ_POLICY);
   if (!key) {
     return NextResponse.json(rpcError(null, -32000, "Invalid or revoked API key"), {
       status: 401,

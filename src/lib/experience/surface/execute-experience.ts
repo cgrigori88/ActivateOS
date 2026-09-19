@@ -1,3 +1,4 @@
+import type { ExecutionPolicy } from "@/lib/db/execution-policy";
 import { getPool } from "@/db/client";
 import { assertCanonicalSubstrate } from "@/lib/env/db-posture";
 import { executePursuitQuery } from "../execute";
@@ -124,11 +125,11 @@ export const EXPERIENCE_REQUEST_VERSION = 1;
  * between the two reads, `boundContextDigest` makes that a refusal rather than a silent substitution.
  */
 export async function resolveExperienceContext(
-  source: ContextSource, principal: ExecutionPrincipal,
+  source: ContextSource, principal: ExecutionPrincipal, policy?: ExecutionPolicy,
 ): Promise<{ ok: true; manifest: ContextManifest } | { ok: false; error: "CAPABILITY_DENIED" | "FAILED" | "INVALID" }> {
   if (source.kind === "NONE") return { ok: true, manifest: EMPTY_MANIFEST };
   if (!isViewKey(source.planKey)) return { ok: false, error: "INVALID" };
-  const base = await executePursuitQuery(PLANS[source.planKey].plan, principal);
+  const base = await executePursuitQuery(PLANS[source.planKey].plan, principal, policy);
   // A capability denial on the context read is a capability denial for the surface: same
   // organization, same entitlement. Reporting it as anything else would describe governance falsely.
   if (!base.ok) return { ok: false, error: base.error === "CAPABILITY_DENIED" ? "CAPABILITY_DENIED" : "FAILED" };
@@ -144,6 +145,7 @@ export async function resolveExperienceContext(
 export async function executeExperience(
   request: PursuitExperienceRequest,
   principal: ExecutionPrincipal,
+  policy?: ExecutionPolicy,
 ): Promise<SurfaceOutcome> {
   /**
    * THE SUBSTRATE IS PART OF THE TRUSTED BOUNDARY (Slice 13, D-S13-EXEC-CONTEXT).
@@ -160,7 +162,7 @@ export async function executeExperience(
    * role was actually present — stays in the thrown error, where tests and server logs can read it
    * and a recipient cannot.
    */
-  try { await assertCanonicalSubstrate(getPool()); }
+  try { await assertCanonicalSubstrate(getPool(), policy); }
   catch { return { ok: false, error: "FAILED" }; }
 
   if (request.requestVersion !== EXPERIENCE_REQUEST_VERSION) return { ok: false, error: "INVALID" };
@@ -170,7 +172,7 @@ export async function executeExperience(
   // principal, and the manifest is built from the governed rows it returned. So the recipient
   // context is a product of governed execution, not a payload — and an unregistered key is refused
   // before anything executes.
-  const context = await resolveExperienceContext(request.contextSource, principal);
+  const context = await resolveExperienceContext(request.contextSource, principal, policy);
   if (!context.ok) return { ok: false, error: context.error };
   const manifest = context.manifest;
 
@@ -187,5 +189,5 @@ export async function executeExperience(
   // declined.
   if (!compiled.ok) return { ok: false, error: "INVALID" };
 
-  return assembleSurface(compiled.validated, principal);
+  return assembleSurface(compiled.validated, principal, policy);
 }

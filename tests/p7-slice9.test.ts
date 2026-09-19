@@ -181,7 +181,7 @@ test("the ACTION component executes NOTHING during assembly", () => {
   // The only execution call is the read path's, and it is unreachable for an action.
   assert.equal((body.match(/runCompiledIntent\(/g) ?? []).length, 1);
   const actionBranch = body.indexOf('c.kind === "ACTION"');
-  const execute = body.indexOf("runCompiledIntent(intent, principal)");
+  const execute = body.indexOf("runCompiledIntent(intent, principal");
   assert.ok(actionBranch > 0 && execute > 0 && actionBranch < execute, "the action branch precedes execution");
 });
 
@@ -208,8 +208,8 @@ test("render eligibility is DISCLOSURE, and fails closed without a role", () => 
 test("NEGATIVE CONTROL: invoking dispatch during render would be CAUGHT", () => {
   const check = (src: string) => !/dispatchSkill/.test(strip(src));
   assert.equal(check(ASSEMBLE), true, "canonical code passes");
-  const leaky = ASSEMBLE.replace("const outcome = await runCompiledIntent(intent, principal);",
-    "await dispatchSkill(db, 'assemble_pursuit_team', actor, {});\n    const outcome = await runCompiledIntent(intent, principal);");
+  const CALL = "const outcome = await runCompiledIntent(intent, principal, policy);";
+  const leaky = ASSEMBLE.replace(CALL, `await dispatchSkill(db, 'assemble_pursuit_team', actor, {});\n    ${CALL}`);
   assert.notEqual(leaky, ASSEMBLE, "the mutation actually applied");
   assert.equal(check(leaky), false, "a dispatch during assembly is caught");
 });
