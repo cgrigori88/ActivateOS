@@ -282,3 +282,86 @@ existing. The safe order is therefore: **deploy the implementation commit → pr
 independently → apply 0114 → establish a new baseline → certify.** Deploying first also means the pin
 feature is the only thing that could fail in the window, and it fails closed. **Production is not
 touched.**
+
+
+---
+
+## W. Post-review rulings, and the harness STOP
+
+**Ruling A — empty manifest on reopen: APPROVED.** A v1 definition is structurally forbidden from
+containing context-bound components, so reopening compiles against the empty manifest rather than
+reconstructing recipient context the definition cannot consume. Recorded:
+
+> **Persisted definition execution derives fresh authority but carries no persisted or
+> request-context identity dependency.**
+
+Recipient `ContextManifest` construction is **not** reintroduced for symmetry with ordinary surfaces.
+
+**Ruling B — the P7 mutation invariant: APPROVED, and scoped.** The blanket *"P7 performs no writes"*
+is no longer literally true now that P7 owns durable definition state. It is replaced by:
+
+> **P7 may persist only its explicitly authorized durable definition state through the named
+> persistence module. All other P7 execution remains read-only with respect to canonical, business
+> and governance state.**
+
+Mechanically enforced: exactly one authorized table · exactly one authorized production module · no
+other P7 SQL mutation · canonical Pursuit/P2/P6/P45/business tables mutation-forbidden. **The
+exception is capability-scoped and module-scoped — not a general licence to write.**
+
+**§16H-SOURCE — authorized AFTER Slice 12 closes, deliberately not folded in now.** The recurring
+§16A collision deserves the same treatment §16H gave disclosure, but not by changing this slice's
+candidate commit while two local proofs are merely missing. When it is built it must be
+**language-aware** — preserving SQL quoted strings and identifiers while excluding comments, and
+parser/AST-aware for TypeScript — never a naive global regex stripper. The principle mirrors §16H:
+**the assertion must name the semantic region it intends to inspect.**
+
+### Migration order — REVISED, and migration-first is right
+
+My proposed deploy-first order is **superseded**. 0114 is additive and invisible to the serving
+application, so migrating first removes any window in which newly deployed pin code could meet a
+missing table. **Proof that 0114 is backwards-compatible with the currently serving commit**, taken
+from the migration itself:
+
+| Statement | Target |
+|---|---|
+| `create table if not exists` · 2 × `create index` · `create policy` · `drop policy if exists` · 2 × `alter table` · 2 × `comment on` · `grant` | **every one of them `pinned_surface_definitions`** |
+
+**No statement alters, drops or rewrites any pre-existing object.** The only pre-existing things it
+*references* are `organizations(id)` (FK), `is_org_member` (the canonical RLS predicate) and the
+`app_rw` role — all present today and unmodified. A serving commit that has never heard of the table
+is therefore unaffected by its existence.
+
+**The ruled hosted order, for when authorization comes:** capture the pre-0114 Preview baseline → apply
+0114 to Preview only → verify the existing serving application remains healthy → establish the
+post-0114 baseline → deploy the accepted implementation commit → independently prove it is serving →
+run Slice 12 hosted certification. **Production is not contacted.**
+
+**Expected consequences to carry into certification:** the schema legitimately moves **113 → 114**, so
+the fingerprint inventory must be re-derived from the new baseline and **"160" must not be
+hard-coded**. Save/rename/delete tests intentionally mutate the authorized pin table, so the success
+condition is an **allowlisted mutation proof**, not a blanket zero-diff — with canonical, business,
+P2, P6 and P45 state required to stay stable.
+
+### THE HARNESS: STOPPED, with evidence
+
+The canonical harness is documented as Postgres 17 on `127.0.0.1:5433`, socket `/tmp/pgv5433`,
+database `pursuit_demo`, role `postgres`, with its data directory **in the session scratchpad**
+(`docs/vnext/SESSION-HANDOFF.md` §§128, 276, 641–651).
+
+**That data directory no longer exists**, so there is no cluster to start:
+
+- `/tmp/pgv5433` exists but is **empty** — the cluster ran and shut down, taking its socket with it;
+- **no `PG_VERSION` exists anywhere** under the session scratchpad or `/tmp`;
+- the only Postgres data directory on the machine is Homebrew's `/opt/homebrew/var/postgresql@17`,
+  and it is **virgin**: 39 MB, **3 databases** (the two templates plus `postgres`), a **13-line** log
+  whose earliest entry is my own start at 23:27 tonight, and **no `postgres` role**. It is not the
+  harness, and it never was.
+
+The documented recovery is `initdb` + `pg_ctl` + `seed-demo-world.ts` — which **builds a new world**
+rather than restoring the one `certify-world` has been comparing against. That is creating a
+replacement cluster, so I stopped and returned this instead.
+
+**What I did and undid:** I briefly ran Homebrew's `postgresql@17` to test whether it was the harness,
+found it binds `:5432` with no `postgres` role, and stopped it. `brew services list` reports
+`postgresql@17 none` and no listener remains — **the machine is exactly as I found it**, and nothing
+was initialized, seeded or substituted.
