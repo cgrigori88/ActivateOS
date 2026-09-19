@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { analyze } from "../src/lib/experience/analyze";
+import { sealCompleteCohort } from "../src/lib/experience/cohort";
 import { AGGREGATES, FILTERS, aggregateKey } from "../src/lib/experience/registry";
 import { validatePlan } from "../src/lib/experience/validate";
 import { PLANS, VIEW_KEYS, isViewKey } from "../src/lib/experience/plans";
-import type { GovernedCell, GovernedResultSet, GovernedRow, PursuitQuery } from "../src/lib/experience/types";
+import type { GovernedCell, GovernedRow, PursuitQuery } from "../src/lib/experience/types";
 
 /**
  * P7 SLICE 3 — the §L proofs that need no database (the rest run in the seeded verifier).
@@ -32,20 +33,24 @@ const withheldContribution = (): GovernedCell =>
 const row = (id: string, cell: GovernedCell): GovernedRow =>
   ({ objectRef: { class: "pursuit", id: `00000000-0000-4000-8000-00000000000${id}` }, cells: { [OVER]: cell } });
 
-function resultSet(rows: GovernedRow[], planOver: Partial<PursuitQuery> = {}): GovernedResultSet {
+/**
+ * D-P7-COHORT-COMPLETENESS. The analyzer no longer takes a `GovernedResultSet`: membership is a
+ * SEALED COMPLETE COHORT, and the seal is exactly what a truncated set cannot satisfy. These
+ * fixtures are therefore built the only way one can be — as a full governance pass over its own
+ * candidate set. Every assertion below is the one it always was; only the input shape moved.
+ */
+function cohort(rows: GovernedRow[], planOver: Partial<PursuitQuery> = {}) {
   const plan: PursuitQuery = { ...structuredClone(PLANS["open-pipeline-cohort"].plan), ...planOver };
-  return {
+  return sealCompleteCohort({
     plan,
-    planDigest: "aaaabbbbccccdddd",
+    candidateIds: rows.map((r) => r.objectRef.id),
+    members: rows,
     computedAt: "2026-09-17 23:00:00.000001+00",
-    rows,
-    omissions: [],
-    counts: { authorized: rows.length },
-  };
+  });
 }
 
 const run = (rows: GovernedRow[], planOver?: Partial<PursuitQuery>) =>
-  analyze(resultSet(rows, planOver), AGG.id, AGG.version);
+  analyze(cohort(rows, planOver), AGG.id, AGG.version);
 
 // ── it computes, and it delegates ───────────────────────────────────────────────────────────────
 
@@ -130,7 +135,7 @@ test("a cell with no usable governed value is treated as withheld, never as zero
     if (r.ok) assert.equal(r.result.visibility, "WITHHELD");
   }
   // A member whose metric cell is entirely absent also withholds — it is not skipped.
-  const missing = analyze(resultSet([{ objectRef: { class: "pursuit", id: "x" }, cells: {} }]), AGG.id, AGG.version);
+  const missing = analyze(cohort([{ objectRef: { class: "pursuit", id: "x" }, cells: {} }]), AGG.id, AGG.version);
   assert.ok(missing.ok);
   if (missing.ok) assert.equal(missing.result.visibility, "WITHHELD");
 });
@@ -211,8 +216,8 @@ test("L6: an unregistered aggregate hard-fails — in validation, and again in t
   // A registered id at an unregistered VERSION is equally unknown — the pair is the key.
   const v2 = validatePlan({ ...structuredClone(PLANS["open-pipeline-cohort"].plan), aggregate: { id: AGG.id, version: 2 } });
   assert.equal(v2.ok, false);
-  assert.equal(analyze(resultSet([]), "made.up", 1).ok, false);
-  assert.equal(analyze(resultSet([]), AGG.id, 2).ok, false);
+  assert.equal(analyze(cohort([]), "made.up", 1).ok, false);
+  assert.equal(analyze(cohort([]), AGG.id, 2).ok, false);
 });
 
 test("an aggregate cannot sum a metric the plan never asked governance to resolve", () => {
@@ -338,25 +343,15 @@ test("an empty governed cohort is a deterministic zero over an empty set, not UN
 test("the empty result cannot be influenced by what governance EXCLUDED", () => {
   // `omissions` and `counts` are the only places a GovernedResultSet records that something was left
   // out. If the analyzer read either, the existence of hidden candidates would be inferable from the
-  // aggregate — the exact channel the slice exists to close. So: same rows, wildly different
-  // omission metadata, byte-identical AggregateResult.
-  const bare = analyze(
-    { ...resultSet([]), omissions: [], counts: { authorized: 0 } },
-    AGG.id, AGG.version);
-  const surrounded = analyze(
-    {
-      ...resultSet([]),
-      omissions: Array.from({ length: 9 }, (_, i) => ({
-        objectId: `hidden-${i}`, ref: OVER, reason: "NOT_DISCLOSABLE" as const,
-      })),
-      counts: { authorized: 0 },
-    },
-    AGG.id, AGG.version);
-  assert.ok(bare.ok && surrounded.ok);
-  if (bare.ok && surrounded.ok) {
-    assert.equal(JSON.stringify(bare.result), JSON.stringify(surrounded.result));
-    assert.ok(!JSON.stringify(surrounded.result).includes("hidden-"));
-  }
+  // aggregate — the exact channel the slice exists to close. It is now closed BY CONSTRUCTION: a
+  // sealed cohort carries neither field, so there is nothing to read even by mistake.
+  const sealed = cohort([]) as unknown as Record<string, unknown>;
+  assert.deepEqual(Object.keys(sealed).sort(), ["computedAt", "members", "plan"]);
+  assert.ok(!("omissions" in sealed) && !("counts" in sealed) && !("rows" in sealed));
+  const bare = analyze(cohort([]), AGG.id, AGG.version);
+  const again = analyze(cohort([]), AGG.id, AGG.version);
+  assert.ok(bare.ok && again.ok);
+  if (bare.ok && again.ok) assert.equal(JSON.stringify(bare.result), JSON.stringify(again.result));
   // Structurally: the analyzer never names either field.
   assert.ok(!/omissions|counts/.test(CODE), "analysis reads neither omissions nor counts");
 });
@@ -386,7 +381,14 @@ test("L10: analysis is correct with the model entirely removed — there is no m
   assert.ok(!/@anthropic-ai|openai|anthropic|generateText|createMessage|fetch\(/i.test(SRC));
   assert.ok(!/\basync\b|\bawait\b/.test(CODE), "analyze() is synchronous");
   assert.ok(!/Date\.|new Date|Math\.random/.test(CODE), "analyze() reads no clock and no randomness");
-  // Its only imports are the registry and types — no database handle, no governance module.
+  // Its only imports are the registry, the cohort seal and types — no database handle, no governance
+  // module. The seal is held to the same standard, so the closure stays unable to reach anything.
   const imports = [...SRC.matchAll(/from "([^"]+)"/g)].map((m) => m[1]).sort();
-  assert.deepEqual(imports, ["./registry", "./types"]);
+  assert.deepEqual(imports, ["./cohort", "./registry", "./types"]);
+  const cohortSrc = readFileSync(new URL("../src/lib/experience/cohort.ts", import.meta.url), "utf8");
+  assert.deepEqual([...cohortSrc.matchAll(/from "([^"]+)"/g)].map((m) => m[1]).sort(), ["./types"]);
+  const cohortCode = cohortSrc.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  for (const forbidden of ["query(", "withTenant", "mayDerive", "resolveDisclosure", "await", "Date"]) {
+    assert.ok(!cohortCode.includes(forbidden), `the cohort seal must not contain ${forbidden}`);
+  }
 });

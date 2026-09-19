@@ -28,6 +28,7 @@ import { validatePlan } from "./validate";
 import { principalOrgId, type ExecutionPrincipal } from "./principal";
 import { explain } from "./explain";
 import { analyze } from "./analyze";
+import { sealCompleteCohort } from "./cohort";
 import { navigate, validateGoToRequest } from "./navigate";
 import { goToPlanFor } from "./plans";
 import type { AggregateResult, ExecuteOutcome, Explanation, FieldRef, GoToOutcome, GovernedCell, GovernedResultSet, GovernedRow, MetricRef, PursuitQuery } from "./types";
@@ -96,11 +97,20 @@ export async function executePursuitQuery(
       rows.push({ objectRef: { class: "pursuit", id: row.id }, cells });
     }
 
-    orderRows(rows, plan);
-    const limited = plan.limit ? rows.slice(0, plan.limit) : rows;
-
     // The instant comes from the database, in SQL — never a JavaScript Date (D-P6-1).
     const { rows: at } = await db.query<{ t: string }>(`select transaction_timestamp()::text as t`);
+
+    // ── MEMBERSHIP, THEN PRESENTATION — IN THAT ORDER (D-P7-COHORT-COMPLETENESS) ────────────────
+    //
+    // The cohort is sealed HERE, from every governed candidate, before anything is ordered or cut.
+    // What follows — ordering, `plan.limit`, the result set a renderer receives — is presentation,
+    // and presentation may not decide who is in a cohort. The seal proves the governance loop above
+    // visited every candidate exactly once; a page of rows cannot be passed off as one, so the
+    // aggregate below cannot silently become a sum over the newest `limit` members.
+    const cohort = sealCompleteCohort({ plan, candidateIds: candidates.map((c) => c.id), members: rows, computedAt: at[0].t });
+
+    orderRows(rows, plan);
+    const limited = plan.limit ? rows.slice(0, plan.limit) : rows;
 
     const resultSet: GovernedResultSet = {
         plan,
@@ -120,11 +130,12 @@ export async function executePursuitQuery(
       if (e.ok) explanation = e.explanation; else explanationError = e.detail;
     }
 
-    // ANALYZE (Slice 3). Runs over the governed cohort — the rows governance admitted, never a
-    // candidate set — and like explain() it cannot reach the database to widen one.
+    // ANALYZE (Slice 3). Runs over the COMPLETE governed cohort — every row governance admitted,
+    // never a candidate set and never the presented page — and like explain() it cannot reach the
+    // database to widen one. `basis.members` therefore counts the cohort, as ruling 3 required.
     let aggregate: AggregateResult | undefined;
     if (plan.aggregate !== false) {
-      const a = analyze(resultSet, plan.aggregate.id, plan.aggregate.version);
+      const a = analyze(cohort, plan.aggregate.id, plan.aggregate.version);
       if (a.ok) aggregate = a.result;
     }
 

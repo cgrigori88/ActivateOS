@@ -23,27 +23,33 @@
  * only arithmetic it performs is the registered `operation` itself.
  */
 import { AGGREGATES, aggregateKey, metricKey } from "./registry";
-import type { AggregateResult, GovernedResultSet } from "./types";
+import { IncompleteCohort, isCompleteCohort, type CompleteGovernedCohort } from "./cohort";
+import type { AggregateResult } from "./types";
 
 export type AnalyzeOutcome =
   | { ok: true; result: AggregateResult }
   | { ok: false; error: "UNREGISTERED_AGGREGATE" | "METRIC_NOT_SELECTED"; detail: string };
 
-export function analyze(result: GovernedResultSet, id: string, version: number): AnalyzeOutcome {
+export function analyze(cohort: CompleteGovernedCohort, id: string, version: number): AnalyzeOutcome {
+  // MEMBERSHIP IS NOT AN ARGUMENT OF CONVENIENCE. Only a completed governance pass can produce this
+  // object (see ./cohort.ts); a presentation page of rows cannot be relabelled as one. Reaching here
+  // without it is a programming fault, never a governed outcome, so it throws rather than resolving
+  // to a disposition a recipient could read as an answer.
+  if (!isCompleteCohort(cohort)) throw new IncompleteCohort("analyze() was handed something that is not a sealed cohort");
   const def = AGGREGATES[aggregateKey({ id, version })];
   if (!def) return { ok: false, error: "UNREGISTERED_AGGREGATE", detail: `unknown aggregate ${id}@${version}` };
 
   const overKey = metricKey(def.over);
   // The aggregate can only read a metric the plan actually selected, because only then did
   // governance resolve it. Summing a metric nobody asked to govern would be summing nothing.
-  if (!result.plan.metrics.some((m) => metricKey(m) === overKey)) {
+  if (!cohort.plan.metrics.some((m) => metricKey(m) === overKey)) {
     return { ok: false, error: "METRIC_NOT_SELECTED", detail: `${def.id}@${def.version} requires ${overKey} in metrics[]` };
   }
 
-  const cohort = {
-    subjectClass: result.plan.subject.class,
-    scope: result.plan.scope,
-    filters: result.plan.filters,
+  const definition = {
+    subjectClass: cohort.plan.subject.class,
+    scope: cohort.plan.scope,
+    filters: cohort.plan.filters,
   };
   const withheld = (): AnalyzeOutcome => ({
     ok: true,
@@ -51,7 +57,7 @@ export function analyze(result: GovernedResultSet, id: string, version: number):
       aggregate: { id: def.id, version: def.version },
       over: def.over,
       operation: def.operation,
-      cohort,                       // the DEFINITION — the question, never the membership
+      cohort: definition,           // the DEFINITION — the question, never the membership
       visibility: "WITHHELD",
       value: null,
       // basis is ABSENT here, deliberately: a member count beside a withheld value would disclose
@@ -60,8 +66,9 @@ export function analyze(result: GovernedResultSet, id: string, version: number):
     },
   });
 
-  // MEMBERSHIP is what governance returned — nothing is added, nothing is filtered out here.
-  const members = result.rows;
+  // MEMBERSHIP is the WHOLE governed cohort — nothing is added, nothing is filtered out, and
+  // nothing was left behind a presentation limit upstream (D-P7-COHORT-COMPLETENESS).
+  const members = cohort.members;
   const contributions: number[] = [];
   for (const row of members) {
     const cell = row.cells[overKey];
@@ -79,7 +86,7 @@ export function analyze(result: GovernedResultSet, id: string, version: number):
       aggregate: { id: def.id, version: def.version },
       over: def.over,
       operation: def.operation,
-      cohort,
+      cohort: definition,
       visibility: "EXACT",
       value: apply(def.operation, contributions),
       // Every counted member is one the principal can see individually AND one that contributed, so
