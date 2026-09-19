@@ -328,3 +328,97 @@ seeded-clone 66/66 · **certify-world 52 clean**, protected state `d43fe13b1f194
 Three pre-existing structural tests (slices 6, 7, 12) asserted on page source whose subject moved
 into the executor. Each property still holds and was **followed to its new home** — with the
 executor-side assertion added so the guarantee is not weakened — rather than deleted.
+
+---
+
+# D-S13-EXEC-CONTEXT — THE TRUSTED EXECUTION SUBSTRATE
+
+A gap found by the hosted gate and closed before closeout.
+
+> **The trusted execution boundary establishes both the `ExecutionPrincipal` and the governed
+> application execution substrate.**
+>
+> **A caller may request experience semantics. It may not choose the application principal, tenant
+> authority, database role, RLS posture or governance substrate used to execute them.**
+>
+> **Headless means independent of presentation framework, not independent of the governed application
+> runtime.**
+>
+> **The canonical Slice 13 application substrate is `app_rw` with `rolbypassrls = false`.** If that
+> role model ever changes, that is an explicit governance/runtime architecture change — never
+> something an adapter may decide.
+
+## What was actually wrong
+
+`ExecutionPrincipal` is unforgeable, and I had treated it as sufficient. It is not. The decisive
+experiment: **one certified request, one branded principal, one world, one governance codebase** —
+varying only the database role the process happened to hold:
+
+```
+owner / BYPASSRLS  →  12 governed rows · 72 cells · 6 suppressed
+app_rw / RLS       →  11 governed rows · 66 cells · 0 suppressed
+the app_rw membership is a STRICT SUBSET of the owner membership
+```
+
+Row membership is part of the semantic contract, so an identity object alone does not determine
+governed semantics. `executePursuitQuery` and `assembleSurface` reach the database through
+`withTenant`/`withTenantOrg` → `getPool()` → `process.env.DATABASE_URL`, so **a differently
+configured process could execute canonical P7 semantics with RLS bypassed.** P7 never calls
+`getOwnerPool()`, the deployed runtime is `app_rw`, and five existing verifiers already pin `app_rw`
+— but those are conventions and configuration, not structure. `probeDatabasePosture` reported the
+posture and, by design, never refused it.
+
+## The correction
+
+`assertCanonicalSubstrate(pool)` lives beside the existing posture machinery and is called **first**
+inside `executeExperience` — before context resolution, before any governed read, before compilation
+and before assembly.
+
+- **It checks the ROLE, not merely the bypass bit.** `rolbypassrls = false` is necessary and not
+  sufficient: a different non-bypassing role may hold different grants, and a table's owner is exempt
+  from its own policies unless FORCE is set.
+- **`probe` and `assert` stay different things.** The observability probe still never throws, because
+  the surface it serves exists to diagnose a broken database. The executor's assertion refuses.
+- **Memoization is keyed on pool identity** (`WeakSet`), never a process-global boolean — so a
+  replaced or recreated pool is a new question, and the entry dies with the pool it describes.
+- **There is no bypass.** No env escape, no option, no parameter. Owner-direct canonical P7 execution
+  is now structurally illegal, which was the entire point.
+- **An illegal substrate is `FAILED`** — an internal configuration failure, never `INVALID`, never
+  governed unavailability. The recipient sees `{ok:false, error:"FAILED"}` with no detail; the
+  diagnostic naming the observed role stays in the thrown error for tests and server logs.
+
+## Evidence
+
+```
+NC-S1  owner/BYPASSRLS        → REFUSED {"ok":false,"error":"FAILED"} · keys exactly ["ok","error"]
+NC-S2  non-BYPASSRLS, wrong role → REFUSED — the guard is not merely the bypass bit
+NC-S3  app_rw, rolbypassrls=false → PROCEEDED, 11 governed rows
+NC-S4  a request carrying role/substrate/bypass/rls fields → inert; same 11 rows
+H3     same request · principal · world · app_rw → EXACT semantic parity, 11 rows / 66 cells
+NC-RLS below the canonical boundary: owner 12 vs app_rw 11, strict subset
+```
+
+**NC-RLS is retained as a security-discrimination control, not a parity test.** It proves that
+changing the substrate changes governed membership — which is *why* the guard exists.
+
+Regression: p7-slice13 **27/27** · unit **841/841** · tsc clean · build clean · ordering 46/46 ·
+seeded-clone 66/66 · p45-program 100/100 · **certify-world 52 clean**, `d43fe13b1f194132` start = end.
+
+## H2 and H3, recorded precisely
+
+**H2 proved** React independence, route and browser independence, provider independence, headless
+semantic execution, P6 field suppression, and zero writes. **It did not prove production-equivalent
+RLS semantics**, because the original direct harness used the owner substrate. The same-`app_rw` H3
+proof above supplies that missing property.
+
+**The original H3 was not parity and I should not have presented it as such.** It compared
+owner/BYPASSRLS against app_rw/RLS — intentionally different security contexts — so differing row
+membership was expected and could neither prove nor disprove interface parity. My framing, *"two
+independent layers, same refusal"*, conflated *no field values disclosed* with *same semantic
+object*: one result contained the row, the other did not.
+
+**The instrumentation lesson, kept rather than erased:** the established verifier convention —
+`process.env.DATABASE_URL = rwUrl`, *"the boundary's withTenant runs as app_rw, exactly like the
+app"* — existed precisely to prevent this, and I did not follow it. Connecting as owner was not a
+harmless harness convenience; it silently changed the semantics under test. The gate that exposed it
+is the reason the product boundary is now structural rather than conventional.

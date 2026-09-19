@@ -256,3 +256,90 @@ test("the test-fixture principal refuses without the explicit opt-in, and mints 
     assert.equal(principalOrgId(testFixturePrincipal(ORG)), ORG, "with the opt-in a suite can execute as its own org");
   } finally { if (before === undefined) delete process.env.P7_TEST_PRINCIPAL; else process.env.P7_TEST_PRINCIPAL = before; }
 });
+
+// ── THE TRUSTED EXECUTION SUBSTRATE (D-S13-EXEC-CONTEXT) ────────────────────────────────────────
+//
+// > **The trusted execution boundary establishes both the ExecutionPrincipal and the governed
+// > application database substrate. A caller may choose neither.**
+//
+// The same certified request and the same branded principal returned 12 governed rows under the
+// owner and 11 under `app_rw`. An identity object alone does not determine governed semantics.
+
+const POSTURE = SRC("lib/env/db-posture.ts");
+
+test("the substrate is asserted BEFORE any semantic execution", () => {
+  // SCOPED to executeExperience's own body: `resolveExperienceContext` is DEFINED earlier in the
+  // file, so searching the whole module finds its definition rather than the call and compares two
+  // unrelated positions.
+  const body = strip(EXECUTOR).slice(strip(EXECUTOR).indexOf("export async function executeExperience"));
+  const guard = body.indexOf("assertCanonicalSubstrate(getPool())");
+  assert.ok(guard > 0, "the canonical boundary asserts its substrate");
+  for (const later of ["resolveExperienceContext(", "compileSurface(", "assembleSurface(", "executePursuitQuery("]) {
+    const at = body.indexOf(later);
+    if (at > 0) assert.ok(guard < at, `the substrate is asserted before ${later}`);
+  }
+});
+
+test("an illegal substrate is an internal FAILURE, never a governed outcome", () => {
+  // SCOPED likewise: the first "assertCanonicalSubstrate" in the module is the IMPORT, so an
+  // unscoped slice spans the whole context resolver and picks up its unrelated dispositions.
+  const body = strip(EXECUTOR).slice(strip(EXECUTOR).indexOf("export async function executeExperience"));
+  const region = body.slice(body.indexOf("assertCanonicalSubstrate"), body.indexOf("requestVersion !=="));
+  assert.match(region, /catch \{ return \{ ok: false, error: "FAILED" \};? \}/,
+    "a misconfigured runtime is FAILED — not INVALID, and never governed unavailability");
+  assert.ok(!/NOT_AVAILABLE|NO_SELECTABLE_RESULT|CAPABILITY_DENIED/.test(region));
+});
+
+test("the guard checks the canonical ROLE, not merely the BYPASSRLS bit", () => {
+  const body = strip(POSTURE);
+  assert.match(body, /export const CANONICAL_APP_ROLE = "app_rw"/);
+  const fn = body.slice(body.indexOf("export async function assertCanonicalSubstrate"));
+  assert.match(fn, /p\.role !== CANONICAL_APP_ROLE/, "the role name is part of the predicate");
+  assert.match(fn, /p\.bypassRls/, "and so is the bypass bit");
+  assert.match(fn, /p\.superuser/, "and superuser");
+  assert.match(fn, /!p\.tenantEnforcement/, "and that RLS actually binds this session");
+  // NEGATIVE CONTROL: a bypass-only predicate would accept a non-app_rw role.
+  const weakened = fn.replace("p.role !== CANONICAL_APP_ROLE || ", "");
+  assert.notEqual(weakened, fn, "the mutation actually applied");
+  assert.ok(!/p\.role !== CANONICAL_APP_ROLE/.test(weakened), "dropping the role check is detectable");
+});
+
+test("memoization is scoped to POOL IDENTITY, not a process-global flag", () => {
+  const body = strip(POSTURE);
+  assert.match(body, /const certifiedPools = new WeakSet<object>\(\)/,
+    "a new pool is a new question; the entry dies with the pool");
+  assert.match(body, /certifiedPools\.has\(pool as object\)/);
+  assert.match(body, /certifiedPools\.add\(pool as object\)/);
+  // A bare boolean would let one legal pool bless every later one.
+  assert.ok(!/let\s+\w*[Cc]hecked\s*=\s*(true|false)/.test(body), "no unqualified process-global flag");
+});
+
+test("probe and assert stay DIFFERENT things", () => {
+  const body = strip(POSTURE);
+  const probe = body.slice(body.indexOf("export async function probeDatabasePosture"), body.indexOf("export const CANONICAL_APP_ROLE"));
+  assert.ok(!/throw/.test(probe), "the observability probe still never throws");
+  assert.match(probe, /status: "unavailable"/, "it still degrades to unavailable for diagnostics");
+  const asserter = body.slice(body.indexOf("export async function assertCanonicalSubstrate"));
+  assert.match(asserter, /throw new IllegalExecutionSubstrate/, "the executor's assertion refuses");
+});
+
+test("NO product-capable substrate bypass exists", () => {
+  for (const [label, body] of [["executor", EXECUTOR], ["posture", POSTURE]] as const) {
+    assert.ok(!/ALLOW_BYPASSRLS|SKIP_SUBSTRATE|P7_TEST_ALLOW|allowOwner|bypassSubstrate/i.test(body),
+      `${label} must expose no substrate escape hatch`);
+  }
+  // And the assertion takes no options at all — there is nothing for a caller to pass.
+  assert.match(strip(POSTURE), /assertCanonicalSubstrate\(pool: Pick<pg\.Pool, "query">\): Promise<void>/);
+});
+
+test("no caller-visible field can select the role, RLS posture or assertion result", () => {
+  const body = strip(EXECUTOR);
+  const iface = body.slice(body.indexOf("interface PursuitExperienceRequest"), body.indexOf("export const EXPERIENCE_REQUEST_VERSION"));
+  for (const forbidden of ["role", "substrate", "pool", "connection", "database", "rls", "bypass"]) {
+    assert.ok(!new RegExp(`\\b${forbidden}\\b`, "i").test(iface), `a request must not carry ${forbidden}`);
+  }
+  // The pool comes from the process, not from the call.
+  assert.match(body, /assertCanonicalSubstrate\(getPool\(\)\)/, "the pool is acquired, never supplied");
+  assert.ok(!/pool[,:]/.test(body.slice(body.indexOf("export async function executeExperience"), body.indexOf("{", body.indexOf("export async function executeExperience")))),
+    "executeExperience takes no pool parameter");
+});

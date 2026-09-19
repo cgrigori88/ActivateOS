@@ -1,3 +1,5 @@
+import { getPool } from "@/db/client";
+import { assertCanonicalSubstrate } from "@/lib/env/db-posture";
 import { executePursuitQuery } from "../execute";
 import { buildContextManifest, EMPTY_MANIFEST } from "../intent/context";
 import { isViewKey, PLANS, type ViewKey } from "../plans";
@@ -143,6 +145,24 @@ export async function executeExperience(
   request: PursuitExperienceRequest,
   principal: ExecutionPrincipal,
 ): Promise<SurfaceOutcome> {
+  /**
+   * THE SUBSTRATE IS PART OF THE TRUSTED BOUNDARY (Slice 13, D-S13-EXEC-CONTEXT).
+   *
+   * Asked FIRST, before the context plan, before any governed read, before compilation and before
+   * assembly — because the thing it protects is the meaning of everything that follows. The same
+   * request and the same branded principal returned a different governed row set under the owner
+   * than under `app_rw`, so executing on an uncertified substrate would not be a degraded answer; it
+   * would be a different one, silently.
+   *
+   * The refusal is an internal CONFIGURATION failure, never a governed outcome: `FAILED` is the
+   * certified disposition for "this did not work", and relabelling a misconfigured runtime as
+   * `NOT_AVAILABLE` would tell a recipient something false about governance. The diagnostic — which
+   * role was actually present — stays in the thrown error, where tests and server logs can read it
+   * and a recipient cannot.
+   */
+  try { await assertCanonicalSubstrate(getPool()); }
+  catch { return { ok: false, error: "FAILED" }; }
+
   if (request.requestVersion !== EXPERIENCE_REQUEST_VERSION) return { ok: false, error: "INVALID" };
 
   // ── CONTEXT IS DERIVED, NEVER SUPPLIED ────────────────────────────────────────────────────────
