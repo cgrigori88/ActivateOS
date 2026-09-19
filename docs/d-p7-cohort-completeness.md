@@ -104,3 +104,80 @@ baseline            the certified 11-member fixture is unchanged: DISCLOSED 6,25
 serializer's dropped `basis` made the defect harder to see but did not cause it, and any later
 externalisation of cohort basis must inherit canonical `SurfaceResult` and be ruled against the
 existing cross-org differencing controls.
+
+---
+
+# Commit B — the same cohort, in a bounded number of statements
+
+The semantic correction above made the aggregate read the whole cohort. That made the pre-existing
+O(N) statement graph load-bearing rather than merely wasteful, which is the total-work half of
+**D-S14-EXECUTION-BOUND**.
+
+## The shape of the fix
+
+Governance acquired its facts one member at a time: a viewer query and an allow-list query per row,
+plus one to three derivation queries per foreign row — `Σ cost(candidate)`, cost in {3,4,5,6}. The
+facts are now loaded for the whole cohort in a constant number of statements, and **only the fetching
+changed**:
+
+- `decideDerivation(viewerOrgId, input, purpose, facts)` is the pure decision core, extracted from
+  `mayDerive` and now the only implementation of those rules. `mayDerive` remains, as a one-row fact
+  loader over the same core — lazily, so its statement cost is what it always was.
+- `src/lib/pursuits/federation/batch-facts.ts` loads the same facts with the **same predicates** at
+  the **same instant** (`transaction_timestamp()` inside each statement) for a set of pursuits:
+  participation standing, allow-listed object keys, and — only when the cohort actually crosses an
+  organization boundary — derivation grants.
+- `pursuits.__live` (the PURSUIT_LIFETIME bound) rides the candidate row rather than being re-read
+  per member: the same row, in the same transaction.
+- `loadMetricInputs` reads the metric's inputs for every member in one grouped statement.
+- `resolveDisclosure` is untouched and still decides disclosure per input.
+
+**No SQL `may_derive()` was introduced.** One rule engine remains, per ruling: a second one would
+have to be proven equivalent forever.
+
+## Measured graph — constant in cohort cardinality
+
+| cohort | before | after |
+|---|---|---|
+| 11 members | 49 statements | **19** |
+| 212 members | 652 | **19** |
+| 2,011 members | — | **19** |
+| 212 members incl. one foreign member | 656 | **20** (the derivation-grant query, issued only across an org boundary) |
+
+> **The number of externally-triggerable PostgreSQL workload-bearing statements for canonical MCP
+> `pipeline_summary` is bounded independently of cohort cardinality, and each is additionally
+> protected by the trusted 500 ms statement timeout.**
+
+**Precisely what is and is not bounded.** DB statement count and DB execution time are bounded
+independently of N; **in-process governance evaluation remains O(N)** — one `decideDerivation` and
+one disclosure resolution per member, plus the rows themselves in memory. Total CPU and memory are
+*not* claimed constant. Measured wall time: 5 ms at 11 members, 14 ms at 212, 84 ms at 2,011.
+
+**The 500 ms bound is unchanged and was not relaxed.** At 2,011 members no statement came within a
+fifth of it (none exceeded 100 ms).
+
+## Differential governance proof — 56/0
+
+Before relying on the batched path, both paths were run against the same world and compared on
+membership, derivability, disclosure state, omission reason and aggregate disposition. The oracle is
+built from the product's own one-row functions (`buildFederationViewer`, `mayDerive`,
+`resolveDisclosure`) — never a re-implementation.
+
+Classes covered: self-owned · foreign with ACTIVE participation and no grant · RETAINED grant ·
+PURSUIT_LIFETIME grant with a live pursuit · PURSUIT_LIFETIME grant with a **merged** pursuit ·
+expired grant · revoked grant · participation `LEFT` · no participation at all · non-derivation
+purpose · wrong information class · `scope.keys` narrowing · two qualifying grants.
+
+Negative controls bite: flipping one member's decision, changing the aggregate by one dollar and
+dropping one member each make the comparison fail, and an anti-vacuity guard asserts the fixtures
+produced EXACT, SUPPRESSED *and* absent outcomes.
+
+## One behavioural change, recorded rather than buried
+
+The one-row grant query used `limit 1` with **no ordering**, so with several equally-qualifying
+grants it saw an arbitrary one — and the pick can matter, because grants differ in `retention_class`
+and `scope.keys`. The decision core now considers every qualifying grant and allows if any of them
+permits, which is what *"a live grant covers this purpose and class"* means; a narrower sibling can
+no longer deny by happening to be chosen first. This affects both paths identically (`mayDerive` was
+rewritten onto the same core), it is pinned by a unit test, and it is the only decision-level change
+in this commit.

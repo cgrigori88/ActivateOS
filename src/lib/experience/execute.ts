@@ -20,9 +20,9 @@ import type { PoolClient } from "pg";
 import { withTenant, withTenantOrg } from "@/lib/db/tenant";
 import { experienceEnabledFor } from "@/lib/pursuits/tenant-flags";
 import { resolveScope } from "@/lib/scope/server";
-import { buildFederationViewer } from "@/lib/pursuits/federation/grants";
 import { resolveDisclosure, type Disclosable, type FederationViewer } from "@/lib/pursuits/federation/disclosure";
-import { mayDerive } from "@/lib/pursuits/federation/derivation";
+import { decideDerivation } from "@/lib/pursuits/federation/derivation";
+import { loadCohortDerivationFacts, loadCohortViewers, type CohortSubject } from "@/lib/pursuits/federation/batch-facts";
 import { FIELDS, FILTERS, METRICS, metricKey } from "./registry";
 import { validatePlan } from "./validate";
 import { principalOrgId, type ExecutionPrincipal } from "./principal";
@@ -31,6 +31,7 @@ import { analyze } from "./analyze";
 import { sealCompleteCohort } from "./cohort";
 import { navigate, validateGoToRequest } from "./navigate";
 import { goToPlanFor } from "./plans";
+import type { DerivationFacts } from "@/lib/pursuits/federation/derivation";
 import type { AggregateResult, ExecuteOutcome, Explanation, FieldRef, GoToOutcome, GovernedCell, GovernedResultSet, GovernedRow, MetricRef, PursuitQuery } from "./types";
 
 /** One candidate row as the canonical loader returns it — pre-governance, never leaves this module. */
@@ -77,9 +78,33 @@ export async function executePursuitQuery(
     const rows: GovernedRow[] = [];
     const omissions: GovernedResultSet["omissions"] = [];
 
+    // ── FACTS FIRST, IN BOUNDED SETS; DECISIONS AFTERWARDS (D-S14-EXECUTION-BOUND) ──────────────
+    //
+    // Governance used to acquire its facts one member at a time, so the statement graph grew with
+    // the cohort — `Σ cost(candidate)`, cost in {3,4,5,6}, over a cohort the registry does not
+    // bound. The facts are the same facts and the predicates are the same predicates; only the
+    // number of round trips changed, from O(members) to a constant.
+    //
+    // NOTHING BELOW DECIDES ANYTHING. `decideDerivation` and `resolveDisclosure` remain the only
+    // implementations of the rules, and they are handed facts rather than a database handle.
+    const subjects: CohortSubject[] = candidates.map((c) => ({
+      id: c.id, ownerOrgId: c.org_id, live: c.__live === true,
+    }));
+    const viewers = await loadCohortViewers(db, orgId, subjects);
+    const derivation = new Map<string, Awaited<ReturnType<typeof loadCohortDerivationFacts>>>();
+    const inputs = new Map<string, Map<string, MetricInputRow[]>>();
+    for (const m of plan.metrics) {
+      const key = metricKey(m);
+      if (derivation.has(key)) continue;
+      const def = METRICS[key];
+      derivation.set(key, await loadCohortDerivationFacts(db, orgId, subjects,
+        { inputKind: def.deriveInputKind, purpose: def.derivePurpose }));
+      inputs.set(key, await loadMetricInputs(db, subjects.map((s) => s.id)));
+    }
+
     for (const row of candidates) {
       // GOVERNANCE, per object, before any value is read into a cell.
-      const viewer = await buildFederationViewer(db, orgId, row.id);
+      const viewer = viewers.viewer(row.id);
       const cells: Record<string, GovernedCell> = {};
 
       for (const ref of plan.projection) {
@@ -89,9 +114,12 @@ export async function executePursuitQuery(
       }
 
       for (const m of plan.metrics) {
-        const cell = await governMetric(db, orgId, m, row, viewer);
-        cells[metricKey(m)] = cell;
-        if (cell.visibility === "SUPPRESSED") omissions.push({ objectId: row.id, ref: metricKey(m), reason: cell.reason ?? "NOT_DISCLOSABLE" });
+        const key = metricKey(m);
+        const cell = governMetric(orgId, m, row, viewer,
+          derivation.get(key)!.derivation(row.id, viewer.isParticipant),
+          inputs.get(key)!.get(row.id) ?? []);
+        cells[key] = cell;
+        if (cell.visibility === "SUPPRESSED") omissions.push({ objectId: row.id, ref: key, reason: cell.reason ?? "NOT_DISCLOSABLE" });
       }
 
       rows.push({ objectRef: { class: "pursuit", id: row.id }, cells });
@@ -191,6 +219,32 @@ export async function resolveGoTo(
  *
  * Every identifier in the statement comes from the registry; every plan value is a bound parameter.
  */
+/** One canonical metric input row, as the metric's declared relation returns it. */
+export interface MetricInputRow { id: string; org_id: string; amount_usd: string | null }
+
+/**
+ * The metric's inputs for EVERY member, in one statement, keyed by pursuit.
+ *
+ * Identical predicate to the per-member read it replaces; the only change is that the pursuit is
+ * matched against a set. Ordering is irrelevant to both consumers — a SUM, and "does ANY input fail
+ * disclosure" — so none is imposed beyond a stable one for reproducibility.
+ */
+async function loadMetricInputs(db: PoolClient, pursuitIds: readonly string[]): Promise<Map<string, MetricInputRow[]>> {
+  const byPursuit = new Map<string, MetricInputRow[]>();
+  if (pursuitIds.length === 0) return byPursuit;
+  const { rows } = await db.query<MetricInputRow & { pursuit_id: string }>(
+    `select o.pursuit_id, o.id, o.org_id, o.amount_usd from opportunities o
+      where o.pursuit_id = any($1::uuid[]) and o.stage not in ('closed_won','closed_lost')
+      order by o.pursuit_id, o.id`,
+    [pursuitIds]);
+  for (const r of rows) {
+    const list = byPursuit.get(r.pursuit_id) ?? [];
+    list.push({ id: r.id, org_id: r.org_id, amount_usd: r.amount_usd });
+    byPursuit.set(r.pursuit_id, list);
+  }
+  return byPursuit;
+}
+
 async function loadCandidates(db: PoolClient, plan: PursuitQuery, scopeCompanyIds: string[] | null): Promise<CandidateRow[]> {
   const selected = new Set<FieldRef>(plan.projection);
   selected.add("pursuit.id");
@@ -210,7 +264,12 @@ async function loadCandidates(db: PoolClient, plan: PursuitQuery, scopeCompanyId
   if (plan.subject.ids?.length) { params.push(plan.subject.ids); where.push(`p.id = any($${params.length}::uuid[])`); }
   if (scopeCompanyIds) { params.push(scopeCompanyIds); where.push(`p.account_id = any($${params.length}::uuid[])`); }
 
-  const sql = `select p.id, p.org_id, ${columns.join(", ")} from pursuits p
+  // `__live` is the PURSUIT_LIFETIME bound, computed here rather than re-read per member: it is the
+  // same row in the same transaction, and it is never projected (the alias cannot collide with a
+  // registry column, which are all plain names).
+  const sql = `select p.id, p.org_id,
+                      (p.status not in ('WON','LOST','DISQUALIFIED') and p.merged_into_pursuit_id is null) as __live,
+                      ${columns.join(", ")} from pursuits p
                ${where.length ? `where ${where.join(" and ")}` : ""}
                order by p.id asc`;
   const { rows } = await db.query<CandidateRow>(sql, params);
@@ -247,24 +306,22 @@ function governField(ref: FieldRef, row: CandidateRow, viewer: FederationViewer)
  * declassification rule applied to an aggregate: with no approved transform, a result formed from a
  * hidden input is NOT_DISCLOSABLE.
  */
-async function governMetric(
-  db: PoolClient, viewerOrgId: string, ref: MetricRef, row: CandidateRow, viewer: FederationViewer,
-): Promise<GovernedCell> {
+function governMetric(
+  viewerOrgId: string, ref: MetricRef, row: CandidateRow, viewer: FederationViewer,
+  facts: DerivationFacts, inputs: readonly MetricInputRow[],
+): GovernedCell {
   const def = METRICS[metricKey(ref)];
   const provenance = `${def.id}@${def.version}`;
 
-  // 1. DERIVATION AUTHORITY, before an input is read.
-  const decision = await mayDerive(db, viewerOrgId,
-    { inputKind: def.deriveInputKind, sourceOrgId: row.org_id, pursuitId: row.id }, def.derivePurpose);
+  // 1. DERIVATION AUTHORITY, before an input is read. The facts were loaded for the whole cohort;
+  //    the decision is the same one `mayDerive` makes for a single subject, from the same core.
+  const decision = decideDerivation(viewerOrgId,
+    { inputKind: def.deriveInputKind, sourceOrgId: row.org_id, pursuitId: row.id }, def.derivePurpose, facts);
   if (!decision.allow) {
     return { visibility: "SUPPRESSED", value: null, provenance, reason: "DERIVATION_DENIED", existence: "AUTHORIZED" };
   }
 
   // 2. INPUTS, each resolved through the ladder as its own disclosable item.
-  const { rows: inputs } = await db.query<{ id: string; org_id: string; amount_usd: string | null }>(
-    `select o.id, o.org_id, o.amount_usd from opportunities o
-      where o.pursuit_id = $1 and o.stage not in ('closed_won','closed_lost')`, [row.id]);
-
   const governed: number[] = [];
   for (const input of inputs) {
     const res = resolveDisclosure<string | null>(

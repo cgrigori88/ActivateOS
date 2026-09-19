@@ -223,11 +223,21 @@ test("the web route carries transport concerns only — no governance or metric 
 
 test("the boundary applies BOTH capability layers and the governance primitives", () => {
   const exec = codeOf(new URL("../src/lib/experience/execute.ts", import.meta.url).pathname);
-  for (const required of ["withTenant", "experienceEnabledFor", "resolveScope", "buildFederationViewer", "mayDerive", "resolveDisclosure"]) {
+  // The viewer and the derivation facts are now loaded for the whole cohort in bounded sets
+  // (D-S14-EXECUTION-BOUND); the DECISIONS are the same two primitives, applied per member.
+  for (const required of ["withTenant", "experienceEnabledFor", "resolveScope",
+                          "loadCohortViewers", "loadCohortDerivationFacts", "decideDerivation", "resolveDisclosure"]) {
     assert.ok(exec.includes(required), `the boundary must apply ${required}`);
   }
-  // Governance precedes computation: mayDerive must appear before the summation in the metric path.
-  assert.ok(exec.indexOf("mayDerive(") < exec.indexOf("computeSum("), "derivation authority must be resolved before computation");
+  // Governance precedes computation: the derivation decision must resolve before the summation.
+  assert.ok(exec.indexOf("decideDerivation(") < exec.indexOf("computeSum("), "derivation authority must be resolved before computation");
+  // And the boundary decides nothing on its own: the rules live where they always did.
+  const derivation = codeOf(new URL("../src/lib/pursuits/federation/derivation.ts", import.meta.url).pathname);
+  assert.ok(derivation.includes("export function decideDerivation"), "the decision core is in the federation module");
+  const facts = codeOf(new URL("../src/lib/pursuits/federation/batch-facts.ts", import.meta.url).pathname);
+  for (const forbidden of ["decideDerivation", "resolveDisclosure", "DERIVATION_PURPOSES", "RETENTION_CLASSES"]) {
+    assert.ok(!facts.includes(forbidden), `the fact loader must not decide: it names ${forbidden}`);
+  }
 });
 
 test("no SQL identifier originates in a plan — column names live only in the registry", () => {

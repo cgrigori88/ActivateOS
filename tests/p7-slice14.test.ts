@@ -334,14 +334,22 @@ test("INVENTORY · the DB-FREE stages are DB-free, stated rather than assumed", 
   assert.ok(!/\.query\(|getPool|Pool/.test(limiter), "the rate limiter touches no database");
 });
 
-test("INVENTORY · row-level governed loaders are bounded by INHERITANCE, and provably so", () => {
-  // These run 3 statements per row — the reason the graph reaches 162. They take the transaction's
-  // client, so they inherit its statement_timeout; what must be proven is that none of them opens a
-  // connection of its own, which would escape the bound entirely.
+test("INVENTORY · the governed loaders are bounded by INHERITANCE, and provably so", () => {
+  // Every loader takes the transaction's client, so it inherits that transaction's
+  // statement_timeout; what must be proven is that none of them opens a connection of its own,
+  // which would escape the bound entirely. The set of loaders changed when per-row acquisition
+  // became bounded set loading (D-S14-EXECUTION-BOUND) — the inheritance requirement did not.
   const body = strip(EXECUTE);
-  for (const loader of ["loadCandidates", "buildFederationViewer", "governMetric", "resolveScope"]) {
+  for (const loader of ["loadCandidates", "loadCohortViewers", "loadCohortDerivationFacts",
+                        "loadMetricInputs", "resolveScope"]) {
     const args = callArgs(body, loader);
     assert.ok(args && args[0] === "db", `${loader} must receive the transaction's client, got ${args?.[0]}`);
+  }
+  // The per-member decision is now DB-free by signature: it takes facts, not a client.
+  const decide = callArgs(body, "governMetric");
+  assert.ok(decide && decide[0] !== "db", "the per-member metric decision must not take a database client");
+  for (const file of ["lib/pursuits/federation/batch-facts.ts"]) {
+    assert.ok(!/getPool\(\)/.test(strip(SRC(file))), `${file} never acquires a connection of its own`);
   }
   assert.ok(!/getPool\(\)/.test(body), "the governed query never acquires a connection outside its transaction");
 });
