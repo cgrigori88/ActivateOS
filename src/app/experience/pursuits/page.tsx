@@ -3,14 +3,14 @@ import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
 import { executePursuitQuery, resolveGoTo } from "@/lib/experience/execute";
 import { explainPlanFor, isViewKey, PLANS, VIEW_KEYS, type ViewKey } from "@/lib/experience/plans";
 import { FIELDS, METRICS, metricKey } from "@/lib/experience/registry";
-import { buildContextManifest, EMPTY_MANIFEST } from "@/lib/experience/intent/context";
+import { buildContextManifest } from "@/lib/experience/intent/context";
 import { compileIntent } from "@/lib/experience/intent/compile";
 import { runCompiledIntent } from "@/lib/experience/intent/run";
 import { PROMPT_TEMPLATE_VERSION, intentModelEnabled, proposeIntent, recordIntentProvenance } from "@/lib/experience/intent/model";
 import { CLARIFICATION_QUESTIONS } from "@/lib/experience/intent/vocabulary";
 import { SURFACE_PROMPT_TEMPLATE_VERSION, proposeSurface } from "@/lib/experience/intent/model";
-import { compileSurface } from "@/lib/experience/surface/compile";
-import { assembleSurface } from "@/lib/experience/surface/assemble";
+import { executeExperience, resolveExperienceContext } from "@/lib/experience/surface/execute-experience";
+import { webSessionPrincipal } from "@/lib/experience/principal";
 import type { SurfaceResult } from "@/lib/experience/surface/schema";
 import { assemblePursuitTeamFromSurface } from "./actions";
 import { currentRenderBinding, currentPrincipal } from "./binding";
@@ -326,32 +326,27 @@ async function SurfaceView({ surface, compose, ctx, view, pin }: { surface?: str
   const fromModel = typeof surface !== "string" && typeof compose === "string";
   if (fromModel && !intentModelEnabled()) return notice("Composed surfaces are not enabled here.");
 
-  const base = await executePursuitQuery(PLANS[view].plan);
-  if (!base.ok) return notice("Surfaces are not enabled here.");
-  const manifest = buildContextManifest(base.result.rows);
+  // SLICE 13. The web route is an ADAPTER: it resolves its own principal, builds a certified request
+  // and calls the canonical executor. It does not orchestrate execution, and it computes no truth.
+  const principal = await webSessionPrincipal();
+  const contextSource = { kind: "PLAN" as const, planKey: view };
 
   let spec: unknown = null;
   let modelId: string | null = null;
   if (typeof surface === "string") {
     try { spec = JSON.parse(surface); } catch { spec = null; }
   } else if (typeof compose === "string") {
-    const outcome = await proposeSurface(compose, manifest);
+    // The MODEL IS AN UPSTREAM COMPILER, not part of execution: it is shown the recipient context
+    // and returns an untrusted proposal, which then travels the same deterministic path as a
+    // hand-authored spec.
+    const context = await resolveExperienceContext(contextSource, principal);
+    if (!context.ok) return notice("Surfaces are not enabled here.");
+    const outcome = await proposeSurface(compose, context.manifest);
     if (outcome.status === "DISABLED") return notice("Composed surfaces are not enabled here.");
     if (outcome.status === "UNAVAILABLE") return notice("Composed surfaces are temporarily unavailable.");
     spec = outcome.proposal;
     modelId = outcome.meta.model;
   }
-
-  const compiled = compileSurface({
-    spec,
-    manifest,
-    boundContextDigest: typeof ctx === "string" ? ctx : manifest.digest,
-    source: fromModel ? "MODEL" : "HAND_AUTHORED",
-    modelId: fromModel ? modelId : null,
-    promptTemplateVersion: fromModel ? SURFACE_PROMPT_TEMPLATE_VERSION : null,
-  });
-  // One rejection for every cause: naming which component failed would describe a partial surface.
-  if (!compiled.ok) return notice("That surface could not be composed.");
 
   // SAVING PERSISTS THE QUESTION, NOT THE ANSWER. It happens from the PRE-execution spec, so there
   // is no code path by which a governed result or a resolved identity could reach persistence.
@@ -359,7 +354,17 @@ async function SurfaceView({ surface, compose, ctx, view, pin }: { surface?: str
     return <PinResult spec={spec} source={fromModel ? "MODEL" : "HAND_AUTHORED"} name={pin} />;
   }
 
-  const assembled = await assembleSurface(compiled.validated);
+  const assembled = await executeExperience({
+    requestVersion: 1,
+    spec,
+    contextSource,
+    source: fromModel ? "MODEL" : "HAND_AUTHORED",
+    modelId: fromModel ? modelId : null,
+    promptTemplateVersion: fromModel ? SURFACE_PROMPT_TEMPLATE_VERSION : null,
+    boundContextDigest: typeof ctx === "string" ? ctx : null,
+  }, principal);
+  // One rejection for every cause: naming which component failed would describe a partial surface.
+  if (!assembled.ok && assembled.error === "INVALID") return notice("That surface could not be composed.");
   // ONE SENTENCE FOR EVERY GOVERNED CAUSE (ruling B). Revoked, became undisclosable, disappeared,
   // never existed and "no destination available" are the same bytes here — and the standalone GO TO
   // distinction is deliberately NOT preserved inside a composed surface. The outcome carries no
@@ -527,16 +532,23 @@ async function OpenPinView({ id }: { id: string }) {
   // refused at save time (ruling B). So this reads nothing to build one — the empty manifest is the
   // honest input, and any definition that somehow required context would fail to compile rather
   // than silently resolve against whatever context this request happens to have.
-  const compiled = compileSurface({
+  // SLICE 13. Ownership, open-time revalidation and principal establishment happened ABOVE; from
+  // here a pin is an ordinary certified request through the one canonical executor. There is no
+  // parallel execution path for persisted definitions.
+  const assembled = await executeExperience({
+    requestVersion: 1,
     spec: toSurfaceSpec(pin.value.definition),
-    manifest: EMPTY_MANIFEST,
-    boundContextDigest: EMPTY_MANIFEST.digest,
+    // A persisted definition structurally cannot carry a context binding, so NONE is the honest
+    // input — not a reconstruction of recipient context for symmetry's sake.
+    contextSource: { kind: "NONE" },
     // A SAVED definition is executed as a hand-authored one whatever produced it originally: its
     // provenance is audit metadata, and re-deriving it from a model is exactly what pinning avoids.
     source: "HAND_AUTHORED",
-  });
-  if (!compiled.ok) return notice("That saved surface can no longer be opened.");
-  const assembled = await assembleSurface(compiled.validated);
+    modelId: null,
+    promptTemplateVersion: null,
+    boundContextDigest: null,
+  }, await webSessionPrincipal());
+  if (!assembled.ok && assembled.error === "INVALID") return notice("That saved surface can no longer be opened.");
   if (!assembled.ok) return notice("That surface is not available.");
   return <SurfaceRender result={assembled.result} lifecycle={<PinLifecycle id={pin.value.id} name={pin.value.name} />} />;
 }

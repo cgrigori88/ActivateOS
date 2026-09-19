@@ -299,7 +299,10 @@ test("the route renders no surface provenance — SCOPED to the region that rend
   const mentions = body.split("\n").filter((l) => l.includes("promptTemplateVersion"));
   assert.ok(mentions.length > 0, "the input exists, so this assertion is not vacuous");
   for (const line of mentions) {
-    assert.match(line.trim(), /^promptTemplateVersion: fromModel \? [A-Z_]+ : null,$/, "input position only");
+    // Two legitimate INPUT forms now: the composed path's conditional, and the literal `null` a
+    // saved definition supplies (Slice 13 — a pin never re-derives from a model). Both are inputs;
+    // neither is output, which remains the actual property.
+    assert.match(line.trim(), /^promptTemplateVersion: (fromModel \? [A-Z_]+ : null|null),$/, "input position only");
   }
 
   // THE RENDERING REGION owns the property, so it is asserted there: the surface renderer never

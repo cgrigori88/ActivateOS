@@ -344,9 +344,15 @@ test("saving and opening require NO provider call", () => {
 test("opening derives a FRESH principal and re-governs", () => {
   const route = strip(SRC("app/experience/pursuits/page.tsx"));
   const open = route.slice(route.indexOf("async function OpenPinView"), route.indexOf("function ActionAffordance"));
-  assert.match(open, /const principal = await currentPrincipal\(\)/, "the principal is derived at open");
-  assert.match(open, /compileSurface\(/, "and the definition is compiled fresh");
-  assert.match(open, /assembleSurface\(compiled\.validated\)/, "and executed through the certified assembler");
+  assert.match(open, /const principal = await currentPrincipal\(\)/, "the creator principal is derived at open");
+  // SLICE 13. Compilation and assembly moved into the one canonical executor, so the property is
+  // asserted where it now lives rather than deleted. A pin is an ordinary certified request: there
+  // is no parallel execution path for persisted definitions.
+  assert.match(open, /await executeExperience\(/, "the definition executes through the canonical executor");
+  assert.match(open, /await webSessionPrincipal\(\)/, "under a freshly resolved execution principal");
+  const executor = strip(SRC("lib/experience/surface/execute-experience.ts"));
+  assert.match(executor, /compileSurface\(/, "and the executor compiles it fresh");
+  assert.match(executor, /assembleSurface\(compiled\.validated, principal\)/, "and assembles under that principal");
 });
 
 test("the pin path writes nothing outside its own table", () => {

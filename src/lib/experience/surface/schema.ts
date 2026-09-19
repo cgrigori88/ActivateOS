@@ -197,7 +197,20 @@ export interface SurfaceResult {
 export type SurfaceOutcome =
   | { ok: true; result: SurfaceResult }
   | { ok: false; error: "CAPABILITY_DENIED" }
-  | { ok: false; error: "INVALID"; detail: string }
+  /**
+   * SLICE 13 (ruling F). A deterministic malformed/uncertified request — and it carries NO detail.
+   *
+   * It used to be `{ error: "INVALID"; detail: string }`. Nothing ever produced that variant (the
+   * assembler is forbidden from it, and a Slice 7 test already asserted so), but a recipient-facing
+   * type that CAN carry a free-form internal compile reason is one refactor away from carrying one.
+   * A headless boundary has no renderer standing between the result and its consumer, so the
+   * protection cannot be "every future adapter remembers not to serialize this field": the field is
+   * gone, and the leak is unrepresentable rather than merely undone.
+   *
+   * The compiler's own detail still exists on `SurfaceCompileOutcome`, which is internal and never
+   * a recipient result — diagnostics keep it; the recipient contract cannot express it.
+   */
+  | { ok: false; error: "INVALID" }
   | { ok: false; error: "NOT_AVAILABLE" }
   /**
    * An APPLICATION failure, and deliberately NOT `NOT_AVAILABLE`. An unexpected exception, a

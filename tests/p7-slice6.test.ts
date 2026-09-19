@@ -337,9 +337,16 @@ test("RULING 8: ?compose= is model-gated; ?surface= is not, and neither bypasses
   // The model master is checked before the credential is read and before any provider call.
   assert.ok(body.indexOf("intentModelEnabled()") < body.indexOf("proposeSurface("), "the master is checked first");
   assert.match(body, /const fromModel = typeof surface !== "string" && typeof compose === "string"/);
-  // Both inputs converge on ONE validator and ONE assembler.
-  assert.equal([...body.matchAll(/compileSurface\(/g)].length, 1);
-  assert.equal([...body.matchAll(/assembleSurface\(/g)].length, 1);
+  // Both inputs converge on ONE validator and ONE assembler. SLICE 13 moved that convergence one
+  // level down: the route now reaches a single canonical executor, and the executor holds exactly
+  // one compile and one assemble. The property is unchanged and the guarantee is stronger, because
+  // the headless path cannot diverge from the web path — it IS the web path.
+  assert.equal([...body.matchAll(/executeExperience\(/g)].length, 1, "the route converges on one executor");
+  assert.ok(!/compileSurface\(|assembleSurface\(/.test(body), "and compiles/assembles nothing itself");
+  const executor = readFileSync(new URL("../src/lib/experience/surface/execute-experience.ts", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.equal([...executor.matchAll(/compileSurface\(/g)].length, 1, "ONE validator");
+  assert.equal([...executor.matchAll(/assembleSurface\(/g)].length, 1, "ONE assembler");
   // One rejection for every compile failure: no per-component detail reaches the recipient.
   assert.match(body, /That surface could not be composed\./);
   assert.ok(!/compiled\.detail/.test(body), "the rejection detail is never rendered");

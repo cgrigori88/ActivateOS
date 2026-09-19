@@ -60,5 +60,26 @@ export function testFixturePrincipal(orgId: string): ExecutionPrincipal {
   return mint(orgId, "test-fixture");
 }
 
+/**
+ * THE WEB ADAPTER'S RESOLVER (Slice 13, ruling B).
+ *
+ * Slice 1 recorded that the web path passes no principal and lets `withTenant` resolve the org from
+ * the authenticated session. That was right while the web route WAS the execution boundary. Once the
+ * canonical executor requires a branded principal — so that no headless caller can ever inherit an
+ * ambient session — the web layer needs to mint one the same way any other transport must: from its
+ * own already-authenticated context, never from request data.
+ *
+ * The org still comes from exactly where it came from before (the session, via `withTenant`), so
+ * this changes no authority; it only makes the web path state its identity explicitly instead of
+ * relying on the executor to go and find one.
+ *
+ * The import is dynamic so this module stays pure for unit tests that never touch a database.
+ */
+export async function webSessionPrincipal(): Promise<ExecutionPrincipal> {
+  const { withTenant } = await import("@/lib/db/tenant");
+  const orgId = await withTenant(async (_db, org) => org);
+  return mint(orgId, "web-session");
+}
+
 /** Read-only accessor, so callers need no knowledge of the brand. */
 export const principalOrgId = (p: ExecutionPrincipal): string => p.orgId;
