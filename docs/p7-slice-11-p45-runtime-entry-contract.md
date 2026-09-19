@@ -318,7 +318,7 @@ it to a long-running or provider-backed action without a separate execution/leas
 
 ---
 
-## T. D-P45-READ — control-plane read-side isolation (IMPLEMENTED)
+## T. D-P45-READ — control-plane read-side isolation (**HOSTED ACCEPTED / CLOSED**, `3de4813`, 45/0)
 
 > **When `controlPlane` is false, P45 runtime state must not become recipient-observable through P2/P7
 > or other unrelated recipient-facing surfaces unless an independently governed product contract
