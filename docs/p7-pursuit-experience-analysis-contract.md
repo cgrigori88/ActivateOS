@@ -887,3 +887,39 @@ as *separate* values so an assertion must choose one deliberately.
 
 **Prior closed slices are NOT refactored to adopt it.** Their gates passed on evidence that was
 correct at the time; rewriting them would risk re-certifying by editing rather than by proving.
+
+### §16I — Git state, build state, alias state and serving state are distinct
+
+§16F said "prove the serving commit". Slice 12 showed that sentence was not specific enough, by
+failing it twice in opposite directions on the same branch in the same day.
+
+> **A push does not prove serving state.** A push may trigger a build, and that build may or may not
+> become reachable through the certified hostname.
+>
+> **A successful build does not prove serving state.** A deployment can be `Ready`, carry the right
+> commit, and own no alias.
+>
+> **Alias movement is itself a hosted deployment-state change.** Moving an alias changes what every
+> user receives, with no commit, no build and no migration.
+>
+> **A manually pinned alias may stop following later branch builds.** Once pinned by hand, a branch
+> hostname can stay attached to that deployment across subsequent Git-triggered builds.
+>
+> **Before a staged gate, establish whether the certified hostname is automatically branch-managed or
+> manually pinned.** That state — not the project's history — decides whether a push can become a
+> serving transition.
+>
+> **Independently verify the serving SHA after every push, build or alias transition** that the
+> certification depends on.
+
+**What actually happened, recorded because the sequence is the argument.** Slice 12's runtime was
+committed to an auto-deploying branch, so three subsequent *documentation* pushes carried it into
+Preview while the schema was still at 113 — new application, old schema, the exact inversion §16F
+exists to prevent. The corrective sequence pinned the branch alias by hand to the last pre-Slice-12
+deployment, applied 0114 while that old application was serving, proved old-app/new-schema health,
+and then moved the alias forward. That pinning fixed the ordering **and** silently disabled the
+branch-follow behaviour: the later completion commit built successfully and never became reachable,
+so the focused gate required one more explicit alias transition to serve `3449c56`.
+
+The lesson is not "avoid manual aliases". It is that the fix for one of these four states is a change
+to another, and a gate that reasons about only one of them is reasoning about the wrong thing.

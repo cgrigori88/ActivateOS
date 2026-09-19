@@ -444,3 +444,140 @@ completed against a world that matches the recorded baseline, and I have not pro
 
 `7e735ce` remains frozen and unmodified; the working tree is back on it. Migration 0114 is applied
 nowhere. Production untouched.
+
+---
+
+# P7 SLICE 12 — HOSTED ACCEPTED / CLOSED
+
+**Certified serving implementation: `3449c56`. Hosted schema: 114. Production untouched.**
+
+The certified runtime is `3449c56`, and it stays that way even as repository HEAD advances to
+documentation successors.
+
+## The six invariants this slice establishes
+
+1. **Persist the question/workspace, never the answer or the authority.**
+2. **Owning a persisted surface definition does not confer authority over the data it describes.**
+3. **A persisted definition is revalidated and re-governed on every execution.**
+4. **Organization isolation is DB/RLS-enforced; creator-only visibility is application-layer enforced
+   under the current `app_rw` principal model.**
+5. **Definition identity and execution identity are distinct.**
+6. **Opening/rendering a persisted surface is read-only. Rename and delete require explicit
+   authenticated mutation intent.**
+
+And the implementation boundary:
+
+> **P7 may persist only its explicitly authorized durable definition state through the named
+> persistence module; all other P7 execution remains read-only with respect to canonical, business
+> and governance state.**
+
+## How it was certified, in the order it actually happened
+
+**The core gate ran against `6dccdf7` at schema 114 — 303 assertions, 0 failures** — but only after a
+corrective sequence, because H0 found Preview already serving the Slice 12 runtime against schema 113.
+That inversion, its cause and its repair are recorded in §16I; the short version is that the branch
+auto-deployed documentation commits carrying an already-committed runtime.
+
+The corrective sequence: alias pinned back to the last pre-Slice-12 deployment (`69dbe75`) → 0114
+applied while that old application was serving → **old-app/new-schema proven healthy (21/0)** → post-0114
+baseline established → alias moved forward. This is the genuine §16F transition, not a reconstruction
+of one.
+
+**Post-0114 hosted baseline of record:**
+
+```
+manifest 8c1b67b7dd3bcf94 · business e8c7a10606d0f77c · world 1431cf3977adbc98 · security aa26c63ef9c271e5
+tables 161 · policies 386 · rls_and_force 161 · rls_gaps 0 · migrations 114
+```
+
+The delta attributable to 0114 was asserted component by component: **removed 0, changed 0** in
+functions, triggers, policies, RLS, table grants and column grants; every addition names the new table.
+
+## The completion — rename and delete
+
+Ruling F authorized create + open + rename + hard delete, but the accepted runtime wired only create
+and open: `renamePin` and `deletePin` existed below the product boundary with **zero production
+callers**. H14/H18 could not be satisfied as ruled, and the slice was held open rather than redefined
+to match what happened to be built.
+
+`3449c56` wires exactly those two operations as **POST-only server actions** — never search
+parameters, because a GET is issued by crawlers, prefetchers and link previews, and a render must not
+be able to destroy durable state.
+
+**Focused hosted gate: 99 assertions, 0 failures.**
+
+| Property | Evidence |
+|---|---|
+| real rendered rename form | `$ACTION_ID_40e1a239…` submitted as a browser would; 303 |
+| real rendered delete form | `$ACTION_ID_400a70cc…`; 303 |
+| the form carries only what is allowed | `["id","name"]` — no org, no creator |
+| rename is metadata only | definition structurally identical · digest `844df5f2a423d2b6` unchanged · schema version unchanged · `created_at` unchanged |
+| forged ownership is ignored | `org_id` and `created_by_user_id` planted in the body; both discarded |
+| rendering is read-only | 7 renders left name, digest **and `updated_at`** untouched |
+| ordinary surfaces are unaffected | identical component set, no lifecycle block, **zero forms** in the result region |
+| delete is surgical | intended pin gone, no tombstone, unrelated owned pin survived |
+| a deleted pin is a governed absence | "That surface is not available." — not a 500, and distinct from the incompatibility sentence |
+| P7 mutates one table | phase ledger below |
+
+```
+baseline → create:      pinned_surface_definitions
+create → render:        NO MUTATION
+render → rename:        pinned_surface_definitions
+rename → reopen:        NO MUTATION
+reopen → r9:            pinned_surface_definitions
+before → after delete:  pinned_surface_definitions
+```
+
+Final state: serving `3449c56` · head 114 · pin table empty · 161 tables (re-derived, not inherited) ·
+P45 state zero · audit state zero · org features untouched · world back to `1431cf3977adbc98`.
+
+## The boundary asymmetry, stated honestly
+
+**Organization isolation is database-enforced.** Creator visibility is **not**. The architectural
+control that proves this ran in an isolated scratch clone with a real non-BYPASSRLS `app_rw` session,
+because the hosted owner connection cannot become `app_rw` (`set_option: false`) and bypasses RLS
+anyway — an owner-run "RLS probe" would have proved nothing:
+
+```
+ORG ISOLATION IS RLS-ENFORCED:           org B's pin invisible from org A
+CREATOR PRIVACY IS **NOT** RLS-ENFORCED: a same-org peer's pin IS visible to RLS
+the REPOSITORY's org+creator predicate is what denies the peer
+```
+
+**This slice does not provide user-private RLS, and does not claim to.**
+
+## Limitations recorded, not worked around
+
+- **Same-org peer, hosted:** Preview holds exactly **one** authenticated identity (`auth.users` = 1).
+  The peer case is naturally unreachable and no account was manufactured for it. The discriminatory
+  proof is the scratch-clone behavioural probe (29/0): peer denied on load, rename and delete, with the
+  refusal indistinguishable from "no such pin".
+- **Role changes are semantically inert for a pinned surface.** A pin cannot carry an ACTION component,
+  and role is read only when one is present. No role flip was manufactured to produce a result it could
+  not have produced.
+- **Model-authored pinning** is supported by the runtime but was not exercised end to end; arming the
+  intent gate was out of scope for this gate.
+
+## Regression at the certified commit
+
+```
+p7-slice12 37/37 · unit 814/814 · tsc clean · build clean
+ordering-determinism 46/46 · seeded-clone 66/66
+certify-world: 51 suites consistently clean + one known pre-existing intermittent p45-program failure
+certification protected-state integrity: PASS (d43fe13b1f194132 start = end, every run)
+```
+
+**This is not 52/52 and must not be recorded as such.** The exception is tracked as
+`D-P45-PROGRAM-FLAKE` and does not block this slice: the same failure occurs on the previously
+certified `6dccdf7`; the completion diff touches only `page.tsx`, `pin-actions.ts` and Slice 12 tests,
+with no P45, concurrency, schema or migration change; direct verifier execution passes; the failure
+count varies between runs; and protected state was identical start-to-end in every run.
+
+**We proved the flake is pre-existing. We did not prove its failure rate is identical across commits.**
+Root cause, the specific failing assertions, and whether load is causal all remain unknown.
+
+## Not authorized by this closeout
+
+Durable exact-subject/bookmark surfaces · ACTION-bearing pinned surfaces · shared or org-wide pins ·
+semantic in-place editing or version chains · P45 activation · deeper identity/action chaining ·
+generic workflow persistence. Slice 11 remains blocked.
