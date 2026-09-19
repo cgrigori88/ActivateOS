@@ -378,9 +378,35 @@ async function main(): Promise<void> {
   const many = await Promise.allSettled([1, 2, 3, 4, 5].map(() => resume(f5, r5.id)));
   const adv5 = many.filter((x) => x.status === "fulfilled" && x.value.dispatched).length;
   check("61: FIVE same-generation resumes still advance exactly once", adv5 === 1, `${adv5} advanced of 5`);
+  /**
+   * D-P45-PROGRAM-FLAKE — EVIDENCE ONLY. The assertion below is unchanged in condition and expected
+   * value; it previously reported no detail, so an intermittent failure could not be told apart from
+   * a duplicate consequential EFFECT (which would be a product defect) or a duplicate REQUEST
+   * (which would not). These three numbers are the whole difference, so they are now reported.
+   */
+  const r5touches = await touches(db, f5.orgId);
+  const r5execs = await execs(db, f5.orgId);
+  const r5steps = await stepsOf(db, r5.id);
   check("62: one effect, one invocation, step 2 untouched",
-    (await touches(db, f5.orgId)) === 1 && (await execs(db, f5.orgId)) === 1
-    && (await stepsOf(db, r5.id))[1].status === "PENDING");
+    r5touches === 1 && r5execs === 1 && r5steps[1].status === "PENDING",
+    `effects=${r5touches} invocations=${r5execs} step2=${r5steps[1].status}`);
+  if (adv5 !== 1 || r5touches !== 1 || r5execs !== 1 || r5steps[1].status !== "PENDING") {
+    console.log("  [D-P45-PROGRAM-FLAKE] five-racer diagnostic");
+    console.log(`    resumes: ${many.map((x, i) => x.status === "fulfilled"
+      ? `#${i + 1} dispatched=${x.value.dispatched} seq=${x.value.stepSeq ?? "—"} stale=${x.value.stale} inv=${x.value.invocationId ?? "—"} reason=${x.value.reason ?? "—"}`
+      : `#${i + 1} REJECTED ${String((x as PromiseRejectedResult).reason).slice(0, 120)}`).join("\n             ")}`);
+    console.log(`    effects(campaign_touches)=${r5touches} · EXECUTED invocations=${r5execs}`);
+    console.log(`    steps: ${r5steps.map((s) => `seq${s.seq}:${s.status}(attempt=${s.attempt},inv=${s.invocation_id ?? "—"},idem=${s.idempotency_key})`).join(" ")}`);
+    const invPerStep = (await db.query<{ seq: number; n: string }>(
+      `select st.seq, count(i.id)::text n from pursuit_run_steps st
+         left join governed_action_invocations i on i.run_step_id = st.id
+        where st.run_id = $1 group by st.seq order by st.seq`, [r5.id])).rows;
+    console.log(`    invocations per step: ${invPerStep.map((x) => `seq${x.seq}=${x.n}`).join(" ")}`);
+    const r5run = await runOf(db, r5.id);
+    console.log(`    run: status=${r5run.status} current_step=${r5run.current_step_id ?? "—"}`);
+    console.log(`    ledger: ${(await types(db, r5.id)).join(",")}`);
+    console.log(`    db=${CONN.replace(/:[^:@/]*@/, ":***@").split("/").pop()} pid=${process.pid} at=${new Date().toISOString()}`);
+  }
 
   // Parking for approval ends the generation too, so duplicates cannot pile requests onto one step.
   const fap = await txPlant(db, "raceapp");

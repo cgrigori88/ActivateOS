@@ -166,6 +166,19 @@ function runSuite(name: string, url: string): Result {
     const err = e as { stdout?: string; stderr?: string };
     out = `${err.stdout ?? ""}\n${err.stderr ?? ""}`;
   }
+  /**
+   * D-P45-PROGRAM-FLAKE — EVIDENCE ONLY, opt-in, default behaviour unchanged.
+   *
+   * `runSuite` captures the verifier's stdout and surfaces only its summary line and its `✗` lines,
+   * so any diagnostic a suite prints while failing is discarded by the runner that is supposed to be
+   * reporting the failure. That is why an intermittent failure here was characterised as
+   * "totals-only output" for far longer than it needed to be. With VERIFY_DUMP_ON_FAIL set, the
+   * captured output is forwarded verbatim when the suite did not pass cleanly.
+   */
+  if (process.env.VERIFY_DUMP_ON_FAIL && /(\d+) passed, ([1-9]\d*) failed|fatal:/i.test(out)) {
+    console.log(`\n----- captured output: ${name} -----\n${out}\n----- end ${name} -----\n`);
+  }
+
   const m = out.match(/(\d+) passed, (\d+) failed/g);
   const failures = [...out.matchAll(/^\s*✗ (.+)$/gm)].map((x) => x[1].trim())
     .filter((f) => !/^FAILURES —/.test(f));
