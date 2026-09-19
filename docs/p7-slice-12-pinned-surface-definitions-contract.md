@@ -365,3 +365,82 @@ replacement cluster, so I stopped and returned this instead.
 found it binds `:5432` with no `postgres` role, and stopped it. `brew services list` reports
 `postgresql@17 none` and no listener remains — **the machine is exactly as I found it**, and nothing
 was initialized, seeded or substituted.
+
+
+---
+
+## X. Harness reconstruction — AUTHORIZED, EXECUTED, and STOPPED with two findings
+
+**What was done, exactly as documented** (`SESSION-HANDOFF.md` §§641–651), from the **pre-0114** tree
+(`3de4813`: 113 migration files, no `0114`, clean):
+
+```sh
+PG=/opt/homebrew/opt/postgresql@17/bin
+$PG/initdb -D <scratchpad>/pgdata -U postgres --auth=trust -E UTF8 --locale=en_US.UTF-8
+mkdir -p /tmp/pgv5433 && $PG/pg_ctl -D <scratchpad>/pgdata -o "-p 5433 -k /tmp/pgv5433" -l <dir>/log start
+env -u DEMO_TARGET_URL -u DATABASE_URL DEMO_PGHOST=127.0.0.1 DEMO_PGPORT=5433 DEMO_DB_NAME=pursuit_demo \
+  DEMO_ADMIN_URL=postgresql://postgres:postgres@127.0.0.1:5433/postgres \
+  DEMO_URL=postgresql://postgres:postgres@127.0.0.1:5433/pursuit_demo npx tsx scripts/seed-demo-world.ts
+```
+
+No improvised seed, schema subset, dump or hand-made fixture was used.
+
+**Harness identity, proven rather than inferred (§4):**
+
+| | |
+|---|---|
+| version / port / socket | **PostgreSQL 17.11**, **5433**, **`/tmp/pgv5433`** |
+| database / role | **`pursuit_demo`** / **`postgres`** |
+| public tables | **159** |
+| `schema_migrations` | **empty** — exactly as the handoff documents for a `demo-db.ts`-built world |
+| `pinned_surface_definitions` | **absent** — 0114 applied nowhere |
+| Homebrew `:5432` | **stopped**, nothing listening — it is not the database under test |
+
+### Finding 1 — the canonical world is NOT reproducible from source
+
+| Instance | World digest |
+|---|---|
+| pre-loss recorded baseline | **`c9004670ffda112f`** |
+| clean reconstruction #1 | **`295a0090ef57590c`** |
+| clean reconstruction #2 (identical command, minutes later) | **`d43fe13b1f194132`** |
+
+Two clean recreations **on the same day, from the same commit, with the same command** produced
+**two different digests**, and neither matched the recorded baseline. So the divergence is **not**
+date-parameterisation — **the seed is non-deterministic run to run.**
+
+What that means precisely, stated narrowly: `c9004670ffda112f` was a property of *that particular
+seeded instance*, not of the repository. Within any single instance the world is stable —
+`certify-world` reported start digest **==** end digest in both reconstructions — so its **drift
+detection still works**. What is lost is **cross-instance reproducibility**, and therefore the ability
+to answer *"can the repository reconstruct the certified pre-0114 world from source?"* with **yes**.
+
+**I have not blessed a new baseline.** Per §2 this is returned, not resolved.
+
+### Finding 2 — `ordering-determinism` carries a stale hard-coded fixture date
+
+Reproduced **identically in both reconstructions**: 42 passed, **1 failed**.
+
+> `C2 non-unique LIMIT: the 6 kept activity rows are the documented (occurred_at desc, id desc) set`
+> — got `["Cyberdyne Systems","Initech Financial (expansion)","Wayne Enterprises","Umbrella Health
+> Systems","DG82 Act 0","DG82 Act 1"]`
+
+**Root cause proven, not guessed.** The fixture plants eight outcome events at a **hard-coded literal**
+`'2026-09-16T00:00:00Z'`, with a comment asserting they are *"newer than everything else"*
+(`scripts/ordering-determinism-verify.ts` §§294–305). A freshly seeded world carries
+`outcome_events` to **2026-09-18** (today is 2026-09-19), so **four real rows now outrank the
+fixture** and only `DG82 Act 0`/`1` survive into the top six.
+
+This is a **defect in the certification suite**, exposed by reconstruction — the CFR-1.2 clock class
+this engagement has tracked throughout. It is **not** a Slice 12 defect (`7e735ce` was not even
+checked out) and **not** a product defect: the ordering code under test is unchanged, and the
+expectation is what has gone stale. **I have not edited the suite.**
+
+### Consequence
+
+The pre-condition in §3 — *"Can the repository still reconstruct the same certified pre-0114 world
+from source?"* — is **answered NO**, for a reason more fundamental than the missing data directory.
+Slice 12's missing local evidence (seeded-clone verifier, `certify-world`) therefore cannot be
+completed against a world that matches the recorded baseline, and I have not proceeded to it.
+
+`7e735ce` remains frozen and unmodified; the working tree is back on it. Migration 0114 is applied
+nowhere. Production untouched.
