@@ -39,7 +39,35 @@ Forward migrations from here: add a new `NNNN_*.sql` (idempotent), run `db:migra
 
 Migrations are **forward-only** (no down-path). Recovery is therefore restore-based, matched to the failure:
 
-- **Bad app deploy** — redeploy the previous build (no schema change needed).
+- **Bad app deploy** — **this depends on whether a certified prior artifact still exists, and it is no longer safe to assume one does.**
+
+  **A. A retained, separately-certified prior Production deployment exists** → promote/roll back to
+  **that exact retained artifact** with the supported mechanism (`vercel promote <url|id>`, or
+  `vercel rollback <url|id>` to revert to the previous one). No schema change needed. This is the
+  fast path and the only one that is genuinely instant.
+
+  **B. No retained certified prior artifact exists** → **do not blindly redeploy an old source
+  against Production.** Preserved Git source is the recovery *starting point*, not a rollback. Before
+  any Production traffic moves, require: a **source compatibility review** · a **current Production
+  configuration review** · **migration/schema compatibility** confirmed · a **read/write
+  side-effect review** of every surface the certification will touch · certification proportionate
+  to the Production observability actually available · and **explicit operator authorization**.
+
+  > **Source recoverability is not equivalent to an immediately certified rollback artifact.**
+
+  This distinction is not theoretical. On 2026-09-20 a deployment-cleanup sweep deleted twelve
+  historical Production artifacts (`D-P454-PRODUCTION-ARTIFACT-DELETION`), and the obvious
+  candidate for reconstruction — `97e975f0`, the documented known-good demo *source* — turned out to
+  write `pipeline_snapshots` **from a page render**, so rebuilding it would have mutated canonical
+  Production history during its own certification. **Restoring a rollback artifact must not cost a
+  Production write.** As of that date the available built Production rollback artifact is **NONE**;
+  see `D-PROD-ROLLBACK-ARTIFACT-RETENTION`.
+
+  **Destructive deployment cleanup is itself a hazard to this procedure.** Any such operation must
+  enumerate **with pagination**, freeze the candidate set, positively classify Environment and
+  project/database per candidate, exclude Production explicitly, print the final ids and assert a
+  **zero-Production-candidate** count before deleting. `--safe` protects an actively aliased
+  deployment; it is **not** environment scoping.
 - **RLS/cutover regression** — the documented RLS-level rollback: repoint `DATABASE_URL` at the owner string and redeploy (RLS goes inert); investigate; re-point at `app_rw`.
 - **Bad schema change / data corruption** — provision a fresh database, bootstrap + `db:migrate` to the target schema, then `backup-restore` the last good logical backup into it and cut over. Rehearsed end-to-end by `release-rehearsal`.
 

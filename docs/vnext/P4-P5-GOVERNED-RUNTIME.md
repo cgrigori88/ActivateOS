@@ -1636,3 +1636,47 @@ for `draft_campaign_touch@2` → attempt v1 → **rejected by the version check*
 → insert a new ACTIVE `@1` grant → the identical dispatch **succeeds**. One sequence proves four
 things: wrong version rejects, exact version authorizes, grant identity is immutable, and
 replacement is revoke-then-insert.
+
+
+---
+
+## 23. P45-4 — HOSTED ACCEPTED / CLOSED (2026-09-20)
+
+> **Being an AGENT confers zero authority. Authority arises only from a currently-live grant for the
+> exact actor, capability and version — and a credential and a governed actor are two identities.**
+
+**Canonical `dpl_7P8gX9EFxf6sHmFFiABg7kf1H39A` on `7c4aea5` · schema 116 ·
+`GOVERNED_AGENT_ENFORCEMENT_ENABLED` true · `app_rw`, `rolbypassrls=false`, tenant enforcement
+active · sending disarmed · P45 runtime zero.** Strict standby and sole security rollback:
+**ON-B `dpl_3CiYuRLR4eZ8ZW3QaM89XN3zLEeo`**, same source, enforcement true.
+
+**Accepted capabilities and invariants**
+
+- a real `/api/mcp` AGENT production path — not a verifier calling `dispatchSkill`;
+- credential identity **distinct from** governed-actor identity, in three columns, none overloaded;
+- trusted credential → governed-actor binding, established only by `resolve_api_key`;
+- **AGENT type alone grants zero authority**;
+- an **exact live versioned** grant is required; a NULL/wildcard version does not satisfy strict mode;
+- expiry decided by **PostgreSQL `transaction_timestamp()`**, with no time operand exposed;
+- **permanent grant attribution** — `grant_id`, `NO ACTION`, never `SET NULL`;
+- strict mandatory binding **live** on the canonical service;
+- one real `draft_campaign_touch@1` governed execution, fully attributed;
+- truthful **"Drafted by \<governed actor\>"**, rendered only where `governed_actor_id` is non-null;
+- **no fabricated model, token or cost evidence** — and no column for any;
+- security-weaker Preview execution surfaces **removed**;
+- **WORKER/SYSTEM remain out of scope**; **P3 2C-B remains deferred**;
+- model/usage/cost moves to **Runtime observability + P8 hooks**, *only when the evidence actually
+  exists* — that item inherits the obligation to design honest attribution, not to populate fields.
+
+**Evidence.** OFF-posture certification **30/0** · strict certification of ON-A and ON-B **22/0** ·
+hosted unbound rejection **11/0** at the mandatory-binding check on both · permanent `p45-4` suite
+**52/0** · unit **929/929** · `certify-world` **56 suites clean** · `p6ig-governance` **92/0**.
+Boundary A **2026-09-20T05:53:33.685Z**; Boundary B **2026-09-20T06:18:50Z**.
+
+**Referenced separately, and not part of this disposition:**
+`D-P454-PRODUCTION-ARTIFACT-DELETION` — **DOCUMENTED / OWNER-ACCEPTED RESIDUAL OPERATIONAL RISK**.
+Twelve historical Production deployment artifacts were deleted during the Boundary-B cleanup. **Live
+Production remained serving and Production data was not modified by the P45-4 work.** The loss is
+artifact and instant-rollback-capability loss. It is **not** remediated, **not** restored, and this
+slice must never be described as having left Production untouched. The open follow-up is
+`D-PROD-ROLLBACK-ARTIFACT-RETENTION`.
