@@ -5,6 +5,7 @@ import {
   dayLabel,
   ownerCopy,
   resolveOwner,
+  selectDisplayPlanAction,
   type PlanDisplayState,
   type PlanOwner,
   type PlanTeamMember,
@@ -161,6 +162,8 @@ export interface PursuitAttentionInput {
   team: PlanTeamMember[];
   /** The in-force plan's staged action as the Queue holds it. */
   staged: { id: string; dueAt: string; status: string } | null;
+  /** Every staged queue row of the plan in force, by action key — the selector's resolution input. */
+  stagedByActionKey?: Record<string, { status: string }>;
   /** The earliest material change recorded since the plan in force was decided. */
   firstChangeAt: string | null;
 }
@@ -219,8 +222,15 @@ export function derivePursuitAttention(input: PursuitAttentionInput, caller: Cal
     };
   };
 
-  const na = inForce?.content.nextAction ?? null;
-  const staged = na?.stagedMotionActionId && input.staged && input.staged.id === na.stagedMotionActionId ? input.staged : null;
+  // ONE attention line per pursuit, and the action it speaks about comes from the canonical
+  // selector — the same function Pursuit Detail and the approval label use, so Today cannot drift
+  // into its own idea of what "current" means.
+  const na = inForce
+    ? selectDisplayPlanAction(inForce.content.actions, inForce.basis.inputs.milestones, input.stagedByActionKey ?? {})?.action ?? null
+    : null;
+  // `input.staged` is already the queue row the loader resolved for this plan's displayed action —
+  // the pairing is made once, where the lineage is read, not re-derived here.
+  const staged = na ? input.staged : null;
   const stagedPending = staged?.status === "pending";
   const inForceNow = !!inForce && PLAN_STATES_IN_FORCE.includes(state);
   const review = inForceNow && state === "REVIEW_NEEDED";
@@ -239,7 +249,7 @@ export function derivePursuitAttention(input: PursuitAttentionInput, caller: Cal
       input.firstChangeAt ?? inForce.createdAt, { refType: "pursuit_plan_revision", refId: inForce.id }));
   }
   if (pending) {
-    const text = pending.content.nextAction?.text ?? pending.content.focus?.headline ?? null;
+    const text = pending.content.actions[0]?.text ?? pending.content.focus?.headline ?? null;
     const base = internal && text ? `PursuitOS recommends: ${sentence(text)}` : "PursuitOS has recommended a plan for this pursuit.";
     const detail = view.decision.stale ? `${base} The pursuit has changed since — ask for an updated recommendation.` : base;
     // Same urgency as a route awaiting approval: a recommendation waiting on a person is the
@@ -310,7 +320,7 @@ export function derivePursuitAttention(input: PursuitAttentionInput, caller: Cal
   // Owner and due describe the pursuit's approved action (or, awaiting a decision, the one
   // proposed). The due state is shown only when the primary IS about that action — on a plan
   // review it would point the reader at the stale step.
-  const ownerSource = na ? liveOwner(na.owner, input.team) : pending?.content.nextAction?.owner ?? null;
+  const ownerSource = na ? liveOwner(na.owner, input.team) : pending?.content.actions[0]?.owner ?? null;
   const dueBucketNow = stagedPending && staged ? dueBucket(new Date(staged.dueAt), startOfToday(now)) : null;
   const due = stagedPending && staged && dueBucketNow && dueBucketNow !== "NO_DATE" && primary.layer === "EXECUTION"
     ? {

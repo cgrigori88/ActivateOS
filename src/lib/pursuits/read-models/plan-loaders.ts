@@ -5,8 +5,11 @@ import { getPursuitTeam } from "./detail";
 import { composeMissingContext } from "./missing-context";
 import {
   composePursuitPlanView,
+  legacyStagedActionId,
+  normalizePlanContent,
   recommendPursuitPlan,
   resolvePlanStanding,
+  UnknownPlanContentSchema,
   type GoalRecord,
   type PlanLedgerChange,
   type PlanRecommendation,
@@ -197,7 +200,7 @@ export async function loadPlanRecords(db: PoolClient, caller: Caller, pursuitId:
     )
     : { rows: [] as PlanRow[] };
   const p = plan.rows[0];
-  if (!p) return { goal: g ? goalRecord(g) : null, plan: null, revisions: [], stagedActions: {} };
+  if (!p) return { goal: g ? goalRecord(g) : null, plan: null, revisions: [], stagedActions: {}, stagedByActionKey: {} };
 
   const revs = await db.query<RevisionRow>(
     `select id, revision_no, kind, decision, responds_to_revision_id, content, basis, basis_fingerprint,
@@ -207,12 +210,42 @@ export async function loadPlanRecords(db: PoolClient, caller: Caller, pursuitId:
   );
   const revisions = revs.rows.map(revisionRecord);
 
-  const stagedIds = revisions.map((r) => r.content.nextAction?.stagedMotionActionId).filter((x): x is string => !!x);
+  // ── STAGED QUEUE ROWS, BY TWO EXPLICITLY VERSIONED ROUTES ────────────────────────────────────
+  //
+  // v1 revisions carry the staging pointer INSIDE their immutable content; v2 revisions do not,
+  // because staging happens over time and an immutable row cannot acquire a pointer. v2 lineage
+  // therefore lives on `motion_actions` (0115) and is read structurally.
+  //
+  // Each route names its version outright. Neither infers a version from the presence of a field:
+  // a future schema carrying an `actions` array must not be read as v2 by shape.
+  const legacyIds = revisions.filter((r) => r.contentSchema === 1)
+    .map((r) => r.legacyStagedActionId).filter((x): x is string => !!x);
   const stagedActions: PlanRecords["stagedActions"] = {};
-  if (stagedIds.length) {
+  const stagedByActionKey: PlanRecords["stagedByActionKey"] = {};
+  if (legacyIds.length) {
     const staged = await db.query<{ id: string; due_at: Date; status: string }>(
-      `select id, due_at, status from motion_actions where id = any($1) and org_id = $2`, [stagedIds, caller.orgId]);
+      `select id, due_at, status from motion_actions where id = any($1) and org_id = $2`, [legacyIds, caller.orgId]);
     for (const s of staged.rows) stagedActions[s.id] = { dueAt: s.due_at.toISOString(), status: s.status };
+  }
+  const inForceRevision = revisions.filter((r) => r.kind === "DECISION" && (r.decision === "APPROVED" || r.decision === "ADJUSTED")).at(-1) ?? null;
+  if (inForceRevision) {
+    if (inForceRevision.contentSchema === 1) {
+      const id = inForceRevision.legacyStagedActionId;
+      const row = id ? stagedActions[id] : undefined;
+      const key = inForceRevision.content.actions[0]?.key;
+      if (id && row && key) stagedByActionKey[key] = { motionActionId: id, dueAt: row.dueAt, status: row.status };
+    } else {
+      // LIVE LINEAGE REQUIRES `plan_revision_id`. A row whose revision was deleted keeps its
+      // `plan_action_key` as provenance only, and this predicate deliberately cannot see it.
+      const live = await db.query<{ id: string; due_at: Date; status: string; plan_action_key: string }>(
+        `select id, due_at, status, plan_action_key from motion_actions
+          where org_id = $1 and plan_revision_id = $2 and plan_action_key is not null`,
+        [caller.orgId, inForceRevision.id]);
+      for (const row of live.rows) {
+        stagedActions[row.id] = { dueAt: row.due_at.toISOString(), status: row.status };
+        stagedByActionKey[row.plan_action_key] = { motionActionId: row.id, dueAt: row.due_at.toISOString(), status: row.status };
+      }
+    }
   }
 
   return {
@@ -220,6 +253,7 @@ export async function loadPlanRecords(db: PoolClient, caller: Caller, pursuitId:
     plan: { id: p.id, goalId: p.goal_id, status: p.status, createdAt: p.created_at.toISOString() },
     revisions,
     stagedActions,
+    stagedByActionKey,
   };
 }
 
@@ -231,9 +265,20 @@ function goalRecord(g: GoalRow): GoalRecord {
 }
 
 function revisionRecord(r: RevisionRow): RevisionRecord {
+  // The ONLY place a stored row becomes a usable object. `normalizePlanContent` reads the stored
+  // `schema` and throws on a version this build does not know — the row is never guessed at, and
+  // never rewritten.
+  const stored = r.content as { schema?: unknown };
+  const content = normalizePlanContent(stored);
+  const contentSchema = stored.schema === 1 ? 1 as const : 2 as const;
+  // The basis version tracks the content version. A mismatch means the row was written by
+  // something that did not respect that pairing, and a fingerprint comparison on it would be
+  // meaningless, so it fails closed here rather than producing a confident wrong answer.
+  if (r.basis?.inputs?.v !== contentSchema) throw new UnknownPlanContentSchema({ content: stored.schema, basis: r.basis?.inputs?.v });
   return {
     id: r.id, revisionNo: r.revision_no, kind: r.kind, decision: r.decision,
-    respondsToRevisionId: r.responds_to_revision_id, content: r.content, basis: r.basis,
+    respondsToRevisionId: r.responds_to_revision_id, content, contentSchema,
+    legacyStagedActionId: legacyStagedActionId(stored), basis: r.basis,
     fingerprint: r.basis_fingerprint, adjustments: r.adjustments, reviewTrigger: r.review_trigger,
     reason: r.reason, actorType: r.actor_type, createdAt: r.created_at.toISOString(),
   };

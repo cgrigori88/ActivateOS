@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { recordChange } from "@/lib/pursuits/ledger";
 import { DECIDE_SKILL, dispatchSkill, type Actor } from "@/lib/pursuits/federation/skills";
 import type { DataEnvironment } from "@/lib/pursuits/lineage";
+import { normalizePlanContent, selectDisplayPlanAction } from "@/lib/pursuits/read-models/pursuit-plan";
 
 /**
  * P45-2 — the approval lifecycle.
@@ -253,6 +254,25 @@ export async function decideApproval(
 }
 
 /**
+ * The label for a pending approval: which plan action the run is about.
+ *
+ * SQL RETRIEVES THE ROW; TYPESCRIPT INTERPRETS IT. This used to be a JSON pointer inside the query
+ * (`content->'nextAction'->>'text'`), which is shape-aware rather than version-aware — a future
+ * schema without that field would silently label every approval `null`, and one that happened to
+ * carry it would be interpreted as something it is not. The normalized boundary dispatches on the
+ * stored `schema` and throws on a version this build does not know, so an unrecognised revision
+ * yields NO label rather than a confident wrong one.
+ */
+function planActionLabel(content: unknown): string | null {
+  try {
+    const normalized = normalizePlanContent(content);
+    return selectDisplayPlanAction(normalized.actions, {})?.action.text ?? null;
+  } catch {
+    return null;   // unknown schema: fail safe, never guess a shape
+  }
+}
+
+/**
  * The Approvals read model. Only genuinely open requests — a request with ANY terminal row
  * (including INVALIDATED) is not pending and must never be offered for decision.
  */
@@ -262,7 +282,7 @@ export async function pendingApprovals(db: PoolClient, orgId: string, limit = 50
             a.run_step_id::text run_step_id, a.plan_revision_id::text plan_revision_id,
             a.skill_id, a.skill_version, a.requested_by_actor_id::text requested_by_actor_id,
             a.created_at, a.reason why, c.legal_name account,
-            rv.content->'nextAction'->>'text' action_text
+            rv.content as plan_content
        from pursuit_run_approvals a
        join pursuit_runs r on r.id = a.run_id and r.org_id = a.org_id
        join pursuits p on p.id = a.pursuit_id
@@ -279,7 +299,7 @@ export async function pendingApprovals(db: PoolClient, orgId: string, limit = 50
     skillId: String(r.skill_id), skillVersion: Number(r.skill_version),
     requestedByActorId: String(r.requested_by_actor_id),
     requestedAt: (r.created_at as Date).toISOString(),
-    account: (r.account as string) ?? null, actionText: (r.action_text as string) ?? null,
+    account: (r.account as string) ?? null, actionText: planActionLabel(r.plan_content),
     whyRequired: (r.why as string) ?? "this capability requires a human decision",
   }));
 }

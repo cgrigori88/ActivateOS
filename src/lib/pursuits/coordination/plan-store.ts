@@ -9,6 +9,9 @@ import {
   RECOMMENDER_VERSION,
   applyAdjustments,
   assessPlanReview,
+  evaluateMilestones,
+  freshBasisFor,
+  selectCurrentPlanAction,
   recommendPursuitPlan,
   resolvePlanStanding,
   type PlanAdjustmentChange,
@@ -247,7 +250,11 @@ export async function decidePlan(
 
   const state = await loadPlanState(db, caller, args.pursuitId, now);
   if (!state) throw new Error("pursuit not found in this organization");
-  if (args.decision !== "REJECTED" && recommendPursuitPlan(state, now).basis.fingerprint !== pending.fingerprint) {
+  // COMPARE LIKE WITH LIKE. A pending v1 recommendation is compared against the v1 algorithm run
+  // on today's world; comparing it against the v2 computation would never match and would make
+  // every legacy recommendation permanently undecidable.
+  const liveRec = recommendPursuitPlan(state, now);
+  if (args.decision !== "REJECTED" && freshBasisFor(pending.basis, liveRec).fingerprint !== pending.fingerprint) {
     throw new Error("The pursuit has changed since this plan was recommended — request an updated plan first.");
   }
 
@@ -259,31 +266,18 @@ export async function decidePlan(
     changes = adjusted.changes;
   }
 
-  // Stage the next action into the motion's existing queue — only when a person put
-  // the plan in force, and only onto an ACTIVE motion (activation is what makes a
-  // motion's work schedulable, 0009). Otherwise it stays with the plan, unqueued,
-  // and the surface says so.
-  let stagedMotionActionId: string | null = null;
-  if (args.decision !== "REJECTED" && content.nextAction && content.motion.motionId) {
-    const motion = (await db.query<{ status: string }>(
-      `select status from revenue_motions where id = $1 and org_id = $2`, [content.motion.motionId, actor.orgId])).rows[0];
-    if (motion?.status === "active") {
-      const step = Number((await db.query<{ n: number }>(
-        `select coalesce(max(step), 0) + 1 as n from motion_actions where motion_id = $1`, [content.motion.motionId])).rows[0].n);
-      const dueAt = nextBusinessDay(new Date(now.getTime() + content.nextAction.dueInDays * 86_400_000));
-      stagedMotionActionId = (await db.query<{ id: string }>(
-        `insert into motion_actions (org_id, motion_id, step, action, due_at) values ($1,$2,$3,$4,$5) returning id`,
-        [actor.orgId, content.motion.motionId, step, content.nextAction.text, dueAt])).rows[0].id;
-      content = { ...content, nextAction: { ...content.nextAction, stagedMotionActionId } };
-      await recordChange(db, {
-        orgId: actor.orgId, pursuitId: args.pursuitId, entityType: "motion_action", entityId: stagedMotionActionId,
-        changeType: "ACTION_CREATED", materiality: "LOW",
-        reason: `Plan action queued: ${content.nextAction!.text}`,
-        actorType: "USER", actorId: actor.id, triggerType: "MANUAL", dataEnvironment: opts.env,
-        after: { motionId: content.motion.motionId, step, dueAt: dueAt.toISOString(), planId: plan.id },
-      });
-    }
-  }
+  // A DECISION IS A NEW ROW, AND NEW ROWS ARE WRITTEN AT THE CURRENT VERSION.
+  //
+  // Deciding a legacy v1 recommendation therefore records a v2 decision: the normalized content
+  // (its one action lifted into `actions[0]`, with nothing invented) paired with a v2 basis for the
+  // same world. The pairing matters — a row whose content and basis disagree about their version
+  // cannot be reviewed, because neither algorithm describes it. The v1 recommendation row itself is
+  // untouched and stays v1 for life; nothing is rewritten and nothing is backfilled.
+  //
+  // For a v2 recommendation the recommendation's OWN basis is carried through unchanged, which is
+  // what keeps a human's edit, reorder or removal from rewriting the recommendation basis: plan
+  // review asks whether the world moved, never whether the world would reproduce the human's words.
+  const decidedBasis = pending.contentSchema === 1 ? liveRec.basis : pending.basis;
 
   const revisionNo = await nextRevisionNo(db, plan.id);
   const revisionId = (await db.query<{ id: string }>(
@@ -292,8 +286,55 @@ export async function decidePlan(
         basis_fingerprint, adjustments, reason, actor_type, actor_id, correlation_id, data_environment)
      values ($1,$2,$3,$4,'DECISION',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) returning id`,
     [actor.orgId, args.pursuitId, plan.id, revisionNo, args.decision, pending.id, JSON.stringify(content),
-     JSON.stringify(pending.basis), pending.fingerprint, changes ? JSON.stringify(changes) : null, reason,
+     JSON.stringify(decidedBasis), decidedBasis.fingerprint, changes ? JSON.stringify(changes) : null, reason,
      actor.type, actor.id, opts.correlationId, opts.env])).rows[0].id;
+
+  // ── STAGE EXACTLY ONE ACTION, AFTER THE REVISION EXISTS ─────────────────────────────────────
+  //
+  // The CURRENT ACTIONABLE action, chosen by the canonical selector — never the whole plan. A plan
+  // is a sequence of intentions; the Queue is a worklist of work in hand. Staging three rows on
+  // approval would put work nobody can start yet in front of an operator, and would make the Queue
+  // represent blocked state it has no model for. Later actions are staged as commercial state
+  // progresses, through the lineage columns on the mutable row.
+  //
+  // Only onto an ACTIVE motion (activation is what makes a motion's work schedulable, 0009);
+  // otherwise the action stays with the plan, unqueued, and the surface says so.
+  let stagedMotionActionId: string | null = null;
+  let stagedActionKey: string | null = null;
+  if (args.decision !== "REJECTED" && content.motion.motionId) {
+    const milestones = evaluateMilestones(content.milestones, state);
+    const current = selectCurrentPlanAction(content.actions, milestones);
+    if (current) {
+      // THE MEMBERSHIP PROOF. The foreign key proves the revision exists in this tenant; it cannot
+      // prove that a key names an action inside that revision's JSON. So the pair persisted below
+      // is taken from objects RESOLVED HERE — the normalized content of this very decision, and the
+      // canonical selector's own choice within it — never from a caller-supplied string.
+      const chosen = content.actions.find((a) => a.key === current.action.key);
+      if (!chosen || chosen !== current.action) throw new Error("the staged action is not a member of this revision");
+      const motion = (await db.query<{ status: string }>(
+        `select status from revenue_motions where id = $1 and org_id = $2`, [content.motion.motionId, actor.orgId])).rows[0];
+      if (motion?.status === "active") {
+        const step = Number((await db.query<{ n: number }>(
+          `select coalesce(max(step), 0) + 1 as n from motion_actions where motion_id = $1`, [content.motion.motionId])).rows[0].n);
+        const dueAt = nextBusinessDay(new Date(now.getTime() + chosen.dueInDays * 86_400_000));
+        stagedMotionActionId = (await db.query<{ id: string }>(
+          `insert into motion_actions (org_id, motion_id, step, action, due_at, plan_revision_id, plan_action_key)
+           values ($1,$2,$3,$4,$5,$6,$7) returning id`,
+          [actor.orgId, content.motion.motionId, step, chosen.text, dueAt, revisionId, chosen.key])).rows[0].id;
+        stagedActionKey = chosen.key;
+        await recordChange(db, {
+          orgId: actor.orgId, pursuitId: args.pursuitId, entityType: "motion_action", entityId: stagedMotionActionId,
+          changeType: "ACTION_CREATED", materiality: "LOW",
+          reason: `Plan action queued: ${chosen.text}`,
+          actorType: "USER", actorId: actor.id, triggerType: "MANUAL", dataEnvironment: opts.env,
+          // CORROBORATION, NOT LINEAGE. The ledger names which plan action this row came from so an
+          // auditor can follow it; the resolvable link lives on `motion_actions` and nowhere else.
+          // Deliberately no action text beyond the reason above, no args, no capability, no evidence.
+          after: { motionId: content.motion.motionId, step, dueAt: dueAt.toISOString(), planId: plan.id, planRevisionId: revisionId, planActionKey: chosen.key },
+        });
+      }
+    }
+  }
 
   // A person diverging from the recommendation is supervision data — the same
   // immutable trail every other override lands in (0068).
@@ -302,9 +343,10 @@ export async function decidePlan(
       orgId: actor.orgId, pursuitId: args.pursuitId, field: "plan",
       originalRecommendation: {
         revisionId: pending.id, fingerprint: pending.fingerprint, focus: pending.content.focus?.gapKey ?? null,
-        nextAction: pending.content.nextAction
-          ? { key: pending.content.nextAction.key, text: pending.content.nextAction.text, ownerTeamMemberId: pending.content.nextAction.owner.teamMemberId, dueInDays: pending.content.nextAction.dueInDays }
-          : null,
+        // The recommended set AND its order, so the human's divergence is reconstructable (P8).
+        actions: pending.content.actions.map((a) => ({
+          key: a.key, text: a.text, ownerTeamMemberId: a.owner.teamMemberId, dueInDays: a.dueInDays,
+        })),
       },
       humanDecision: { decision: args.decision, revisionId, adjustments: changes },
       reason, actorId: actor.id, modelVersion: RECOMMENDER_VERSION, dataEnvironment: opts.env,
@@ -332,8 +374,8 @@ export async function decidePlan(
     actorType: "USER", actorId: actor.id,
     triggerType: args.decision === "APPROVED" ? "MANUAL" : "USER_OVERRIDE",
     modelVersion: RECOMMENDER_VERSION, dataEnvironment: opts.env,
-    before: { recommendationRevisionId: pending.id, fingerprint: pending.fingerprint, nextAction: pending.content.nextAction?.text ?? null },
-    after: { decision: args.decision, revisionId, nextAction: content.nextAction?.text ?? null, stagedMotionActionId, goalConfirmed: goalStatus === "ACTIVE" },
+    before: { recommendationRevisionId: pending.id, fingerprint: pending.fingerprint, actionKeys: pending.content.actions.map((a) => a.key) },
+    after: { decision: args.decision, revisionId, actionKeys: content.actions.map((a) => a.key), stagedMotionActionId, stagedActionKey, goalConfirmed: goalStatus === "ACTIVE" },
   });
 
   return { decision: args.decision, revisionId, stagedMotionActionId };

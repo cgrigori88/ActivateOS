@@ -178,7 +178,10 @@ async function main(): Promise<void> {
     check("B: a person approves the recommendation (governed)", dec.status === "EXECUTED", dec.reason ?? "");
     const inForce = resolvePlanStanding((await loadPlanRecords(db, caller, hero.id)).revisions).inForce!;
     const inForceRow = JSON.stringify((await db.query(`select content, basis, basis_fingerprint, created_at from pursuit_plan_revisions where id = $1`, [inForce.id])).rows[0]);
-    const stagedId = inForce.content.nextAction!.stagedMotionActionId!;
+    // v2 lineage is structural: the queue row names the revision and the action, not the reverse.
+    const stagedId = (await db.query<{ id: string }>(
+      `select id from motion_actions where org_id = $1 and plan_revision_id = $2 and plan_action_key is not null`,
+      [caller.orgId, inForce.id])).rows[0].id;
     const staged = (await db.query<{ action: string; status: string }>(`select action, status from motion_actions where id = $1`, [stagedId])).rows[0];
     const cadenceStep = (await db.query<{ id: string }>(`select id from motion_actions where motion_id = $1 and status = 'pending' and id <> $2 order by step limit 1`, [motionId, stagedId])).rows[0]?.id;
     const onceInQueue = async () => count(db, `select count(*)::text n from motion_actions where motion_id = $1 and action = $2`, [motionId, staged.action]);

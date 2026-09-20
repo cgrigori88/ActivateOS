@@ -349,10 +349,23 @@ export function composeMissingContext(input: MissingContextInput): MissingContex
     const max = input.maxHealthConcerns ?? 3;
     // `concerns` arrives already ranked worst-first by chunk 1.
     for (const c of input.contextHealth.concerns.slice(0, Math.max(0, max))) {
+      // FAIL CLOSED ON AN UNIDENTIFIABLE CONCERN.
+      //
+      // All six emitters supply a non-null `refId` — coverage names its category, the four
+      // fact-level concerns name the fact, and the contradiction concern names the pursuit and is
+      // raised once rather than per contradiction. A synthetic `none` identity would therefore be
+      // unreachable today, and would be actively harmful the moment it were not: two concerns
+      // sharing a key would collide as GAPS, and the ranked list's `rank desc, key asc` tie-break
+      // is a total order ONLY while keys are unique. A gap that cannot be identified cannot be
+      // deduplicated, ordered or fingerprinted, so it is omitted with a stated reason instead.
+      if (c.refId == null) {
+        notEvaluated.push({ source: "CONTEXT_HEALTH", reason: `A ${c.kind} concern carried no reference and was not ranked` });
+        continue;
+      }
       const kind = CONCERN_KIND[c.kind];
       const { rank, reasons } = rankOf(kind, "CONTEXT_HEALTH", false);
       gaps.push({
-        key: `health:${c.kind}:${c.refId ?? "none"}`,
+        key: `health:${c.kind}:${c.refId}`,
         source: "CONTEXT_HEALTH", kind, text: c.text,
         whyItMatters: null, howToResolve: null,
         refType: c.refType, refId: c.refId, rank, rankReasons: reasons,

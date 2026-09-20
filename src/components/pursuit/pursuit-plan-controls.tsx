@@ -73,11 +73,18 @@ export function PlanControls({ mode, pursuitId, view, canDecide }: {
 
   const decide = (decision: "APPROVED" | "ADJUSTED" | "REJECTED") => run(() => decidePlanAction(pursuitId, {
     planId: view.planId!, recommendationId: recId, decision, reason: decision === "APPROVED" ? null : reason,
-    adjustments: decision === "ADJUSTED"
+    // Adjustments address an action by its STABLE KEY, never by position: a plan may carry three,
+    // and "the second one" is not an identity. This editor covers the action a person is deciding
+    // on; reordering and removal are model-level operations in 2C-A and have no control here.
+    adjustments: decision === "ADJUSTED" && view.decision.actionKey
       ? {
-        nextActionText: text.trim() !== (view.decision.actionText ?? "") ? text : undefined,
-        ownerTeamMemberId: owner !== (view.decision.ownerTeamMemberId ?? "UNASSIGNED") ? (owner === "UNASSIGNED" ? null : owner) : undefined,
-        dueInDays: Number(due) !== view.decision.dueInDays ? Number(due) : undefined,
+        actions: {
+          [view.decision.actionKey]: {
+            text: text.trim() !== (view.decision.actionText ?? "") ? text : undefined,
+            ownerTeamMemberId: owner !== (view.decision.ownerTeamMemberId ?? "UNASSIGNED") ? (owner === "UNASSIGNED" ? null : owner) : undefined,
+            dueInDays: Number(due) !== view.decision.dueInDays ? Number(due) : undefined,
+          },
+        },
       }
       : undefined,
   }));

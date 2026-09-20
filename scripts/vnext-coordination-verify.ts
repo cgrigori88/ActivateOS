@@ -169,7 +169,9 @@ async function main(): Promise<void> {
     check("a DECISION revision now answers the recommendation", st.inForce?.kind === "DECISION" && st.inForce.respondsToRevisionId === rec.id && st.inForce.decision === "APPROVED");
     const recRowAfter = (await db.query(`select content, basis, created_at from pursuit_plan_revisions where id = $1`, [rec.id])).rows[0];
     check("the recommendation itself is unchanged (never overwritten)", JSON.stringify(recRow) === JSON.stringify(recRowAfter));
-    const staged = st.inForce?.content.nextAction?.stagedMotionActionId;
+    const staged = st.inForce
+      ? (await db.query<{ id: string }>(`select id from motion_actions where org_id = $1 and plan_revision_id = $2`, [caller.orgId, st.inForce.id])).rows[0]?.id
+      : undefined;
     const ma = staged ? (await db.query<{ status: string; action: string; motion_id: string }>(`select status, action, motion_id from motion_actions where id = $1`, [staged])).rows[0] : null;
     check("the next action is staged as a pending step on the existing motion queue", !!ma && ma.status === "pending" && /economic buyer/i.test(ma.action));
     check("goal confirmed and plan active on approval", after.goal?.status === "ACTIVE" && after.plan?.status === "ACTIVE");
@@ -238,8 +240,8 @@ async function main(): Promise<void> {
     });
     check("an adjusted approval is accepted", adj.status === "EXECUTED", adj.reason ?? "");
     const after = resolvePlanStanding((await loadPlanRecords(db, caller, hero.id)).revisions);
-    check("the decision records exactly what changed", JSON.stringify(after.inForce?.adjustments?.map((c) => c.field).sort()) === JSON.stringify(["nextAction.dueInDays", "nextAction.owner"]));
-    check("the adjusted action keeps the recommended action's key", after.inForce?.content.nextAction?.key === rec.content.nextAction?.key);
+    check("the decision records exactly what changed", JSON.stringify(after.inForce?.adjustments?.map((c) => c.field).sort()) === JSON.stringify(["action.dueInDays", "action.owner"]));
+    check("the adjusted action keeps the recommended action's key", after.inForce?.content.actions[0]?.key === rec.content.actions[0]?.key);
     const ov = (await db.query<{ field: string; original_recommendation: { revisionId: string }; human_decision: { decision: string }; data_environment: string }>(
       `select field, original_recommendation, human_decision, data_environment from pursuit_overrides where pursuit_id = $1 and field = 'plan'`, [hero.id])).rows[0];
     check("the divergence lands on pursuit_overrides (field 'plan') with both sides", !!ov && ov.original_recommendation.revisionId === rec.id && ov.human_decision.decision === "ADJUSTED");
@@ -261,7 +263,7 @@ async function main(): Promise<void> {
     const after = await loadPlanRecords(db, caller, hero.id);
     const st = resolvePlanStanding(after.revisions);
     check("nothing comes into force on a decline", st.inForce === null && st.pending === null);
-    check("the goal stays proposed and nothing is queued", after.goal?.status === "PROPOSED" && !st.latestDecision?.content.nextAction?.stagedMotionActionId);
+    check("the goal stays proposed and nothing is queued", after.goal?.status === "PROPOSED" && (await count(db, `select count(*)::text n from motion_actions where org_id = $1 and plan_revision_id = $2`, [caller.orgId, st.latestDecision?.id ?? "00000000-0000-0000-0000-000000000000"])) === 0);
     const v = await loadPursuitPlanView(db, caller, hero.id);
     check("the surface says the recommendation was declined", v?.status.state === "DECLINED");
   });

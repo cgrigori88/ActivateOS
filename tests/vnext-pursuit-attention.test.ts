@@ -94,14 +94,15 @@ function revision(kind: RevisionRecord["kind"], rec: PlanRecommendation, over: P
   seq++;
   return {
     id: `r-${seq}`, revisionNo: seq, kind, decision: kind === "DECISION" ? "APPROVED" : null,
-    respondsToRevisionId: null, content: rec.content, basis: rec.basis, fingerprint: rec.basis.fingerprint,
+    respondsToRevisionId: null, content: rec.content, contentSchema: 2, legacyStagedActionId: null,
+    basis: rec.basis, fingerprint: rec.basis.fingerprint,
     adjustments: null, reviewTrigger: null, reason: null, actorType: kind === "DECISION" ? "USER" : "SYSTEM",
     createdAt: new Date(NOW.getTime() - (100 - seq) * 60_000).toISOString(), ...over,
   };
 }
 /** A decision that staged its next action as motion action `ma-1`. */
 function decision(rec: PlanRecommendation, respondsTo: RevisionRecord, over: Partial<RevisionRecord> = {}): RevisionRecord {
-  const content = { ...rec.content, nextAction: { ...rec.content.nextAction!, stagedMotionActionId: "ma-1" } };
+  const content = { ...rec.content, nextAction: { ...rec.content.actions[0]!, stagedMotionActionId: "ma-1" } };
   return revision("DECISION", { ...rec, content }, { respondsToRevisionId: respondsTo.id, ...over });
 }
 
@@ -123,6 +124,10 @@ function input(s: Scenario): PursuitAttentionInput {
     plan: { id: "plan-1", goalId: "g-1", status: active ? "ACTIVE" : "PROPOSED", createdAt: NOW.toISOString() },
     revisions: s.revisions,
     stagedActions: s.staged ? { "ma-1": s.staged } : {},
+    stagedByActionKey: s.staged && s.revisions.length
+      ? Object.fromEntries((s.revisions.find((r) => r.kind === "DECISION" && r.decision !== "REJECTED")?.content.actions ?? [])
+        .slice(0, 1).map((a) => [a.key, { motionActionId: "ma-1", dueAt: s.staged!.dueAt, status: s.staged!.status }]))
+      : {},
   };
   const changes = s.changes ?? [];
   const view = composePursuitPlanView({ pursuitId, caller, state: s.state, records, live: s.live, changesSinceDecision: changes, now: NOW });
@@ -465,7 +470,7 @@ test("disclosure: a partner-safe caller gets declared wording only — no names,
   const r1 = revision("RECOMMENDATION", rec);
   // A person reworded the action with a name in it, and assigned a named owner.
   const team = [{ id: "tm-ae", role: "VENDOR_ACCOUNT_EXECUTIVE", status: "INVITED", personLabel: "Jo Park", partnerLabel: null }];
-  const adjusted = { ...rec, content: { ...rec.content, nextAction: { ...rec.content.nextAction!, text: "Call Dana Whitfield about budget", owner: { kind: "PERSON" as const, teamMemberId: "tm-ae", role: "VENDOR_ACCOUNT_EXECUTIVE", roleLabel: "Account executive", personLabel: "Jo Park", confirmed: false } } } };
+  const adjusted = { ...rec, content: { ...rec.content, nextAction: { ...rec.content.actions[0]!, text: "Call Dana Whitfield about budget", owner: { kind: "PERSON" as const, teamMemberId: "tm-ae", role: "VENDOR_ACCOUNT_EXECUTIVE", roleLabel: "Account executive", personLabel: "Jo Park", confirmed: false } } } };
   const d1 = decision(adjusted, r1, { decision: "ADJUSTED" });
   const scenarios: Scenario[] = [
     { revisions: [r1], state: guestState(globex({ team })), live: rec, caller: GUEST },
@@ -525,7 +530,9 @@ test("queue: an action keeps its lineage — current, needs review, or queued by
 test("queue: plan review never touches the queued action — the in-force action and its staged id are unchanged", () => {
   const c = stateC();
   const b = stateB();
-  assert.equal(c.revisions[1].content.nextAction?.stagedMotionActionId, "ma-1");
+  // v2 lineage is not inside the plan: the queue row names the action, never the other way round,
+  // so what must hold is that the queued row is still the in-force plan's and still pending.
+  assert.equal(input(c).staged?.status, "pending");
   assert.deepEqual(c.revisions[1].content, b.revisions[1].content, "the approved plan is byte-identical after the evidence");
   const a = derive(c)!;
   assert.ok(a.reasons.some((r) => r.kind === "ACTION_DUE" && r.ref.refId === "ma-1"), "the same one action, still due");

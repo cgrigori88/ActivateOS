@@ -8,7 +8,7 @@ import {
   type PursuitAttention,
   type QueueLineage,
 } from "./pursuit-attention";
-import { resolvePlanStanding } from "./pursuit-plan";
+import { resolvePlanStanding, selectDisplayPlanAction } from "./pursuit-plan";
 import { DEMO_BANNER, orgHasSynthetic } from "./today";
 import type { TodayQueueView } from "./types";
 
@@ -60,7 +60,14 @@ export async function loadPursuitAttention(db: PoolClient, caller: Caller, opts:
     const ctx = await loadPursuitPlanContext(db, caller, r.id, now);
     if (!ctx) continue;
     const { inForce, pending } = resolvePlanStanding(ctx.records.revisions);
-    const stagedId = inForce?.content.nextAction?.stagedMotionActionId ?? null;
+    // The queue row for the action a narrow surface would show — resolved through the canonical
+    // selector, never by re-deriving "current" here.
+    const displayed = inForce
+      ? selectDisplayPlanAction(inForce.content.actions, inForce.basis.inputs.milestones,
+        Object.fromEntries(Object.entries(ctx.records.stagedByActionKey).map(([k, v]) => [k, { status: v.status }])))
+      : null;
+    const lineage = displayed ? ctx.records.stagedByActionKey[displayed.action.key] : undefined;
+    const stagedId = lineage?.motionActionId ?? null;
     const held = stagedId ? ctx.records.stagedActions[stagedId] : undefined;
     const firstChangeAt = ctx.changesSinceDecision.reduce<string | null>((m, c) => (m == null || c.occurredAt < m ? c.occurredAt : m), null);
     const a = derivePursuitAttention({
@@ -73,6 +80,7 @@ export async function loadPursuitAttention(db: PoolClient, caller: Caller, opts:
       inForce,
       pending,
       liveFingerprint: ctx.live.basis.fingerprint,
+      stagedByActionKey: Object.fromEntries(Object.entries(ctx.records.stagedByActionKey).map(([k, v]) => [k, { status: v.status }])),
       team: ctx.state.team,
       staged: stagedId && held ? { id: stagedId, dueAt: held.dueAt, status: held.status } : null,
       firstChangeAt,
@@ -118,15 +126,36 @@ export async function composeTodayAttention(
  */
 export async function loadQueuePlanLineage(db: PoolClient, caller: Caller, motionActionIds: string[], now: Date = new Date()): Promise<Record<string, QueueLineage>> {
   if (!motionActionIds.length) return {};
+  // TWO EXPLICITLY VERSIONED ROUTES, AND NO THIRD.
+  //
+  // v2+ lineage is a STRUCTURAL column join that reads no plan content at all — it is therefore
+  // version-independent by construction, and a future schema staging through the same columns is
+  // found on structure rather than on interpretation.
+  //
+  // v1 lineage lives inside the immutable content, and that branch names `schema = 1` outright. An
+  // unknown schema matches NEITHER branch: it yields no lineage, which is absence, never a guess.
+  // A shape test such as "does it have an actions field" would be exactly the silent
+  // misinterpretation this arrangement exists to prevent.
   const { rows } = await db.query<{ id: string; pursuit_id: string; plan_id: string; decision: "APPROVED" | "ADJUSTED"; actor_type: string; created_at: Date; staged: string }>(
     `select r.id, r.pursuit_id, r.plan_id, r.decision, r.actor_type, r.created_at, ma.id::text as staged
+       from motion_actions ma
+       join pursuit_plan_revisions r on r.org_id = ma.org_id and r.id = ma.plan_revision_id
+       join pursuit_plans pp on pp.id = r.plan_id and pp.org_id = r.org_id
+       join pursuits pu on pu.id = r.pursuit_id and pu.org_id = r.org_id
+      where ma.org_id = $1 and ma.id::text = any($2::text[])
+        and ma.plan_revision_id is not null and ma.plan_action_key is not null
+        and r.kind = 'DECISION' and r.decision in ('APPROVED','ADJUSTED')
+     union all
+     select r.id, r.pursuit_id, r.plan_id, r.decision, r.actor_type, r.created_at, ma.id::text as staged
        from pursuit_plan_revisions r
        join pursuit_plans pp on pp.id = r.plan_id and pp.org_id = r.org_id
        join pursuits pu on pu.id = r.pursuit_id and pu.org_id = r.org_id
        join motion_actions ma on ma.id::text = r.content->'nextAction'->>'stagedMotionActionId' and ma.org_id = r.org_id
       where r.org_id = $1 and r.kind = 'DECISION' and r.decision in ('APPROVED','ADJUSTED')
+        and (r.content->>'schema')::int = 1
+        and ma.plan_revision_id is null
         and ma.id::text = any($2::text[])
-      order by r.created_at asc, r.id asc`,
+      order by created_at asc, id asc`,
     [caller.orgId, motionActionIds],
   );
 

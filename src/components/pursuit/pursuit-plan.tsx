@@ -120,24 +120,48 @@ export function PursuitPlanSurface({ view, pursuitId, canDecide }: { view: Pursu
             ? <p className="mt-1.5 text-label font-semibold ink">{humanizeText(view.motion.line)}</p>
             : null}
           {view.motion.note && <p className="mt-0.5 text-label ink-faint">{view.motion.note}</p>}
-          {view.nextAction ? (
-            <>
-              <p className="mt-2.5 text-copy font-semibold ink">{humanizeText(view.nextAction.text)}</p>
-              {view.nextAction.doneWhen && <p className="mt-0.5 text-label ink-faint">Done when: {view.nextAction.doneWhen}</p>}
-              {view.nextAction.via && <p className="mt-0.5 text-label ink-faint">Path: {view.nextAction.via}</p>}
-              <dl className="mt-2.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-label">
-                <dt className="font-semibold text-neutral-500">Owner</dt>
-                <dd className="ink">
-                  {view.nextAction.ownerLabel}
-                  {view.nextAction.ownerNote && <span className="ink-faint"> — {view.nextAction.ownerNote}</span>}
-                </dd>
-                <dt className="font-semibold text-neutral-500">When</dt>
-                <dd className="ink">
-                  {view.nextAction.dueLabel}
-                  {view.nextAction.queued && <a href="/queue" className="ml-1.5 font-medium hover:underline" style={{ color: "var(--color-readiness)" }}>In the queue →</a>}
-                </dd>
-              </dl>
-            </>
+          {view.actions.length ? (
+            <ol className="mt-2.5 space-y-3">
+              {view.actions.map((a, i) => (
+                <li key={a.key} className={a.standing === "RESOLVED" ? "opacity-60" : undefined}>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-label font-semibold text-neutral-400">{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-copy ink ${a.isCurrent ? "font-semibold" : ""}`}>{humanizeText(a.text)}</p>
+                      {/* The standing says what the plan can act on — never that a business
+                          objective succeeded. A skipped queue row means "no longer pending". */}
+                      {a.isCurrent && <p className="mt-0.5 text-label font-medium" style={{ color: "var(--color-readiness)" }}>Current</p>}
+                      {a.standing === "BLOCKED" && (
+                        <p className="mt-0.5 text-label ink-faint">
+                          {a.blockedAfterLabels.length ? `After ${a.blockedAfterLabels.join(" and ")}` : "Waiting on an earlier milestone"}
+                        </p>
+                      )}
+                      {a.standing === "RESOLVED" && (
+                        <p className="mt-0.5 text-label ink-faint">
+                          {a.resolvedReason === "MILESTONE_DONE" ? "Done — the milestone it advances now holds"
+                            : a.resolvedReason === "MOTION_ACTION_SKIPPED" ? "No longer pending — skipped in the queue"
+                              : "No longer pending — completed in the queue"}
+                        </p>
+                      )}
+                      {a.doneWhen && a.standing !== "RESOLVED" && <p className="mt-0.5 text-label ink-faint">Done when: {a.doneWhen}</p>}
+                      {a.via && <p className="mt-0.5 text-label ink-faint">Path: {a.via}</p>}
+                      <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-label">
+                        <dt className="font-semibold text-neutral-500">Owner</dt>
+                        <dd className="ink">
+                          {a.ownerLabel}
+                          {a.ownerNote && <span className="ink-faint"> — {a.ownerNote}</span>}
+                        </dd>
+                        <dt className="font-semibold text-neutral-500">When</dt>
+                        <dd className="ink">
+                          {a.dueLabel}
+                          {a.queued && <a href="/queue" className="ml-1.5 font-medium hover:underline" style={{ color: "var(--color-readiness)" }}>In the queue →</a>}
+                        </dd>
+                      </dl>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
           ) : (
             <p className="mt-2 text-copy italic text-neutral-500">No next action — nothing is unresolved.</p>
           )}

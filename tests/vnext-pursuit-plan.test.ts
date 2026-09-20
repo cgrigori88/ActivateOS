@@ -91,7 +91,8 @@ function revision(kind: RevisionRecord["kind"], rec: ReturnType<typeof recommend
   seq++;
   return {
     id: `r-${seq}`, revisionNo: seq, kind, decision: kind === "DECISION" ? "APPROVED" : null,
-    respondsToRevisionId: null, content: rec.content, basis: rec.basis, fingerprint: rec.basis.fingerprint,
+    respondsToRevisionId: null, content: rec.content, contentSchema: 2, legacyStagedActionId: null,
+    basis: rec.basis, fingerprint: rec.basis.fingerprint,
     adjustments: null, reviewTrigger: null, reason: null, actorType: kind === "DECISION" ? "USER" : "SYSTEM",
     createdAt: new Date(NOW.getTime() + seq * 1000).toISOString(), ...over,
   };
@@ -101,7 +102,7 @@ function records(revisions: RevisionRecord[], goalStatus: "PROPOSED" | "ACTIVE" 
   return {
     goal: { id: "g-1", objective: "Exit legacy virtualization before renewal and close the $920K opportunity", targetDate: "2026-10-24", status: goalStatus, origin: "SYSTEM_RECOMMENDED", decidedAt: null, supersedesGoalId: null, createdAt: NOW.toISOString() },
     plan: { id: "plan-1", goalId: "g-1", status: goalStatus === "ACTIVE" ? "ACTIVE" : "PROPOSED", createdAt: NOW.toISOString() },
-    revisions, stagedActions: {},
+    revisions, stagedActions: {}, stagedByActionKey: {},
   };
 }
 
@@ -139,7 +140,8 @@ test("plan: a motion change or an action adjustment never touches the goal", () 
   assert.deepEqual(draftGoal(noMotion), draftGoal(base));
   assert.deepEqual(draftGoal(abandoned), draftGoal(base));
   const rec = recommendPursuitPlan(base, NOW);
-  const { content } = applyAdjustments(rec.content, { nextActionText: "Book time with the CFO office", ownerTeamMemberId: "tm-sp" }, base.team);
+  const key = rec.content.actions[0]!.key;
+  const { content } = applyAdjustments(rec.content, { actions: { [key]: { text: "Book time with the CFO office", ownerTeamMemberId: "tm-sp" } } }, base.team);
   assert.ok(!("goalObjective" in content) && !("goal" in content), "a plan revision carries no goal text to adjust");
   assert.deepEqual(draftGoal(base), rec.goal, "the goal is what it was before the adjustment");
 });
@@ -198,9 +200,9 @@ test("plan: focus is the top gap, carrying its upstream rank and source (D-019)"
   assert.equal(r.content.focus?.rank, 80);
   assert.equal(r.content.focus?.source, "STAKEHOLDER_COVERAGE");
   assert.equal(r.content.focus?.milestoneKey, "economic_buyer_confirmed");
-  assert.match(r.content.nextAction!.text, /economic buyer at Globex/);
-  assert.equal(r.content.nextAction!.doneWhen, "Customer confirms budget/approval ownership.", "carried, not rewritten");
-  assert.equal(r.content.nextAction!.dueInDays, DEFAULT_ACTION_DUE_DAYS);
+  assert.match(r.content.actions[0]!.text, /economic buyer at Globex/);
+  assert.equal(r.content.actions[0]!.doneWhen, "Customer confirms budget/approval ownership.", "carried, not rewritten");
+  assert.equal(r.content.actions[0]!.dueInDays, DEFAULT_ACTION_DUE_DAYS);
 });
 
 test("plan: the owner is honest — role proposed is not a person, and no role is unassigned", () => {
@@ -216,9 +218,9 @@ test("plan: the owner is honest — role proposed is not a person, and no role i
 
 test("plan: the warm path follows the route a person chose, and overlap is never a path", () => {
   const r = recommendPursuitPlan(globex(), NOW);
-  assert.match(r.content.nextAction!.via!.text, /^WWT seller/);
+  assert.match(r.content.actions[0]!.via!.text, /^WWT seller/);
   const onlyOverlap = recommendPursuitPlan(globex({ warmPaths: [globex().warmPaths[2]] }), NOW);
-  assert.equal(onlyOverlap.content.nextAction!.via, null);
+  assert.equal(onlyOverlap.content.actions[0]!.via, null);
 });
 
 // --- evidence lineage ---------------------------------------------------------------
@@ -268,7 +270,7 @@ test("plan: new evidence makes an approved plan REVIEW_NEEDED and says why", () 
   assert.equal(review.state, "REVIEW_NEEDED");
   assert.ok(review.reasons.includes("Economic buyer confirmed — reached since the plan was approved."));
   assert.ok(review.reasons.some((r) => /most important gap is now: No verified timing anchor/.test(r)));
-  assert.equal(approved.content.nextAction!.text, recommendPursuitPlan(globex(), NOW).content.nextAction!.text, "the approved content is untouched");
+  assert.equal(approved.content.actions[0]!.text, recommendPursuitPlan(globex(), NOW).content.actions[0]!.text, "the approved content is untouched");
 });
 
 test("plan: a route change or a motion change is a reason, not a silent rewrite", () => {
@@ -302,16 +304,24 @@ test("plan: recommendation ≠ decision — standing resolves pending vs in forc
 
 test("plan: adjustments are a whitelist, keep the action's key, and record each change", () => {
   const rec = recommendPursuitPlan(globex(), NOW);
-  const { content, changes } = applyAdjustments(rec.content, { ownerTeamMemberId: "tm-sp", dueInDays: 3 }, globex().team);
-  assert.deepEqual(changes.map((c) => c.field).sort(), ["nextAction.dueInDays", "nextAction.owner"]);
-  assert.equal(content.nextAction!.key, rec.content.nextAction!.key);
-  assert.equal(content.nextAction!.owner.teamMemberId, "tm-sp");
+  const key = rec.content.actions[0]!.key;
+  const edit = (e: Record<string, unknown>) => ({ actions: { [key]: e } });
+  const { content, changes } = applyAdjustments(rec.content, edit({ ownerTeamMemberId: "tm-sp", dueInDays: 3 }), globex().team);
+  assert.deepEqual(changes.map((c) => c.field).sort(), ["action.dueInDays", "action.owner"]);
+  assert.deepEqual(changes.map((c) => c.actionKey), [key, key], "every change names the action it is about");
+  assert.equal(content.actions[0]!.key, key);
+  assert.equal(content.actions[0]!.owner.teamMemberId, "tm-sp");
   assert.equal(content.focus, rec.content.focus, "focus is not adjustable — that is a different plan");
-  assert.equal(rec.content.nextAction!.dueInDays, DEFAULT_ACTION_DUE_DAYS, "the recommendation object is not mutated");
-  assert.throws(() => applyAdjustments(rec.content, { ownerTeamMemberId: "not-on-team" }, globex().team), /not on this pursuit's team/);
+  assert.equal(rec.content.actions[0]!.dueInDays, DEFAULT_ACTION_DUE_DAYS, "the recommendation object is not mutated");
+  assert.throws(() => applyAdjustments(rec.content, edit({ ownerTeamMemberId: "not-on-team" }), globex().team), /not on this pursuit's team/);
   assert.throws(() => applyAdjustments(rec.content, {}, globex().team), /Nothing was changed/);
-  const unassigned = applyAdjustments(rec.content, { ownerTeamMemberId: null }, globex().team);
-  assert.equal(unassigned.content.nextAction!.owner.kind, "UNASSIGNED");
+  assert.throws(() => applyAdjustments(rec.content, { actions: { "no-such-action": { text: "x" } } }, globex().team), /no action no-such-action/);
+  const unassigned = applyAdjustments(rec.content, edit({ ownerTeamMemberId: null }), globex().team);
+  assert.equal(unassigned.content.actions[0]!.owner.kind, "UNASSIGNED");
+  // The flat v1 form is REFUSED on a multi-action plan: "the action" is not an identity when there
+  // are three, and silently editing the first would be a guess.
+  assert.ok(rec.content.actions.length > 1);
+  assert.throws(() => applyAdjustments(rec.content, { nextActionText: "x" }, globex().team), /address each one by its key/);
 });
 
 // --- view-model ----------------------------------------------------------------------
@@ -345,7 +355,7 @@ test("plan view: REVIEW_NEEDED keeps the APPROVED content on screen and offers t
   const r2 = revision("RECOMMENDATION", rec2, { reviewTrigger: { fromRevisionId: d1.id, reasons: ["Economic buyer confirmed — reached since the plan was approved."], ledgerEventIds: ["l-1"] } });
   const v = composePursuitPlanView({ pursuitId: "p-globex", caller: INTERNAL, state: s2, records: records([r1, d1, r2], "ACTIVE"), live: rec2, changesSinceDecision: [{ id: "l-1", changeType: "STAKEHOLDER_ROLE_ASSERTED", reason: "economic buyer — verified", occurredAt: NOW.toISOString() }], now: NOW });
   assert.equal(v.status.state, "REVIEW_NEEDED");
-  assert.equal(v.nextAction?.text, rec1.content.nextAction!.text, "the approved plan is what is shown");
+  assert.equal(v.nextAction?.text, rec1.content.actions[0]!.text, "the approved plan is what is shown");
   assert.equal(v.review.update?.revisionId, r2.id);
   assert.equal(v.review.update?.stale, false);
   assert.equal(v.progress.reachedSinceDecision, 1);
@@ -385,7 +395,7 @@ test("plan view: no architecture terminology reaches a reader (U-12)", () => {
 });
 
 test("plan view: no plan yet renders an honest empty state", () => {
-  const v = composePursuitPlanView({ pursuitId: "p", caller: INTERNAL, state: globex(), records: { goal: null, plan: null, revisions: [], stagedActions: {} }, live: null, changesSinceDecision: [], now: NOW });
+  const v = composePursuitPlanView({ pursuitId: "p", caller: INTERNAL, state: globex(), records: { goal: null, plan: null, revisions: [], stagedActions: {}, stagedByActionKey: {} }, live: null, changesSinceDecision: [], now: NOW });
   assert.equal(v.exists, false);
   assert.equal(v.status.state, "NONE");
 });

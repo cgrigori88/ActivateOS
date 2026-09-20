@@ -39,8 +39,22 @@ import type { DisclosureClass } from "./types";
  * Pure. No database, no clock of its own, no writes.
  */
 
-export const RECOMMENDER_VERSION = "pursuit-plan-v1";
-export const PLAN_CONTENT_SCHEMA = 1 as const;
+export const RECOMMENDER_VERSION = "pursuit-plan-v2";
+/** The version historical revisions carry. Never written again; read for life (P3 Slice 2C). */
+export const PLAN_CONTENT_SCHEMA_V1 = 1 as const;
+export const PLAN_CONTENT_SCHEMA_V2 = 2 as const;
+/** What new revisions are written as. */
+export const PLAN_CONTENT_SCHEMA = PLAN_CONTENT_SCHEMA_V2;
+
+/**
+ * How many distinct recommended actions a v2 plan may carry.
+ *
+ * A PRODUCT-GLOBAL, SCHEMA-VERSIONED PRESENTATION BOUND — a human commercial plan with a dozen
+ * "next" actions is not a plan. It is deliberately NOT a governance limit, NOT a runtime authority
+ * limit, NOT a semantic cohort definition (contrast `analyze()`, where a limit may never decide
+ * membership — D-P7-COHORT-COMPLETENESS), and NOT organization-configurable.
+ */
+export const MAX_PLAN_ACTIONS_V2 = 3;
 
 /**
  * Default time allowed for a staged next action, in days after approval. A declared
@@ -190,8 +204,38 @@ export interface PlanFocus {
  * (`pursuit_plans.goal_id`), it does not restate it — a copied objective would drift
  * from the goal it claims to serve, and would couple the goal to plan revisions.
  */
-export interface PlanContent {
-  schema: typeof PLAN_CONTENT_SCHEMA;
+/**
+ * ONE RECOMMENDED ACTION (P3 Slice 2C, schema v2).
+ *
+ * Identical to `PlanNextAction` except for what it deliberately does NOT carry:
+ *
+ *   - no `stagedMotionActionId`. A revision is immutable, and staging happens over time as
+ *     commercial state progresses; a pointer inside the plan would have to be written after the
+ *     fact. Lineage therefore lives on the mutable `motion_actions` row (migration 0115).
+ *   - no capability, skill, version or args. A v2 action is COMMERCIAL INTENT and is
+ *     non-executable by construction. Action text can never create executability, and nothing in
+ *     2C-A compiles a plan into anything a runtime can run.
+ */
+export interface PlanActionV2 {
+  /** Stable across revisions for the same intent, so a later reader can join them. */
+  key: string;
+  text: string;
+  /** What would count as done — the upstream domain's own resolution text. */
+  doneWhen: string | null;
+  via: PlanEvidenceRef | null;
+  owner: PlanOwner;
+  dueInDays: number;
+  /**
+   * The milestone this action advances, when it advances one. A REFERENCE into the milestone
+   * layer, never a new dependency edge: `PlanMilestone.dependsOn` already carries dependencies and
+   * `evaluateMilestones` already computes BLOCKED from them.
+   */
+  milestoneKey: string | null;
+}
+
+/** What a v1 revision carries. Historical: read for life, never written again, never rewritten. */
+export interface PlanContentV1 {
+  schema: typeof PLAN_CONTENT_SCHEMA_V1;
   focus: PlanFocus | null;
   motion: PlanMotionRef;
   nextAction: PlanNextAction | null;
@@ -199,8 +243,44 @@ export interface PlanContent {
   why: PlanEvidenceRef[];
 }
 
-/** The normalized inputs whose drift makes an approved plan reviewable. */
-export interface PlanFingerprintInputs {
+/**
+ * What a v2 revision carries.
+ *
+ * > **`actions[]` is ordered recommendation PRIORITY. It is not a strict execution dependency
+ * > chain and not a sequential runtime program.**
+ *
+ * Order is inherited from Missing Context's ranking, which this module never re-ranks (D-019).
+ * Dependency truth stays in the milestone layer, which is why an action references a milestone
+ * instead of naming another action.
+ */
+export interface PlanContentV2 {
+  schema: typeof PLAN_CONTENT_SCHEMA_V2;
+  focus: PlanFocus | null;
+  motion: PlanMotionRef;
+  /** Ordered, at most `MAX_PLAN_ACTIONS_V2`, and `[]` is legal. */
+  actions: PlanActionV2[];
+  milestones: PlanMilestone[];
+  why: PlanEvidenceRef[];
+}
+
+/** What a row may hold. Discriminated on `schema` — the only legal way to tell them apart. */
+export type StoredPlanContent = PlanContentV1 | PlanContentV2;
+
+/**
+ * THE NORMALIZED IN-MEMORY VIEW. Every reader consumes this shape, whatever the row holds, and
+ * obtains it only through `normalizePlanContent`.
+ */
+export type PlanContent = PlanContentV2;
+
+/**
+ * The normalized inputs whose drift makes an approved plan reviewable.
+ *
+ * **V1 IS FROZEN.** Stored v1 plans are compared v1-to-v1 for life, so this shape and the function
+ * that builds it must not change — a stored fingerprint compared against a differently-computed
+ * one would flip every in-force plan to REVIEWABLE at once, which is a mass product event, not a
+ * refactor (P3 Slice 2C §3).
+ */
+export interface PlanFingerprintInputsV1 {
   v: 1;
   pursuitStatus: string;
   opportunity: { id: string; stage: string } | null;
@@ -211,7 +291,46 @@ export interface PlanFingerprintInputs {
   owner: { role: string | null; memberId: string | null; status: string | null } | null;
 }
 
+/**
+ * V2 inputs — everything whose change could alter the ORDERED RECOMMENDED ACTION SET.
+ *
+ * `focus` alone was sufficient while a plan carried one action derived from one gap. With three,
+ * actions 2 and 3 descend from gaps the v1 basis never mentioned, so a change to those gaps would
+ * silently leave an in-force plan looking current while the recommendation had moved.
+ *
+ * What is deliberately ABSENT is as load-bearing as what is present: no action `text`, `doneWhen`,
+ * `via` or `dueInDays`, and no human adjustment. Those are rendered prose and human decisions, not
+ * canonical inputs. The question plan review asks is *"has the recommendation basis materially
+ * changed?"*, never *"would the world regenerate the human's edited words?"*
+ */
+export interface PlanFingerprintInputsV2 {
+  v: 2;
+  pursuitStatus: string;
+  opportunity: { id: string; stage: string } | null;
+  route: { decided: boolean; selected: string | null } | null;
+  motion: { id: string; status: string; linkage: string } | null;
+  focus: { gapKey: string; kind: GapKind } | null;
+  milestones: Record<string, MilestoneStatus>;
+  /** One entry per recommended action, in recommended order. Array ORDER is the order. */
+  actions: {
+    key: string;
+    /** The gap that drove it — the dedup winner, so a losing sibling cannot move the plan. */
+    gapKey: string;
+    source: GapSource;
+    kind: GapKind;
+    milestoneKey: string | null;
+    owner: { role: string | null; memberId: string | null; status: string | null } | null;
+  }[];
+}
+
+export type PlanFingerprintInputs = PlanFingerprintInputsV1 | PlanFingerprintInputsV2;
+
 export interface PlanBasis {
+  /**
+   * RECORDED, NEVER HASHED. Hashing the algorithm's identity would make every in-force plan
+   * REVIEWABLE the next time the recommender is touched — the same mass-staleness event versioned
+   * fingerprints exist to prevent. The same reasoning covers `MAX_PLAN_ACTIONS_V2`.
+   */
   recommenderVersion: string;
   computedAt: string;
   fingerprint: string;
@@ -228,8 +347,17 @@ export interface GoalDraft {
 
 export interface PlanRecommendation {
   goal: GoalDraft;
-  content: PlanContent;
+  content: PlanContentV2;
   basis: PlanBasis;
+  /**
+   * The SAME world state, fingerprinted by the unchanged v1 algorithm.
+   *
+   * Never persisted and never compared against a v2 plan. It exists so that a stored v1 plan can be
+   * reviewed against today's world using the algorithm it was written with — the alternative,
+   * comparing a v1 fingerprint to a v2 computation, never matches and would declare every legacy
+   * plan stale on deploy.
+   */
+  legacyBasis: PlanBasis;
 }
 
 // ---------------------------------------------------------------------------
@@ -543,7 +671,7 @@ function whyFor(s: PlanState, focus: ContextGap | null): PlanEvidenceRef[] {
 }
 
 /** The normalized inputs a recommendation depends on. Time-varying values are excluded. */
-export function fingerprintInputs(s: PlanState, milestones: Record<string, MilestoneStatus>, focus: ContextGap | null, owner: PlanOwner | null): PlanFingerprintInputs {
+export function fingerprintInputs(s: PlanState, milestones: Record<string, MilestoneStatus>, focus: ContextGap | null, owner: PlanOwner | null): PlanFingerprintInputsV1 {
   const ownerMember = owner?.teamMemberId ? s.team.find((m) => m.id === owner.teamMemberId) : null;
   return {
     v: 1,
@@ -562,6 +690,133 @@ export function fingerprintOf(inputs: PlanFingerprintInputs): string {
   return createHash("sha256").update(JSON.stringify(inputs)).digest("hex").slice(0, 16);
 }
 
+/** The owner triple, in the exact shape v1 hashes — reused per action so v2 stays comparable. */
+function ownerInputs(s: PlanState, owner: PlanOwner | null): { role: string | null; memberId: string | null; status: string | null } | null {
+  if (!owner) return null;
+  const member = owner.teamMemberId ? s.team.find((m) => m.id === owner.teamMemberId) : null;
+  return { role: owner.role, memberId: owner.teamMemberId, status: member?.status ?? null };
+}
+
+/** V2 inputs. Same canonical state as v1, plus the ordered action set v1 could not describe. */
+export function fingerprintInputsV2(
+  s: PlanState,
+  milestones: Record<string, MilestoneStatus>,
+  focus: ContextGap | null,
+  actions: { action: PlanActionV2; gap: ContextGap }[],
+): PlanFingerprintInputsV2 {
+  return {
+    v: 2,
+    pursuitStatus: s.pursuitStatus,
+    opportunity: s.opportunity ? { id: s.opportunity.id, stage: s.opportunity.stage } : null,
+    route: s.route ? { decided: s.route.decided, selected: s.route.selectedLabel } : null,
+    motion: s.motion ? { id: s.motion.id, status: s.motion.status, linkage: s.motion.linkage } : null,
+    focus: focus ? { gapKey: focus.key, kind: focus.kind } : null,
+    // Key order is fixed by the catalog, so the serialization is stable.
+    milestones,
+    actions: actions.map(({ action, gap }) => ({
+      key: action.key,
+      gapKey: gap.key,
+      source: gap.source,
+      kind: gap.kind,
+      milestoneKey: action.milestoneKey,
+      owner: ownerInputs(s, action.owner),
+    })),
+  };
+}
+
+/** A stored row carried a `schema` this build does not know. Fail closed — never guess a shape. */
+export class UnknownPlanContentSchema extends Error {
+  constructor(readonly schema: unknown) {
+    super(`unknown plan content schema ${JSON.stringify(schema)}`);
+    this.name = "UnknownPlanContentSchema";
+  }
+}
+
+/**
+ * THE ONE PLACE STORED PLAN CONTENT BECOMES A USABLE OBJECT.
+ *
+ * It dispatches on the stored `schema` and nothing else. Shape inference — "it has an `actions`
+ * field, so it must be v2" — is exactly the failure this boundary exists to prevent: a future
+ * version carrying an `actions` field would be silently read as v2 and misinterpreted. `schema`
+ * was written from the first revision and never read until now; it starts being load-bearing here.
+ *
+ * A v1 row is lifted into the v2 view in memory. **The stored row is never rewritten**, and no
+ * backfill exists: `pursuit_plan_revisions` is append-only by grant, and its history is evidence.
+ */
+export function normalizePlanContent(stored: unknown): PlanContentV2 {
+  const raw = stored as { schema?: unknown };
+  if (!raw || typeof raw !== "object") throw new UnknownPlanContentSchema(raw);
+  if (raw.schema === PLAN_CONTENT_SCHEMA_V2) return stored as PlanContentV2;
+  if (raw.schema === PLAN_CONTENT_SCHEMA_V1) {
+    const v1 = stored as PlanContentV1;
+    return {
+      schema: PLAN_CONTENT_SCHEMA_V2,
+      focus: v1.focus,
+      motion: v1.motion,
+      // The single action becomes a one-element ordered set. `milestoneKey` is absent from v1 and
+      // stays absent: inventing one from the focus would assert a link the revision never made.
+      actions: v1.nextAction
+        ? [{
+          key: v1.nextAction.key, text: v1.nextAction.text, doneWhen: v1.nextAction.doneWhen,
+          via: v1.nextAction.via, owner: v1.nextAction.owner, dueInDays: v1.nextAction.dueInDays,
+          milestoneKey: null,
+        }]
+        : [],
+      milestones: v1.milestones,
+      why: v1.why,
+    };
+  }
+  throw new UnknownPlanContentSchema(raw.schema);
+}
+
+/** The historical staging pointer, readable only on a v1 row. v2 lineage lives on `motion_actions`. */
+export function legacyStagedActionId(stored: unknown): string | null {
+  const raw = stored as { schema?: unknown; nextAction?: { stagedMotionActionId?: string | null } };
+  if (!raw || typeof raw !== "object" || raw.schema !== PLAN_CONTENT_SCHEMA_V1) return null;
+  return raw.nextAction?.stagedMotionActionId ?? null;
+}
+
+/**
+ * Compose the recommendation. Deterministic: the same canonical state always
+ * produces the same content and the same fingerprint.
+ */
+/**
+ * THE ORDERED ACTION SET — derived, never invented.
+ *
+ * Scans the ranked gaps in their existing order (D-019: ranking belongs to Missing Context and is
+ * never redone here) and keeps the first `MAX_PLAN_ACTIONS_V2` DISTINCT action keys.
+ *
+ * DEDUP IS BY STABLE COMMERCIAL INTENT, HIGHEST-RANKED FIRST. Several gaps legitimately collapse
+ * to one action: `whynow:not_established`, `whynow:unknown:{i}` and `whynow:contradiction:{i}` all
+ * produce `confirm_timing`, because they are three REASONS the same act is needed, not three acts.
+ * A seller confirms timing once. The losing siblings are dropped, and the winner's identity is what
+ * the basis records — so a sibling appearing or disappearing does not move the plan.
+ *
+ * An array index is NEVER appended to force uniqueness: a key must represent a stable intent, and
+ * `verify_role:champion#2` would represent nothing.
+ */
+export function deriveOrderedActions(s: PlanState): { action: PlanActionV2; gap: ContextGap }[] {
+  const out: { action: PlanActionV2; gap: ContextGap }[] = [];
+  const seen = new Set<string>();
+  for (const gap of s.gaps) {
+    if (out.length >= MAX_PLAN_ACTIONS_V2) break;
+    const a = actionFor(gap, s.accountLabel);
+    if (seen.has(a.key)) continue;         // a lower-ranked sibling of an intent already taken
+    seen.add(a.key);
+    const owner = resolveOwner(OWNER_ROLE_FOR_SOURCE[gap.source], s.team);
+    out.push({
+      gap,
+      action: {
+        key: a.key, text: a.text, doneWhen: gap.howToResolve,
+        via: gap.source === "STAKEHOLDER_COVERAGE" ? viaFor(s) : null,
+        owner, dueInDays: DEFAULT_ACTION_DUE_DAYS,
+        milestoneKey: milestoneForGap(gap),
+      },
+    });
+  }
+  return out;
+}
+
 /**
  * Compose the recommendation. Deterministic: the same canonical state always
  * produces the same content and the same fingerprint.
@@ -576,33 +831,29 @@ export function recommendPursuitPlan(s: PlanState, now: Date = new Date()): Plan
     ? { gapKey: top.key, source: top.source, kind: top.kind, headline: top.text, rank: top.rank, refType: top.refType, refId: top.refId, milestoneKey: milestoneForGap(top) }
     : null;
 
-  let owner: PlanOwner | null = null;
-  let nextAction: PlanNextAction | null = null;
-  if (top) {
-    owner = resolveOwner(OWNER_ROLE_FOR_SOURCE[top.source], s.team);
-    const a = actionFor(top, s.accountLabel);
-    nextAction = {
-      key: a.key, text: a.text, doneWhen: top.howToResolve,
-      via: top.source === "STAKEHOLDER_COVERAGE" ? viaFor(s) : null,
-      owner, dueInDays: DEFAULT_ACTION_DUE_DAYS, stagedMotionActionId: null,
-    };
-  }
+  const derived = deriveOrderedActions(s);
+  const actions = derived.map((d) => d.action);
 
   const why = whyFor(s, top);
-  const inputs = fingerprintInputs(s, status, top, owner);
+  const inputs = fingerprintInputsV2(s, status, top, derived);
   const evidence = [
     ...goal.basis,
     ...(focus ? [{ refType: focus.refType, refId: focus.refId }] : []),
     ...(s.motion ? [{ refType: "motion", refId: s.motion.id }] : []),
     ...why.map((w) => ({ refType: w.refType, refId: w.refId })),
-    ...(nextAction?.via ? [{ refType: nextAction.via.refType, refId: nextAction.via.refId }] : []),
+    ...actions.filter((a) => a.via).map((a) => ({ refType: a.via!.refType, refId: a.via!.refId })),
   ];
+
+  // The v1 algorithm, run verbatim on the same state. Never persisted; used only to review a
+  // stored v1 plan with the algorithm it was written with.
+  const legacyOwner = top ? resolveOwner(OWNER_ROLE_FOR_SOURCE[top.source], s.team) : null;
+  const legacyInputs = fingerprintInputs(s, status, top, legacyOwner);
 
   return {
     goal,
     content: {
-      schema: PLAN_CONTENT_SCHEMA,
-      focus, motion: motionRef(s), nextAction, milestones, why,
+      schema: PLAN_CONTENT_SCHEMA_V2,
+      focus, motion: motionRef(s), actions, milestones, why,
     },
     basis: {
       recommenderVersion: RECOMMENDER_VERSION,
@@ -611,7 +862,97 @@ export function recommendPursuitPlan(s: PlanState, now: Date = new Date()): Plan
       inputs,
       evidence,
     },
+    legacyBasis: {
+      recommenderVersion: RECOMMENDER_VERSION,
+      computedAt: now.toISOString(),
+      fingerprint: fingerprintOf(legacyInputs),
+      inputs: legacyInputs,
+      evidence,
+    },
   };
+}
+
+// ---------------------------------------------------------------------------
+// The canonical current action
+// ---------------------------------------------------------------------------
+
+export type ActionResolvedReason = "MILESTONE_DONE" | "MOTION_ACTION_DONE" | "MOTION_ACTION_SKIPPED";
+
+export type ActionStanding =
+  | { standing: "ACTIONABLE" }
+  | { standing: "BLOCKED"; milestoneKey: string }
+  | { standing: "RESOLVED"; reason: ActionResolvedReason };
+
+/** The staged queue row for one action, as the Queue holds it. Keyed by action key. */
+export type StagedByActionKey = Record<string, { status: string } | undefined>;
+
+/**
+ * ONE ACTION'S STANDING.
+ *
+ * Milestone state is canonical business truth and is consulted first. The motion-action fallback
+ * exists only for an action with NO milestone, where the domain has no completion signal at all —
+ * and it is named honestly: **`MOTION_ACTION_SKIPPED` means this recommended action is no longer
+ * pending, never that the underlying commercial condition was satisfied.** The runtime and the
+ * Queue never write a milestone; milestone completion stays computed from canonical state.
+ */
+export function actionStanding(
+  action: PlanActionV2,
+  milestones: Record<string, MilestoneStatus>,
+  staged: StagedByActionKey = {},
+): ActionStanding {
+  if (action.milestoneKey) {
+    const st = milestones[action.milestoneKey];
+    if (st === "DONE") return { standing: "RESOLVED", reason: "MILESTONE_DONE" };
+    if (st === "BLOCKED") return { standing: "BLOCKED", milestoneKey: action.milestoneKey };
+    return { standing: "ACTIONABLE" };
+  }
+  const row = staged[action.key];
+  if (row?.status === "done") return { standing: "RESOLVED", reason: "MOTION_ACTION_DONE" };
+  if (row?.status === "skipped") return { standing: "RESOLVED", reason: "MOTION_ACTION_SKIPPED" };
+  return { standing: "ACTIONABLE" };
+}
+
+/**
+ * THE CANONICAL CURRENT ACTION. One implementation; surfaces consume it and never reproduce it.
+ *
+ * Scans in RECOMMENDATION ORDER and returns the first ACTIONABLE action, skipping resolved ones and
+ * ones blocked by a milestone dependency. **Skip-blocked is deliberate**: `actions[]` is ordered
+ * priority, not a dependency chain, and a later action is frequently the very work that unblocks an
+ * earlier one (mapping the paper process is blocked until the economic buyer is confirmed, and
+ * confirming the economic buyer is itself a recommended action). Freezing on unworkable work would
+ * hide the thing that clears it.
+ *
+ * `null` means no remaining recommended actions — never that every business objective succeeded.
+ */
+export function selectCurrentPlanAction(
+  actions: readonly PlanActionV2[],
+  milestones: Record<string, MilestoneStatus>,
+  staged: StagedByActionKey = {},
+): { action: PlanActionV2; index: number; standing: ActionStanding } | null {
+  for (let i = 0; i < actions.length; i++) {
+    const standing = actionStanding(actions[i], milestones, staged);
+    if (standing.standing === "ACTIONABLE") return { action: actions[i], index: i, standing };
+  }
+  return null;
+}
+
+/**
+ * What a surface SHOWS when it has room for exactly one action.
+ *
+ * The current actionable one, or — when everything is resolved or blocked — the top-ranked action,
+ * so a plan never renders as though it had no content. Defined once, beside the selector, so Today,
+ * Pursuit Detail and the approval label agree without any of them re-deriving standing.
+ */
+export function selectDisplayPlanAction(
+  actions: readonly PlanActionV2[],
+  milestones: Record<string, MilestoneStatus>,
+  staged: StagedByActionKey = {},
+): { action: PlanActionV2; index: number; standing: ActionStanding; isCurrent: boolean } | null {
+  const current = selectCurrentPlanAction(actions, milestones, staged);
+  if (current) return { ...current, isCurrent: true };
+  const first = actions[0];
+  if (!first) return null;
+  return { action: first, index: 0, standing: actionStanding(first, milestones, staged), isCurrent: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -631,13 +972,17 @@ export interface PlanReviewAssessment {
  */
 export function assessPlanReview(
   inForce: { content: PlanContent; basis: PlanBasis } | null,
-  current: { content: PlanContent; basis: PlanBasis } | null,
+  current: PlanRecommendation | null,
 ): PlanReviewAssessment {
   if (!inForce || !current) return { state: "NOT_DECIDED", reasons: [] };
-  if (inForce.basis.fingerprint === current.basis.fingerprint) return { state: "CURRENT", reasons: [] };
+  // THE ALGORITHM COMES FROM THE STORED PLAN, NEVER FROM THE NEWEST BUILD. Comparing a stored v1
+  // fingerprint against a v2 computation never matches, so it would declare every legacy plan
+  // REVIEWABLE the moment this code deployed — a mass product event dressed as a refactor.
+  const currentBasis = freshBasisFor(inForce.basis, current);
+  if (inForce.basis.fingerprint === currentBasis.fingerprint) return { state: "CURRENT", reasons: [] };
 
   const a = inForce.basis.inputs;
-  const b = current.basis.inputs;
+  const b = currentBasis.inputs;
   const reasons: string[] = [];
   const labelOf = (key: string) =>
     current.content.milestones.find((m) => m.key === key)?.label ?? inForce.content.milestones.find((m) => m.key === key)?.label ?? key;
@@ -664,10 +1009,54 @@ export function assessPlanReview(
     reasons.push(b.opportunity ? `Opportunity moved to ${b.opportunity.stage.replace(/_/g, " ")}.` : "The opportunity is no longer open.");
   }
   if (a.pursuitStatus !== b.pursuitStatus) reasons.push(`Pursuit is now ${b.pursuitStatus.toLowerCase().replace(/_/g, " ")}.`);
-  if ((a.owner?.memberId ?? null) !== (b.owner?.memberId ?? null) || (a.owner?.status ?? null) !== (b.owner?.status ?? null)) {
+  const ownerA = basisOwner(a);
+  const ownerB = basisOwner(b);
+  if ((ownerA?.memberId ?? null) !== (ownerB?.memberId ?? null) || (ownerA?.status ?? null) !== (ownerB?.status ?? null)) {
     reasons.push("The owner's team assignment changed.");
   }
+  // V2 ONLY: actions 2 and 3 descend from gaps the v1 basis never mentioned, so their movement is
+  // invisible to every reason above. Membership and order are stated in the plan's own words.
+  if (a.v === 2 && b.v === 2) {
+    const keysA = a.actions.map((x) => x.key);
+    const keysB = b.actions.map((x) => x.key);
+    const added = keysB.filter((k) => !keysA.includes(k));
+    const removed = keysA.filter((k) => !keysB.includes(k));
+    const textFor = (key: string) => current.content.actions.find((x) => x.key === key)?.text
+      ?? inForce.content.actions.find((x) => x.key === key)?.text ?? key;
+    for (const k of removed) reasons.push(`No longer recommended: ${sentenceish(textFor(k))}.`);
+    for (const k of added) reasons.push(`Now recommended: ${sentenceish(textFor(k))}.`);
+    if (!added.length && !removed.length && keysA.join("\u0000") !== keysB.join("\u0000")) {
+      reasons.push("The recommended actions are in a different order.");
+    }
+    for (const now of b.actions) {
+      const was = a.actions.find((x) => x.key === now.key);
+      if (was && (was.owner?.memberId ?? null) !== (now.owner?.memberId ?? null)) {
+        reasons.push(`The owner changed for: ${sentenceish(textFor(now.key))}.`);
+      }
+    }
+  }
   return { state: "REVIEW_NEEDED", reasons: reasons.length ? reasons : ["The pursuit's context changed since the plan was approved."] };
+}
+
+const sentenceish = (t: string) => t.trim().replace(/\.$/, "");
+
+/** The recommended owner a basis describes: v1 states it directly, v2 carries it per action. */
+function basisOwner(inputs: PlanFingerprintInputs): { memberId: string | null; status: string | null } | null {
+  return inputs.v === 1 ? inputs.owner : inputs.actions[0]?.owner ?? null;
+}
+
+/**
+ * Which freshly-computed basis a stored plan must be compared against.
+ *
+ * Dispatch is on the STORED basis version, which tracks the stored content version. An unrecognised
+ * version fails closed rather than falling back to the newest algorithm — a wrong comparison is
+ * worse than no comparison, because it renders as a confident "this plan needs review".
+ */
+export function freshBasisFor(stored: PlanBasis, live: PlanRecommendation): PlanBasis {
+  const v: unknown = stored.inputs?.v;
+  if (v === 1) return live.legacyBasis;
+  if (v === 2) return live.basis;
+  throw new UnknownPlanContentSchema(v);
 }
 
 // ---------------------------------------------------------------------------
@@ -675,58 +1064,110 @@ export function assessPlanReview(
 // ---------------------------------------------------------------------------
 
 export interface PlanAdjustments {
+  /** Per-action edits, addressed by STABLE ACTION KEY — never by array index. */
+  actions?: Record<string, { text?: string; ownerTeamMemberId?: string | null; dueInDays?: number }>;
+  /** The approved order, as action keys. A subset removes the omitted actions. */
+  order?: string[];
+  /** v1 compatibility: the single action's fields, when a v1 recommendation is being decided. */
   nextActionText?: string;
-  /** A team member id, or null for explicitly unassigned. Undefined leaves the owner as recommended. */
   ownerTeamMemberId?: string | null;
   dueInDays?: number;
 }
 
 export interface PlanAdjustmentChange {
-  field: "nextAction.text" | "nextAction.owner" | "nextAction.dueInDays";
+  field: "action.text" | "action.owner" | "action.dueInDays" | "action.removed" | "actions.order";
+  /** Which action this change is about. Null for a whole-plan change such as reordering. */
+  actionKey: string | null;
   from: unknown;
   to: unknown;
 }
 
 /**
- * Apply a person's adjustments to a recommendation. A whitelist: the action's words,
- * its owner and its due window. The focus, the milestones and the evidence stay as
- * recommended — changing those is a different plan, not an adjustment of this one.
+ * Apply a person's adjustments to a recommendation.
  *
- * The action KEEPS its key, so a later reader can line the adjusted action up against
- * the recommended one. Returns the changes, which is the learning signal (P8).
+ * A WHITELIST, and deliberately a narrow one: the words of an action, its owner, its due window,
+ * the approved order, and removal. The focus, the milestones and the evidence stay as recommended,
+ * and **no new action can be added** — an adjustment may modify or reduce a deterministic
+ * recommendation, never invent an ungrounded commercial action that nothing in the world proposed.
+ *
+ * Actions KEEP their keys, so the recommended set, the human's changes and the approved order can
+ * all be reconstructed from the immutable revision and its change list (the P8 learning signal).
  */
 export function applyAdjustments(content: PlanContent, adj: PlanAdjustments, team: PlanTeamMember[]): { content: PlanContent; changes: PlanAdjustmentChange[] } {
-  if (!content.nextAction) throw new Error("This plan has no next action to adjust.");
-  const next: PlanNextAction = { ...content.nextAction, owner: { ...content.nextAction.owner } };
+  if (!content.actions.length) throw new Error("This plan has no actions to adjust.");
   const changes: PlanAdjustmentChange[] = [];
+  const byKey = new Map(content.actions.map((a) => [a.key, { ...a, owner: { ...a.owner } }]));
 
-  if (adj.nextActionText !== undefined) {
-    const t = adj.nextActionText.trim();
-    if (t.length < 3 || t.length > 240) throw new Error("The next action must be between 3 and 240 characters.");
-    if (t !== next.text) { changes.push({ field: "nextAction.text", from: next.text, to: t }); next.text = t; }
+  // v1 compatibility: a legacy recommendation carries exactly one action, so the flat fields
+  // address it unambiguously. They are not extended to multi-action plans.
+  const flat = adj.nextActionText !== undefined || adj.ownerTeamMemberId !== undefined || adj.dueInDays !== undefined;
+  const perAction: Record<string, { text?: string; ownerTeamMemberId?: string | null; dueInDays?: number }> = { ...(adj.actions ?? {}) };
+  if (flat) {
+    if (content.actions.length !== 1) throw new Error("This plan has several actions — address each one by its key.");
+    const only = content.actions[0].key;
+    perAction[only] = {
+      ...(adj.nextActionText !== undefined ? { text: adj.nextActionText } : {}),
+      ...(adj.ownerTeamMemberId !== undefined ? { ownerTeamMemberId: adj.ownerTeamMemberId } : {}),
+      ...(adj.dueInDays !== undefined ? { dueInDays: adj.dueInDays } : {}),
+      ...(perAction[only] ?? {}),
+    };
   }
-  if (adj.ownerTeamMemberId !== undefined) {
-    const before = next.owner.teamMemberId;
-    if (adj.ownerTeamMemberId === null) {
-      if (before !== null || next.owner.kind !== "UNASSIGNED") {
-        changes.push({ field: "nextAction.owner", from: before, to: null });
-        next.owner = { kind: "UNASSIGNED", teamMemberId: null, role: null, roleLabel: null, personLabel: null, confirmed: false };
+
+  for (const [key, edit] of Object.entries(perAction)) {
+    const action = byKey.get(key);
+    if (!action) throw new Error(`This plan has no action ${key}.`);
+    if (edit.text !== undefined) {
+      const t = edit.text.trim();
+      if (!t) throw new Error("An action needs words.");
+      if (t !== action.text) { changes.push({ field: "action.text", actionKey: key, from: action.text, to: t }); action.text = t; }
+    }
+    if (edit.ownerTeamMemberId !== undefined) {
+      const before = action.owner.teamMemberId;
+      if (edit.ownerTeamMemberId === null) {
+        if (before !== null) {
+          changes.push({ field: "action.owner", actionKey: key, from: before, to: null });
+          action.owner = { kind: "UNASSIGNED", teamMemberId: null, role: action.owner.role, roleLabel: action.owner.roleLabel, personLabel: null, confirmed: false };
+        }
+      } else {
+        const m = team.find((x) => x.id === edit.ownerTeamMemberId);
+        if (!m) throw new Error("That person is not on this pursuit's team.");
+        if (before !== m.id) {
+          changes.push({ field: "action.owner", actionKey: key, from: before, to: m.id });
+          action.owner = {
+            kind: m.personLabel ? "PERSON" : "ROLE_UNFILLED", teamMemberId: m.id, role: m.role,
+            roleLabel: TEAM_ROLE_LABEL[m.role] ?? m.role.replace(/_/g, " ").toLowerCase(),
+            personLabel: m.personLabel, confirmed: m.status === "ACCEPTED" || m.status === "ACTIVE",
+          };
+        }
       }
-    } else {
-      const m = team.find((x) => x.id === adj.ownerTeamMemberId);
-      if (!m) throw new Error("That owner is not on this pursuit's team.");
-      if (m.id !== before) {
-        changes.push({ field: "nextAction.owner", from: before, to: m.id });
-        next.owner = resolveOwner(m.role, [m]);
+    }
+    if (edit.dueInDays !== undefined) {
+      if (!Number.isInteger(edit.dueInDays) || edit.dueInDays < 1 || edit.dueInDays > 90) throw new Error("A due window is between 1 and 90 days.");
+      if (edit.dueInDays !== action.dueInDays) {
+        changes.push({ field: "action.dueInDays", actionKey: key, from: action.dueInDays, to: edit.dueInDays });
+        action.dueInDays = edit.dueInDays;
       }
     }
   }
-  if (adj.dueInDays !== undefined) {
-    if (!Number.isInteger(adj.dueInDays) || adj.dueInDays < 1 || adj.dueInDays > 60) throw new Error("Due window must be 1 to 60 days.");
-    if (adj.dueInDays !== next.dueInDays) { changes.push({ field: "nextAction.dueInDays", from: next.dueInDays, to: adj.dueInDays }); next.dueInDays = adj.dueInDays; }
+
+  let ordered = content.actions.map((a) => byKey.get(a.key)!);
+  if (adj.order !== undefined) {
+    const wanted = adj.order;
+    if (new Set(wanted).size !== wanted.length) throw new Error("An action can appear once in the approved order.");
+    for (const k of wanted) if (!byKey.has(k)) throw new Error(`This plan has no action ${k}.`);
+    const removed = content.actions.filter((a) => !wanted.includes(a.key));
+    for (const r of removed) changes.push({ field: "action.removed", actionKey: r.key, from: r.text, to: null });
+    const before = content.actions.map((a) => a.key);
+    ordered = wanted.map((k) => byKey.get(k)!);
+    if (before.filter((k) => wanted.includes(k)).join("\u0000") !== wanted.join("\u0000")) {
+      changes.push({ field: "actions.order", actionKey: null, from: before, to: wanted });
+    }
   }
-  if (!changes.length) throw new Error("Nothing was changed — approve the recommendation instead.");
-  return { content: { ...content, nextAction: next }, changes };
+
+  // An ADJUSTED decision that changed nothing is an approval wearing the wrong word, and it would
+  // record a human override that never happened. Preserved from v1.
+  if (!changes.length) throw new Error("Nothing was changed — approve the plan as recommended instead.");
+  return { content: { ...content, actions: ordered }, changes };
 }
 
 // ---------------------------------------------------------------------------
@@ -764,7 +1205,11 @@ export interface RevisionRecord {
   kind: "RECOMMENDATION" | "DECISION";
   decision: "APPROVED" | "ADJUSTED" | "REJECTED" | null;
   respondsToRevisionId: string | null;
+  /** NORMALIZED. The stored row is never rewritten; `contentSchema` says what it actually holds. */
   content: PlanContent;
+  contentSchema: typeof PLAN_CONTENT_SCHEMA_V1 | typeof PLAN_CONTENT_SCHEMA_V2;
+  /** The staging pointer a v1 row carries inside its content. Always null for v2. */
+  legacyStagedActionId: string | null;
   basis: PlanBasis;
   fingerprint: string;
   adjustments: PlanAdjustmentChange[] | null;
@@ -781,6 +1226,14 @@ export interface PlanRecords {
   revisions: RevisionRecord[];
   /** Motion actions staged by decisions: id → due date and status, as the queue holds them. */
   stagedActions: Record<string, { dueAt: string; status: string }>;
+  /**
+   * The staged queue row for each action of the plan IN FORCE, by action key.
+   *
+   * v2 reads it from the lineage columns on `motion_actions` (0115); v1 from the pointer inside its
+   * own content. Two disjoint branches, each explicitly targeted at one version — never a
+   * shape-inferred fallback.
+   */
+  stagedByActionKey: Record<string, { motionActionId: string; dueAt: string; status: string }>;
 }
 
 /** A material ledger event recorded after the plan in force was decided. */
@@ -823,10 +1276,25 @@ export interface PursuitPlanView {
   progress: { done: number; total: number; label: string; reachedSinceDecision: number; segments: MilestoneStatus[] };
   focus: { headline: string; stateLabel: string; state: ContextState } | null;
   motion: { line: string | null; note: string | null };
+  /**
+   * The one action a narrow surface shows: the current actionable one, or the top-ranked action
+   * when every action is resolved or blocked. `isCurrent` says which of those it is.
+   */
   nextAction: {
     text: string; doneWhen: string | null; via: string | null;
     ownerLabel: string; ownerNote: string | null; dueLabel: string; queued: boolean;
+    key: string; isCurrent: boolean;
   } | null;
+  /** The ordered recommended actions, each with the standing the canonical selector assigned. */
+  actions: {
+    key: string; text: string; doneWhen: string | null; via: string | null;
+    ownerLabel: string; ownerNote: string | null; dueLabel: string; queued: boolean;
+    standing: ActionStanding["standing"];
+    /** Present when RESOLVED; `MOTION_ACTION_SKIPPED` never means the condition was satisfied. */
+    resolvedReason: ActionResolvedReason | null;
+    blockedAfterLabels: string[];
+    isCurrent: boolean;
+  }[];
   why: { text: string; scopeLabel: string | null }[];
   withheldCount: number;
   milestones: { key: string; label: string; status: MilestoneStatus; statusLabel: string; afterLabels: string[] }[];
@@ -839,7 +1307,10 @@ export interface PursuitPlanView {
     teamOptions: { id: string; label: string }[];
     ownerTeamMemberId: string | null;
     actionText: string | null;
+    actionKey: string | null;
     dueInDays: number;
+    /** Every action a person may adjust, in recommended order. Addressed by stable key. */
+    actions: { key: string; text: string; ownerTeamMemberId: string | null; dueInDays: number }[];
   };
   /**
    * vNext Slice 2B labelling only. Set by `frameApprovedPlan`, never by the composer, so the
@@ -888,9 +1359,11 @@ const DECISION_WORD: Record<"APPROVED" | "ADJUSTED" | "REJECTED", string> = {
 };
 
 const CHANGE_FIELD_WORD: Record<PlanAdjustmentChange["field"], string> = {
-  "nextAction.text": "next action reworded",
-  "nextAction.owner": "owner changed",
-  "nextAction.dueInDays": "due window changed",
+  "action.text": "action reworded",
+  "action.owner": "owner changed",
+  "action.dueInDays": "due window changed",
+  "action.removed": "action removed",
+  "actions.order": "order changed",
 };
 
 export function ownerCopy(o: PlanOwner): { label: string; note: string | null } {
@@ -926,14 +1399,14 @@ export function composePursuitPlanView(input: PursuitPlanViewInput): PursuitPlan
   const standing = resolvePlanStanding(records.revisions);
   const shown = standing.inForce ?? standing.pending ?? standing.latestRecommendation;
 
-  const emptyDecision = { recommendationId: null, stale: false, teamOptions: [], ownerTeamMemberId: null, actionText: null, dueInDays: DEFAULT_ACTION_DUE_DAYS };
+  const emptyDecision = { recommendationId: null, stale: false, teamOptions: [], ownerTeamMemberId: null, actionText: null, actionKey: null, dueInDays: DEFAULT_ACTION_DUE_DAYS, actions: [] };
   if (!records.plan || !shown) {
     return {
       pursuitId: input.pursuitId, planId: records.plan?.id ?? null, exists: false, goal: null,
       status: { state: "NONE", label: PLAN_STATE_LABEL.NONE, atLabel: null, byPerson: false, reason: null },
       review: { state: "NOT_APPLICABLE", reasons: [], changesSince: [], update: null },
       progress: { done: 0, total: 0, label: "", reachedSinceDecision: 0, segments: [] },
-      focus: null, motion: { line: null, note: null }, nextAction: null, why: [], withheldCount: 0,
+      focus: null, motion: { line: null, note: null }, nextAction: null, actions: [], why: [], withheldCount: 0,
       milestones: [], history: [], decision: emptyDecision,
     };
   }
@@ -974,24 +1447,58 @@ export function composePursuitPlanView(input: PursuitPlanViewInput): PursuitPlan
 
   // --- disclosure: remove before rendering, count only --------------------------
   const visibleWhy = content.why.filter((w) => canDisclose(caller, w.disclosure));
-  const via = content.nextAction?.via && canDisclose(caller, content.nextAction.via.disclosure) ? content.nextAction.via : null;
-  const withheldCount = (content.why.length - visibleWhy.length) + (content.nextAction?.via && !via ? 1 : 0);
+  const visibleVia = (a: PlanActionV2) => (a.via && canDisclose(caller, a.via.disclosure) ? a.via : null);
+  const withheldCount = (content.why.length - visibleWhy.length)
+    + content.actions.filter((a) => a.via && !visibleVia(a)).length;
 
-  // --- next action -----------------------------------------------------------
-  let nextAction: PursuitPlanView["nextAction"] = null;
-  if (content.nextAction) {
-    const na = content.nextAction;
-    const staged = na.stagedMotionActionId ? records.stagedActions[na.stagedMotionActionId] : undefined;
-    const owner = ownerCopy(na.owner);
-    nextAction = {
-      text: na.text, doneWhen: na.doneWhen, via: via?.text ?? null,
-      ownerLabel: owner.label, ownerNote: owner.note,
-      dueLabel: staged
-        ? `${staged.status === "done" ? "Done" : "Due"} ${dayLabel(staged.dueAt, now) ?? ""}`.trim()
-        : standing.inForce ? "Not queued — no active motion to carry it" : `Due within ${na.dueInDays} days of approval`,
-      queued: !!staged,
+  // --- actions ---------------------------------------------------------------
+  // The standing of every action, and the one a narrow surface shows, both come from the canonical
+  // selector. No surface re-derives "current" — `pursuit-attention` and the approval label consume
+  // the same functions, so they cannot drift apart.
+  const stagedFor = (a: PlanActionV2) => records.stagedByActionKey[a.key];
+  const stagedStanding: StagedByActionKey = Object.fromEntries(
+    Object.entries(records.stagedByActionKey).map(([k, v]) => [k, { status: v.status }]));
+  const display = selectDisplayPlanAction(content.actions, liveStatus, stagedStanding);
+  const dueLabelFor = (a: PlanActionV2) => {
+    const staged = stagedFor(a);
+    if (staged) return `${staged.status === "done" ? "Done" : staged.status === "skipped" ? "Skipped" : "Due"} ${dayLabel(staged.dueAt, now) ?? ""}`.trim();
+    return standing.inForce ? "Not queued — no active motion to carry it" : `Due within ${a.dueInDays} days of approval`;
+  };
+  const actionView = (a: PlanActionV2, isCurrent: boolean) => {
+    const owner = ownerCopy(a.owner);
+    const st = actionStanding(a, liveStatus, stagedStanding);
+    return {
+      key: a.key, text: a.text, doneWhen: a.doneWhen, via: visibleVia(a)?.text ?? null,
+      ownerLabel: owner.label, ownerNote: owner.note, dueLabel: dueLabelFor(a), queued: !!stagedFor(a),
+      standing: st.standing,
+      resolvedReason: st.standing === "RESOLVED" ? st.reason : null,
+      blockedAfterLabels: st.standing === "BLOCKED"
+        ? (content.milestones.find((m) => m.key === st.milestoneKey)?.dependsOn ?? [])
+          .filter((d) => liveStatus[d] !== "DONE")
+          .map((d) => content.milestones.find((m) => m.key === d)?.label ?? d)
+        : [],
+      isCurrent,
     };
-  }
+  };
+  const actions = content.actions.map((a) => actionView(a, display?.action.key === a.key && display.isCurrent));
+  // The action a person would adjust now: from the recommendation awaiting a decision when there is
+  // one, otherwise from the revision being shown.
+  const decidableContent = (standing.pending ?? shown).content;
+  const decidable = selectDisplayPlanAction(decidableContent.actions, liveStatus, stagedStanding)?.action ?? null;
+  // THE SINGLE-ACTION BLOCK IS THE PLAN'S OWN FIRST ACTION, NEVER A RE-SELECTION.
+  //
+  // It is tempting to point this at whatever is currently actionable, and it would be wrong: an
+  // approved plan is deliberately preserved when the world moves (D-028), and `frameApprovedPlan`
+  // labels it "recorded before the changes above". Silently swapping the headline action for a
+  // later one would rewrite what a person approved. Which action is actionable NOW is stated in
+  // the ordered list instead, by `isCurrent` — the information is added, not substituted.
+  //
+  // It also keeps a v1 revision rendering byte-identically: its single action IS `actions[0]`.
+  const headline = content.actions[0] ?? null;
+  const nextAction: PursuitPlanView["nextAction"] = headline
+    ? (({ standing: _s, resolvedReason: _r, blockedAfterLabels: _b, ...rest }) =>
+      rest)(actionView(headline, display?.isCurrent === true && display.action.key === headline.key))
+    : null;
 
   const labelFor = (k: string) => content.milestones.find((m) => m.key === k)?.label ?? k;
   const goalRec = records.goal;
@@ -1021,7 +1528,7 @@ export function composePursuitPlanView(input: PursuitPlanViewInput): PursuitPlan
         ? {
           revisionId: standing.pending.id,
           focusHeadline: standing.pending.content.focus?.headline ?? null,
-          nextActionText: standing.pending.content.nextAction?.text ?? null,
+          nextActionText: standing.pending.content.actions[0]?.text ?? null,
           stale: pendingStale,
         }
         : null,
@@ -1036,6 +1543,7 @@ export function composePursuitPlanView(input: PursuitPlanViewInput): PursuitPlan
       : null,
     motion: motionCopy(content.motion),
     nextAction,
+    actions,
     why: visibleWhy.map((w) => ({ text: w.text, scopeLabel: w.origin === "ACCOUNT" ? "Account context" : null })),
     withheldCount,
     milestones: content.milestones.map((m) => ({
@@ -1049,7 +1557,7 @@ export function composePursuitPlanView(input: PursuitPlanViewInput): PursuitPlan
         ? (r.reviewTrigger ? "Updated recommendation from PursuitOS" : "Recommended by PursuitOS")
         : DECISION_WORD[r.decision as "APPROVED" | "ADJUSTED" | "REJECTED"],
       detail: r.kind === "RECOMMENDATION"
-        ? (r.reviewTrigger?.reasons[0] ?? (r.content.nextAction ? `Next: ${r.content.nextAction.text}` : null))
+        ? (r.reviewTrigger?.reasons[0] ?? (r.content.actions[0] ? `Next: ${r.content.actions[0].text}` : null))
         : [r.adjustments?.map((c) => CHANGE_FIELD_WORD[c.field]).join(", "), r.reason].filter(Boolean).join(" — ") || null,
       atLabel: dayLabel(r.createdAt, now),
       byPerson: r.actorType === "USER",
@@ -1063,9 +1571,13 @@ export function composePursuitPlanView(input: PursuitPlanViewInput): PursuitPlan
           id: m.id,
           label: `${m.personLabel ?? TEAM_ROLE_LABEL[m.role] ?? m.role.replace(/_/g, " ").toLowerCase()}${m.personLabel ? ` · ${TEAM_ROLE_LABEL[m.role] ?? m.role}` : ""}${m.partnerLabel ? ` (${m.partnerLabel})` : ""}${m.status === "RECOMMENDED" ? " — proposed" : ""}`,
         })),
-      ownerTeamMemberId: (standing.pending ?? shown).content.nextAction?.owner.teamMemberId ?? null,
-      actionText: (standing.pending ?? shown).content.nextAction?.text ?? null,
-      dueInDays: (standing.pending ?? shown).content.nextAction?.dueInDays ?? DEFAULT_ACTION_DUE_DAYS,
+      ownerTeamMemberId: decidable?.owner.teamMemberId ?? null,
+      actionText: decidable?.text ?? null,
+      actionKey: decidable?.key ?? null,
+      dueInDays: decidable?.dueInDays ?? DEFAULT_ACTION_DUE_DAYS,
+      actions: ((standing.pending ?? shown).content.actions).map((a) => ({
+        key: a.key, text: a.text, ownerTeamMemberId: a.owner.teamMemberId, dueInDays: a.dueInDays,
+      })),
     },
   };
 }
