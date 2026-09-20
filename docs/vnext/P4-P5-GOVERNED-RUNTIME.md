@@ -1430,8 +1430,62 @@ Deployment-global, **absent ⇒ OFF**, scoped to `actor.type === 'AGENT'` only.
 | either | WORKER / SYSTEM | unchanged |
 
 **Turning enforcement OFF after strict activation widens authority and is NOT an emergency brake.**
-The post-activation brake is **credential revocation, grant revocation, or actor suspension** —
-each a normal, audited operation that narrows. Disabling enforcement requires its own ruling.
+The post-activation brake is to narrow authority instead. **Which narrowing controls actually bind
+depends on what is still executable — see §22.10a.** Disabling enforcement requires its own ruling.
+
+### 22.10a Emergency controls are only as global as the execution surface
+
+A narrowing control binds a runtime only if that runtime consults the thing being narrowed. The
+pre-Boundary-B security check established this empirically, so it is recorded rather than assumed:
+
+| Control | While any security-weaker deployment remains executable | Once every retained execution surface is strict |
+|---|---|---|
+| **Credential revocation** | **GLOBAL** | valid |
+| **Grant revocation** | **strict runtimes only** | valid |
+| **Actor suspension** | **strict runtimes only** | valid |
+
+Credential revocation is global because the predicate lives in the **database**:
+`resolve_api_key`'s `where key_hash = $1 and revoked_at is null` is evaluated identically by every
+binary that resolves a credential at all. Grant revocation and actor suspension are enforced in
+**application code** behind `if (ctx.governedActorId)`, which a pre-P45-4 binary never populates —
+so such a binary reads no grant and no lifecycle, and narrowing them does not reach it.
+
+> **While a pre-P45-4 runtime is reachable, credential revocation is the ONLY brake guaranteed to
+> work everywhere.**
+
+### 22.10b A direct deployment URL is part of the authority execution surface
+
+Three properties are independent, and a deployment can hold all three at once:
+
+- **data-compatible** — it reads the current schema correctly;
+- **platform-protected** — an ordinary client is refused before the application runs;
+- **security-incompatible** — it would apply a weaker authority contract if reached.
+
+In this Preview project every retained deployment, **including the canonical alias**, refuses a
+clean client carrying only a PursuitOS API bearer: Vercel Deployment Protection answers first with
+`{"protection":{"vercel_auth_enabled":true,…}}` and the request never reaches PursuitOS. But the
+**project-wide protection-bypass secret is not per-deployment** — proven directly, the same secret
+and the same bearer reached the *application* on both a pre-P45-4 deployment and the current one.
+
+> **A direct deployment URL remains part of the authority execution surface until the deployment is
+> deleted or otherwise made non-executable. Removing an alias removes a NAME, not a RUNTIME — the
+> `…-<hash>-….vercel.app` URL keeps working, so alias removal alone is insufficient.**
+
+**After Boundary B, an enforcement-OFF deployment is itself security-weaker**, because it permits
+unbound legacy AGENT authority that the canonical contract has foreclosed. The strict-incompatible
+surface is therefore never just "the old ones".
+
+### 22.10c Grantor accountability for the canonical Preview grant
+
+The canonical grant `723d1431-88b3-4317-917c-46f843c97011` carries `granted_by_user_id = NULL`.
+
+> **The authorization instrument is permanently attributable; the human grantor is not established
+> for this canonical Preview grant.**
+
+This is accepted for P45-4: the contract never required a human grantor, and the existence of one
+`auth.users` row does not by itself prove that identity was the provisioning principal. The grant is
+**not** replaced or mutated to populate it — fabricated attribution is worse than absent
+attribution. Mandatory human-grantor accountability is separate governance hardening.
 
 This is the substantive difference from the 2C-A write gate, which removed a capability to write a
 new format. This gate removes an *authority requirement*, so it is not symmetric with it and its
