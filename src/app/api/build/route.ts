@@ -5,7 +5,7 @@ import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { getPool } from "@/db/client";
 import { withTenantOrg } from "@/lib/db/tenant";
 import { type DatabasePosture, probeDatabasePosture } from "@/lib/env/db-posture";
-import { buildInfo, databaseIdentity, environmentLabel, externalSendingArmed, planContentV2WritesEnabled, siteMode } from "@/lib/env/environment";
+import { buildInfo, databaseIdentity, environmentLabel, externalSendingArmed, governedAgentEnforcementEnabled, planContentV2WritesEnabled, siteMode } from "@/lib/env/environment";
 import { interpreterEnabled } from "@/lib/interpret/answer";
 import { intentCredentialPresent, intentModelEnabled } from "@/lib/experience/intent/model";
 import { vnextCapabilities } from "@/lib/env/vnext-flags";
@@ -158,6 +158,13 @@ export async function GET() {
         // on the safe side of the rollback boundary. A hosted gate has to be able to prove that
         // from the running process rather than from someone's memory of a Vercel setting.
         planContentV2WritesEnabled: planContentV2WritesEnabled(),
+        // P45-4 AUTHORITY POSTURE — does this deployment REQUIRE an AGENT to act as a governed
+        // actor holding an exact live grant? Same reasoning as the line above, and the same reason
+        // it is not in `capabilities`: this is not per-tenant entitlement, it is a deployment-global
+        // authority requirement, and which side of the bound-credential boundary an environment is
+        // on must be answerable FROM THE RUNNING PROCESS rather than from someone's memory of a
+        // Vercel setting. Absent ⇒ false ⇒ the certified legacy AGENT contract is in force.
+        governedAgentEnforcementEnabled: governedAgentEnforcementEnabled(),
       },
       capabilities,
       serverTime: new Date().toISOString(),
