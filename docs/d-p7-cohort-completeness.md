@@ -1,7 +1,10 @@
 # D-P7-COHORT-COMPLETENESS — a presentation limit was deciding a metric's domain
 
 **Classification: PRODUCT SEMANTIC DEFECT, PRE-EXISTING P7 (Slice 3), EXPOSED BY SLICE 14.**
-Found by the Slice 14 hosted gate; corrected locally against serving commit `0f5f40e`. No schema, no
+**Status: HOSTED ACCEPTED / CLOSED on serving commit `e55499b`.**
+Found by the Slice 14 hosted gate and corrected locally against `0f5f40e`, **which was the serving
+commit on the day the defect was found and is not the certified commit** — the correction was carried
+by `d977b56`, and the commit that now serves and carries it is **`e55499b`**. No schema, no
 migration, no alias movement, no P45, no hosted action.
 
 > **A presentation/cardinality limit may constrain returned rows; it may never silently constrain the
@@ -181,3 +184,18 @@ permits, which is what *"a live grant covers this purpose and class"* means; a n
 no longer deny by happening to be chosen first. This affects both paths identically (`mayDerive` was
 rewritten onto the same core), it is pinned by a unit test, and it is the only decision-level change
 in this commit.
+
+## Hosted closure
+
+**HOSTED ACCEPTED / CLOSED — serving `e55499b`, schema 114, 173 assertions / 0 failures** (the Slice
+14 gate record). On the serving runtime, `analyze()` accepts only a sealed cohort, the executor seals
+from every governed candidate before ordering and before the limit, and the rendered basis equals the
+organization's whole open-pursuit set.
+
+**What hosted evidence could NOT do, stated plainly.** The Preview tenant's governed cohort is **11
+members against a `plan.limit` of 200**, so the pre-correction code returns the identical figure
+there: *this gate proves membership equals the complete cohort and proves nothing about truncation.*
+The discriminating evidence is the seeded `app_rw` substrate — 212 members reporting `basis.members`
+200, and a non-derivable member pushed out of the page turning WITHHELD into DISCLOSED. Recorded as a
+standing rule in §16L of the P7 analysis contract: **an invariant about scale is not evidenced at a
+scale where both implementations agree.**

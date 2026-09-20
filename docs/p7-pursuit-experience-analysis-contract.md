@@ -1003,3 +1003,53 @@ before context resolution, any governed read, compilation or assembly.
   `app_rw` — but nothing refused a differently configured process. The convention existed precisely
   to prevent the mistake I made by ignoring it, which is the clearest possible argument for making it
   structural.
+
+### §16L — a cardinality bound is not a membership definition
+
+> **A presentation or cardinality limit may constrain the rows a caller receives. It may never
+> silently constrain the semantic member set an aggregate is computed over.**
+
+Slice 3 defined a cohort as `{subjectClass, scope, filters}` — *the question* — and ruled that an
+aggregate is computed only when **every** member of that cohort has a disclosable contribution. The
+implementation then handed `analyze()` the rows a renderer was about to receive: candidates were
+governed in full, ordered by `updated_at`, sliced to `plan.limit`, and the slice became the
+membership. Measured on a 212-member cohort before the correction: `basis.members` reported **200**,
+omissions outside the slice vanished from the result, and — the part that makes this a rule rather
+than an inaccuracy — **a member whose contribution governance had refused could be pushed out of the
+slice by newer, unrelated, fully disclosable rows, and the same semantic request then returned
+DISCLOSED where it had returned WITHHELD**, with nothing about that member changed.
+
+> **Withhold-whole is a governance rule, and a rule that a row count can defeat is not a rule.**
+
+The correction is a type, not a comment. Only a completed governance pass can produce the object
+`analyze()` accepts: the brand is a module-private symbol, the seal **validates** rather than stamps
+(it refuses unless the governed members are exactly the candidate set), and membership is held by
+object identity in a module-private `WeakSet`, because a spread would otherwise carry a brand onto a
+clone with different members. There is no overload that takes a result set, so the defect cannot be
+reintroduced by a caller reaching for the nearest argument to hand.
+
+**The corollary for evidence.** A tenant whose cohort sits far below the limit cannot discriminate
+this defect at all — the pre-correction code returns the identical figure. Hosted acceptance for
+Slice 14 therefore states plainly that the 11-member Preview cohort proves membership *equals* the
+complete cohort and proves nothing about truncation; the discriminating evidence came from seeded
+212- and 2,011-member substrates. **An invariant about scale is not evidenced at a scale where both
+implementations agree.**
+
+**Three supporting rules, all learned inside this gate:**
+
+- **Name a statement by what distinguishes it, not by the table it reads.** An assertion that one
+  added statement was "the derivation-grant query against `context_grants`" passed the wrong way:
+  two different loaders read that table — the always-issued allow-list read and the boundary-crossing
+  grant read. The assertion now keys on the columns only the decision read selects (`purpose_code`,
+  `retention_class`). The same correction applied to a structural scan that counted three
+  `context_grants` queries and demanded `order by` of all three; the set-building read needs no
+  ordering, and demanding it would have asserted the wrong property of the right query.
+- **A fingerprint truncated before the part an assertion inspects cannot support that assertion.**
+  Statement text captured at 70 characters ended before its `FROM` clause, so a check naming the
+  table could never match. It failed loudly, which is the only reason it was cheap; a negative
+  assertion built on the same truncation would have passed vacuously.
+- **Prefer enumeration over provocation when the behaviour being controlled for is unspecified.**
+  The historical unordered `limit 1` is reproduced as a negative control by asking the decision core
+  for its verdict on *each* qualifying grant alone — the choice set the query was free to return —
+  rather than by asserting which row today's heap happens to yield. Pinning that row would pin the
+  defect.

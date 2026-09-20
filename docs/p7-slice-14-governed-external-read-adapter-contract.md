@@ -869,3 +869,119 @@ asserting; none was weakened. The Slice 13 assertion that `assertCanonicalSubstr
 at all" was the one that needed real care — it guarded against a caller selecting the substrate, so it
 now pins the parameter list exactly and additionally asserts that `ExecutionPolicy` carries a timeout
 and nothing that could name a role, pool or connection.
+
+---
+
+# P7 SLICE 14 — HOSTED ACCEPTED / CLOSED
+
+**Serving commit `e55499b` · hosted schema 114 · 173 assertions, 0 failures.**
+
+Preview/demo · `app_rw` · `bypassRls` false · tenant enforcement true · live probe · external sending
+disarmed · P45 inactive · **Production `qifatlqxfuhwrwvpbwsc` never addressed by any process in this
+gate** · **no deployment, no redeploy and no alias movement performed by the gate or its closeout**.
+
+## The evidence, exactly as observed
+
+| Phase | Result |
+|---|---|
+| **R1** — what the certified hostname serves, posture, substrate facts, pre-gate world baseline | **23 / 0** |
+| **Hosted H1–H7, H9–H11** — registry convergence, credential→principal, read/operator separation, canonical semantics, opportunity discrimination, MCP/web parity, the trusted bound, rate bounds, phase-accounted mutation | **116 / 0** |
+| **H8** — a genuine governed WITHHELD end to end, on an isolated certified `app_rw` clone | **14 / 0** |
+| **H13** — final state against the R1 baseline | **20 / 0** |
+| **Total** | **173 assertions / 0 failures** |
+
+**Final durable delta: `audit_log` +2 — one `agent_key.minted`, one `agent_key.revoked`, both
+explicitly accounted API-key lifecycle records.** No temporary API key remains (`api_keys` is empty,
+as it was pre-gate, and no key by the gate's naming convention exists in any state). P45 remains
+inactive and zero across `pursuit_runs`, `pursuit_run_steps` and `pursuit_run_approvals`. Protected
+business and security state is unchanged: `pursuits`, `opportunities`, `campaigns`,
+`campaign_touches`, `context_grants`, `organizations`, `org_members` and
+`pinned_surface_definitions` are byte-identical to the pre-gate fingerprint, and `audit_log` is the
+only table of 161 that differs.
+
+## What the gate proved that the earlier passes could not
+
+Two corrections landed after the first gate was written — `d977b56` (cohort completeness) and
+`e55499b` (batched fact acquisition) — so the gate was extended rather than re-pointed.
+
+- **Membership is the complete governed cohort, in the code that is serving.** `analyze()` accepts
+  only a sealed cohort, the executor seals from every governed candidate *before* ordering and
+  *before* the limit, and the rendered basis (11) equals this organization's whole open-pursuit set.
+- **The cohort here cannot discriminate truncation, and that is stated rather than implied.** Eleven
+  members against a `plan.limit` of 200 means the pre-correction code would have returned the same
+  figure. The discriminating evidence — 212 members reporting `basis.members` 200, and a
+  non-derivable member pushed out of the page turning WITHHELD into DISCLOSED — was produced on
+  seeded `app_rw` substrates (§16L).
+- **The statement graph was measured on the deployed runtime, not inferred.** `pg_stat_statements`
+  attributed to `app_rw` isolates the serving process from the gate's own owner queries, which run as
+  `postgres`. One canonical `pipeline_summary` cost **19, 19, 19** statements across three
+  measurements, with a **0**-statement quiet-window control proving the counter attributes traffic
+  rather than drifting. The same 19 was measured locally at 11, 212 and 2,011 members.
+  **Independence of N is not measured hosted and is not claimed** — this tenant has one cohort size.
+- **A governed WITHHELD survives batching.** On an isolated certified `app_rw` clone, one ACTIVE
+  participation on a foreign pursuit turns DISCLOSED into WITHHELD, serialized by the deployed
+  adapter with no `value`, no `currency` and no member count; removing the participation restores the
+  original figure exactly. The boundary crossing costs **one** extra statement — the cohort-wide
+  derivation-grant read — where per-row acquisition cost four per member: **the cheaper graph
+  produced the stricter answer.**
+
+## Invariants this slice closes on
+
+1. **The semantic cohort is the complete governed cohort, never the presentation page.**
+2. **Presentation cardinality cannot redefine aggregate membership.**
+3. **An aggregate is disclosed only when every member of the stated governed cohort has a disclosable
+   contribution.**
+4. **Multiple live qualifying derivation grants compose by union; each independently confers only what
+   it permits.** First-by-id selection when several grants independently permit is **deterministic
+   diagnostic selection only — a citation, not a precedence rule**: removing the named grant changes
+   the citation and not the decision.
+5. **Batching changes fact acquisition, not governance meaning.**
+6. **The canonical external read has a PostgreSQL statement-count ceiling independent of cohort
+   cardinality, and every workload-bearing statement is additionally protected by the trusted 500 ms
+   statement timeout.**
+7. **Application-side governance evaluation remains O(N).** No constant CPU, memory, pool-wait or
+   request wall-clock guarantee is implied or claimed.
+8. **External transport creates no alternate identity, authority, disclosure or business-semantic
+   layer.**
+
+## Defects
+
+| Defect | Disposition |
+|---|---|
+| **D-P7-COHORT-COMPLETENESS** | **HOSTED ACCEPTED / CLOSED** — see §16L and `docs/d-p7-cohort-completeness.md` |
+| **D-S14-EXECUTION-BOUND** | **HOSTED ACCEPTED / CLOSED** — trusted per-statement bound plus the bounded statement graph, measured hosted |
+| **D-P6-DERIVATION-MULTIGRANT** | **ACCEPTED / CLOSED** — union rule, permanent coverage in `dp6-multigrant`; see `docs/d-p6-derivation-multigrant.md` |
+| **D-P6IG-GOVERNANCE-FLAKE** | **OPEN / UNCHARACTERIZED** — not closed by this slice |
+
+**D-P6IG-GOVERNANCE-FLAKE, recorded without erasing what was observed.** One run of
+`p6ig-governance` on `0f5f40e` reported **91 passed, 1 failed** on a seeded clone. Every subsequent
+run has been clean — nine consecutive **92 / 0** runs during the Slice 14 work, plus **92 / 0** again
+at closeout — and `certify-world` is **52 suites clean, 0 failures**. **The failing assertion's name
+was never captured**, so the root cause, the trigger and the failure rate are all unknown. It is a
+separate historical intermittent, it is not a Slice 14 regression, and a clean re-run does not close
+it.
+
+## Permanent coverage added at closeout
+
+`scripts/dp6-multigrant-verify.ts`, registered as the SEEDED_CLONE suite **`dp6-multigrant`**
+(**38 / 0**):
+
+- the **historical unordered `limit 1`** kept verbatim as a negative control, with the bite taken by
+  enumeration — the decision core's verdict on each qualifying grant *alone* is one ALLOW and one
+  DENY, which is precisely the choice set an unordered query was free to return, while the union rule
+  allows. Which row the control actually returns is deliberately not asserted;
+- **two-path discrimination** across eleven grant shapes: the one-row `mayDerive` and the cohort
+  loader must reach the same decision, same named grant, same retention and same refusal reason,
+  under a real `app_rw` session, with an anti-vacuity check that the cases produced both ALLOW and
+  DENY;
+- **first-by-id is a citation, not precedence**: both loaders order by `id`, the named grant is the
+  lowest id and is stable across repeated evaluation, and deleting it leaves the decision ALLOW while
+  changing the citation.
+
+## Closeout regression
+
+`tsc` clean · unit **902 / 902** · `dp6-multigrant` **38 / 0** · `p6ig-governance` **92 / 0** ·
+`federation` **19 / 0** · `certify-world` **52 suites clean, 0 failures** (run at `e55499b` during the
+slice). **The hosted gate was not repeated for the closeout, because the closeout changes no
+production or runtime code**: the certified Preview hostname still serves `e55499b`, and no
+deployment or alias move occurred.
