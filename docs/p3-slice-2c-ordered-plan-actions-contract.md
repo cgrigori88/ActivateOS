@@ -401,6 +401,88 @@ Every security/integrity assertion carries a negative control; no vacuous PASS.
 
 ---
 
+## 11a. The v2 write-activation boundary
+
+### 11a.1 What was proven about rollout, on disposable clones
+
+| Application | Schema | Data | Result |
+|---|---|---|---|
+| `e55499b` | 114 | v1 | **current certified** |
+| `e55499b` | 115 | v1 | **SAFE / PROVEN** — every path healthy; old writes stay v1-shaped and leave the lineage columns null, which the live-lineage CHECK permits. Every old INSERT into `motion_actions` carries an explicit column list, so two added nullable columns cannot break one |
+| 2C-A | 115 | v1 | **SAFE / PROVEN** — renders v1 through normalization; three full read passes moved **nothing** (identical world digest, 0 tables), no backfill, no read-triggered write |
+| 2C-A | 115 | v1+v2 | **intended target** |
+| `e55499b` | 115 | v1+v2 | **UNSAFE / PROVEN** |
+
+**`e55499b` against v2 data does not fail — it proceeds confidently and wrongly.** It reads no
+`nextAction` and renders an empty action block on a plan that has actions; the v2-staged queue row
+resolves to no plan and reads as an ordinary cadence action; every v2 plan appears permanently stale
+because a v2 fingerprint can never equal the old algorithm's recomputation, so Today shows
+`PLAN_REVIEW_REQUIRED` with a null owner; and it then records a **new v1 recommendation**, approves
+it, and **stages a second action for work already queued**.
+
+> **Rollback to `e55499b` ceases to be valid at the first persisted v2 revision.**
+
+A v2 revision is written only by an explicit human action — `requestPlanRecommendationAction`
+through `dispatchSkill`, or a decision. **Rendering a pursuit never writes one.** So the rollback
+window closes on the first human plan action after deploy, not on deploy itself.
+
+### 11a.2 The gate
+
+`PLAN_CONTENT_V2_WRITES_ENABLED`, read through `planContentV2WritesEnabled()`, using the
+repository's canonical opt-in deployment-switch idiom (`"true" | "1" | "on" | "yes"`, absent ⇒
+false) — the same parser `pursuitsEnabled()`, `envEnabled()` and `vnextEnvEnabled()` all use
+verbatim.
+
+It is **deployment-global · default OFF · not tenant-configurable · not an org feature · not a
+`VNextFlag` · not part of `vnextCapabilities` · not authority · not disclosure · not a product
+entitlement.**
+
+> **The gate governs only whether a NEW schema-2 plan revision may be PERSISTED.**
+> **v2 reads are always enabled. The gate is a write brake, never a downgrade mode.**
+
+Its posture is reported in the authenticated `/api/build` **`posture`** block as
+`planContentV2WritesEnabled`, deliberately **not** in the tenant `capabilities` array: a hosted gate
+must be able to prove whether the serving deployment can create v2 data without relying on anyone's
+memory of a Vercel setting.
+
+### 11a.3 Schema preservation — a decision never changes generation
+
+**A decision responds to one immutable recommendation revision, so the recommendation's stored schema
+determines the decision's schema.** There is no downconversion and no upgrade.
+
+| Gate | Operation | Result |
+|---|---|---|
+| OFF | generate recommendation | persist **v1** content, v1 basis, legacy staging pointer |
+| OFF | decide a **v1** recommendation | persist a **v1** decision, v1 staging semantics |
+| ON | generate recommendation | persist **v2** |
+| ON | decide a **v2** recommendation | persist a **v2** decision, v2 lineage |
+| OFF→ON between generation and decision | decide a **v1** recommendation | decision stays **v1**. **Not upgraded** |
+| ON→OFF between generation and decision | decide a **v2** recommendation | **REFUSED before any mutation** — no revision, no staged action, no ledger row. Not downconverted, and never a v1 decision responding to a v2 recommendation |
+| any | unknown schema | fails closed at the versioned boundary |
+
+The invariant this buys:
+
+> **While `PLAN_CONTENT_V2_WRITES_ENABLED` is OFF, no new schema-2 plan revision can be persisted.
+> Existing schema-2 revisions remain fully readable.**
+
+### 11a.4 Every production serializer is covered, structurally
+
+Certification fails if a future production path can persist schema 2 without either consulting the
+gate or inheriting its schema from a pinned parent revision. Readers are never gated.
+
+### 11a.5 The post-v2 rollback rule
+
+- **Before the first v2 persistence:** `e55499b` remains a valid rollback target.
+- **After the first v2 persistence:** `e55499b` is **permanently retired** as a rollback target for
+  that database state.
+
+A valid post-v2 rollback runtime must understand v1 **and** v2 reads, understand v2 lineage, and
+preserve versioned fingerprint dispatch. **Turning `PLAN_CONTENT_V2_WRITES_ENABLED` OFF on a
+v2-capable runtime is the safe operational brake — it stops new v2 data being created. It does not
+restore compatibility with `e55499b`, and nothing can.**
+
+---
+
 ## 12. Hosted rollout — not designed here
 
 0115 makes 2C-A **migration-bearing**, so its hosted rollout obeys **§16F and §16I**: the migration is
