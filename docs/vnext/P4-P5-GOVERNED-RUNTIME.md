@@ -1279,3 +1279,272 @@ progression across multiple governed actions.
 whole-world **`f2d83f71489c6682`** · security **`092a20af64a0444e`** · manifest
 **`cbddf5de9433b9fd`** · protected **31 / 0** · `governed_skills` 18 · organizations 3 ·
 `app_rw` LOGIN true / BYPASSRLS false · serving `59f48a4`.
+
+---
+
+## 22. P45-4 — AGENT ACTOR EXECUTES A GRANTED CAPABILITY (contract, frozen 2026-09-20)
+
+> **A production AGENT credential resolves to a durable governed actor, that actor holds an exact
+> live capability grant, and one real consequential same-org action executes through the existing
+> governed chokepoint with immutable actor + credential + grant attribution.**
+
+First certified capability: **`draft_campaign_touch@1`**, reached through the actual `/api/mcp`
+AGENT production path. INTERNAL_WRITE · same-org · no external send.
+
+### 22.1 What discovery found, and why this slice exists
+
+`governed_actors` has admitted `AGENT` since 0109 and has **zero rows**. Meanwhile an AGENT actor
+**already executes governed writes in production**: `src/app/api/mcp/route.ts` builds
+`Actor{type:"AGENT", id: key.keyId}` from an API key and dispatches `draft_campaign_touch` /
+`request_warm_intro` — passing **no `governedActorId`**, so the 0109 grant gate
+(`if (ctx.governedActorId) …`) never engages. **Agent authority today comes from an API-key scope,
+not from a grant to a durable governed actor.** That gap, not the absence of an AGENT type, is what
+P45-4 closes.
+
+`assert_stakeholder_role` was considered first and rejected: its only production callers are two
+browser Server Actions building `{type:"USER"}` — **no non-human route exists**, so proving it would
+have meant a verifier calling `dispatchSkill`, which is not product proof. It is retained as an
+independent negative control (an AGENT may never assert `verified`), never as the subject.
+
+### 22.2 Identity — three facts, three columns, never overloaded
+
+| Slot | Value | Meaning |
+|---|---|---|
+| `Actor.id` | `keyId` | the credential/caller — **existing semantics retained** |
+| `ctx.governedActorId` | resolved `governedActorId` | **trusted credential resolution only** |
+| `governed_action_invocations.actor_id` | `keyId` | which credential invoked — **unchanged** |
+| `governed_action_invocations.governed_actor_id` | the governed actor | which durable agent that credential represented |
+| `governed_action_invocations.grant_id` | the exact authorizing row | which authority instrument permitted the action |
+
+The earlier draft made `Actor.id` become the governed actor when bound, which would have silently
+rewritten `actor_id`'s historical meaning. It does not. **A payload value never establishes `orgId`,
+`keyId`, `governedActorId` or `grantId`; a compatibility field that disagrees with trusted
+resolution is REJECTED, not ignored.**
+
+`dispatchSkill` validates the **actor** (resolves in-org, ACTIVE, `actor_type === actor.type`). It
+cannot validate the **binding** — that is established upstream from `ResolvedApiCredential`. The
+chokepoint is not claimed to check what it does not check.
+
+### 22.3 Authority
+
+**Being an AGENT confers zero authority.** Under enforcement, an AGENT consequential dispatch
+requires a credential-bound **ACTIVE** governed AGENT plus a **live exact** capability grant, in the
+same tenant, on top of every pre-existing check. A grant may **narrow, never rescue**: it cannot
+save an actor type or role the registry already refused, which is why the gate stays ordered after
+`eligibleActors` and `ROLE_RANK`. **Approval authorizes continuation; it never creates authority.**
+
+**`WORKER` and `SYSTEM` are outside this slice.** `src/lib/comms/sequence.ts:188` dispatches
+`send_campaign_touch` as `Actor{type:"WORKER", id:"scheduler"}` with no governed actor and no grant.
+That remains **known legacy, non-governed behaviour**, recorded here for a future separately
+authorized item. **P45-4 does not make every non-human actor governed. It makes AGENT execution
+governed.**
+
+### 22.4 Grant liveness — database time, one implementation
+
+```
+status = 'ACTIVE'
+  and revoked_at is null
+  and (expires_at is null or expires_at > transaction_timestamp())
+```
+
+**The database establishes "now."** No caller, application or model timestamp enters production
+authority evaluation, and the live predicate exposes **no time operand at all** — not even a
+`coalesce($n, transaction_timestamp())`. This is §14/CFR-1.2 and the D-P6-1 correction applied to a
+new instrument: a `timestamptz` carries microseconds and a JavaScript `Date` carries milliseconds,
+so an instant that round-trips through the application is up to 999µs stale and can allow what the
+database has already denied. The deliberate as-of helpers in `federation/grants.ts` and
+`federation/contributions.ts` stay separate and **must never be repurposed as the live P45 authority
+helper**.
+
+**Liveness and applicability are separate questions.** Liveness is status/revocation/expiry.
+Applicability is actor/org/capability/**exact version**. Exact matching must not duplicate expiry
+logic.
+
+`dispatchSkill` and `staleAuthority` **share one implementation**, and a structural certification
+proves there is no second P45 grant-expiry comparison anywhere. Today they agree only by
+coincidence; adding expiry to one alone would let a human approve what can no longer execute, which
+is exactly what `staleAuthority` exists to prevent.
+
+### 22.5 Expiry vs the ACTIVE unique slot
+
+The partial index is `unique (org_id, actor_id, skill_id) where status = 'ACTIVE'` — **`skill_version`
+is not in it**, and `now()` cannot enter a partial-index predicate. Therefore an **expired but
+status-ACTIVE grant confers zero authority and still occupies the slot**: live-for-uniqueness and
+dead-for-authority are deliberately different questions.
+
+**Renewal is `revoke old grant → insert new grant`.** This is the table's existing shape —
+`app_rw` may update only `(status, revoked_at)`, and a grant is created and revoked, never edited
+into a different capability. **Capability identity and version are immutable.**
+
+### 22.6 Exact version under strict AGENT enforcement
+
+Legacy grant infrastructure supports `skill_version is null` as broader historical semantics and is
+**not globally rewritten**. But strict AGENT execution of `draft_campaign_touch@1` requires an
+authorizing row with `skill_id = 'draft_campaign_touch'` **and** `skill_version = 1`. A grant for
+version 2, any other explicit version, or **NULL/wildcard** does not satisfy it.
+
+### 22.7 Historical attribution
+
+The grant used by an executed invocation **remains permanently attributable for the tenant's
+lifetime**. `grant_id` is a tenant-composite FK with **NO ACTION**, never `SET NULL`.
+
+This is safe because within a tenant's life **nothing can delete a grant**: `app_rw` holds no
+`DELETE` on `actor_capability_grants`, `governed_actors` or `governed_action_invocations`. Physical
+deletion occurs only through organization cascade, where the referencing audit rows are removed in
+the same statement — which `NO ACTION` tolerates at end-of-statement and `RESTRICT` would not.
+**That is a claim about PostgreSQL behaviour under two concurrent cascade paths, so it is proved on
+a disposable clone, not asserted.**
+
+### 22.8 Provisioning — no bound-but-ungranted window
+
+Canonical order: **create governed AGENT → create its exact grant → mint a new API credential
+already bound to that actor.**
+
+This ordering is forced by existing code: the 0109 gate demands a grant **whenever
+`ctx.governedActorId` is present**, even with the new enforcement switch OFF. So creating an actor
+is inert, and creating a grant for an actor with no credential is inert, but **binding a credential
+is not** — from that moment the credential must already hold the grant for its intended action.
+A legacy Slice 14 key is never bound to preserve its identity; a new bound key is minted, and
+unbound legacy keys remain only for OFF-posture compatibility testing.
+
+### 22.9 The binding is immutable after issue
+
+`api_keys.governed_actor_id` is set **at INSERT**. There is **no production rebinding operation**,
+and `app_rw`'s `UPDATE` on `api_keys` is narrowed to `revoked_at` so rebinding is **structurally
+impossible rather than merely unimplemented**. `last_used_at` is stamped inside the hardened
+SECURITY DEFINER resolver, which runs as owner and needs no `app_rw` privilege.
+
+**Identity change means revoke the credential and issue a new one.**
+
+### 22.10 Enforcement rollout — `GOVERNED_AGENT_ENFORCEMENT_ENABLED`
+
+Deployment-global, **absent ⇒ OFF**, scoped to `actor.type === 'AGENT'` only.
+
+| Posture | Credential | Behaviour |
+|---|---|---|
+| OFF | unbound legacy | **certified Slice 14 semantics preserved exactly**; no governed actor or grant attribution is invented |
+| OFF | bound | the **existing 0109 gate** applies — bound-without-live-grant REJECTS. Accepted existing behaviour, not a bug |
+| ON | unbound | REJECTED at the new mandatory-binding check |
+| ON | bound, missing/invalid grant | REJECTED at the grant check |
+| ON | bound ACTIVE AGENT + exact live v1 grant | executes, if every pre-existing eligibility/role/precheck also permits |
+| either | WORKER / SYSTEM | unchanged |
+
+**Turning enforcement OFF after strict activation widens authority and is NOT an emergency brake.**
+The post-activation brake is **credential revocation, grant revocation, or actor suspension** —
+each a normal, audited operation that narrows. Disabling enforcement requires its own ruling.
+
+This is the substantive difference from the 2C-A write gate, which removed a capability to write a
+new format. This gate removes an *authority requirement*, so it is not symmetric with it and its
+rollback semantics must not be copied mechanically.
+
+### 22.11 Rollback — two different compatibilities
+
+- **Data compatibility.** `89ed7001` reads schema 116 correctly: every change is a nullable column,
+  a new constraint or a new FK, and it reads none of them.
+- **Authority-contract compatibility.** Once strict enforcement is armed **while an AGENT-capable
+  credential exists**, `89ed7001` **ceases to be a valid security rollback** — it silently removes
+  the mandatory actor/grant requirement and restores scope-only AGENT authority while operators
+  believe every agent write is granted.
+
+> **The activation boundary is arming strict enforcement while an AGENT-capable credential exists —
+> not the first successful invocation.** There is no new data format here that old code misreads;
+> the risk is authority regression. A valid post-activation rollback runtime must itself enforce.
+
+**This distinction must survive into all hosted certification language.**
+
+### 22.12 Telemetry — what this slice does not claim
+
+**P45-4 claims no model, provider, token or cost evidence, and 0116 contains no column for any of
+it.** On the MCP path PursuitOS is the server *being called*: `src/lib/agents/mcp-writes.ts` and the
+`/api/mcp` write branch perform **no provider call**, so there is no observed provider, model
+version, token usage or cost. Nullable fields are not added merely so that every value in the first
+certified execution can be null.
+
+**Configuration is not evidence.** Execution-time model and usage fields may be written only by a
+trusted server-side execution context that itself performed the model call — never from a request
+payload, MCP caller metadata, or mutable actor configuration. `governed_actors.model_provider` /
+`model_id` are therefore **deferred**: a mutable "configured model" strengthens neither identity,
+authority, attribution nor cost, and would exist to support a display.
+
+Trusted model/usage/cost attribution moves to the immediately-following **Runtime observability +
+P8 hooks** item. **That item inherits the obligation to design honest attribution — not to populate
+these fields.** If PursuitOS still does not own the model execution at that point, the facts remain
+unavailable and must stay unrecorded; the next slice improves the observation spine, it does not
+fabricate telemetry. It should also record what discovery found about the internal server-side
+path, which is only partly attestable today: tokens are provider-reported (`ai/client.ts:123`) but
+`cost_usd` is computed locally from a hardcoded list-price table (`client.ts:133`) and `model` is
+the locally-declared `MODELS[tier]` constant, not the provider's returned model string.
+
+### 22.13 User-visible change
+
+**"Drafted by \<governed actor display name\>"** on the existing campaign-touch/activity
+representation, rendered **only when `governed_actor_id is not null`**. No model. No cost. No
+actor-model configuration UI. No agent-history redesign. An unbound legacy AGENT execution must
+**not** display governed-agent attribution, and grant authorization is carried by `grant_id`, never
+inferred from the presence of an actor.
+
+### 22.14 Refusal disclosure
+
+A user-facing refusal must never reveal whether a foreign or forged grant exists. A foreign actor is
+reported **unknown**, indistinguishably from one that does not exist — the existing 0109 convention,
+preserved.
+
+### 22.15 P3
+
+**2C-A remains closed; 2C-B remains deferred.** No plan compiler, no `PlanContent` capability
+fields, no `pursuit_run_steps.plan_action_key`. P45-4 executes through `dispatchSkill` with a
+governed actor and **no run**, so it never touches the plan-bound run tables
+(`pursuit_runs.plan_revision_id` is NOT NULL — requiring a run here is what would have dragged 2C-B
+forward).
+
+### 22.16 Migration 0116 — exactly this, and nothing else
+
+| Target | Change |
+|---|---|
+| `governed_actors` | `check (actor_type <> 'AGENT' or principal_user_id is null)` — an agent is not a person |
+| `actor_capability_grants` | `+ expires_at timestamptz` (insert-only **by omission** — UPDATE stays `(status, revoked_at)`); `+ unique (org_id, id)` |
+| `governed_action_invocations` | `+ grant_id uuid`, tenant-composite FK → grants with **NO ACTION**, plus a partial lookup index; **not** added to the UPDATE allowlist |
+| `api_keys` | `+ governed_actor_id uuid`, tenant-composite FK → `governed_actors` with **ON DELETE CASCADE**; `app_rw` UPDATE narrowed to `revoked_at` |
+| `resolve_api_key(text)` | drop/recreate for the return-type change only; returns `governed_actor_id`; **SECURITY DEFINER** and `search_path = pg_catalog, public, pg_temp` preserved exactly |
+
+**Explicitly absent:** model, token, cost and latency fields · any new table · prompt/persona/tool
+catalogue · P3/P45 run or compiler columns.
+
+`api_keys.governed_actor_id` uses CASCADE rather than RESTRICT because an actor is only ever
+physically deleted with its tenant, and RESTRICT could abort a legitimate organization cascade
+depending on cascade order. The invariant it protects — **a live credential may never resolve to a
+nonexistent governed actor** — is satisfied either way; CASCADE additionally does not block cleanup.
+
+### 22.17 Acceptance — the permanent `p45-4` suite
+
+Every refusal must prove **the intended check was actually reached** (§16N). At minimum: identity
+separation and forged-payload refusal · lifecycle DRAFT/SUSPENDED/RETIRED · grant cannot rescue
+registry ineligibility · grant missing/revoked/expired/wrong-capability/wrong-explicit-version/
+NULL-wildcard all reject and exact `@1` executes · database transaction time only · expired-ACTIVE
+occupies the slot and revoke-then-insert succeeds · executed invocation records the exact immutable
+grant id · cross-org actor and grant relations refused relationally with an indistinguishable
+user-facing denial · binding immutable to `app_rw` · OFF/unbound is Slice 14-compatible with null
+governed/grant attribution · ON/unbound rejects at mandatory binding · OFF/bound-without-grant
+rejects at the existing gate · WORKER unaffected under both postures · the draft mutation occurs
+with no external send · `assert_stakeholder_role` AGENT-cannot-assert-`verified` retained ·
+organization-cascade passes · `grant_id` and `expires_at` immutable to `app_rw` · the resolver keeps
+its hardened `search_path` and the protected-function class stays **31 / 0** · human/USER P45
+behaviour, the full 2C-A suite and the P6/P7 governance regressions unchanged · **no model, token or
+cost attribution exists anywhere in this slice**.
+
+The core positive must drive the real product path:
+
+```
+credential → trusted resolver → MCP Actor → governed actor context → exact live grant
+  → dispatchSkill → draft_campaign_touch → campaign-touch draft → invocation audit
+```
+
+A verifier calling `dispatchSkill` directly is **insufficient** for that positive proof.
+
+### 22.18 Wrong-version proof respects grant immutability
+
+A grant's capability version is never re-pinned. The certified sequence is: insert an ACTIVE grant
+for `draft_campaign_touch@2` → attempt v1 → **rejected by the version check** → revoke the v2 grant
+→ insert a new ACTIVE `@1` grant → the identical dispatch **succeeds**. One sequence proves four
+things: wrong version rejects, exact version authorizes, grant identity is immutable, and
+replacement is revoke-then-insert.
