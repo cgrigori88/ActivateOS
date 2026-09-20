@@ -388,39 +388,82 @@ test("2C-A: the staged pair comes from RESOLVED objects, never from caller-suppl
   // TypeScript about what a member is. So the membership proof has to live above the boundary, and
   // what must be true of it is structural: the values persisted are derived here, not passed in.
   const code = strip(PLAN_STORE);
-  const insert = code.slice(code.indexOf("insert into motion_actions"), code.indexOf("returning id", code.indexOf("insert into motion_actions")) + 200);
-  assert.match(insert, /plan_revision_id, plan_action_key/, "the writer populates the lineage columns");
-  assert.match(insert, /revisionId, chosen\.key/, "with the revision it just inserted and the action it just resolved");
+  assert.match(code, /const current = selectCurrentPlanAction\(content\.actions, milestones\)/);
   // `chosen` is the action found IN the decision's own normalized content, and it must be the very
   // object the canonical selector returned — identity, not a key that merely looks equal.
   assert.match(code, /const chosen = content\.actions\.find\(\(a\) => a\.key === current\.action\.key\)/);
   assert.match(code, /if \(!chosen \|\| chosen !== current\.action\) throw/);
-  assert.match(code, /const current = selectCurrentPlanAction\(content\.actions, milestones\)/);
+  // Everything persisted travels through `stagedPlan`, which is built from `chosen` alone.
+  assert.match(code, /stagedPlan = \{ step, dueAt: [^;]*text: chosen\.text, key: chosen\.key \}/);
+  assert.match(code, /values \(\$1,\$2,\$3,\$4,\$5,\$6,\$7\) returning id`,\s*\[actor\.orgId, content\.motion\.motionId, stagedPlan\.step, stagedPlan\.text, stagedPlan\.dueAt, revisionId, stagedPlan\.key\]/);
   // AND NOTHING FROM `args` REACHES THE PAIR. A caller supplies a decision and adjustments; it never
   // supplies an action key to stage.
   assert.ok(!/plan_action_key[^;]*args\./.test(code), "no caller field reaches plan_action_key");
   assert.ok(!/args\.(actionKey|planActionKey|stagedActionKey)/.test(code), "there is no caller-supplied action key at all");
 });
 
-test("2C-A: exactly ONE action is staged per decision — the current one", () => {
+test("2C-A: exactly ONE action is staged per decision, in either generation", () => {
   const code = strip(PLAN_STORE);
   const inserts = code.match(/insert into motion_actions/g) ?? [];
-  assert.equal(inserts.length, 1, "one staging site, so 'only the current action' cannot be bypassed elsewhere");
-  // No loop, map or forEach over actions anywhere near the staging site.
-  const region = code.slice(code.indexOf("STAGE EXACTLY ONE ACTION") >= 0 ? code.indexOf("let stagedMotionActionId") : 0);
-  const staging = region.slice(0, region.indexOf("const revisionNo") >= 0 ? region.indexOf("const revisionNo") : 4000);
-  assert.ok(!/content\.actions\.(map|forEach|flatMap)\(/.test(staging), "the staging path never iterates the plan");
+  // TWO staging sites and no more: one writes the v1 shape (pointer inside the content, before the
+  // revision exists) and one writes the v2 shape (lineage columns, after it does). Both are fed by
+  // the single `stagedPlan` the selector produced, so "only the current action" cannot be bypassed.
+  assert.equal(inserts.length, 2, "one staging site per generation");
+  assert.equal((code.match(/stagedPlan = \{/g) ?? []).length, 1, "and exactly one place decides what is staged");
+  const region = code.slice(code.indexOf("let stagedMotionActionId"), code.indexOf("const revisionId"));
+  assert.ok(!/content\.actions\.(map|forEach|flatMap)\(/.test(region), "the staging path never iterates the plan");
 });
 
 test("2C-A: the ledger corroborates lineage and carries nothing more", () => {
   const code = strip(PLAN_STORE);
   const after = code.slice(code.indexOf("changeType: \"ACTION_CREATED\""));
-  const payload = after.slice(after.indexOf("after: {"), after.indexOf("}", after.indexOf("after: {")) + 1);
+  const payload = after.slice(after.indexOf("after: v1Decision"), after.indexOf("});", after.indexOf("after: v1Decision")));
   for (const field of ["planId", "planRevisionId", "planActionKey"]) {
     assert.ok(payload.includes(field), `the corroboration names ${field}`);
   }
+  // A v1 row's ledger entry keeps the v1 payload exactly, so a rollback runtime reads what it wrote.
+  assert.match(payload, /v1Decision\s*\?\s*\{ motionId: content\.motion\.motionId, step: stagedPlan!\.step, dueAt: stagedPlan!\.dueAt\.toISOString\(\), planId: plan\.id \}/);
   // AND NOTHING ELSE that would turn an audit row into a second source of truth or leak content.
   for (const forbidden of ["args", "capability", "skillId", "evidence", "doneWhen", "via"]) {
     assert.ok(!payload.includes(forbidden), `the ledger payload leaked ${forbidden}`);
   }
+});
+
+// ── 8 · EVERY STORED-FINGERPRINT COMPARISON IS DISPATCHED, NOT JUST assessPlanReview ────────────
+
+test("2C-A: a v1 pending recommendation is NOT stale on a v2-capable build", () => {
+  // THE BUG THIS PINS, found by the regression battery once the write gate existed: with
+  // `PLAN_CONTENT_V2_WRITES_ENABLED` OFF the product stores v1 recommendations while the binary
+  // generates v2, so ANY comparison that measures a stored fingerprint against `live.basis` without
+  // dispatch reads every pending plan as permanently stale — and the surface then refuses to offer
+  // a decision it is perfectly able to take. `freshBasisFor` is the only correct comparand.
+  const s = state();
+  const live = recommendPursuitPlan(s, NOW);
+  const v1Basis = { recommenderVersion: "pursuit-plan-v2", computedAt: NOW.toISOString(), fingerprint: live.legacyBasis.fingerprint, inputs: live.legacyBasis.inputs, evidence: [] };
+  assert.equal(freshBasisFor(v1Basis, live).fingerprint, v1Basis.fingerprint, "a v1 pending matches under its own algorithm");
+  assert.notEqual(live.basis.fingerprint, v1Basis.fingerprint, "and would NOT match under the v2 one — the control that makes this test bite");
+  // The same holds the other way: a v2 pending is measured against the v2 basis.
+  assert.equal(freshBasisFor(live.basis, live).fingerprint, live.basis.fingerprint);
+});
+
+test("2C-A: both representations describe the same world", () => {
+  // The gate picks one of two objects composed from ONE state, so they must agree about everything
+  // they both claim: the focus, the motion, the milestones, the "why", and the top-ranked action.
+  const rec = recommendPursuitPlan(state(), NOW);
+  assert.equal(rec.legacyContent.schema, 1);
+  assert.equal(rec.content.schema, 2);
+  assert.deepEqual(rec.legacyContent.focus, rec.content.focus);
+  assert.deepEqual(rec.legacyContent.motion, rec.content.motion);
+  assert.deepEqual(rec.legacyContent.milestones, rec.content.milestones);
+  assert.deepEqual(rec.legacyContent.why, rec.content.why);
+  const v1 = rec.legacyContent.nextAction!;
+  const v2 = rec.content.actions[0];
+  assert.equal(v1.key, v2.key);
+  assert.equal(v1.text, v2.text);
+  assert.equal(v1.doneWhen, v2.doneWhen);
+  assert.equal(v1.dueInDays, v2.dueInDays);
+  assert.deepEqual(v1.owner, v2.owner);
+  // And only the v1 shape carries the staging pointer, unset until a decision stages it.
+  assert.equal(v1.stagedMotionActionId, null);
+  assert.ok(!("stagedMotionActionId" in v2));
 });

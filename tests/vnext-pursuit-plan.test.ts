@@ -91,7 +91,7 @@ function revision(kind: RevisionRecord["kind"], rec: ReturnType<typeof recommend
   seq++;
   return {
     id: `r-${seq}`, revisionNo: seq, kind, decision: kind === "DECISION" ? "APPROVED" : null,
-    respondsToRevisionId: null, content: rec.content, contentSchema: 2, legacyStagedActionId: null,
+    respondsToRevisionId: null, content: rec.content, contentSchema: 2, rawContent: rec.content, legacyStagedActionId: null,
     basis: rec.basis, fingerprint: rec.basis.fingerprint,
     adjustments: null, reviewTrigger: null, reason: null, actorType: kind === "DECISION" ? "USER" : "SYSTEM",
     createdAt: new Date(NOW.getTime() + seq * 1000).toISOString(), ...over,

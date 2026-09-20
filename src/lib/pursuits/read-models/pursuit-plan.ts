@@ -350,6 +350,15 @@ export interface PlanRecommendation {
   content: PlanContentV2;
   basis: PlanBasis;
   /**
+   * THE SAME WORLD, COMPOSED THE WAY `e55499b` COMPOSED IT.
+   *
+   * Not a downgrade of `content` — independently derived from the same state by the same v1 rules,
+   * so that with `PLAN_CONTENT_V2_WRITES_ENABLED` OFF the persisted row is what the previous
+   * runtime would have written, and rollback to it stays valid. Keeping the recommender PURE is the
+   * point: the gate is read at the persistence boundary, never inside a derivation.
+   */
+  legacyContent: PlanContentV1;
+  /**
    * The SAME world state, fingerprinted by the unchanged v1 algorithm.
    *
    * Never persisted and never compared against a v2 plan. It exists so that a stored v1 plan can be
@@ -844,10 +853,22 @@ export function recommendPursuitPlan(s: PlanState, now: Date = new Date()): Plan
     ...actions.filter((a) => a.via).map((a) => ({ refType: a.via!.refType, refId: a.via!.refId })),
   ];
 
-  // The v1 algorithm, run verbatim on the same state. Never persisted; used only to review a
-  // stored v1 plan with the algorithm it was written with.
+  // ── THE V1 REPRESENTATION OF THE SAME STATE ─────────────────────────────────────────────────
+  // The v1 algorithm run verbatim: one action from the top-ranked gap, one owner, and the v1
+  // fingerprint inputs. Used to review a stored v1 plan with the algorithm it was written with, and
+  // to PERSIST a v1 recommendation while v2 writes are disabled.
   const legacyOwner = top ? resolveOwner(OWNER_ROLE_FOR_SOURCE[top.source], s.team) : null;
   const legacyInputs = fingerprintInputs(s, status, top, legacyOwner);
+  const legacyNextAction: PlanNextAction | null = top && legacyOwner
+    ? (() => {
+      const a = actionFor(top, s.accountLabel);
+      return {
+        key: a.key, text: a.text, doneWhen: top.howToResolve,
+        via: top.source === "STAKEHOLDER_COVERAGE" ? viaFor(s) : null,
+        owner: legacyOwner, dueInDays: DEFAULT_ACTION_DUE_DAYS, stagedMotionActionId: null,
+      };
+    })()
+    : null;
 
   return {
     goal,
@@ -861,6 +882,10 @@ export function recommendPursuitPlan(s: PlanState, now: Date = new Date()): Plan
       fingerprint: fingerprintOf(inputs),
       inputs,
       evidence,
+    },
+    legacyContent: {
+      schema: PLAN_CONTENT_SCHEMA_V1,
+      focus, motion: motionRef(s), nextAction: legacyNextAction, milestones, why,
     },
     legacyBasis: {
       recommenderVersion: RECOMMENDER_VERSION,
@@ -1207,6 +1232,14 @@ export interface RevisionRecord {
   respondsToRevisionId: string | null;
   /** NORMALIZED. The stored row is never rewritten; `contentSchema` says what it actually holds. */
   content: PlanContent;
+  /**
+   * The stored JSON exactly as the row holds it.
+   *
+   * Needed because a decision on a v1 recommendation must persist the V1 SHAPE — the decision
+   * inherits its generation from the recommendation it responds to, and normalizing on the way in
+   * then serializing the normalized form on the way out would silently upgrade it.
+   */
+  rawContent: StoredPlanContent;
   contentSchema: typeof PLAN_CONTENT_SCHEMA_V1 | typeof PLAN_CONTENT_SCHEMA_V2;
   /** The staging pointer a v1 row carries inside its content. Always null for v2. */
   legacyStagedActionId: string | null;
@@ -1434,7 +1467,13 @@ export function composePursuitPlanView(input: PursuitPlanViewInput): PursuitPlan
   }
 
   const pendingIsUpdate = standing.inForce && standing.pending && standing.pending.revisionNo > standing.inForce.revisionNo;
-  const pendingStale = standing.pending != null && input.live != null && standing.pending.fingerprint !== input.live.basis.fingerprint;
+  // COMPARE LIKE WITH LIKE. A pending recommendation is measured against the algorithm ITS
+  // generation was written with — not against whichever one this deployment currently generates.
+  // Without the dispatch, a v1 recommendation on a v2-capable build (which is exactly what
+  // `PLAN_CONTENT_V2_WRITES_ENABLED=off` produces) would read as permanently stale, and the
+  // surface would refuse to offer a decision it is perfectly able to take.
+  const pendingStale = standing.pending != null && input.live != null
+    && standing.pending.fingerprint !== freshBasisFor(standing.pending.basis, input.live).fingerprint;
 
   // --- progress --------------------------------------------------------------
   const content = shown.content;

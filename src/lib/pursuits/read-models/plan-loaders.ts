@@ -278,6 +278,7 @@ function revisionRecord(r: RevisionRow): RevisionRecord {
   return {
     id: r.id, revisionNo: r.revision_no, kind: r.kind, decision: r.decision,
     respondsToRevisionId: r.responds_to_revision_id, content, contentSchema,
+    rawContent: stored as never,
     legacyStagedActionId: legacyStagedActionId(stored), basis: r.basis,
     fingerprint: r.basis_fingerprint, adjustments: r.adjustments, reviewTrigger: r.review_trigger,
     reason: r.reason, actorType: r.actor_type, createdAt: r.created_at.toISOString(),

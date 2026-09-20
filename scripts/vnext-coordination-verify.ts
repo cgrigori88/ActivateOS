@@ -169,8 +169,13 @@ async function main(): Promise<void> {
     check("a DECISION revision now answers the recommendation", st.inForce?.kind === "DECISION" && st.inForce.respondsToRevisionId === rec.id && st.inForce.decision === "APPROVED");
     const recRowAfter = (await db.query(`select content, basis, created_at from pursuit_plan_revisions where id = $1`, [rec.id])).rows[0];
     check("the recommendation itself is unchanged (never overwritten)", JSON.stringify(recRow) === JSON.stringify(recRowAfter));
+    // POSTURE-AGNOSTIC: this suite asserts that the approved action REACHED THE QUEUE, not which
+    // generation recorded the link. A v1 decision keeps the pointer inside its content; a v2
+    // decision carries lineage columns. Both are correct, and which one runs is a deployment
+    // setting (PLAN_CONTENT_V2_WRITES_ENABLED), not a property of coordination.
     const staged = st.inForce
-      ? (await db.query<{ id: string }>(`select id from motion_actions where org_id = $1 and plan_revision_id = $2`, [caller.orgId, st.inForce.id])).rows[0]?.id
+      ? (st.inForce.legacyStagedActionId
+        ?? (await db.query<{ id: string }>(`select id from motion_actions where org_id = $1 and plan_revision_id = $2`, [caller.orgId, st.inForce.id])).rows[0]?.id)
       : undefined;
     const ma = staged ? (await db.query<{ status: string; action: string; motion_id: string }>(`select status, action, motion_id from motion_actions where id = $1`, [staged])).rows[0] : null;
     check("the next action is staged as a pending step on the existing motion queue", !!ma && ma.status === "pending" && /economic buyer/i.test(ma.action));
@@ -240,7 +245,10 @@ async function main(): Promise<void> {
     });
     check("an adjusted approval is accepted", adj.status === "EXECUTED", adj.reason ?? "");
     const after = resolvePlanStanding((await loadPlanRecords(db, caller, hero.id)).revisions);
-    check("the decision records exactly what changed", JSON.stringify(after.inForce?.adjustments?.map((c) => c.field).sort()) === JSON.stringify(["action.dueInDays", "action.owner"]));
+    // The FIELDS a person changed, independent of the generation's vocabulary: a v1 row records
+    // `nextAction.owner`, a v2 row `action.owner`, and both mean the owner changed.
+    const changedFields = after.inForce?.adjustments?.map((c) => c.field.replace(/^(nextAction|action)\./, "")).sort();
+    check("the decision records exactly what changed", JSON.stringify(changedFields) === JSON.stringify(["dueInDays", "owner"]), JSON.stringify(changedFields));
     check("the adjusted action keeps the recommended action's key", after.inForce?.content.actions[0]?.key === rec.content.actions[0]?.key);
     const ov = (await db.query<{ field: string; original_recommendation: { revisionId: string }; human_decision: { decision: string }; data_environment: string }>(
       `select field, original_recommendation, human_decision, data_environment from pursuit_overrides where pursuit_id = $1 and field = 'plan'`, [hero.id])).rows[0];

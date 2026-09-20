@@ -5,7 +5,7 @@ import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { getPool } from "@/db/client";
 import { withTenantOrg } from "@/lib/db/tenant";
 import { type DatabasePosture, probeDatabasePosture } from "@/lib/env/db-posture";
-import { buildInfo, databaseIdentity, environmentLabel, externalSendingArmed, siteMode } from "@/lib/env/environment";
+import { buildInfo, databaseIdentity, environmentLabel, externalSendingArmed, planContentV2WritesEnabled, siteMode } from "@/lib/env/environment";
 import { interpreterEnabled } from "@/lib/interpret/answer";
 import { intentCredentialPresent, intentModelEnabled } from "@/lib/experience/intent/model";
 import { vnextCapabilities } from "@/lib/env/vnext-flags";
@@ -152,6 +152,12 @@ export async function GET() {
         interpreterEnabled: interpreterEnabled(),
         intentEnabled: intentModelEnabled(),
         intentCredentialPresent: intentCredentialPresent(),
+        // P3 Slice 2C-A ROLLOUT POSTURE — may this deployment PERSIST a schema-2 plan revision?
+        // It belongs here and NOT in `capabilities`: that array is per-tenant product entitlement,
+        // while this is a deployment-global write brake that decides whether the database is still
+        // on the safe side of the rollback boundary. A hosted gate has to be able to prove that
+        // from the running process rather than from someone's memory of a Vercel setting.
+        planContentV2WritesEnabled: planContentV2WritesEnabled(),
       },
       capabilities,
       serverTime: new Date().toISOString(),

@@ -136,3 +136,29 @@ export function externalSendingArmed(): boolean {
   if (isPublicSite()) return false;
   return process.env.OUTREACH_AUTOSEND === "on";
 }
+
+/**
+ * P3 Slice 2C-A — may this deployment PERSIST a new schema-2 plan revision?
+ *
+ * > **A WRITE BRAKE, NEVER A DOWNGRADE MODE. v2 reads are always enabled.**
+ *
+ * WHY IT EXISTS. `e55499b` — the runtime certified before ordered plan actions — reads v2 content
+ * without failing and gets it wrong: no `nextAction`, so an empty action block on a plan that has
+ * actions; no resolvable lineage for a v2-staged queue row; every v2 plan permanently stale, because
+ * a v2 fingerprint can never equal the v1 algorithm's recomputation; and then a fresh v1
+ * recommendation approved over the top, staging a second action for work already queued. Rollback to
+ * it therefore ends at the FIRST persisted v2 revision, and this gate is what makes that moment
+ * deliberate instead of incidental.
+ *
+ * WHAT IT IS NOT. Deployment-global and default OFF: not tenant-configurable, not an org feature,
+ * not a `VNextFlag`, not part of `vnextCapabilities`, not authority and not disclosure. It decides a
+ * storage REPRESENTATION. The same authorized person may take the same plan decision in either
+ * posture wherever the representation permits it.
+ *
+ * Parsing is the repository's canonical opt-in idiom, identical in `pursuitsEnabled()`,
+ * `envEnabled()` and `vnextEnvEnabled()`. Absent ⇒ OFF.
+ */
+export function planContentV2WritesEnabled(): boolean {
+  const v = (process.env.PLAN_CONTENT_V2_WRITES_ENABLED ?? "").trim().toLowerCase();
+  return v === "true" || v === "1" || v === "on" || v === "yes";
+}

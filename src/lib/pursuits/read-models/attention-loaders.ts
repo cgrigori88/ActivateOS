@@ -8,7 +8,7 @@ import {
   type PursuitAttention,
   type QueueLineage,
 } from "./pursuit-attention";
-import { resolvePlanStanding, selectDisplayPlanAction } from "./pursuit-plan";
+import { freshBasisFor, resolvePlanStanding, selectDisplayPlanAction } from "./pursuit-plan";
 import { DEMO_BANNER, orgHasSynthetic } from "./today";
 import type { TodayQueueView } from "./types";
 
@@ -79,7 +79,10 @@ export async function loadPursuitAttention(db: PoolClient, caller: Caller, opts:
       view: ctx.view,
       inForce,
       pending,
-      liveFingerprint: ctx.live.basis.fingerprint,
+      // The attention KEY for a review, so a new drift is a new attention. Dispatched on the
+      // in-force plan's own generation: the key must move when THAT plan's basis moves, not when
+      // this deployment happens to switch which algorithm it generates with.
+      liveFingerprint: inForce ? freshBasisFor(inForce.basis, ctx.live).fingerprint : ctx.live.basis.fingerprint,
       stagedByActionKey: Object.fromEntries(Object.entries(ctx.records.stagedByActionKey).map(([k, v]) => [k, { status: v.status }])),
       team: ctx.state.team,
       staged: stagedId && held ? { id: stagedId, dueAt: held.dueAt, status: held.status } : null,
