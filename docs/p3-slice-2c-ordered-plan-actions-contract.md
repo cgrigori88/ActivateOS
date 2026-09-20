@@ -233,6 +233,34 @@ itself the work that unblocks an earlier-ranked one.
 > reproduce its rules.** Where a SQL path would need semantic selection, the selection moves above
 > SQL into this function.
 
+### 4.2a Two distinct concepts, and neither may impersonate the other
+
+The canonical selector answers *"what is actionable now?"* from **current** canonical state. An
+approved revision answers *"what did a person approve?"* and is **preserved when the world moves**
+(D-028) — `frameApprovedPlan` labels it *"recorded before the changes above"*. These are different
+questions, and collapsing them would silently rewrite a human decision.
+
+| Concept | Source | Where it is used |
+|---|---|---|
+| **Approved primary action** | `actions[0]` of the revision, as stored | the single-action block on Pursuit Detail, including under REVIEW_NEEDED |
+| **Current actionable action** | `selectCurrentPlanAction(actions, liveMilestones, staged)` | `isCurrent` in the ordered list · Today, where the surface's job is current attention · the staging writer, which stages exactly this one |
+
+> **An approved plan under REVIEW_NEEDED must not have its approved headline rewritten merely
+> because another action has since become current.** The ordered list states which action is
+> currently actionable; the headline states what was approved. **Neither concept may masquerade as
+> the other.**
+
+The practical consequences, which are asserted rather than assumed:
+
+- `view.nextAction` is `actions[0]` and carries `isCurrent`, so a reader can always tell whether the
+  approved primary action is also the one to work on now. It is never re-selected.
+- A v1 revision therefore renders **byte-identically**: its single action *is* `actions[0]`.
+- Today uses `selectDisplayPlanAction`, which returns the current actionable action and falls back
+  to `actions[0]` only when every action is resolved or blocked — so a plan with nothing to do still
+  shows what it was, rather than rendering empty.
+- Staging uses `selectCurrentPlanAction` and stages **only** that action; when it returns `null`,
+  nothing is staged.
+
 ### 4.3 Lineage
 
 - **v2 lineage lives on `motion_actions`**, never in immutable plan content.
