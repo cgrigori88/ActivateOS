@@ -180,7 +180,8 @@ P6-IG  Intercompany Governance Gap Closure  (P6)   **HOSTED ACCEPTED / CLOSED** 
 SLICE 4  Thin Control Plane + Run Ledger   (P4, P5)
    │      backend primitives: agent/skill registry, run ledger, cost/observability
    ↓
-SLICE 5  Learning Loop                     (P8)
+SLICE 5  Learning Loop                     (P8)        **P8-0 — RUNTIME OBSERVABILITY AND EVALUATION HOOKS — HOSTED ACCEPTED / CLOSED** (2026-09-20): the immutable execution-evidence spine P8 learning will consume; it implements no learning. Migration 0117 (116→117) retrofits `UNIQUE (org_id, id)` onto `governed_action_invocations` so the child FK makes cross-org parentage relationally impossible, adds `observation_contract_version` (immutable by omission, CHECK-limited to the exact four v1 capabilities) and append-only `invocation_effect_refs` (`CREATED`-only, six bounded kinds, RLS+FORCE, `app_rw=ar` after an explicit REVOKE). Canonical **P8-A `dpl_BTiW1Eiq…`/`1f4fabb`/schema 117**, observation-complete rollback **P8-B `dpl_u9YPaEN…`**; O1 2026-09-20T17:10:40.972Z, O2 17:12:28Z, **both observation boundaries, neither an authority boundary**. Seven marked invocations, eight effect refs (1+0+1+3+0+2+1). `p8-0` 43/0 on SEEDED_CLONE plus a 22/0 rolled-back hosted harness. **marker 1 + zero refs = observed zero; NULL + zero refs = not established — never collapsed.** Receipts, model usage, outcome relation, causation and per-attempt timing remain UNESTABLISHED; `agent_runs` legacy; `emitted_event_id` LEGACY/DEAD. Remaining P8: the learning engine itself
+         
           prediction snapshots → decisions → outcomes → evaluation
 ```
 

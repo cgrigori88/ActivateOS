@@ -282,3 +282,84 @@ where threading has run.
 
 > **P8 may never convert UNESTABLISHED into `false`, `0`, "no effect" or "unrelated", and may never
 > read a relation observation as causal.**
+
+
+---
+
+## 17. Hosted acceptance — P8-0 HOSTED ACCEPTED / CLOSED (2026-09-20)
+
+**Schema 117.** Canonical runtime **P8-A `dpl_BTiW1EiqRGHMTJTPYPVFv1QPks7R`**, source
+**`1f4fabb6d216d86c9e5038b97d44a5a0b34e2c6c`**. Observation-complete rollback **P8-B
+`dpl_u9YPaENRa7pzi8Vp7gBtn88hHXMk`**, same source.
+
+### 17.1 Two boundaries, neither of them an authority boundary
+
+| | |
+|---|---|
+| **O1 — first committed hosted v1 observation** | **2026-09-20T17:10:40.972Z** · invocation `af4c9376-4e09-43d7-9945-4a9163a28b9c` · `draft_campaign_touch@1` · **1 effect ref** |
+| **O2 — canonical activation** | **2026-09-20T17:12:28Z** · the canonical hostname began serving P8-A |
+
+> **O1 and O2 are OBSERVATION boundaries, not authority boundaries. P45-4 authority did not change
+> at either: enforcement stayed true, the actor, grant and bound credential were untouched, sending
+> stayed disarmed and the P45 runtime stayed at zero.** This is the clearest difference from
+> Boundary A and Boundary B, which *were* authority boundaries and retired rollback targets.
+
+### 17.2 The seven persistent marked invocations, and the eight refs
+
+| # | Invocation | Surface | Capability | Refs |
+|---|---|---|---|---|
+| 1 | `af4c9376…` **O1** | P8-A direct (`/api/mcp`) | `draft_campaign_touch@1` | **1** |
+| 2 | `49d852ad…` | P8-A direct | `draft_campaign_touch@1` — successful no-match | **0** |
+| 3 | `81443af0…` | **P8-B direct** | `draft_campaign_touch@1` — standby certification | **1** |
+| 4 | `80074789…` | P8-A Server Action | `recommend_pursuit_plan@1` — fresh pursuit | **3** |
+| 5 | `c064a66f…` | P8-A Server Action | `recommend_pursuit_plan@1` — UNCHANGED (D-028) | **0** |
+| 6 | `7f525617…` | P8-A Server Action | `decide_pursuit_plan@1` — with staging | **2** |
+| 7 | `5a99c8f1…` | **canonical alias** (post-O2) | `draft_campaign_touch@1` | **1** |
+
+**1 + 0 + 1 + 3 + 0 + 2 + 1 = 8**, matching `invocation_effect_refs` exactly. The transactional
+`assemble_pursuit_team@1` observations were rolled back and are deliberately **not** in this count.
+Every marked invocation is a v1 registry capability; every effect ref belongs to a marked one; and
+**no `send_campaign_touch` dispatch has ever existed**.
+
+### 17.3 Certification surfaces, stated exactly
+
+| Evidence | Substrate |
+|---|---|
+| permanent `p8-0` suite **43/0** | its required **SEEDED_CLONE** substrate. It is **intentionally not runnable against canonical Preview**, because its fixture model depends on clone disposal rather than transactions — pointing it at the canonical world would trip its own guard and leave residue. |
+| hosted invariant harness **22/0** | canonical Preview, **one transaction, rolled back**, no residue. **Not the same artefact as the permanent verifier.** |
+
+| Capability | Proving surface |
+|---|---|
+| `draft_campaign_touch@1` | **deployed product path** (`/api/mcp`) |
+| `recommend_pursuit_plan@1` | **deployed product path** (pursuit-page Server Action) |
+| `decide_pursuit_plan@1` | **deployed product path** |
+| `assemble_pursuit_team@1` | **hosted transactional verifier** — no externally callable app route presently exists |
+
+**43/0 is not a hosted canonical-Preview run, and the 22-test harness is not the permanent verifier.
+Those two sentences are the record.**
+
+### 17.4 P8-B, certified rather than assumed
+
+Invocation **`81443af0-cb82-438e-9bf9-069e0a25019f`**, `2026-09-20T17:10:42.847Z`,
+`draft_campaign_touch@1`, **EXECUTED**, marker **1**, **one** ref
+`CREATED / campaign_touch / 43331f0d-0178-4f76-8975-495ecf6201e4`, actor `a3f6ad1e…`, governed actor
+`9e5f147e…`, grant `723d1431…`, `run_step_id` **NULL**, no synthetic run, **no send**, fixture cleaned.
+
+**The request demonstrably reached P8-B's own deployment**, which the database alone cannot show:
+Vercel's runtime logs for `dpl_u9YPaENRa7pzi8Vp7gBtn88hHXMk` record exactly **one** `POST /api/mcp`,
+at `17:10:42.64Z` on host `pursuitos-demo-80gvgem8j-…`, ~200 ms before the invocation row. P8-A's
+logs show its own three POSTs at different instants — two on its direct host and one on the
+canonical alias after O2 — so the four executions are attributable to distinct surfaces rather than
+inferred from timing.
+
+**P8-B is classified OBSERVATION-COMPLETE / EXECUTION-COMPATIBLE / P45-STRICT ROLLBACK.**
+
+### 17.5 Rollback map
+
+| Class | Deployment |
+|---|---|
+| **Preferred observation-complete rollback** | **P8-B `dpl_u9YPaENRa7pzi8Vp7gBtn88hHXMk`** (`1f4fabb`) |
+| Execution-compatible / **observation-incomplete** fallback | `dpl_3CiYuRLR4eZ8ZW3QaM89XN3zLEeo` (`7c4aea5`) — schema-117-compatible and P45-strict, but writes `observation_contract_version = NULL` |
+
+**These are not equivalent.** An observation-incomplete rollback creates a legitimate **evidence
+gap**, not database corruption. No deployment was removed in this phase.
