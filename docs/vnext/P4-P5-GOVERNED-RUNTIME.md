@@ -1446,11 +1446,45 @@ rollback semantics must not be copied mechanically.
   the mandatory actor/grant requirement and restores scope-only AGENT authority while operators
   believe every agent write is granted.
 
-> **The activation boundary is arming strict enforcement while an AGENT-capable credential exists —
-> not the first successful invocation.** There is no new data format here that old code misreads;
-> the risk is authority regression. A valid post-activation rollback runtime must itself enforce.
+> **The boundary is never the first successful invocation.** There is no new data format here that
+> old code misreads; the risk is authority regression.
 
-**This distinction must survive into all hosted certification language.**
+### 22.11a Two boundaries, not one — corrected by hosted-rollout review
+
+The local authority matrix proved something the first draft of §22.11 did not say: on the same
+database, with the same credential and the same **revoked** grant, `89ed7001` **still executes**
+what the P45-4 runtime refuses — because it never consults the governed actor or the grant at all.
+That behaviour does not wait for strict enforcement. The **pre-existing 0109 gate** applies to a
+bound credential the moment one exists, enforcement switch or not, and `89ed7001` does not apply it.
+
+So the security boundary begins **earlier** than arming, and there are two of them:
+
+> **BOUNDARY A — the bound-credential boundary.** From the instant the first live AGENT credential
+> is bound to a governed actor, `89ed7001` is no longer a valid security rollback for governed AGENT
+> authority — **even while `GOVERNED_AGENT_ENFORCEMENT_ENABLED` is false.**
+>
+> **BOUNDARY B — the strict-enforcement boundary.** When enforcement is armed, every AGENT
+> consequential execution requires a trusted bound governed actor plus an exact live grant. From
+> there, turning enforcement off widens authority for unbound legacy keys.
+
+Three compatibilities are therefore tracked **separately**, and no hosted certification language may
+collapse them: **data compatibility** · **bound-credential security compatibility** · **global
+strict-enforcement compatibility**.
+
+| State | Condition | Is `89ed7001` a valid rollback? |
+|---|---|---|
+| **1** | New schema/runtime not yet serving; no bound AGENT credential | **Yes** — the certified rollback |
+| **2** | P45-4 runtime serving, enforcement OFF; still no bound AGENT credential | **Yes** — both data- and security-compatible with the existing authority contract |
+| **3** | A governed actor and/or its grant exist, but **no bound credential** | **Yes** — still inert; nothing applies the gate to any live credential |
+| **4** | **The first live bound AGENT credential exists** | **No** — retired as the security rollback for governed AGENT authority. The certified P45-4 OFF deployment becomes the rollback target |
+| **5** | Enforcement **ON** | **No.** The OFF runtime remains the *code* rollback target only where its posture suits the emergency; **turning enforcement off in the serving environment is not an approved brake**, because it widens authority for unbound legacy keys |
+
+**Creating the actor, or the actor and its grant, remains inert.** Binding a credential is the act
+that moves the boundary — which is the same fact §22.8 states from the provisioning side, seen from
+the rollback side.
+
+**The preferred emergency narrowing, at every state from 4 onward, is to narrow authority rather
+than to widen it:** revoke the credential · revoke the grant · suspend the governed actor.
 
 ### 22.12 Telemetry — what this slice does not claim
 
