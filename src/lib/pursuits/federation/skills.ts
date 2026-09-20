@@ -11,6 +11,8 @@ import type { DataEnvironment } from "../lineage";
 import { reportEvent } from "../../obs/reporter";
 import { governedAgentEnforcementEnabled } from "@/lib/env/environment";
 import { liveGrantFor, type LiveGrant } from "@/lib/runtime/grant-liveness";
+import { randomUUID } from "node:crypto";
+import { P8_OBSERVATION_CONTRACT_V1, coveredByV1, discardEffects, drainEffects, effectSinkOf, noteEffectOnCtx, observedInvocationId, persistEffects, withObservation } from "./observation";
 
 /**
  * Governed Skill boundary (Workstream E3-D, R9/R24/R25/R26). `dispatchSkill` is
@@ -124,7 +126,14 @@ export const SKILL_REGISTRY: SkillDef[] = [
   // (the one team-status mutation), which records the append-only TEAM_MEMBER_* event.
   { skillId: "assemble_pursuit_team", version: 1, description: "Assemble the recommended pursuit team from the selected route", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER", "SYSTEM"], requiredPermission: "operator", precheck: pursuitInOrg,
-    handler: async (db, _a, ctx) => assembleTeam(db, String(ctx.pursuitId), (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION") },
+    handler: async (db, _a, ctx) => {
+      const r = await assembleTeam(db, String(ctx.pursuitId), (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION",
+        observedInvocationId(ctx));
+      // Exactly one ref per row THIS dispatch inserted. Every role already filled ⇒ N = 0, which is
+      // the canonical supported-and-empty case: marked invocation, zero effects, and that is a fact.
+      for (const id of r.createdIds) noteEffectOnCtx(ctx, "pursuit_team_member", id);
+      return r;
+    } },
   { skillId: "confirm_team_member", version: 1, description: "Confirm (invite) a recommended team member — the human team decision", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER"], requiredPermission: "operator", precheck: teamMemberInOrg,
     handler: async (db, _a, ctx) => { await transitionMember(db, String(ctx.args?.memberId), "INVITED", (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION"); return { confirmed: true, memberId: ctx.args?.memberId }; } },
@@ -172,7 +181,15 @@ export const SKILL_REGISTRY: SkillDef[] = [
   // is cross-tenant; its authority is the active partnership, checked via `authorize`.
   { skillId: "draft_campaign_touch", version: 1, description: "Draft a campaign email touch (draft-only, behind human approval)", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER", "AGENT"], requiredPermission: "operator",
-    handler: async (db, actor, ctx) => draftTouchImpl(db, actor.orgId, ctx.args ?? {}) },
+    handler: async (db, actor, ctx) => {
+      const r = await draftTouchImpl(db, actor.orgId, ctx.args ?? {});
+      // The id of the row the CREATION branch just returned — not a later lookup, and not parsed
+      // from a persisted payload. When no campaign matched, nothing durable was created and no
+      // effect is recorded: zero refs on a marked invocation means observed zero.
+      const touchId = (r as { touchId?: unknown } | null)?.touchId;
+      if (typeof touchId === "string") noteEffectOnCtx(ctx, "campaign_touch", touchId);
+      return r;
+    } },
   { skillId: "request_warm_intro", version: 1, description: "Request a warm introduction into a named-overlap account (cross-tenant)", effectClass: "CROSS_TENANT_ACTION",
     eligibleActors: ["USER", "AGENT"], requiredPermission: "operator", actionFamily: "intro.request",
     authorize: async (db, actor, ctx) => warmIntroAuthorize(db, actor.orgId, ctx.args ?? {}),
@@ -229,7 +246,8 @@ export const COORDINATION_SKILLS: SkillDef[] = [
     eligibleActors: ["USER", "AGENT", "WORKER", "SYSTEM"], requiredPermission: "operator", precheck: pursuitInOrg,
     handler: async (db, actor, ctx) => (await import("../coordination/plan-store")).recordPlanRecommendation(
       db, { type: actor.type, id: actor.id ?? null, orgId: actor.orgId }, String(ctx.pursuitId),
-      { env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null }) },
+      { env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null,
+        effects: effectSinkOf(ctx), invocationId: observedInvocationId(ctx) }) },
   { skillId: "decide_pursuit_plan", version: 1, description: "Approve, adjust or decline a recommended pursuit plan (human decision)", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER"], requiredPermission: "operator", precheck: pursuitInOrg,
     handler: async (db, actor, ctx) => (await import("../coordination/plan-store")).decidePlan(
@@ -240,7 +258,7 @@ export const COORDINATION_SKILLS: SkillDef[] = [
         adjustments: (ctx.args?.adjustments as import("../read-models/pursuit-plan").PlanAdjustments | undefined) ?? undefined,
         reason: ctx.args?.reason ? String(ctx.args.reason) : null,
       },
-      { env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null }) },
+      { env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null , effects: effectSinkOf(ctx), invocationId: observedInvocationId(ctx) }) },
   // Replacing the COMMERCIAL OBJECTIVE itself (D-033) — a person only, with a reason. Append-only:
   // the old goal keeps its meaning and is superseded; the new goal names it. A route, motion or
   // action change never comes here — those are plan decisions above.
@@ -325,6 +343,23 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
   // lookup would be a guess about which grant applied, and an audit row must not guess.
   let grantUsed: LiveGrant | null = null;
 
+  // P8-0. THE CANONICAL INVOCATION ID, ALLOCATED HERE BY THE SERVER — before any guard, before the
+  // handler, and never from a payload. The same value reaches the handler's ledger writes, the
+  // terminal invocation row and its effect refs, so a future evaluator joins on one identity rather
+  // than on proximity. This is possible only because `change_ledger.invocation_id` carries NO
+  // foreign key (0109's convention), so a ledger row may name an invocation whose row is inserted a
+  // few statements later in the same transaction.
+  //
+  // The lifecycle is UNCHANGED: still one terminal INSERT, still after the handler.
+  const invocationId = randomUUID();
+  // The v1 marker is per-invocation AND per-capability. An unregistered capability is never marked,
+  // even on a P8-0 runtime — 0117's CHECK refuses it at the database if this ever drifts.
+  const observationVersion = coveredByV1(skillId, def.version) ? P8_OBSERVATION_CONTRACT_V1 : null;
+  const obs = { invocationId, observationVersion };
+  // Handlers reach the observation through a module-private symbol on a COPY of the caller's
+  // context; the caller's object is never mutated and cannot supply one.
+  ctx = withObservation(ctx, invocationId);
+
   // Idempotency: a prior invocation with this key wins.
   if (ctx.idempotencyKey) {
     const { rows } = await db.query<{ id: string; status: string }>(
@@ -335,9 +370,9 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
 
   // Actor eligibility + permission (R9).
   if (!def.eligibleActors.includes(actor.type))
-    return record(db, def, actor, ctx, "REJECTED", { reason: `actor ${actor.type} not eligible` });
+    return record(db, def, actor, ctx, "REJECTED", { reason: `actor ${actor.type} not eligible`, ...obs });
   if (ROLE_RANK[actor.role ?? "any"] < ROLE_RANK[def.requiredPermission])
-    return record(db, def, actor, ctx, "REJECTED", { reason: `insufficient permission (needs ${def.requiredPermission})` });
+    return record(db, def, actor, ctx, "REJECTED", { reason: `insufficient permission (needs ${def.requiredPermission})`, ...obs });
 
   // P45-4 MANDATORY BINDING FOR AGENTS. Being an AGENT confers zero authority: under enforcement an
   // agent must act on a durable governed actor resolved from its CREDENTIAL, never on the strength
@@ -346,7 +381,7 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
   // sending. Absent/OFF preserves the certified Slice 14 contract exactly.
   if (governedAgentEnforcementEnabled() && actor.type === "AGENT" && !ctx.governedActorId)
     return record(db, def, actor, ctx, "REJECTED",
-      { reason: "this deployment requires an AGENT to act as a governed actor" });
+      { reason: "this deployment requires an AGENT to act as a governed actor", ...obs });
 
   // P45-1 governed-actor gate (ADDITIVE). Engages whenever a caller names a governed actor; it
   // can reject, never permit. Ordered after eligibility/permission on purpose — a grant must not be
@@ -362,16 +397,16 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
       [ctx.governedActorId, actor.orgId]);
     // Same-org is enforced by the predicate above, so a foreign actor id simply does not resolve —
     // it is reported as unknown rather than as a permission failure, which would leak its existence.
-    if (!ga[0]) return record(db, def, actor, ctx, "REJECTED", { reason: "unknown governed actor" });
+    if (!ga[0]) return record(db, def, actor, ctx, "REJECTED", { reason: "unknown governed actor", ...obs });
     if (ga[0].lifecycle !== "ACTIVE")
-      return record(db, def, actor, ctx, "REJECTED", { reason: `governed actor is ${ga[0].lifecycle}` });
+      return record(db, def, actor, ctx, "REJECTED", { reason: `governed actor is ${ga[0].lifecycle}`, ...obs });
     if (ga[0].actor_type !== actor.type)
-      return record(db, def, actor, ctx, "REJECTED", { reason: "governed actor type does not match the acting actor" });
+      return record(db, def, actor, ctx, "REJECTED", { reason: "governed actor type does not match the acting actor", ...obs });
     // A USER actor must be acting for its own principal. `actor.id` is the caller's user identity;
     // where the deployment has no user identity at all (demo/Basic-Auth, where auth.users is empty)
     // both sides are null and this is vacuously satisfied — it can never pass a MISMATCH.
     if (ga[0].actor_type === "USER" && (ga[0].principal_user_id ?? null) !== (actor.id ?? null))
-      return record(db, def, actor, ctx, "REJECTED", { reason: "governed actor principal does not match the acting user" });
+      return record(db, def, actor, ctx, "REJECTED", { reason: "governed actor principal does not match the acting user", ...obs });
     // ONE definition of liveness (status / revocation / expiry), shared with staleAuthority — see
     // runtime/grant-liveness.ts. EXACT VERSION for strict AGENT execution: the legacy NULL wildcard
     // remains valid for every pre-existing caller, but it does not satisfy P45-4, where the
@@ -381,17 +416,17 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
     // The refusal names no grant. Saying "expired" rather than "missing" would tell a caller that a
     // grant exists, which is the same disclosure the unknown-actor refusal above already refuses to
     // make. One reason, whatever the cause.
-    if (!grantUsed) return record(db, def, actor, ctx, "REJECTED", { reason: "no active capability grant for this skill" });
+    if (!grantUsed) return record(db, def, actor, ctx, "REJECTED", { reason: "no active capability grant for this skill", ...obs });
   }
 
   // Loop guard (R23).
   if (ctx.correlationId && (await chainDepth(db, ctx.correlationId)) >= MAX_CHAIN)
-    return record(db, def, actor, ctx, "REJECTED", { reason: "loop guard: action chain too deep", grantId: grantUsed?.id });
+    return record(db, def, actor, ctx, "REJECTED", { reason: "loop guard: action chain too deep", grantId: grantUsed?.id, ...obs });
 
   // Preconditions (R9).
   if (def.precheck) {
     const pc = await def.precheck(db, actor, ctx);
-    if (!pc.ok) return record(db, def, actor, ctx, "REJECTED", { reason: pc.reason ?? "precondition failed", grantId: grantUsed?.id });
+    if (!pc.ok) return record(db, def, actor, ctx, "REJECTED", { reason: pc.reason ?? "precondition failed", grantId: grantUsed?.id, ...obs });
   }
 
   // Effect-class routing.
@@ -401,14 +436,16 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
     const authz = def.authorize
       ? await def.authorize(db, actor, ctx)
       : { ok: ctx.pursuitId ? await hasActionAuthority(db, actor.orgId, ctx.pursuitId, def.actionFamily ?? skillId) : false };
-    if (!authz.ok) return record(db, def, actor, ctx, "REJECTED", { reason: authz.reason ?? "no cross-tenant action authority (R24)", grantId: grantUsed?.id });
+    if (!authz.ok) return record(db, def, actor, ctx, "REJECTED", { reason: authz.reason ?? "no cross-tenant action authority (R24)", grantId: grantUsed?.id, ...obs });
   }
   if (def.effectClass === "EXTERNAL_ACTION") {
     // Never execute inline — enqueue the transactional outbox (R25/G4). The executor,
     // not this handler, performs the side effect; the receipt + EXECUTED land when it
     // drains. Idempotency at the transport: (org, idempotency_key) is unique, so a
     // retried enqueue of the same authorized action collapses to the existing row.
-    const inv = await record(db, def, actor, ctx, "EXECUTING", { grantId: grantUsed?.id });
+    // EXTERNAL_ACTION is OUT OF P8-0 SCOPE: this row is inserted BEFORE the effect exists, so marking
+    // it would certify completeness the runtime cannot possess. It carries the server id, never the marker.
+    const inv = await record(db, def, actor, ctx, "EXECUTING", { grantId: grantUsed?.id, invocationId });
     await db.query(
       `insert into action_outbox
          (invocation_id, org_id, provider, action_family, payload, status, idempotency_key, correlation_id, data_environment)
@@ -442,12 +479,21 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
   try {
     const result = def.handler ? await def.handler(db, actor, ctx) : { ok: true };
     await db.query(`release savepoint ${sp}`);
-    return record(db, def, actor, ctx, "EXECUTED", { result, grantId: grantUsed?.id });
+    // The invocation row first, then its effects: the composite FK needs the parent to exist. If the
+    // effect INSERT fails, the exception escapes this function (the catch below is already closed),
+    // the caller's transaction aborts, and neither the business mutation nor this row commits.
+    const done = await record(db, def, actor, ctx, "EXECUTED", { result, grantId: grantUsed?.id, ...obs });
+    await persistEffects(db, actor.orgId, invocationId, drainEffects(ctx));
+    return done;
   } catch (e) {
     // Back to the known point BEFORE anything else touches this connection.
     await db.query(`rollback to savepoint ${sp}`);
     await db.query(`release savepoint ${sp}`);
-    return record(db, def, actor, ctx, "FAILED", { reason: (e as Error).message, error: (e as Error).message, grantId: grantUsed?.id });
+    // P8-0 THE FAILURE RULE. The savepoint rewound the database; it did NOT rewind JavaScript. A
+    // handler that staged effects and then threw would otherwise leave this FAILED row claiming
+    // effects that never persisted.
+    discardEffects(ctx);
+    return record(db, def, actor, ctx, "FAILED", { reason: (e as Error).message, error: (e as Error).message, grantId: grantUsed?.id, ...obs });
   }
 }
 
@@ -478,20 +524,23 @@ export async function drainActionOutbox(db: PoolClient, opts: { simulate?: boole
   return n;
 }
 
-async function record(db: PoolClient, def: SkillDef, actor: Actor, ctx: DispatchCtx, status: string, extra: { reason?: string; result?: unknown; error?: string; grantId?: string | null }): Promise<DispatchResult> {
+async function record(db: PoolClient, def: SkillDef, actor: Actor, ctx: DispatchCtx, status: string, extra: { reason?: string; result?: unknown; error?: string; grantId?: string | null; invocationId?: string; observationVersion?: number | null }): Promise<DispatchResult> {
   const executed = status === "EXECUTED" || status === "EXECUTING";
   const { rows } = await db.query<{ id: string }>(
     `insert into governed_action_invocations
        (org_id, skill_id, skill_version, effect_class, actor_type, actor_id, actor_role, pursuit_id,
         target_kind, target_id, args, idempotency_key, status, reason, causation_id, correlation_id,
-        executed_at, result, error, data_environment, governed_actor_id, run_step_id, grant_id)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, case when $13 in ('EXECUTED','EXECUTING') then now() else null end, $17,$18,$19,$20,$21,$22)
+        executed_at, result, error, data_environment, governed_actor_id, run_step_id, grant_id,
+        id, observation_contract_version)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, case when $13 in ('EXECUTED','EXECUTING') then now() else null end, $17,$18,$19,$20,$21,$22,
+             coalesce($23::uuid, gen_random_uuid()), $24)
      returning id`,
     [actor.orgId, def.skillId, def.version, def.effectClass, actor.type, actor.id ?? null, actor.role,
      ctx.pursuitId ?? null, ctx.target?.kind ?? null, ctx.target?.id ?? null, JSON.stringify(ctx.args ?? {}),
      ctx.idempotencyKey ?? null, status, extra.reason ?? null, ctx.causationId ?? null, ctx.correlationId ?? null,
      extra.result !== undefined ? JSON.stringify(extra.result) : null, extra.error ?? null, ctx.dataEnvironment ?? "PRODUCTION",
-     ctx.governedActorId ?? null, ctx.runStepId ?? null, extra.grantId ?? null],
+     ctx.governedActorId ?? null, ctx.runStepId ?? null, extra.grantId ?? null,
+     extra.invocationId ?? null, extra.observationVersion ?? null],
   );
   void executed;
   // OR-3: surface governed-action rejections/failures. Cross-tenant authority denial is

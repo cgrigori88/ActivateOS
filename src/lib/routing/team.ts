@@ -25,7 +25,8 @@ function sideOf(role: TeamRole): "VENDOR" | "PARTNER" | "DISTRIBUTOR" {
 }
 
 /** Assemble a recommended team from the selected/recommended route + required roles. Idempotent. */
-export async function assembleTeam(db: PoolClient, pursuitId: string, env: DataEnvironment = "PRODUCTION"): Promise<{ created: number }> {
+export async function assembleTeam(db: PoolClient, pursuitId: string, env: DataEnvironment = "PRODUCTION", invocationId: string | null = null): Promise<{ created: number; createdIds: string[] }> {
+  const createdIds: string[] = [];
   const p = await db.query<{ org_id: string; pursuit_type: string | null; selected_partner_id: string | null; recommended_partner_id: string | null }>(
     `select org_id, pursuit_type, selected_partner_id, recommended_partner_id from pursuits where id = $1`, [pursuitId],
   );
@@ -43,17 +44,20 @@ export async function assembleTeam(db: PoolClient, pursuitId: string, env: DataE
     const exists = await db.query<{ n: string }>(`select count(*)::text n from pursuit_team_members where pursuit_id = $1 and role = $2 and status <> 'SUPERSEDED'`, [pursuitId, role]);
     if (Number(exists.rows[0].n) > 0) continue;
     const side = sideOf(role);
-    await db.query(
+    // P8-0: the id of the row THIS dispatch created, returned so the effect observation can be
+    // recorded at the creation branch rather than inferred afterwards.
+    const ins = await db.query<{ id: string }>(
       `insert into pursuit_team_members (org_id, pursuit_id, side, role, partner_id, is_recommended, status)
-       values ($1,$2,$3,$4,$5,true,'RECOMMENDED')`,
+       values ($1,$2,$3,$4,$5,true,'RECOMMENDED') returning id`,
       [orgId, pursuitId, side, role, side === "PARTNER" ? partnerId : null],
     );
+    createdIds.push(ins.rows[0].id);
     created++;
   }
   if (created > 0) {
-    await recordChange(db, { orgId, pursuitId, entityType: "pursuit", entityId: pursuitId, changeType: "TEAM_CHANGED", materiality: "MEDIUM", reason: `Team assembled (${created} roles)`, actorType: "SYSTEM", triggerType: "MODEL_RECALCULATION", dataEnvironment: env });
+    await recordChange(db, { invocationId, orgId, pursuitId, entityType: "pursuit", entityId: pursuitId, changeType: "TEAM_CHANGED", materiality: "MEDIUM", reason: `Team assembled (${created} roles)`, actorType: "SYSTEM", triggerType: "MODEL_RECALCULATION", dataEnvironment: env });
   }
-  return { created };
+  return { created, createdIds };
 }
 
 export async function transitionMember(db: PoolClient, memberId: string, to: TeamStatus, env: DataEnvironment = "PRODUCTION"): Promise<void> {

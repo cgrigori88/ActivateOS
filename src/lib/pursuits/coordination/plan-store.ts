@@ -6,6 +6,7 @@ import type { DataEnvironment } from "../lineage";
 import { recordOverride } from "../overrides";
 import { callerFor } from "../read-models/caller";
 import { loadChangesSince, loadPlanRecords, loadPlanState } from "../read-models/plan-loaders";
+import { noteEffect, type EffectSink } from "../federation/observation";
 import {
   RECOMMENDER_VERSION,
   applyAdjustments,
@@ -49,6 +50,20 @@ export interface PlanActor {
 }
 
 export interface WriteOpts {
+  /**
+   * P8-0 internal instrumentation sink. Never authority, never disclosure, never caller-supplied in
+   * a governed dispatch — `dispatchSkill` reads it from a module-private symbol and passes it here
+   * so effects can be staged AT the creation branch, which a return value cannot do: it cannot
+   * distinguish "this dispatch created the goal" from "the goal already existed".
+   */
+  effects?: EffectSink | null;
+  /**
+   * P8-0: the server-allocated canonical invocation id for the dispatch that is running this write.
+   * Threaded into every covered handler-level ledger event so `change_ledger WHERE invocation_id = ?`
+   * returns the complete one-to-many set for a marked invocation. Never caller-supplied in a
+   * governed dispatch; never inferred from timestamp, subject or proximity.
+   */
+  invocationId?: string | null;
   env: DataEnvironment;
   correlationId: string | null;
   now?: Date;
@@ -94,6 +109,7 @@ export async function recordPlanRecommendation(
        values ($1,$2,$3,$4,'PROPOSED','SYSTEM_RECOMMENDED',$5,$6,$7,$8) returning id`,
       [actor.orgId, pursuitId, rec.goal.objective, rec.goal.targetDate, JSON.stringify({ evidence: rec.goal.basis, recommenderVersion: RECOMMENDER_VERSION }),
        actor.type, actor.id, opts.env])).rows[0].id;
+    noteEffect(opts.effects, "pursuit_goal", goalId);
   }
 
   // A plan is reused only for the goal it implements. After a goal is replaced its plan is
@@ -105,6 +121,7 @@ export async function recordPlanRecommendation(
       `insert into pursuit_plans (org_id, pursuit_id, goal_id, status, data_environment)
        values ($1,$2,$3,'PROPOSED',$4) returning id`,
       [actor.orgId, pursuitId, goalId, opts.env])).rows[0].id;
+    noteEffect(opts.effects, "pursuit_plan", planId);
   }
 
   // ── THE WRITE-ACTIVATION GATE, READ AT THE PERSISTENCE BOUNDARY ─────────────────────────────
@@ -140,9 +157,10 @@ export async function recordPlanRecommendation(
      values ($1,$2,$3,$4,'RECOMMENDATION',$5,$6,$7,$8,$9,$10,$11,$12,$13) returning id`,
     [actor.orgId, pursuitId, planId, revisionNo, JSON.stringify(written.content), JSON.stringify(written.basis), written.basis.fingerprint,
      reviewTrigger ? JSON.stringify(reviewTrigger) : null, actor.type, actor.id, opts.correlationId, RECOMMENDER_VERSION, opts.env])).rows[0].id;
+  noteEffect(opts.effects, "pursuit_plan_revision", revisionId);
 
   if (reviewTrigger && inForce) {
-    await recordChange(db, {
+    await recordChange(db, { invocationId: opts.invocationId ?? null,
       orgId: actor.orgId, pursuitId, entityType: "pursuit_plan", entityId: planId,
       changeType: "PLAN_REVIEW_REQUIRED", materiality: "MEDIUM",
       reason: `Pursuit plan needs review — ${reviewTrigger.reasons[0]?.replace(/\.$/, "") ?? "context changed"}`,
@@ -209,7 +227,7 @@ export async function replacePursuitGoal(
     [actor.orgId, args.pursuitId, objective, targetDate, JSON.stringify({ replaces: live.id }),
      actor.type, actor.id, live.id, reason, opts.env])).rows[0].id;
 
-  await recordChange(db, {
+  await recordChange(db, { invocationId: opts.invocationId ?? null,
     orgId: actor.orgId, pursuitId: args.pursuitId, entityType: "pursuit_goal", entityId: goalId,
     changeType: "GOAL_REPLACED", materiality: "MEDIUM",
     reason: `Pursuit goal replaced — ${reason}`,
@@ -392,6 +410,7 @@ export async function decidePlan(
     stagedMotionActionId = (await db.query<{ id: string }>(
       `insert into motion_actions (org_id, motion_id, step, action, due_at) values ($1,$2,$3,$4,$5) returning id`,
       [actor.orgId, content.motion.motionId, stagedPlan.step, stagedPlan.text, stagedPlan.dueAt])).rows[0].id;
+    noteEffect(opts.effects, "motion_action", stagedMotionActionId);
     stagedActionKey = stagedPlan.key;
     storedContent = withV1StagedPointer(storedContent as PlanContentV1, stagedMotionActionId);
   }
@@ -405,17 +424,19 @@ export async function decidePlan(
      JSON.stringify(decidedBasis), decidedBasis.fingerprint,
      changes ? JSON.stringify(v1Decision ? toV1Changes(changes) : changes) : null, reason,
      actor.type, actor.id, opts.correlationId, opts.env])).rows[0].id;
+  noteEffect(opts.effects, "pursuit_plan_revision", revisionId);
 
   if (stagedPlan && !v1Decision) {
     stagedMotionActionId = (await db.query<{ id: string }>(
       `insert into motion_actions (org_id, motion_id, step, action, due_at, plan_revision_id, plan_action_key)
        values ($1,$2,$3,$4,$5,$6,$7) returning id`,
       [actor.orgId, content.motion.motionId, stagedPlan.step, stagedPlan.text, stagedPlan.dueAt, revisionId, stagedPlan.key])).rows[0].id;
+    noteEffect(opts.effects, "motion_action", stagedMotionActionId);
     stagedActionKey = stagedPlan.key;
   }
 
   if (stagedMotionActionId) {
-    await recordChange(db, {
+    await recordChange(db, { invocationId: opts.invocationId ?? null,
       orgId: actor.orgId, pursuitId: args.pursuitId, entityType: "motion_action", entityId: stagedMotionActionId,
       changeType: "ACTION_CREATED", materiality: "LOW",
       reason: `Plan action queued: ${stagedPlan!.text}`,
@@ -458,7 +479,7 @@ export async function decidePlan(
       [plan.id, actor.orgId]);
   }
 
-  await recordChange(db, {
+  await recordChange(db, { invocationId: opts.invocationId ?? null,
     orgId: actor.orgId, pursuitId: args.pursuitId, entityType: "pursuit_plan", entityId: plan.id,
     changeType: "PLAN_DECIDED", materiality: "MEDIUM",
     reason: args.decision === "APPROVED" ? "Pursuit plan approved"
