@@ -100,7 +100,7 @@ export default async function CampaignDetailPage({
   const sp = await searchParams;
   const notice = sp.notice;
 
-  const { ca, initiativeOpts, playPartners, accounts, lists, attachable, previewId, previewAccount, previewVars, linkableMotions, touches, contacts, eng } =
+  const { ca, initiativeOpts, playPartners, accounts, lists, attachable, previewId, previewAccount, previewVars, linkableMotions, touches, agentFor, contacts, eng } =
     await withTenant(async (db, orgId) => {
       const { rows: caRows } = await db.query<{
         id: string;
@@ -179,6 +179,32 @@ export default async function CampaignDetailPage({
         [id, orgId],
       );
 
+      /**
+       * P45-4 — "Drafted by <agent>", and ONLY when it is true.
+       *
+       * Attribution is read from the governed-action audit, which is where authority already lives,
+       * NOT from a column on the touch: a touch makes no claim about who created it. The join is
+       * exact — `draft_campaign_touch` returns the id of the row it created — so nothing is matched
+       * by name or guessed.
+       *
+       * `governed_actor_id is not null` is the whole condition. An unbound legacy AGENT execution
+       * has no governed actor and therefore renders NO governed-agent attribution, which is the
+       * point: the badge means "a durable governed actor did this", and it must never appear for an
+       * execution where that was not established. Whether the action was additionally
+       * grant-authorized is carried by `grant_id` and is deliberately not inferred from this.
+       *
+       * No model. No cost. This slice observes neither (P45-4 §22.12).
+       */
+      const { rows: draftedBy } = await db.query<{ touch_id: string; display_name: string }>(
+        `select i.result->>'touchId' as touch_id, a.display_name
+           from governed_action_invocations i
+           join governed_actors a on a.id = i.governed_actor_id and a.org_id = i.org_id
+          where i.org_id = $1 and i.skill_id = 'draft_campaign_touch' and i.status = 'EXECUTED'
+            and i.governed_actor_id is not null and i.result->>'touchId' is not null`,
+        [orgId],
+      );
+      const agentFor = new Map(draftedBy.map((r) => [r.touch_id, r.display_name]));
+
       const { rows: contacts } = await db.query<{ email: string; name: string | null; title: string | null }>(
         `select email, name, title from contacts where company_id = $1 and org_id = $2 order by name nulls last, id limit 25`,
         [ca.company_id, orgId],
@@ -199,7 +225,7 @@ export default async function CampaignDetailPage({
         [ca.company_id, orgId],
       );
 
-      return { ca, initiativeOpts, playPartners, accounts, lists, attachable, previewId, previewAccount, previewVars, linkableMotions, touches, contacts, eng };
+      return { ca, initiativeOpts, playPartners, accounts, lists, attachable, previewId, previewAccount, previewVars, linkableMotions, touches, agentFor, contacts, eng };
     });
   const suggestions = attachable.filter((l) => l.suggested);
   const e = eng[0];
@@ -457,6 +483,12 @@ export default async function CampaignDetailPage({
               </span>
               <span className="ml-auto"><StatusBadge status={t.status} /></span>
             </div>
+
+            {agentFor.get(t.id) && (
+              <p className="mb-3 text-label text-neutral-500 dark:text-neutral-400">
+                Drafted by {agentFor.get(t.id)}
+              </p>
+            )}
 
             <div className="mb-3 text-copy">
               <div><span className="text-neutral-400">Subject:</span> <span className="font-medium">{t.subject}</span></div>

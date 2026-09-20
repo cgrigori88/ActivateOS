@@ -168,7 +168,10 @@ async function battery(fx: Fixture): Promise<Outcome[]> {
       return { exploited: after !== before, detail: `live ${before} → ${after}` };
     });
     await run("resolve_api_key(): a temp `api_keys` resolves a forged key into another org", fx.M, async (q) => {
-      await q(`create temp table api_keys (id uuid default gen_random_uuid(), org_id uuid, name text, key_hash text, created_at timestamptz, last_used_at timestamptz, revoked_at timestamptz, scope text)`);
+      // The shadow table must mirror EVERY column `resolve_api_key` selects, or the exploit cannot
+      // be demonstrated: a missing column makes the call throw, and a throw is not an exploit — it
+      // would silently retire this negative control. `governed_actor_id` arrived with 0116 (P45-4).
+      await q(`create temp table api_keys (id uuid default gen_random_uuid(), org_id uuid, name text, key_hash text, created_at timestamptz, last_used_at timestamptz, revoked_at timestamptz, scope text, governed_actor_id uuid)`);
       await q(`insert into api_keys (org_id, name, key_hash, scope) values ($1, 'forged', 'h1b01-forged-hash', 'full')`, [fx.V]);
       const r = await q(`select org_id from resolve_api_key('h1b01-forged-hash')`);
       return { exploited: r.length > 0 && r[0].org_id === fx.V, detail: `${r.length} key(s) resolved` };

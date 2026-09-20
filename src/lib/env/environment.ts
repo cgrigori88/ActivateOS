@@ -162,3 +162,37 @@ export function planContentV2WritesEnabled(): boolean {
   const v = (process.env.PLAN_CONTENT_V2_WRITES_ENABLED ?? "").trim().toLowerCase();
   return v === "true" || v === "1" || v === "on" || v === "yes";
 }
+
+/**
+ * P45-4 — MAY THIS DEPLOYMENT REQUIRE THAT AN AGENT ACT ON A GOVERNED ACTOR'S GRANT?
+ *
+ * > **AN AUTHORITY REQUIREMENT, NOT A CAPABILITY. OFF is the LEGACY posture, not a safe brake.**
+ *
+ * WHY IT EXISTS. An AGENT actor already executes governed writes in production: `/api/mcp` builds
+ * `Actor{type:"AGENT", id: key.keyId}` from an API key and dispatches `draft_campaign_touch`,
+ * passing no `governedActorId` — so the 0109 grant gate never engages and agent authority comes
+ * from a KEY SCOPE rather than a grant to a durable actor. Turning that into a requirement would
+ * break the certified Slice 14 contract the moment a new binary deployed, so the requirement is
+ * gated and armed deliberately. Absent ⇒ OFF ⇒ the legacy contract is preserved exactly.
+ *
+ * SCOPED TO `actor.type === "AGENT"`, AND ONLY THAT. `WORKER` and `SYSTEM` are outside P45-4:
+ * `src/lib/comms/sequence.ts` dispatches `send_campaign_touch` as a WORKER with no governed actor,
+ * and capturing it here would pull an EXTERNAL_ACTION send path into a slice that must not touch
+ * sending. That path remains known legacy, non-governed behaviour for a separately authorized item.
+ *
+ * ── THIS IS NOT THE 2C-A WRITE GATE, AND ITS ROLLBACK IS NOT SYMMETRIC ──────────────────────────
+ *
+ * `PLAN_CONTENT_V2_WRITES_ENABLED` removed a capability to write a new format, so switching it off
+ * NARROWED what could happen and was a genuine operational brake. This switch removes an AUTHORITY
+ * REQUIREMENT. Switching it off after activation WIDENS authority — it restores ungoverned AGENT
+ * writes while operators believe every agent write is granted. **It is not an emergency brake and
+ * must never be described as one.** The post-activation brake is to keep enforcement ON and narrow
+ * authority instead: revoke the credential, revoke the grant, or suspend the actor — each a normal,
+ * audited operation. Turning enforcement off again requires its own explicit ruling.
+ *
+ * Parsing is the repository's canonical opt-in idiom. Absent ⇒ OFF.
+ */
+export function governedAgentEnforcementEnabled(): boolean {
+  const v = (process.env.GOVERNED_AGENT_ENFORCEMENT_ENABLED ?? "").trim().toLowerCase();
+  return v === "true" || v === "1" || v === "on" || v === "yes";
+}

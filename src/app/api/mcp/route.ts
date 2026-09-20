@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/db/client";
 import { rateLimited } from "@/lib/security/rate-limit";
-import { MCP_TOOLS, resolveKey } from "@/lib/agents/mcp-tools";
+import { MCP_TOOLS, resolveKey, type ResolvedApiCredential } from "@/lib/agents/mcp-tools";
 import { GOVERNED_MCP_TOOLS } from "@/lib/agents/mcp-governed";
 import { decideToolScope } from "@/lib/agents/ask-scope";
 import type { ExecutionPolicy } from "@/lib/db/execution-policy";
@@ -35,7 +35,8 @@ import { withTenantOrg } from "@/lib/db/tenant";
 import { dispatchSkill, type Actor } from "@/lib/pursuits/federation/skills";
 
 /** A resolved MCP key's scope maps to a governed Actor role (R1-G1). */
-type ResolvedKey = { orgId: string; keyId: string; scope: string };
+// P45-4: the trusted credential, exactly as `resolve_api_key` established it.
+type ResolvedKey = ResolvedApiCredential;
 function keyRole(scope: string): Actor["role"] { return scope === "read" ? "viewer" : "operator"; }
 
 /**
@@ -150,10 +151,26 @@ async function handleMessage(msg: RpcRequest, key: ResolvedKey): Promise<Record<
         // governed boundary (actor eligibility + permission + effect class +
         // idempotency + audited invocation). There is no ungoverned MCP write path.
         if (tool.write && tool.skillId) {
+          // P45-4 — TWO IDENTITIES, BOTH FROM THE CREDENTIAL, NEITHER FROM THE PAYLOAD.
+          //
+          // `Actor.id` stays the KEY id: it is what `governed_action_invocations.actor_id` has
+          // always meant (which credential invoked), and rewriting it would change the meaning of
+          // every historical row. The durable governed actor travels separately in
+          // `ctx.governedActorId`, is established only by `resolve_api_key`, and lands in its own
+          // column. A legacy unbound key resolves to null and is evaluated exactly as before.
           const actor: Actor = { type: "AGENT", id: key.keyId, orgId, role: keyRole(key.scope) };
+          // A caller may not nominate its own authority. A payload field that DISAGREES with the
+          // trusted resolution is refused rather than ignored: silently dropping it would let a
+          // caller believe it had acted as an actor it never acted as.
+          for (const field of ["governedActorId", "actorId", "grantId", "orgId", "organizationId"] as const) {
+            if (args[field] !== undefined) {
+              return rpcError(id, -32602, "Identity is established by the credential, not by the request.");
+            }
+          }
           const idem = typeof args.idempotencyKey === "string" ? args.idempotencyKey : null;
           const disp = await withTenantOrg(orgId, (db) =>
-            dispatchSkill(db, tool.skillId!, actor, { args, idempotencyKey: idem, dataEnvironment: "PRODUCTION" }));
+            dispatchSkill(db, tool.skillId!, actor, { args, idempotencyKey: idem, dataEnvironment: "PRODUCTION",
+                                                      governedActorId: key.governedActorId }));
           const ok = disp.status === "EXECUTED" || disp.status === "EXECUTING";
           const payload = ok ? (disp.result ?? { status: disp.status }) : { status: disp.status, reason: disp.reason };
           return rpcResult(id, { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], isError: !ok });

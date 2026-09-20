@@ -3,6 +3,7 @@ import { recordChange } from "@/lib/pursuits/ledger";
 import { DECIDE_SKILL, dispatchSkill, type Actor } from "@/lib/pursuits/federation/skills";
 import type { DataEnvironment } from "@/lib/pursuits/lineage";
 import { normalizePlanContent, selectDisplayPlanAction } from "@/lib/pursuits/read-models/pursuit-plan";
+import { liveGrantFor } from "./grant-liveness";
 
 /**
  * P45-2 — the approval lifecycle.
@@ -126,12 +127,12 @@ async function staleAuthority(db: PoolClient, orgId: string, c: Ctx): Promise<In
     `select lifecycle from governed_actors where id = $1 and org_id = $2`, [c.requested_by_actor_id, orgId]);
   if (!actor[0] || actor[0].lifecycle !== "ACTIVE") return "ACTOR_SUSPENDED";
 
-  const { rows: grant } = await db.query<{ id: string }>(
-    `select id from actor_capability_grants
-      where org_id = $1 and actor_id = $2 and skill_id = $3 and status = 'ACTIVE'
-        and (skill_version is null or skill_version = $4)`,
-    [orgId, c.requested_by_actor_id, c.skill_id, c.skill_version]);
-  if (!grant[0]) return "CAPABILITY_REVOKED";
+  // P45-4: THE SAME liveness definition dispatch uses, not a second copy of it. A grant that has
+  // expired while the request waited must invalidate here for exactly the reason a revoked one
+  // does — otherwise a human could approve an action that can no longer legally execute, which is
+  // the whole point of this function. See runtime/grant-liveness.ts.
+  const grant = await liveGrantFor(db, orgId, c.requested_by_actor_id, c.skill_id, c.skill_version);
+  if (!grant) return "CAPABILITY_REVOKED";
   return null;
 }
 

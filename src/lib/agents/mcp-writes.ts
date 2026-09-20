@@ -21,7 +21,7 @@ export async function draftTouchImpl(db: PoolClient, orgId: string, args: DraftT
   const { rows } = await db.query<{ id: string; name: string }>(
     `select id, name from campaigns where org_id = $2 and name ilike $1 order by created_at desc limit 1`, [`%${q}%`, orgId]);
   if (!rows[0]) return { created: false, message: `No campaign matching "${q}".` };
-  await upsertTouch(db, {
+  const { touchId } = await upsertTouch(db, {
     orgId,
     campaignId: rows[0].id,
     fields: {
@@ -30,7 +30,10 @@ export async function draftTouchImpl(db: PoolClient, orgId: string, args: DraftT
       sendOffsetDays: 0, accountAngle: "", customHtml: "", ccEmails: [],
     },
   });
-  return { created: true, campaign: rows[0].name, status: "draft",
+  // P45-4: naming the row it created lets the invocation audit — which already records WHICH
+  // governed actor acted — be joined to this touch WITHOUT a new column on campaign_touches.
+  // Attribution therefore lives where authority lives, and a touch carries no claim of its own.
+  return { created: true, touchId, campaign: rows[0].name, status: "draft",
     note: "Draft only — a human approves it in the campaign room before anything can send." };
 }
 

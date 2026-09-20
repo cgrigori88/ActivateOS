@@ -9,6 +9,8 @@ import { approveMotion, rejectMotion, type EditableField } from "../../motions/a
 import { recordChange } from "../ledger";
 import type { DataEnvironment } from "../lineage";
 import { reportEvent } from "../../obs/reporter";
+import { governedAgentEnforcementEnabled } from "@/lib/env/environment";
+import { liveGrantFor, type LiveGrant } from "@/lib/runtime/grant-liveness";
 
 /**
  * Governed Skill boundary (Workstream E3-D, R9/R24/R25/R26). `dispatchSkill` is
@@ -318,6 +320,11 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
   const def = defFor(skillId, ctx.args && (ctx as { version?: number }).version);
   if (!def) return { status: "REJECTED", invocationId: null, reason: `Unknown skill ${skillId}` };
 
+  // P45-4. The authority instrument this dispatch ran on, carried forward from the ONE query that
+  // authorized it to the audit row that records it. It is never re-derived afterwards: a second
+  // lookup would be a guess about which grant applied, and an audit row must not guess.
+  let grantUsed: LiveGrant | null = null;
+
   // Idempotency: a prior invocation with this key wins.
   if (ctx.idempotencyKey) {
     const { rows } = await db.query<{ id: string; status: string }>(
@@ -332,9 +339,23 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
   if (ROLE_RANK[actor.role ?? "any"] < ROLE_RANK[def.requiredPermission])
     return record(db, def, actor, ctx, "REJECTED", { reason: `insufficient permission (needs ${def.requiredPermission})` });
 
-  // P45-1 governed-actor gate (ADDITIVE). Only engages when a caller names a governed actor; it
+  // P45-4 MANDATORY BINDING FOR AGENTS. Being an AGENT confers zero authority: under enforcement an
+  // agent must act on a durable governed actor resolved from its CREDENTIAL, never on the strength
+  // of a key scope. Scoped to AGENT only — WORKER and SYSTEM keep their legacy behaviour, because
+  // capturing them here would pull the EXTERNAL_ACTION send path into a slice that must not touch
+  // sending. Absent/OFF preserves the certified Slice 14 contract exactly.
+  if (governedAgentEnforcementEnabled() && actor.type === "AGENT" && !ctx.governedActorId)
+    return record(db, def, actor, ctx, "REJECTED",
+      { reason: "this deployment requires an AGENT to act as a governed actor" });
+
+  // P45-1 governed-actor gate (ADDITIVE). Engages whenever a caller names a governed actor; it
   // can reject, never permit. Ordered after eligibility/permission on purpose — a grant must not be
   // able to rescue an actor type or role the registry already refused.
+  //
+  // NOTE FOR ROLLOUT (P45-4 §22.8): this gate demands a grant whenever `governedActorId` is present,
+  // INDEPENDENTLY of the enforcement switch. Binding a credential is therefore NOT inert — from the
+  // moment a bound credential exists it must already hold the grant for its intended action, which
+  // is why provisioning creates the actor, then the grant, then mints the bound key.
   if (ctx.governedActorId) {
     const { rows: ga } = await db.query<{ actor_type: string; lifecycle: string; principal_user_id: string | null }>(
       `select actor_type, lifecycle, principal_user_id from governed_actors where id = $1 and org_id = $2`,
@@ -351,22 +372,26 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
     // both sides are null and this is vacuously satisfied — it can never pass a MISMATCH.
     if (ga[0].actor_type === "USER" && (ga[0].principal_user_id ?? null) !== (actor.id ?? null))
       return record(db, def, actor, ctx, "REJECTED", { reason: "governed actor principal does not match the acting user" });
-    const { rows: grant } = await db.query<{ id: string }>(
-      `select id from actor_capability_grants
-        where org_id = $1 and actor_id = $2 and skill_id = $3 and status = 'ACTIVE'
-          and (skill_version is null or skill_version = $4)`,
-      [actor.orgId, ctx.governedActorId, skillId, def.version]);
-    if (!grant[0]) return record(db, def, actor, ctx, "REJECTED", { reason: "no active capability grant for this skill" });
+    // ONE definition of liveness (status / revocation / expiry), shared with staleAuthority — see
+    // runtime/grant-liveness.ts. EXACT VERSION for strict AGENT execution: the legacy NULL wildcard
+    // remains valid for every pre-existing caller, but it does not satisfy P45-4, where the
+    // authorizing instrument must name the capability version it authorizes.
+    const exactVersion = governedAgentEnforcementEnabled() && actor.type === "AGENT";
+    grantUsed = await liveGrantFor(db, actor.orgId, ctx.governedActorId, skillId, def.version, { exactVersion });
+    // The refusal names no grant. Saying "expired" rather than "missing" would tell a caller that a
+    // grant exists, which is the same disclosure the unknown-actor refusal above already refuses to
+    // make. One reason, whatever the cause.
+    if (!grantUsed) return record(db, def, actor, ctx, "REJECTED", { reason: "no active capability grant for this skill" });
   }
 
   // Loop guard (R23).
   if (ctx.correlationId && (await chainDepth(db, ctx.correlationId)) >= MAX_CHAIN)
-    return record(db, def, actor, ctx, "REJECTED", { reason: "loop guard: action chain too deep" });
+    return record(db, def, actor, ctx, "REJECTED", { reason: "loop guard: action chain too deep", grantId: grantUsed?.id });
 
   // Preconditions (R9).
   if (def.precheck) {
     const pc = await def.precheck(db, actor, ctx);
-    if (!pc.ok) return record(db, def, actor, ctx, "REJECTED", { reason: pc.reason ?? "precondition failed" });
+    if (!pc.ok) return record(db, def, actor, ctx, "REJECTED", { reason: pc.reason ?? "precondition failed", grantId: grantUsed?.id });
   }
 
   // Effect-class routing.
@@ -376,14 +401,14 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
     const authz = def.authorize
       ? await def.authorize(db, actor, ctx)
       : { ok: ctx.pursuitId ? await hasActionAuthority(db, actor.orgId, ctx.pursuitId, def.actionFamily ?? skillId) : false };
-    if (!authz.ok) return record(db, def, actor, ctx, "REJECTED", { reason: authz.reason ?? "no cross-tenant action authority (R24)" });
+    if (!authz.ok) return record(db, def, actor, ctx, "REJECTED", { reason: authz.reason ?? "no cross-tenant action authority (R24)", grantId: grantUsed?.id });
   }
   if (def.effectClass === "EXTERNAL_ACTION") {
     // Never execute inline — enqueue the transactional outbox (R25/G4). The executor,
     // not this handler, performs the side effect; the receipt + EXECUTED land when it
     // drains. Idempotency at the transport: (org, idempotency_key) is unique, so a
     // retried enqueue of the same authorized action collapses to the existing row.
-    const inv = await record(db, def, actor, ctx, "EXECUTING", {});
+    const inv = await record(db, def, actor, ctx, "EXECUTING", { grantId: grantUsed?.id });
     await db.query(
       `insert into action_outbox
          (invocation_id, org_id, provider, action_family, payload, status, idempotency_key, correlation_id, data_environment)
@@ -417,12 +442,12 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
   try {
     const result = def.handler ? await def.handler(db, actor, ctx) : { ok: true };
     await db.query(`release savepoint ${sp}`);
-    return record(db, def, actor, ctx, "EXECUTED", { result });
+    return record(db, def, actor, ctx, "EXECUTED", { result, grantId: grantUsed?.id });
   } catch (e) {
     // Back to the known point BEFORE anything else touches this connection.
     await db.query(`rollback to savepoint ${sp}`);
     await db.query(`release savepoint ${sp}`);
-    return record(db, def, actor, ctx, "FAILED", { reason: (e as Error).message, error: (e as Error).message });
+    return record(db, def, actor, ctx, "FAILED", { reason: (e as Error).message, error: (e as Error).message, grantId: grantUsed?.id });
   }
 }
 
@@ -453,20 +478,20 @@ export async function drainActionOutbox(db: PoolClient, opts: { simulate?: boole
   return n;
 }
 
-async function record(db: PoolClient, def: SkillDef, actor: Actor, ctx: DispatchCtx, status: string, extra: { reason?: string; result?: unknown; error?: string }): Promise<DispatchResult> {
+async function record(db: PoolClient, def: SkillDef, actor: Actor, ctx: DispatchCtx, status: string, extra: { reason?: string; result?: unknown; error?: string; grantId?: string | null }): Promise<DispatchResult> {
   const executed = status === "EXECUTED" || status === "EXECUTING";
   const { rows } = await db.query<{ id: string }>(
     `insert into governed_action_invocations
        (org_id, skill_id, skill_version, effect_class, actor_type, actor_id, actor_role, pursuit_id,
         target_kind, target_id, args, idempotency_key, status, reason, causation_id, correlation_id,
-        executed_at, result, error, data_environment, governed_actor_id, run_step_id)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, case when $13 in ('EXECUTED','EXECUTING') then now() else null end, $17,$18,$19,$20,$21)
+        executed_at, result, error, data_environment, governed_actor_id, run_step_id, grant_id)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, case when $13 in ('EXECUTED','EXECUTING') then now() else null end, $17,$18,$19,$20,$21,$22)
      returning id`,
     [actor.orgId, def.skillId, def.version, def.effectClass, actor.type, actor.id ?? null, actor.role,
      ctx.pursuitId ?? null, ctx.target?.kind ?? null, ctx.target?.id ?? null, JSON.stringify(ctx.args ?? {}),
      ctx.idempotencyKey ?? null, status, extra.reason ?? null, ctx.causationId ?? null, ctx.correlationId ?? null,
      extra.result !== undefined ? JSON.stringify(extra.result) : null, extra.error ?? null, ctx.dataEnvironment ?? "PRODUCTION",
-     ctx.governedActorId ?? null, ctx.runStepId ?? null],
+     ctx.governedActorId ?? null, ctx.runStepId ?? null, extra.grantId ?? null],
   );
   void executed;
   // OR-3: surface governed-action rejections/failures. Cross-tenant authority denial is

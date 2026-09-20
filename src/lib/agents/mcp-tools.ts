@@ -32,9 +32,26 @@ export function mintKey(): { plaintext: string; hash: string } {
   return { plaintext, hash: createHash("sha256").update(plaintext).digest("hex") };
 }
 
+/**
+ * P45-4 — THE TRUSTED CREDENTIAL. Every field here is established by the database from the bearer
+ * alone; none of it can be supplied, overridden or influenced by a request payload.
+ *
+ * `keyId` and `governedActorId` are TWO IDENTITIES AND ARE NEVER INTERCHANGED. The credential
+ * answers "which key invoked?"; the governed actor answers "which durable agent did that key
+ * represent?". Collapsing them would silently rewrite the historical meaning of
+ * `governed_action_invocations.actor_id`, which has always been the dispatch caller.
+ */
+export interface ResolvedApiCredential {
+  orgId: string;
+  keyId: string;
+  scope: string;
+  /** The durable governed actor this credential is bound to, or null for a legacy unbound key. */
+  governedActorId: string | null;
+}
+
 export async function resolveKey(
   pool: Pool | PoolClient, bearer: string | null, policy?: ExecutionPolicy,
-): Promise<{ orgId: string; keyId: string; scope: string } | null> {
+): Promise<ResolvedApiCredential | null> {
   // A bearer that is not even shaped like one of our keys costs NO database work. This stays the
   // first thing that happens, ahead of the bound, because the cheapest refusal is the one that
   // never opens a transaction.
@@ -47,21 +64,23 @@ export async function resolveKey(
   const ms = statementTimeoutOf(policy);
   if (ms !== null && typeof (pool as Pool).connect === "function") {
     const rows = await withStatementBound(pool as Pool, ms, async (db) =>
-      (await db.query<{ org_id: string; key_id: string; scope: string }>(
-        `select org_id, key_id, scope from public.resolve_api_key($1)`, [hash])).rows);
+      (await db.query<{ org_id: string; key_id: string; scope: string; governed_actor_id: string | null }>(
+        `select org_id, key_id, scope, governed_actor_id from public.resolve_api_key($1)`, [hash])).rows);
     if (!rows[0]) return null;
-    return { orgId: rows[0].org_id, keyId: rows[0].key_id, scope: rows[0].scope ?? "write" };
+    return { orgId: rows[0].org_id, keyId: rows[0].key_id, scope: rows[0].scope ?? "write",
+             governedActorId: rows[0].governed_actor_id ?? null };
   }
   // RISK-1: resolve_api_key() (migration 0062) is SECURITY DEFINER — it looks up
   // the key's org and stamps last_used_at in owner context, so this works before
   // any tenant scope is set and under app_rw (which cannot read api_keys itself).
   // On the owner connection it runs as the same owner: unchanged behavior.
-  const { rows } = await pool.query<{ org_id: string; key_id: string; scope: string }>(
-    `select org_id, key_id, scope from public.resolve_api_key($1)`,
+  const { rows } = await pool.query<{ org_id: string; key_id: string; scope: string; governed_actor_id: string | null }>(
+    `select org_id, key_id, scope, governed_actor_id from public.resolve_api_key($1)`,
     [hash],
   );
   if (!rows[0]) return null;
-  return { orgId: rows[0].org_id, keyId: rows[0].key_id, scope: rows[0].scope ?? "write" };
+  return { orgId: rows[0].org_id, keyId: rows[0].key_id, scope: rows[0].scope ?? "write",
+           governedActorId: rows[0].governed_actor_id ?? null };
 }
 
 // ── Tools ───────────────────────────────────────────────────────────────────
