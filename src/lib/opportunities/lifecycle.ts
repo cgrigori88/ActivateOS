@@ -1,6 +1,7 @@
 import type pg from "pg";
 import { meddpiccFor, meddpiccScore, ELEMENTS } from "./meddpicc";
 import { bridgePursuitOutcome } from "../pursuits/bridge/outcome-bridge";
+import { recordChange } from "../pursuits/ledger";
 
 /**
  * Opportunity lifecycle (BLUEPRINT Phase 6) — same discipline as motions:
@@ -130,6 +131,23 @@ export async function advanceOpportunity(
       meddpiccScoreAtClose = meddpiccScore(m);
     }
   }
+  /**
+   * PILOT EVIDENCE (Slice 1). `outcome_events` is `app_rw=arwd` — fully mutable and deletable — and
+   * carries an untyped payload with no before/after, so a stage transition written only there is
+   * not durably reconstructable. `change_ledger` is the ONLY append-only commercial store in this
+   * schema, its vocabulary already contains STAGE_CHANGED, and it has `before_state`/`after_state`
+   * columns. So the fix needed no new table: only the emission that was missing.
+   *
+   * This records WHAT HAPPENED. It asserts nothing about why, and nothing about whether it was good.
+   */
+  await recordChange(db, {
+    orgId, pursuitId: opp.pursuit_id, entityType: "opportunity", entityId: opportunityId,
+    changeType: "STAGE_CHANGED", materiality: closing ? "HIGH" : "MEDIUM",
+    reason: `Opportunity stage ${opp.stage} → ${to}`,
+    actorType: "USER", triggerType: "USER_OVERRIDE",
+    before: { stage: opp.stage, amountUsd: opp.amount_usd ?? null },
+    after: { stage: to, amountUsd: opp.amount_usd ?? null },
+  });
   await db.query(
     `insert into outcome_events (org_id, motion_id, company_id, event_type, payload)
      values ($1, $2, $3, $4, $5)`,
