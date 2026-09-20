@@ -1053,3 +1053,75 @@ implementations agree.**
   for its verdict on *each* qualifying grant alone — the choice set the query was free to return —
   rather than by asserting which row today's heap happens to yield. Pinning that row would pin the
   defect.
+
+### §16M — a membership assertion must control for the presentation window
+
+> **"Does X appear on this surface?" is not a question about X until the assertion has established
+> that the surface was willing to show X at all.**
+
+§16L ruled that a cardinality bound may not define an aggregate's *members*. This is its mirror
+image on the evidence side, and it was learned the hard way during the P3 Slice 2C-A hosted
+activation gate. Today's default surface renders `TODAY_TOP_DECISIONS = 4` cards. The gate asserted
+that a newly-approved **v2** plan action appeared on `/`, it did not, and the failure read exactly
+like the defect the gate existed to find: *Today is blind to schema-2 plans.*
+
+It was not. The fixture pursuit carried no expected value, so it lost the ranking to twelve other
+open pursuits and never entered the four-card window. **The absence was about rank and said nothing
+whatever about schema.**
+
+The first correction was also wrong, and is recorded because the shape of the error matters more
+than the error: the hypothesis became *"Today is not a plan-action surface"* — which a single
+control immediately refuted, because the canonical **v1** action was plainly there. A wrong
+hypothesis that happens to predict the observed absence is the most expensive kind, and the only
+thing that caught it was putting v1 and v2 to the identical test.
+
+The proof that settled it released ranking through the product's own surface — `?today=all`, cap 50 —
+where the v2 action appears as the **same `ACTION_DUE` item** the v1 plan produces, on the activated
+deployment *and* on the certified rollback deployment, beside the v1 action. The execution layer
+resolves through `stagedByActionKey`, which is version-dispatched by construction.
+
+**The rules:**
+
+- **A negative on a ranked, truncated or paginated surface is not evidence until the assertion has
+  released the bound** — through the product's own unbounded surface where one exists, never by
+  reaching past the product into the loader.
+- **Carry a positive control of the other version, shape or class through the identical path.** Had
+  the v1 control been in the original assertion, neither wrong conclusion would have survived one run.
+- **When a correction produces a new hypothesis, test the hypothesis, not the conclusion you want.**
+
+### §16N — a gate assertion must reach the gate
+
+> **A refusal only certifies the brake that produced it. A guard that fires earlier proves the
+> earlier guard.**
+
+The same gate had to prove that a deployment with `PLAN_CONTENT_V2_WRITES_ENABLED` off refuses to
+*decide* a pending schema-2 recommendation. Two attempts failed to prove it, each for a different
+reason, and neither failure was in the product:
+
+- **Sweeping every discovered Server Action id is not isolation.** Invoking all of them against the
+  rollback deployment did produce the intended refusal — and also invoked the *recommend* action,
+  which correctly wrote a **v1** recommendation, and a third action that refused on argument shape.
+  The world-fingerprint assertion then reported a table moving that the brake had not moved. The
+  evidence was reconstructable from the immutable dispatch audit, but an assertion whose blast radius
+  exceeds the behaviour under test cannot support a claim about that behaviour.
+- **A brake that is never reached is not a brake that was proved.** The retry reused an
+  already-decided fixture. An unchanged world correctly returns UNCHANGED (D-028), so no pending
+  recommendation existed and the refusal came back *"This recommendation is no longer awaiting a
+  decision"* — an ordinary lifecycle guard, structurally **before** the write gate. Accepting that
+  refusal would have certified the wrong mechanism with a green check.
+
+The proof that held used a fixture recommended and **never decided**, and exactly one invocation of
+the decide action — identified by its position in the route's Server Action list, which is stable
+across two builds of the same source tree, and confirmed by dispatch. The refusal named the gate
+itself; one dispatch row was appended; across the whole database **no other table moved**; the
+pending v2 recommendation survived un-downconverted and still decidable.
+
+> **The write brake prevents prohibited business-state mutation. It does not — and must not —
+> suppress the immutable audit evidence that the invocation was attempted.**
+
+**Addendum to §16H (hosted-harness tooling, not rules to remember).** Two properties of hosted
+Server Action crawling that no prose rule will reliably recall: **action ids are salted per build**,
+so a harness must discover the serving deployment's own ids and confirm each by observable effect
+rather than reuse a local or previously-recorded id; and **an HTTP 303 from sign-in does not prove
+an authenticated session** — a throttled login returns the same status with no cookie, so hosted
+crawls must positively assert authenticated state before asserting anything else.

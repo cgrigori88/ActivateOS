@@ -359,6 +359,10 @@ and the final approved order. `actions: []` remains legal.
 records as absent: all 18 registered skills have `approval_required = false`, and no plan action names
 a skill.
 
+**P3 Slice 2C-B — Plan → Runtime Compilation: NOT STARTED / DEFERRED.** The closure of 2C-A does
+**not** authorize executable capability fields in `PlanContent`, compiler work,
+`pursuit_run_steps.plan_action_key`, caller-independent autonomous execution, or P45 activation.
+
 ---
 
 ## 10. Unrelated carry-forward
@@ -480,6 +484,95 @@ A valid post-v2 rollback runtime must understand v1 **and** v2 reads, understand
 preserve versioned fingerprint dispatch. **Turning `PLAN_CONTENT_V2_WRITES_ENABLED` OFF on a
 v2-capable runtime is the safe operational brake — it stops new v2 data being created. It does not
 restore compatibility with `e55499b`, and nothing can.**
+
+#### 11a.5.1 The boundary event — FINAL, for Preview `mejokqxriwyawfhawuxu`
+
+| | |
+|---|---|
+| **First persisted hosted v2 revision** | `3d94daee-72d4-4fbe-82c5-2c8e68900be3` |
+| **Timestamp** | **2026-09-20T04:25:21.481Z** |
+| **Serving deployment** | `dpl_J4d7ynXoZ4PGNV42NqWoRgHP4kWk` |
+| **Source** | `89ed7001eccf33d1074b5a55506c78af032f9b38` |
+
+**This event permanently retires `e55499b` as a rollback target for this database.** The synthetic v2
+fixtures were deleted afterwards and the persisted plan revisions returned to all-schema-1 — **and
+that did not restore the old boundary, because nothing can.** The claim a rollback target has to
+satisfy is about what the database *has ever held*, not what it holds today. A clean fixture-residue
+count must never be read as the boundary being restored.
+
+#### 11a.5.2 The canonical post-v2 rollback target
+
+| | |
+|---|---|
+| **Deployment** | `dpl_3hXGEzo6njtV7VDhJHVQB8fqtYL9` |
+| **Direct URL** | `https://pursuitos-demo-lduummxhq-cgrigori-s-projects.vercel.app` |
+| **Source** | `89ed7001eccf33d1074b5a55506c78af032f9b38` — identical to the serving source |
+| **Posture** | `planContentV2WritesEnabled = false` · schema 115 · `app_rw` · `bypassRls` false · tenant enforcement true · sending disarmed |
+
+Certified **after real hosted v2 data existed** to: read v1 · read v2 · resolve v2 Queue lineage by
+columns · dispatch versioned fingerprints · preserve business state · **refuse new v2 writes**.
+
+The exact rollback command — **recorded, not executed**:
+
+```
+npx vercel alias set https://pursuitos-demo-lduummxhq-cgrigori-s-projects.vercel.app pursuitos-demo-git-roadmap-pursuitos-vnext-cgrigori-s-projects.vercel.app
+```
+
+> **Turning the write gate OFF is the post-v2 operational brake. It does not make `e55499b` safe
+> again.** The brake stops new v2 data from being created; only a v2-capable runtime can be rolled
+> back to.
+
+---
+
+## 11b. Hosted acceptance — 2C-A
+
+**P3 Slice 2C-A — Ordered Plan Content: HOSTED ACCEPTED / CLOSED.** Serving
+`dpl_J4d7ynXoZ4PGNV42NqWoRgHP4kWk` on source `89ed7001`, schema **115**,
+`planContentV2WritesEnabled = true`, `app_rw` / `bypassRls` false / tenant enforcement true, sending
+disarmed, P45 zero. **Production `qifatlqxfuhwrwvpbwsc` never addressed.**
+
+**OFF-posture certification — 57/0 with zero hosted v2 revisions throughout.** The 2C-A runtime was
+proven on the canonical hostname *before* the gate was armed: it reads v1, operates on schema 115 and
+persists nothing in schema 2.
+
+**The first v2 recommendation.** `content.schema = 2`; `actions[]` present and `nextAction` absent;
+three bounded, distinct, semantic keys with no index suffix; v2 basis and v2 fingerprint. **A
+recommendation alone stages no motion action** — a proposal queues nothing.
+
+**The v2 decision.** Schema 2 preserved; the exact parent recommendation; `adjustments` null;
+**exactly one** current action staged; its `plan_action_key` proven a member of the decision
+revision's `actions[]`; lineage resolved through the columns; **no persisted v2 execution pointer**;
+ledger payload restricted to `planId` / `planRevisionId` / `planActionKey` with no action text,
+arguments, capability or evidence.
+
+**v1 + v2 coexistence.** Both render correctly under the activated deployment — a stored v1 plan
+beside live v2 data, on the same surfaces, with no cross-version comparison anywhere.
+
+**Today — characterized precisely.** The v2 plan action **participates correctly in Today**. The
+default Today surface is presentation- and ranking-limited (`TODAY_TOP_DECISIONS = 4`); the fixture
+did not enter that window because of its ranking inputs, not because of its schema. `?today=all`
+exposes the correct v2 `ACTION_DUE` item, and the activated and rollback deployments **agree as dual
+readers**. See §16M.
+
+**The write brake.** With real v2 data present, the OFF deployment reads v2 correctly, and a genuine
+pending v2 decision attempt is refused with the expected disabled-write error: no plan decision, no
+queue row, no lineage and no other business state is created. An immutable failed-dispatch audit row
+is appended, and that is expected.
+
+> **The write brake prevents prohibited business-state mutation. It does not suppress audit evidence
+> of the attempted governed invocation.**
+
+See §16N for why two earlier attempts to prove this did not certify it.
+
+**Final reconciliation after fixture cleanup.** pursuits **14** · motions **7** · queue rows **6** ·
+plan revisions **3**, all schema 1 · live lineage rows **0** · `change_ledger` **68** · `api_keys`
+**0** · P45 **0** · schema **115**. The single accepted persistent movement is **+13
+`governed_action_invocations`** immutable audit rows, fully classified: **6 recommend EXECUTED, 2
+decide EXECUTED, 4 decide FAILED, 1 `select_partner_route` FAILED** on a harness argument shape.
+Retained as audit evidence under the Slice 9/10 precedent.
+
+Final world digest **`f716178809021a09`**. **This is not an unexplained rebaseline:** the prior digest
+moved because the retained immutable invocation audit rows are themselves part of the world.
 
 ---
 
