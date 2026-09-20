@@ -1,0 +1,257 @@
+{
+  "manifestVersion": 1,
+  "purpose": "Every row on the hosted Preview project that carries data_environment = 'PRODUCTION' and was in fact produced by a certification gate. Activation inserts these into certification_exclusions verbatim; the source rows are never touched.",
+  "project": "Supabase Preview mejokqxriwyawfhawuxu",
+  "frozenAgainstSchemaVersion": 117,
+  "identification": "By EXACT id, enumerated from the database. Never by timestamp range, proximity, deployment guess or row count.",
+  "howEnumerated": "For each of the 25 public tables carrying a data_environment column, every row with data_environment = 'PRODUCTION' was listed. Seven tables had any. All 14 hosted pursuits are DEMO, so no hosted row records genuine production activity and the PRODUCTION-marked set is exactly the mislabelled set.",
+  "dependentEvidence": {
+    "invocation_effect_refs": "NOT LISTED, BY PROOF. Every effect ref carries invocation_id with a tenant-composite FK to governed_action_invocations, so excluding a parent invocation deterministically excludes its declared effects. 8 refs exist hosted; 3 hang off PRODUCTION-marked invocations (af4c9376, 81443af0, 5a99c8f1) and are covered by those three entries.",
+    "change_ledger": "LISTED INDIVIDUALLY, BY PROOF OF THE OPPOSITE. Both PRODUCTION-marked ledger rows have invocation_id IS NULL, so no parent exclusion can reach them.",
+    "pursuit_participants, context_contributions, context_grants, recompute_requests, pursuit_overrides": "LISTED INDIVIDUALLY. None carries an invocation linkage of any kind."
+  },
+  "orgScoping": "certification_exclusions is org-scoped under FORCEd RLS. A context_grant is visible to both parties, so it is filed once per party; every other subject is filed under its own row's org.",
+  "counts": {
+    "change_ledger": 2,
+    "context_contribution": 2,
+    "context_grant": 4,
+    "governed_action_invocation": 18,
+    "pursuit_override": 1,
+    "pursuit_participant": 4,
+    "recompute_request": 2,
+    "TOTAL": 33
+  },
+  "subjects": [
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION while its pursuit is DEMO; change_type=OVERRIDE_RECORDED; invocation_id is null, so parent exclusion cannot reach it",
+      "gateLabel": "hosted route-override gate",
+      "subjectId": "8457134f-4cbb-4751-82ce-f5bbf95726ba",
+      "subjectKind": "change_ledger"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION while its pursuit is DEMO; change_type=PARTNER_OVERRIDE; invocation_id is null, so parent exclusion cannot reach it",
+      "gateLabel": "hosted route-override gate",
+      "subjectId": "f1998d6c-05d9-4ab1-8830-b95409ec0e44",
+      "subjectKind": "change_ledger"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION while its pursuit is DEMO; data_category=transaction_adjacency",
+      "gateLabel": "hosted federation gate",
+      "subjectId": "bb833d19-ec36-451d-841a-8268da78f519",
+      "subjectKind": "context_contribution"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION while its pursuit is DEMO; data_category=transaction_adjacency",
+      "gateLabel": "hosted federation gate",
+      "subjectId": "e59c9da4-a927-48d3-b90d-4118b1162223",
+      "subjectKind": "context_contribution"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION while its pursuit is DEMO; grant_kind=DATA status=accepted",
+      "gateLabel": "hosted federation gate",
+      "subjectId": "c527055f-aa08-45bb-927b-ea1ab78c316d",
+      "subjectKind": "context_grant"
+    },
+    {
+      "orgId": "f4835d5c-0be1-4415-941f-4d5099a5637a",
+      "reason": "written PRODUCTION while its pursuit is DEMO; grant_kind=DATA status=accepted",
+      "gateLabel": "hosted federation gate",
+      "subjectId": "c527055f-aa08-45bb-927b-ea1ab78c316d",
+      "subjectKind": "context_grant"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION while its pursuit is DEMO; grant_kind=DATA status=accepted",
+      "gateLabel": "hosted federation gate",
+      "subjectId": "d2fb2bd7-2467-4787-8a1c-b0b99540fa77",
+      "subjectKind": "context_grant"
+    },
+    {
+      "orgId": "f4835d5c-0be1-4415-941f-4d5099a5637a",
+      "reason": "written PRODUCTION while its pursuit is DEMO; grant_kind=DATA status=accepted",
+      "gateLabel": "hosted federation gate",
+      "subjectId": "d2fb2bd7-2467-4787-8a1c-b0b99540fa77",
+      "subjectKind": "context_grant"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "0566347f-c4cf-44b6-939e-5cbc22379470",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "0cfcf9a7-5bc0-48e4-8689-a16a9b643e3e",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "20ce3ec0-dc18-4f0f-8ba7-c9f8785b40a0",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "269606f0-16a3-45b3-8b1d-d93ebc1077ec",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=REJECTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "3a9187dd-b787-472a-9a76-9571f99a53d0",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P8-0 runtime observability",
+      "subjectId": "49d852ad-fc3f-4ba9-b39e-5ce7b8ad981d",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "4c5006f5-9cd1-46f3-af1a-21d0c635831d",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "500994c9-72b2-4e23-8493-b3a198209352",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P8-0 runtime observability",
+      "subjectId": "5a99c8f1-aa74-4ae8-8294-19bd554d9866",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P8-0 runtime observability",
+      "subjectId": "81443af0-cb82-438e-9bf9-069e0a25019f",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "88529be1-eb12-4df5-bc92-ab5ca7aa5f59",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "a4d19142-4e28-4bd4-a01d-44902dfae5ee",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P8-0 runtime observability",
+      "subjectId": "af4c9376-4e09-43d7-9945-4a9163a28b9c",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=assemble_pursuit_team@1 status=REJECTED actor=USER",
+      "gateLabel": "hosted surface gate (assemble_pursuit_team)",
+      "subjectId": "d607fec1-27cd-409b-a514-5898698df431",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "dd7a0ad8-7fa5-4b9f-a4b9-04c6e153beb3",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=REJECTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "e4a90539-26c5-4b9d-9b42-ace2f3a59862",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "e7b0bfd1-22bb-47de-9362-1d92fae50b7f",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION by a certification gate; skill=draft_campaign_touch@1 status=EXECUTED actor=AGENT",
+      "gateLabel": "P45-4 governed agent boundary",
+      "subjectId": "ec5235b9-9937-485e-82d6-ad34f314199d",
+      "subjectKind": "governed_action_invocation"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION while its pursuit is DEMO",
+      "gateLabel": "hosted route-override gate",
+      "subjectId": "0f0c75f6-4fb7-4f56-9670-742c44335515",
+      "subjectKind": "pursuit_override"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION while its pursuit is DEMO; role_key=VENDOR",
+      "gateLabel": "hosted federation gate",
+      "subjectId": "3b4e4a31-61e8-4a40-accb-129c86441f61",
+      "subjectKind": "pursuit_participant"
+    },
+    {
+      "orgId": "f4835d5c-0be1-4415-941f-4d5099a5637a",
+      "reason": "written PRODUCTION while its pursuit is DEMO; role_key=DISTRIBUTOR",
+      "gateLabel": "hosted federation gate",
+      "subjectId": "59e881c9-b545-4015-988f-b707e5fe317a",
+      "subjectKind": "pursuit_participant"
+    },
+    {
+      "orgId": "f4835d5c-0be1-4415-941f-4d5099a5637a",
+      "reason": "written PRODUCTION while its pursuit is DEMO; role_key=DISTRIBUTOR",
+      "gateLabel": "hosted federation gate",
+      "subjectId": "b28477b7-ecf2-442d-9e7e-2e2555e3c1e4",
+      "subjectKind": "pursuit_participant"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION while its pursuit is DEMO; role_key=VENDOR",
+      "gateLabel": "hosted federation gate",
+      "subjectId": "eb2bbd5e-f5d6-4fd8-8015-dfdbd246741d",
+      "subjectKind": "pursuit_participant"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION while its pursuit is DEMO; status=PENDING",
+      "gateLabel": "hosted route-override gate",
+      "subjectId": "495f0506-f026-44a3-9e20-81e65785b8b2",
+      "subjectKind": "recompute_request"
+    },
+    {
+      "orgId": "3759c35a-7cae-45de-a1d6-3f58ccf0f194",
+      "reason": "written PRODUCTION while its pursuit is DEMO; status=PENDING",
+      "gateLabel": "hosted route-override gate",
+      "subjectId": "a4247ea3-1b27-4ab6-ba77-e15b08413192",
+      "subjectKind": "recompute_request"
+    }
+  ]
+}

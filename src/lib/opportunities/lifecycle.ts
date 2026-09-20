@@ -2,6 +2,7 @@ import type pg from "pg";
 import { meddpiccFor, meddpiccScore, ELEMENTS } from "./meddpicc";
 import { bridgePursuitOutcome } from "../pursuits/bridge/outcome-bridge";
 import { recordChange } from "../pursuits/ledger";
+import type { DataEnvironment } from "../pursuits/lineage";
 
 /**
  * Opportunity lifecycle (BLUEPRINT Phase 6) — same discipline as motions:
@@ -83,6 +84,31 @@ export function stakeholderGaps(stakeholders: StakeholderRow[]): string[] {
   return gaps;
 }
 
+/**
+ * The provenance of a commercial event, DERIVED FROM ITS SUBJECT — never defaulted, never taken
+ * from a caller, never taken from the deployment.
+ *
+ * THIS IS A CORRECTION, AND THE DEFECT IT FIXES IS ALREADY VISIBLE IN HOSTED DATA. `recordChange`
+ * ends in `e.dataEnvironment ?? "PRODUCTION"`, so any writer that simply omits the field labels its
+ * event PRODUCTION regardless of what it is actually about. On the hosted Preview project that
+ * produced two `change_ledger` rows marked PRODUCTION whose pursuit is DEMO — history claiming a
+ * provenance the subject never had, in the ONE store that cannot be corrected by UPDATE.
+ *
+ * `pursuits.data_environment` is the subject's own label, read server-side under the caller's org,
+ * which is the same derivation the Pursuit Coordination server actions already use. An opportunity
+ * with no pursuit has no subject to derive from: rather than assert a provenance we cannot know,
+ * the caller omits the field and the column default stands, and that residual gap is reported
+ * rather than disguised — a defaulted label is not a derived one.
+ */
+async function subjectEnvironment(
+  db: pg.PoolClient, orgId: string, pursuitId: string | null,
+): Promise<DataEnvironment | undefined> {
+  if (!pursuitId) return undefined;
+  const { rows } = await db.query<{ data_environment: string }>(
+    `select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId]);
+  return (rows[0]?.data_environment as DataEnvironment | undefined) ?? undefined;
+}
+
 export async function advanceOpportunity(
   db: pg.PoolClient,
   orgId: string,
@@ -145,6 +171,10 @@ export async function advanceOpportunity(
     changeType: "STAGE_CHANGED", materiality: closing ? "HIGH" : "MEDIUM",
     reason: `Opportunity stage ${opp.stage} → ${to}`,
     actorType: "USER", triggerType: "USER_OVERRIDE",
+    dataEnvironment: await subjectEnvironment(db, orgId, opp.pursuit_id),
+    // Amount travels with the stage so a close is reconstructable, but a stage event is NOT the
+    // record of an amount change: an amount-only mutation would produce no stage event at all, and
+    // `pilot-evidence-verify` pins the fact that no application path can perform one.
     before: { stage: opp.stage, amountUsd: opp.amount_usd ?? null },
     after: { stage: to, amountUsd: opp.amount_usd ?? null },
   });
@@ -253,6 +283,32 @@ export async function createOpportunityFromMotion(
     [motionId, opportunityId],
   );
 
+  /**
+   * PILOT EVIDENCE (Slice 1, correction). A GENUINE BUSINESS CREATION — NOT AN IMPORT.
+   *
+   * This path is a person promoting an ACTIVE motion: the commercial opportunity comes into
+   * existence here, in this application, at this instant, so `now()` IS its business creation time
+   * and recording it as such asserts nothing false. That is precisely what distinguishes it from
+   * `ingest/staged.ts`, which observes an opportunity that already existed in a CRM; that path
+   * writes a `crm_snapshots` row and deliberately does not claim to have created anything, because
+   * the true creation time is source-side and is not among the columns an import carries.
+   *
+   * Without this, the only record of creation was `outcome_events` (app_rw=arwd — updatable and
+   * deletable) and `opportunity_stage_transitions` (also arwd). A pilot could therefore lose the
+   * fact that a deal was ever opened, and no later reconstruction could recover it. The ledger
+   * vocabulary already contained OPPORTUNITY_CREATED with no writer, so again: no new table, only
+   * the missing emission.
+   */
+  await recordChange(db, {
+    orgId, pursuitId: m.pursuit_id ?? null, entityType: "opportunity", entityId: opportunityId,
+    changeType: "OPPORTUNITY_CREATED", materiality: "HIGH",
+    reason: `Opportunity opened from motion — ${m.legal_name}`,
+    actorType: "USER", triggerType: "USER_OVERRIDE", triggerId: motionId,
+    dataEnvironment: await subjectEnvironment(db, orgId, m.pursuit_id ?? null),
+    // `before` is absent because there was nothing before: this is an origination, and an empty
+    // object would be a claim about a prior state that did not exist.
+    after: { stage: "discovery", amountUsd: m.estimated_value_usd == null ? null : Number(m.estimated_value_usd), motionId },
+  });
   await db.query(
     `insert into outcome_events (org_id, motion_id, company_id, event_type, payload)
      values ($1, $2, $3, 'OPPORTUNITY_CREATED', $4)`,
