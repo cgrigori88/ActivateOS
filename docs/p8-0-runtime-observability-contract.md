@@ -103,12 +103,31 @@ timestamp.**
 
 ## 6. The v1 effect-observed registry — exactly four, frozen
 
-| Capability | Required refs on EXECUTED | Cardinality |
+> **THE FROZEN PRINCIPLE. Observation completeness means the system completely observed the
+> capability's declared v1 effect contract. It does NOT mean the capability necessarily produced an
+> effect.** A declared effect contract therefore describes **actual creation**, never merely
+> successful execution.
+
+| Capability | Required refs | Cardinality |
 |---|---|---|
-| `draft_campaign_touch@1` | `CREATED / campaign_touch / <id>` | exactly **1** |
-| `recommend_pursuit_plan@1` | always `CREATED / pursuit_plan_revision`; **plus** `CREATED / pursuit_goal` and `CREATED / pursuit_plan` **only where that dispatch actually created them** | **1..3** |
-| `decide_pursuit_plan@1` | always `CREATED / pursuit_plan_revision`; **plus** `CREATED / motion_action` when staging creates it | **1..2** |
+| `draft_campaign_touch@1` | **if the dispatch actually creates a campaign touch**, exactly one `CREATED / campaign_touch / <id>` | **0..1** |
+| `recommend_pursuit_plan@1` | **whenever the dispatch actually creates a recommendation revision**, `CREATED / pursuit_plan_revision`; **plus** `CREATED / pursuit_goal` and/or `CREATED / pursuit_plan` for those objects actually created during the same dispatch | **0..3** |
+| `decide_pursuit_plan@1` | `CREATED / pursuit_plan_revision` for the decision revision; **plus** `CREATED / motion_action` when staging creates it | **1..2** |
 | `assemble_pursuit_team@1` | one `CREATED / pursuit_team_member` per row actually inserted | **0..N** |
+
+**The two successful-zero-effect cases, stated rather than left to be discovered:**
+
+| Case | Outcome |
+|---|---|
+| `draft_campaign_touch@1` executes but **no campaign matches** and it returns `created: false` | **EXECUTED · marker 1 · zero refs** |
+| `recommend_pursuit_plan@1` returns **UNCHANGED** (D-028 — the world has not moved, so no new revision exists) | **EXECUTED · marker 1 · zero refs** |
+| REJECTED, or FAILED before any effect | **marker 1 · zero refs** |
+
+In every one of these, **zero means observed zero declared effects**, because the invocation is
+marked and its exact capability is in the v1 registry. `recommend_pursuit_plan@1`'s full range is
+therefore **0** (UNCHANGED) · **1** (new revision against an existing goal and plan) · **2** (a new
+revision plus one bootstrap object, where reachable) · **3** (fresh bootstrap: goal, plan and
+revision).
 
 Effects are recorded **at the actual creation branch**, never inferred afterwards from pre-existence
 and never reconstructed by parsing `governed_action_invocations.result`.
