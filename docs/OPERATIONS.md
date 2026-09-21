@@ -105,6 +105,12 @@ means the new code reads columns that do not exist. The asymmetry is the point â
 wrong data, the other produces loud errors, and neither is a substitute for treating the two as one
 boundary.
 
+## Known open defects
+
+* **D-UNIT-SUMMARY-PHANTOM-FAIL** â€” one unit run reported `fail 1` with 929/929 subtests passing and
+  no failing file. OPEN / UNCHARACTERIZED / NON-BLOCKING; see `docs/d-unit-summary-phantom-fail.md`.
+  Preserve the output before re-running if it recurs.
+
 ## Pre-pilot checklist (release-blocking)
 
 - [ ] Reconcile the prod migration tracker per the safe procedure above (verify, then `db:migrate` or `--baseline`).

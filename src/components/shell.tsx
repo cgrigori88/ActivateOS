@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { OrgSwitcher } from "@/components/org-switcher";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -267,6 +268,9 @@ export function Shell({
   pursuitExperience,
   scopeOptions,
   scopeActive,
+  orgOptions,
+  currentOrgId,
+  onSwitchOrg,
 }: {
   children: ReactNode;
   /** Signed-in identity email; null in Basic-Auth / local-dev mode. */
@@ -282,6 +286,10 @@ export function Shell({
   guest?: boolean;
   /** Workstream D: PURSUIT_EXPERIENCE_ENABLED — adds the Pursuits room when on (default off). */
   pursuitExperience?: boolean;
+  /** The authenticated user's memberships. Resolved server-side; absent outside an identity session. */
+  orgOptions?: { orgId: string; name: string; role: string }[];
+  currentOrgId?: string | null;
+  onSwitchOrg?: (orgId: string) => Promise<void>;
   /** Ecosystem scope options derived from the tenant's data (scale-disclosure §1). */
   scopeOptions?: ScopeOption[];
   /** The active resolved scope (label + facts) for the selector + chip. */
@@ -542,6 +550,9 @@ export function Shell({
         ))}
       </nav>
       <div className={`border-t border-white/[0.07] px-4 py-3 ${collapsed ? "text-center" : ""}`}>
+        {!collapsed && orgOptions && onSwitchOrg ? (
+          <OrgSwitcher options={orgOptions} currentOrgId={currentOrgId ?? null} onSwitch={onSwitchOrg} />
+        ) : null}
         {collapsed ? (
           themeButton
         ) : (

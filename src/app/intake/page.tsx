@@ -2,7 +2,7 @@ import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
 import { Card, PageHeader, fieldClass, BlockLabel, Disclosure } from "@/components/ui";
 import { EvidenceModel } from "@/components/evidence-model";
-import { analyzeUploadAction } from "./actions";
+import { analyzeUploadAction, reverseImportAction } from "./actions";
 import { buttonClass } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -92,12 +92,18 @@ export default async function IntakePage({
       filename: string | null;
       kind: string;
       status: string;
+      error: string | null;
+      reversed_at: Date | null;
+      reversal_summary: { reversed: number; retainedGlobal: number; retainedMatched: number; retainedReferenced: number; conflicts: number } | null;
+      effect_count: number;
       row_count: number;
       matched_count: number;
       created_at: Date;
       partner: string | null;
     }>(
-      `select b.id, b.filename, b.kind, b.status, b.row_count, b.matched_count, b.created_at, p.name as partner
+      `select b.id, b.filename, b.kind, b.status, b.row_count, b.matched_count, b.created_at, p.name as partner,
+             b.error, b.reversed_at, b.reversal_summary,
+             (select count(*) from import_batch_effects e where e.batch_id = b.id)::int as effect_count
      from import_batches b left join partners p on p.id = b.partner_id
      where b.org_id = $1
      order by b.created_at desc, b.id desc limit 25`,
@@ -124,6 +130,8 @@ export default async function IntakePage({
   const matchRate = importedRows > 0 ? Math.round((importedMatched / importedRows) * 100) : null;
 
   const toReview = runs.filter((r) => r.status === "analyzed");
+  const committed = runs.filter((r) => r.status === "imported");
+  const failed = runs.filter((r) => r.status === "failed");
 
   return (
     <main>
@@ -227,6 +235,76 @@ export default async function IntakePage({
           lands as third-party evidence with the vendor named as provenance, feeding the next scoring sweep.
         </Disclosure>
       </Card>
+
+      {/* ── COMMITTED IMPORTS: WHAT LANDED, AND HOW TO UNDO IT ───────────────────────────────────
+          Reversal used to mean an engineer at a SQL prompt guessing which rows came from which
+          file. It is now a product action — and the result is reported in full rather than behind a
+          generic success, because a reversal that retained things IS the normal outcome, not a
+          failure: the shared identity graph is append-only by rule, matched accounts pre-existed the
+          batch, and anything a pursuit now depends on is not import residue any more. */}
+      {committed.length > 0 && (
+        <Card className="mb-6">
+          <BlockLabel>Committed imports</BlockLabel>
+          <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
+            {committed.map((b) => {
+              const rs = b.reversal_summary;
+              return (
+                <li key={b.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
+                  <span className="min-w-0">
+                    <span className="block truncate text-copy font-medium">{b.filename ?? "(unnamed file)"}</span>
+                    <span className="block text-label text-neutral-500">
+                      {b.kind ?? "book"} · {b.row_count} rows · {b.effect_count} recorded effects
+                      {b.partner ? ` · ${b.partner}` : ""} · {new Date(b.created_at).toISOString().slice(0, 10)}
+                    </span>
+                    {b.reversed_at && rs ? (
+                      /* Every disposition, named. "Retained" is an outcome with a reason, not a
+                         silent partial failure, so the operator can tell "nothing to undo" from
+                         "something refused to be undone". */
+                      <span className="mt-1 block text-label text-neutral-600 dark:text-neutral-300">
+                        Reversed {new Date(b.reversed_at).toISOString().slice(0, 10)} —{" "}
+                        <b className="ink-muted">{rs.reversed}</b> compensated ·{" "}
+                        <b className="ink-muted">{rs.retainedGlobal}</b> shared identity records retained by design ·{" "}
+                        <b className="ink-muted">{rs.retainedMatched}</b> pre-existing ·{" "}
+                        <b className="ink-muted">{rs.retainedReferenced}</b> still in use ·{" "}
+                        <b className="ink-muted">{rs.conflicts}</b> changed since (later work kept)
+                      </span>
+                    ) : null}
+                  </span>
+                  {b.reversed_at ? (
+                    <span className="flex-none text-label text-neutral-500">already reversed</span>
+                  ) : (
+                    <form action={reverseImportAction.bind(null, b.id)} className="flex-none">
+                      <button className={buttonClass("subtle", "md")}>Reverse import</button>
+                    </form>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+
+      {/* ── FAILED IMPORTS ───────────────────────────────────────────────────────────────────────
+          Failures are durable now (they used to be written inside the transaction the failure had
+          already aborted, and were lost), so the reader gets the actual reason and can fix the file
+          and upload again. The message is the domain error the commit raised — not a stack trace. */}
+      {failed.length > 0 && (
+        <Card tone="amber" className="mb-6">
+          <BlockLabel>Imports that did not complete</BlockLabel>
+          <p className="mb-2 text-copy text-neutral-600 dark:text-neutral-300">
+            Nothing from these files was applied — each one was rolled back whole. Correct the file or the
+            mapping and upload it again.
+          </p>
+          <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
+            {failed.map((b) => (
+              <li key={b.id} className="py-2.5">
+                <span className="block truncate text-copy font-medium">{b.filename ?? "(unnamed file)"}</span>
+                <span className="block text-label text-neutral-600 dark:text-neutral-300">{b.error ?? "No reason was recorded."}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {/* Per-partner cards */}
       <BlockLabel>What each partner has contributed</BlockLabel>

@@ -84,6 +84,25 @@ async function main() {
     /auth\.admin\.createUser/.test(adminSrc) && /Can't demote the last owner/.test(adminSrc)
     && /delete from org_members where org_id = \$1 and user_id = \$2/.test(adminSrc));
 
+  // ── ORGANIZATION PROVENANCE IS NOT THE BROWSER'S ──────────────────────────────────────────────
+  HD("ORG PROVENANCE — the trust chain from the rendered form to the stored value");
+  const adminActions = codeOf("../src/app/admin/actions.ts");
+  const createBody = adminActions.slice(adminActions.indexOf("export async function createOrganizationAction"),
+                                        adminActions.indexOf("export async function switchOrganizationAction"));
+  ck("BITING — the creation action reads NO environment from the request at all",
+    !/formData\.get\(\s*["'](dataEnvironment|data_environment|environment)["']/.test(createBody),
+    { note: "an earlier version read it from formData, which a browser could have set to PRODUCTION" });
+  ck("it is established by a server-side function, with no ambient fallback",
+    /pilotOperatingEnvironment\(\)/.test(createBody) && !/\?\? "PRODUCTION"/.test(createBody));
+  ck("and that function returns PILOT for this owner-pilot path",
+    /function pilotOperatingEnvironment\(\): DataEnvironment \{\s*return "PILOT";/.test(adminActions));
+  const adminPage = codeOf("../src/app/admin/page.tsx");
+  const createForm = adminPage.slice(adminPage.indexOf("createOrganizationAction"), adminPage.indexOf("Create workspace"));
+  ck("the rendered form offers only a name — there is no environment field to forge",
+    /name="name"/.test(createForm) && !/dataEnvironment/.test(createForm));
+  ck("creation is owner-gated and makes the creator the owner in ONE transaction",
+    /requireOwner\(pool\)/.test(createBody) && /begin/.test(createBody) && /'owner'/.test(createBody));
+
   // ── INTAKE: THE THREE-FILE SEQUENCE ───────────────────────────────────────────────────────────
   HD("INTAKE — accounts, then CRM opportunities, with contacts carried on the account file");
   const partner = await one(`insert into partners (org_id, name, partner_type) values ($1,$2,'distributor') returning id`, [pilotOrg.id, `P ${NS}`]);
@@ -300,6 +319,26 @@ async function main() {
     && !!stored.rendered_at && !!stored.selected_at);
   ck("components carry declared keys and numbers only — no prose",
     Array.isArray(stored.components) && stored.components[0].key === "timing" && !JSON.stringify(stored.components).includes("because"));
+  // The retired P8-0-style "no orphan after a rolled-back dispatch" property: the producer no longer
+  // STAGES anything in memory to be discarded, because it is no longer called inside a governed
+  // dispatch. The property is now structural — one statement, nothing held — so it is asserted as
+  // that rather than left to lapse when the failure mode it guarded stopped existing.
+  const captureSrc2 = codeOf("../src/lib/pursuits/evidence/attention-capture.ts");
+  ck("the write is a SINGLE statement with nothing staged — there is no in-memory sink to outlive a rollback",
+    (captureSrc2.match(/db\.query\(/g) ?? []).length === 1
+    && !/push\(|sink|stage|drain/i.test(captureSrc2));
+  const rolledBack = await (async () => {
+    const c = await pool.connect();
+    try { await c.query("begin"); await c.query(`select set_config('app.org_id',$1,true)`, [pilotOrg.id]);
+      await recordAttentionSelection(c, { facts: { ...facts, nonce: randomUUID(), renderedAt: new Date().toISOString() }, userId: uploader });
+      const mid = Number((await c.query(`select count(*)::int n from attention_observations where org_id=$1`, [pilotOrg.id])).rows[0].n);
+      await c.query("rollback");
+      return { mid, after: await n(`select count(*)::int n from attention_observations where org_id=$1`, [pilotOrg.id]) };
+    } finally { c.release(); }
+  })();
+  ck("BEHAVIOURAL — an observation written in a transaction that rolls back leaves nothing behind",
+    rolledBack.mid === rolledBack.after + 1, rolledBack);
+
   const replay = await redeem(facts, uploader, readAttentionToken(mintAttentionToken({ ...facts, nonce: first.snapshotId }))!.nonce);
   void replay;
   const sameNonce = readAttentionToken(token)!.nonce;
@@ -333,6 +372,36 @@ async function main() {
     /<form action=\{selectPursuitAction\}/.test(cardSrc));
   ck("and without a token the card is exactly the link it always was, so the flag-OFF card is unchanged",
     /item\.attentionToken \? \(/.test(cardSrc) && /<Link href=\{item\.deepLink\}/.test(cardSrc));
+
+  // ── THE TOKEN DISCLOSES NOTHING THE SURFACE DID NOT ──────────────────────────────────────────
+  HD("ATTENTION TOKEN — what the browser is handed, and what it is not");
+  const decoded = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+  // The token is base64url, so EVERYTHING in it is disclosed to the client. It must therefore carry
+  // only the bounded observation contract the card already displayed.
+  ck("the token carries ONLY the declared observation contract — no extra keys crept in",
+    new Set(Object.keys(decoded)).size === Object.keys(decoded).length
+    && Object.keys(decoded).every((k) => [
+      "orgId", "userId", "pursuitId", "surfaceId", "surfaceVersion", "sortMode", "filters",
+      "displayLimit", "p2Rank", "comparisonSetSize", "withheldCount", "surfaceOrdinal", "score",
+      "band", "components", "algorithmVersion", "snapshotFingerprint", "scope", "dataEnvironment",
+      "renderedAt", "nonce"].includes(k)), { keys: Object.keys(decoded) });
+  ck("D-018 HOLDS ON THE WIRE — withheld information is a COUNT, never an identity or a value",
+    typeof decoded.withheldCount === "number"
+    && !JSON.stringify(decoded).toLowerCase().includes("withheldsubject")
+    && !/withheld[^C]/i.test(JSON.stringify(decoded)));
+  ck("no prose reaches the browser: components are declared keys and numbers, with no reason text",
+    Array.isArray(decoded.components)
+    && decoded.components.every((c: Record<string, unknown>) => Object.keys(c).every((k) => k === "key" || k === "contribution")));
+  const mintSrc = codeOf("../src/lib/pursuits/read-models/today.ts");
+  const mintBody = mintSrc.slice(mintSrc.indexOf("export function mintSurfaceTokens"));
+  ck("BITING — the minter projects signals down to key+contribution and never passes the whole signal",
+    /components: \(p\?\.signals \?\? \[\]\)\.map\(\(sg\) => \(\{ key: sg\.key \?\? null, contribution: sg\.contribution \?\? null \}\)\)/.test(mintBody)
+    && !/topReasons|comparedToBelow|whyHere/.test(mintBody));
+  ck("CONTROL — P2 DOES carry that prose, so the omission is a projection and not an empty source",
+    /topReasons/.test(codeOf("../src/lib/pursuits/read-models/portfolio-pertinence.ts")));
+  ck("the withheld pursuits themselves never reach the token: P2 removes them before the set exists",
+    decoded.comparisonSetSize === 18 && decoded.withheldCount === 1
+    && !JSON.stringify(decoded).includes("DISCLOSED"));
 
   // ── TENANT ISOLATION ──────────────────────────────────────────────────────────────────────────
   HD("TENANT — another organization's batch or surface cannot enter this one");

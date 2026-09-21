@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import type { PoolClient } from "pg";
 import { getOwnerPool } from "@/db/client";
 import { ORG_COOKIE, currentOrgId, requireOwner } from "@/lib/auth/org";
+import type { DataEnvironment } from "@/lib/pursuits/lineage";
 import { withTenant } from "@/lib/db/tenant";
 import { authConfigured, supabaseAdmin, supabaseServer } from "@/lib/auth/supabase";
 import {
@@ -451,19 +452,45 @@ export async function eraseDataSubjectAction(formData: FormData): Promise<void> 
  *
  * The name is product data the user supplies. No customer or partner name belongs in this code.
  */
+function pilotOperatingEnvironment(): DataEnvironment {
+  return "PILOT";
+}
+
 export async function createOrganizationAction(formData: FormData): Promise<void> {
   const pool = getOwnerPool();
   await requireOwner(pool);
   const name = String(formData.get("name") ?? "").trim().slice(0, 120);
   if (!name) notice("Name the organization.");
-  const { asDataEnvironment } = await import("@/lib/pursuits/provenance");
-  const env = asDataEnvironment(String(formData.get("dataEnvironment") ?? "").trim());
-  if (!env) notice("Choose the data environment this organization operates in.");
+  /**
+   * PROVENANCE IS ESTABLISHED BY THE SERVER, AND THE FORM HAS NO SAY IN IT.
+   *
+   * An earlier version of this action read `dataEnvironment` from `formData`. That was wrong, and
+   * wrong in the direction that matters: a browser could have posted PRODUCTION and created an
+   * organization whose every import lands in the one environment a learning corpus admits. Nothing
+   * about the form is trusted — there is no such field to submit, and reading one would reintroduce
+   * exactly the class 0120 closed for credentials and c079b9c closed for uploads.
+   *
+   * `pilotOperatingEnvironment()` is the single server-side decision. It returns PILOT for the
+   * owner-pilot path this action exists to serve; extra request fields are inert because none of
+   * them is ever read.
+   */
+  const env = pilotOperatingEnvironment();
 
-  const supabase = await supabaseServer();
-  const { data } = await supabase.auth.getUser();
-  const userId = data.user?.id ?? null;
-  if (!userId) notice("Sign in before creating an organization.");
+  /**
+   * A WORKSPACE WITH NO OWNER IS UNREACHABLE, so this refuses rather than creating one.
+   *
+   * `supabaseServer()` THROWS on a deployment with no identity configured (local dev, Basic-Auth
+   * demo) — it does not return null — so the call is guarded. Unguarded it produced a 500, which
+   * reads as a broken button rather than as the deliberate refusal it is.
+   *
+   * Nobody would be a member of such an organization, no switcher could offer it, and
+   * `currentOrgId` falls back to the OLDEST organization, so it could never be entered. Refusing is
+   * the honest outcome on those deployments; identity is a precondition of this action, not an
+   * optional extra.
+   */
+  let userId: string | null = null;
+  try { userId = (await (await supabaseServer()).auth.getUser()).data.user?.id ?? null; } catch { userId = null; }
+  if (!userId) notice("Sign in with an identity account before creating a workspace — a workspace needs an owner.");
 
   const client = await pool.connect();
   let created: string | null = null;
@@ -507,9 +534,8 @@ export async function createOrganizationAction(formData: FormData): Promise<void
  */
 export async function switchOrganizationAction(orgId: string): Promise<void> {
   const pool = getOwnerPool();
-  const supabase = await supabaseServer();
-  const { data } = await supabase.auth.getUser();
-  const userId = data.user?.id ?? null;
+  let userId: string | null = null;
+  try { userId = (await (await supabaseServer()).auth.getUser()).data.user?.id ?? null; } catch { userId = null; }
   if (!userId) notice("Sign in first.");
   const { rows } = await pool.query(
     `select 1 from org_members where org_id = $1 and user_id = $2`, [orgId, userId]);

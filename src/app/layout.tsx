@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { Shell } from "@/components/shell";
+import { membershipsFor } from "@/lib/auth/org";
+import { switchOrganizationAction } from "@/app/admin/actions";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { PRINCIPAL_HEADER, hasAuthenticatedPrincipal } from "@/lib/auth/principal";
 import { currentRole } from "@/lib/auth/org";
@@ -97,6 +99,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // renders. isOwner defaults to Basic-Auth-owns-the-demo only when identity
   // is off; under identity a membership-less user stays non-owner.
   let isOwner = !authConfigured() && !anonymous;
+  /**
+   * THE MEMBERSHIPS THE SWITCHER MAY OFFER — resolved here, server-side, from `org_members`.
+   *
+   * It is a convenience list, not a permission: `switchOrganizationAction` re-checks membership
+   * before it will set anything, and `currentOrgId` re-checks the resulting cookie on every read.
+   * Anonymous requests never reach this (the tenant reads below are skipped entirely), so no
+   * organization name leaks into an unauthenticated RSC payload — the defect this block's own
+   * comment records.
+   */
+  let orgOptions: { orgId: string; name: string; role: string }[] = [];
+  let activeOrgId: string | null = null;
   const badges: Record<string, number> = {};
   const alerts: Record<string, number> = {};
   let guest = false;
@@ -174,7 +187,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       </head>
       <body className="min-h-screen font-sans">
-        <Shell user={user} signOut={signOutAction} isOwner={isOwner} badges={badges} alerts={alerts} guest={guest} pursuitExperience={pursuitExperienceEnabled()} scopeOptions={scopeOptions} scopeActive={scopeActive}>{children}</Shell>
+        <Shell user={user} signOut={signOutAction} isOwner={isOwner} badges={badges} alerts={alerts} guest={guest} pursuitExperience={pursuitExperienceEnabled()} scopeOptions={scopeOptions} scopeActive={scopeActive} orgOptions={orgOptions} currentOrgId={activeOrgId} onSwitchOrg={switchOrganizationAction}>{children}</Shell>
       </body>
     </html>
   );

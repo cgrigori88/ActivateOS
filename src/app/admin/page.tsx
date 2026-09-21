@@ -11,6 +11,7 @@ import {
   createInviteAction, redeemInviteAction, revokePartnershipAction,
   offerGrantAction, acceptGrantAction, declineGrantAction, revokeGrantAction, syncGrantAction,
   requestOverlapAction, decideOverlapAction,
+  createOrganizationAction,
   mintApiKeyAction, revokeApiKeyAction,
   setOrgAiKeyAction,
   clearOrgAiKeyAction,
@@ -283,6 +284,36 @@ export default async function AdminPage({
 
       {/* ── Access ── */}
       <BlockLabel>Access</BlockLabel>
+      {/* ── PILOT OPERATING CONTEXT ────────────────────────────────────────────────────────────
+          An organization is the only real tenant boundary here, and until Slice 2 no product path
+          created one — so starting a clean pilot meant an engineer with a SQL prompt.
+
+          THERE IS NO ENVIRONMENT FIELD, DELIBERATELY. The provenance is established server-side;
+          a form that could name it could create an organization whose every import lands in the one
+          environment a learning corpus admits. The copy states what will be created so the operator
+          is not guessing, and the value itself is not theirs to send. */}
+      <Card className="mb-4">
+        <h2 className="mb-1 text-heading">Pilot workspace</h2>
+        <p className="mb-3 text-copy text-neutral-500">
+          Create a clean workspace for real partner pursuits, kept separate from demo data. You become its
+          owner and are switched into it. Its activity is recorded as <b className="ink-muted">pilot</b> —
+          real-world, and deliberately not training data.
+        </p>
+        <form action={createOrganizationAction} className="flex flex-wrap items-end gap-2">
+          <label className="text-copy">
+            <span className="mb-1 block text-body text-neutral-500">Workspace name</span>
+            <input
+              name="name"
+              required
+              maxLength={120}
+              placeholder="e.g. Partner pursuits"
+              className="w-64 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900"
+            />
+          </label>
+          <button className={buttonClass("primary", "md")}>Create workspace</button>
+        </form>
+      </Card>
+
       <Card className="mb-4">
         {!authConfigured() ? (
           /* Wave 5 §9: `NEXT_PUBLIC_SUPABASE_*` named an environment variable to
