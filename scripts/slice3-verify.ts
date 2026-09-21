@@ -90,6 +90,30 @@ async function main() {
     /names predicates that do not exist/.test(refused), { refused: refused.slice(0, 80) });
   await q(`delete from play_templates where slug=$1`, [`${NS}-bogus`]);
 
+  /**
+   * THIN P9 MUST NOT HIJACK THE PRE-EXISTING MOTION DESIGNER.
+   *
+   * `designMotion` resolves its play by TAXONOMY NODE, taking the highest active version:
+   *   `where n.slug = $1 and pt.status = 'active' order by pt.version desc, pt.id limit 1`
+   * So publishing any thin-P9 motion on a node the designer already uses silently outranks the play
+   * it depends on. That happened — Motion A was bound to `infrastructure-automation` and took over
+   * the lookup — and hosted activation is where it surfaced, because locally the designer is never
+   * exercised. Motion A is category-agnostic anyway: the product comes from the partner's own book.
+   */
+  for (const designerNode of ["infrastructure-automation"]) {
+    const resolved = await one(
+      `select pt.slug, pt.version from play_templates pt
+         join taxonomy_nodes n on n.id = pt.taxonomy_node_id
+        where n.slug = $1 and pt.status = 'active'
+        order by pt.version desc, pt.id limit 1`, [designerNode]);
+    ck(`BITING — the Motion Designer's lookup on '${designerNode}' still resolves its own play`,
+      resolved?.slug === "infrastructure-automation-modernization", { resolved: `${resolved?.slug}@${resolved?.version}` });
+  }
+  ck("no thin-P9 motion shares a taxonomy node with a template the designer resolves",
+    (await q(`select pt.slug from play_templates pt
+                join taxonomy_nodes n on n.id = pt.taxonomy_node_id
+               where n.slug = 'infrastructure-automation'`)).length === 1);
+
   // ── TEMPLATE IMMUTABILITY, AND THE ESCAPE HATCH ───────────────────────────────────────────────
   HD("IMMUTABILITY — a published version cannot change meaning, and the hatch is not application-reachable");
   ck("app_rw holds INSERT and SELECT on play_templates and NOTHING else",

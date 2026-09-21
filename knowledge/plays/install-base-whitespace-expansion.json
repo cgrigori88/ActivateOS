@@ -1,9 +1,9 @@
 {
-  "$comment": "Motion A v2. Whitespace is NEVER inferred from absence: partner_accounts.installed is NOT NULL DEFAULT false and written from the presence of a CSV column, so false means 'nobody told us', not 'the product is absent'. Coverage is what the partner book establishes; product-absence must be stated as evidence with polarity -1.",
+  "$comment": "Motion A v3. NO TAXONOMY NODE, deliberately: this motion is category-agnostic \u2014 the product in question comes from the partner's own book (`partner_accounts.target_product`), not from a taxonomy branch. Binding it to `infrastructure-automation` also HIJACKED the pre-existing Motion Designer, whose query takes the highest active version on a node: Motion A outranked the modernization play it depends on. Whitespace is never inferred from absence: `partner_accounts.installed` is NOT NULL DEFAULT false and written from the presence of a CSV column, so false means 'nobody told us'. Coverage is what the book establishes; product-absence must be stated as evidence with polarity -1.",
   "slug": "install-base-whitespace-expansion",
-  "version": 2,
+  "version": 3,
   "name": "Install-Base / Whitespace Expansion",
-  "taxonomy_node": "infrastructure-automation",
+  "taxonomy_node": null,
   "objective": "Validate and advance an expansion opportunity with the partner on an account they already cover.",
   "motion_v1": {
     "objective": "Validate and advance an expansion opportunity with the partner on an account they already cover.",
@@ -14,25 +14,48 @@
         "because": "evidence states the target capability is not in use at this account, which is what makes it genuine whitespace"
       }
     ],
-    "partnerContext": { "coverage": true },
+    "partnerContext": {
+      "coverage": true
+    },
     "requiresContext": [
-      "Target install-base / product-state confirmation — `partner_accounts.installed` defaults to false and records only what an import happened to carry, so it cannot establish that the product is absent.",
+      "Target install-base / product-state confirmation \u2014 `partner_accounts.installed` defaults to false and records only what an import happened to carry, so it cannot establish that the product is absent.",
       "Which expansion use case the account would actually buy.",
-      "Which partner seller owns the relationship day to day — the book names the partner, not the person."
+      "Which partner seller owns the relationship day to day \u2014 the book names the partner, not the person."
     ],
     "goalTemplate": "Validate and advance an expansion opportunity with the partner at {{company}}.",
-    "expectedRoles": ["PARTNER_ACCOUNT_MANAGER", "VENDOR_ACCOUNT_EXECUTIVE"],
-    "campaignGuidance": "Lead with the partner relationship, not the product. Nothing in the opening may assert what the account does or does not run — that is the first thing to find out.",
+    "expectedRoles": [
+      "PARTNER_ACCOUNT_MANAGER",
+      "VENDOR_ACCOUNT_EXECUTIVE"
+    ],
+    "campaignGuidance": "Lead with the partner relationship, not the product. Nothing in the opening may assert what the account does or does not run \u2014 that is the first thing to find out.",
     "measurementAssociations": [
-      "An opportunity opened on this account after application — association only, never attribution.",
+      "An opportunity opened on this account after application \u2014 association only, never attribution.",
       "Evidence added that establishes install-base state, which would close the largest gap."
     ]
   },
-  "personas": { "primary": "Director of Infrastructure", "secondary": "IT Operations Manager" },
-  "cta": { "offer": "Joint account review with the partner", "fallback": "Written summary of what comparable accounts on this partner's book have adopted" },
+  "personas": {
+    "primary": "Director of Infrastructure",
+    "secondary": "IT Operations Manager"
+  },
+  "cta": {
+    "offer": "Joint account review with the partner",
+    "fallback": "Written summary of what comparable accounts on this partner's book have adopted"
+  },
   "seller_cadence": [
-    { "step": 1, "action": "Validate target-product and install-base status with the partner — confirm what the account actually runs today", "day": 0 },
-    { "step": 2, "action": "Identify the expansion use case and the account stakeholders who own it", "day": 4 },
-    { "step": 3, "action": "Align the partner and vendor account team on the next customer action", "day": 9 }
+    {
+      "step": 1,
+      "action": "Validate target-product and install-base status with the partner \u2014 confirm what the account actually runs today",
+      "day": 0
+    },
+    {
+      "step": 2,
+      "action": "Identify the expansion use case and the account stakeholders who own it",
+      "day": 4
+    },
+    {
+      "step": 3,
+      "action": "Align the partner and vendor account team on the next customer action",
+      "day": 9
+    }
   ]
 }

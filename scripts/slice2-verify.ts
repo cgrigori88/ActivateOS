@@ -99,6 +99,23 @@ async function main() {
     /membershipsFor\(getOwnerPool\(\)/.test(layoutSrc));
   ck("and the read is still scoped to the authenticated user — it widens the connection, not the subject",
     /where m\.user_id = \$1/.test(orgSrc));
+  /**
+   * THE SELECTION MUST BE VALIDATED WHERE MEMBERSHIP IS VISIBLE.
+   *
+   * `org_members` is RLS-FORCED on `is_org_member(org_id)` and `user_id = auth.uid()`. On the
+   * app_rw connection `auth.uid()` is null and `app.org_id` is not yet set — `currentOrgId` is what
+   * decides it — so a membership check made on the TENANT connection returns nothing every time and
+   * the selection silently falls through to the default. Switching then never works, and looks
+   * like it does whenever the default happens to be the chosen organization. That is exactly how it
+   * shipped, and why an assertion that renders the default proves nothing.
+   */
+  ck("BITING — the cookie's membership is validated on the OWNER pool, not the tenant connection",
+    /const chosen = await selectedOrgCookie\(\)[\s\S]{0,900}?getOwnerPool\(\)\.query[\s\S]{0,200}?from org_members m where m\.org_id = \$1 and m\.user_id = \$2/.test(orgSrc));
+  ck("and the ROLE is read the same way, so it cannot answer about a different organization",
+    (orgSrc.match(/getOwnerPool\(\)\.query/g) ?? []).length === 2);
+  ck("both reads stay scoped to the authenticated user — the connection widens, the subject does not",
+    (orgSrc.match(/m\.user_id = \$2|user_id = \$2/g) ?? []).length >= 2);
+
   ck("creating an organization makes the creator its owner in ONE transaction",
     /insert into organizations \(name, kind, data_environment\)/.test(adminSrc)
     && /insert into org_members \(org_id, user_id, role\) values \(\$1, \$2, 'owner'\)/.test(adminSrc));

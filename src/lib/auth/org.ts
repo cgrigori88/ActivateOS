@@ -66,9 +66,29 @@ export async function currentOrgId(db: Db): Promise<string | null> {
       // so a forged value degrades to the user's own first membership rather than granting anything.
       const chosen = await selectedOrgCookie();
       if (chosen) {
-        const { rows } = await db.query<{ org_id: string }>(
-          `select m.org_id from org_members m where m.org_id = $1 and m.user_id = $2`, [chosen, userId]);
-        if (rows[0]) return rows[0].org_id;
+        /**
+         * VALIDATED ON THE OWNER POOL, because on the tenant connection it can never succeed.
+         *
+         * `org_members` is RLS-FORCED with `is_org_member(org_id)` and `user_id = auth.uid()`. On
+         * the app_rw connection `auth.uid()` is null, and `app.org_id` is not yet set — this
+         * function is what decides it. So the membership check returned nothing EVERY time and the
+         * selection silently fell through to the default: switching organizations never actually
+         * worked, and it looked like it did whenever the default happened to be the chosen one.
+         *
+         * This is the same defect as the switcher list, in its other half; that one was fixed and
+         * this one was not, which is why the control that caught it had to be a behavioural switch
+         * into a NON-default organization rather than a render of the default.
+         *
+         * The query stays scoped to the authenticated user by `m.user_id = $2`: the CONNECTION
+         * widens, the subject does not, and a cookie naming an organization the user does not
+         * belong to still matches no row.
+         */
+        try {
+          const { getOwnerPool } = await import("@/db/client");
+          const { rows } = await getOwnerPool().query<{ org_id: string }>(
+            `select m.org_id from org_members m where m.org_id = $1 and m.user_id = $2`, [chosen, userId]);
+          if (rows[0]) return rows[0].org_id;
+        } catch { /* no owner pool configured — fall through to the deterministic default */ }
       }
       // Deterministic fallback, unchanged: a user with one membership never needs to choose.
       const { rows } = await db.query<{ org_id: string }>(
@@ -105,9 +125,14 @@ export async function currentRole(db: Db): Promise<"owner" | "operator" | "viewe
   // organization could carry an owner role from another. Both now answer about the same org.
   const chosen = await selectedOrgCookie();
   if (chosen) {
-    const { rows } = await db.query<{ role: "owner" | "operator" | "viewer" }>(
-      `select role from org_members where org_id = $1 and user_id = $2`, [chosen, userId]);
-    if (rows[0]) return rows[0].role;
+    // Same reasoning as `currentOrgId`: the role must be read where the membership is visible, or
+    // it silently answers about the default organization instead of the selected one.
+    try {
+      const { getOwnerPool } = await import("@/db/client");
+      const { rows } = await getOwnerPool().query<{ role: "owner" | "operator" | "viewer" }>(
+        `select role from org_members where org_id = $1 and user_id = $2`, [chosen, userId]);
+      if (rows[0]) return rows[0].role;
+    } catch { /* no owner pool configured — fall through */ }
   }
   const { rows } = await db.query<{ role: "owner" | "operator" | "viewer" }>(
     `select role from org_members where user_id = $1 order by created_at asc, org_id asc limit 1`,
