@@ -77,6 +77,28 @@ async function main() {
     && /You are not a member of that organization/.test(adminSrc));
   ck("the whole tree is revalidated on a switch — no segment may keep rendering the old tenant",
     /revalidatePath\("\/", "layout"\)/.test(adminSrc));
+  /**
+   * THE CONTROL MUST BE REACHABLE, NOT MERELY CORRECT.
+   *
+   * Hosted certification found the switcher rendering for nobody: the layout never resolved
+   * memberships at all, so `orgOptions` was always empty and the component hid itself by design. A
+   * second defect sat behind it — `org_members` is RLS-FORCED on `is_org_member(org_id)` and
+   * `user_id = auth.uid()`, and on the app_rw connection `auth.uid()` is null, so even a wired-up
+   * read on the tenant connection could only ever see the caller's current organization.
+   *
+   * No local test could have caught either: local runs without RLS identity, and "the component is
+   * correct" was true throughout. So this asserts the WIRING and the CONNECTION, which is what was
+   * actually broken.
+   */
+  const layoutSrc = codeOf("../src/app/layout.tsx");
+  ck("the layout actually RESOLVES memberships and passes them to the shell",
+    /orgOptions = await membershipsFor\(/.test(layoutSrc)
+    && /orgOptions=\{orgOptions\}/.test(layoutSrc) && /currentOrgId=\{activeOrgId\}/.test(layoutSrc)
+    && /activeOrgId = orgId/.test(layoutSrc));
+  ck("BITING — it reads them on the OWNER pool, because RLS makes a cross-org read impossible on the tenant one",
+    /membershipsFor\(getOwnerPool\(\)/.test(layoutSrc));
+  ck("and the read is still scoped to the authenticated user — it widens the connection, not the subject",
+    /where m\.user_id = \$1/.test(orgSrc));
   ck("creating an organization makes the creator its owner in ONE transaction",
     /insert into organizations \(name, kind, data_environment\)/.test(adminSrc)
     && /insert into org_members \(org_id, user_id, role\) values \(\$1, \$2, 'owner'\)/.test(adminSrc));

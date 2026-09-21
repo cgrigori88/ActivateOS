@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { Shell } from "@/components/shell";
 import { membershipsFor } from "@/lib/auth/org";
+import { getOwnerPool } from "@/db/client";
 import { switchOrganizationAction } from "@/app/admin/actions";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { PRINCIPAL_HEADER, hasAuthenticatedPrincipal } from "@/lib/auth/principal";
@@ -117,6 +118,26 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     try {
     await withTenant(async (db, orgId) => {
       isOwner = (await currentRole(db)) === "owner";
+      activeOrgId = orgId;
+      /**
+       * THE MEMBERSHIPS THE SWITCHER MAY OFFER.
+       *
+       * READ ON THE OWNER POOL, NOT ON `db` — and that is not an optimisation. `org_members` is
+       * RLS-FORCED with `is_org_member(org_id)` and `user_id = auth.uid()`; on the app_rw
+       * connection `auth.uid()` is null and `app.org_id` names the CURRENT organization, so a
+       * cross-org membership query can only ever return the one row the caller is already in. The
+       * switcher would then see a single membership, decide it had nothing to offer, and hide
+       * itself — a control that exists and is unreachable. /admin already reads members this way,
+       * for the same reason.
+       *
+       * The read stays scoped to the authenticated user by `where m.user_id = $1`: it widens the
+       * CONNECTION, never the subject. Anonymous requests never reach here, so no organization name
+       * enters an unauthenticated payload.
+       */
+      try {
+        const uid = (await (await supabaseServer()).auth.getUser()).data.user?.id ?? null;
+        if (uid) orgOptions = await membershipsFor(getOwnerPool(), uid);
+      } catch { /* no identity session, or no owner pool — the switcher simply does not render */ }
       const { rows: kindRows } = await db.query<{ kind: string }>(
         `select kind from organizations where id = $1`,
         [orgId],
