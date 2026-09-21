@@ -108,8 +108,32 @@ export default async function CampaignsPage({
       [orgId],
     );
 
+    /**
+     * THE ACCOUNT PICKER IS SCOPED TO THIS ORGANIZATION'S BOOK.
+     *
+     * It was `select id, legal_name from companies` with no scope at all, and RLS cannot rescue it:
+     * `companies` is the GLOBAL identity graph and carries no `org_id` by design (Slice 2 chose one
+     * company row shared across tenants over a per-tenant duplicate). So every tenant's campaign
+     * picker offered every company in the database by name. With one real tenant that was
+     * invisible; the pilot workspace is where it became a list of another organization's accounts.
+     *
+     * An org REACHES a company through an org-scoped relationship, which is the same rule
+     * /api/palette states for search ("search must never widen visibility") and the same one
+     * today/overview uses for refresh hygiene. Each branch is RLS-bound on its own table, so the
+     * scope holds even if `orgId` were wrong.
+     */
     const { rows: accounts } = await db.query<{ id: string; legal_name: string }>(
-      `select id, legal_name from companies order by legal_name asc, id asc limit 300`,
+      `select c.id, c.legal_name from companies c
+        where exists (select 1 from propensity_scores ps where ps.company_id = c.id and ps.org_id = $1)
+           or exists (select 1 from opportunities o     where o.company_id  = c.id and o.org_id  = $1)
+           or exists (select 1 from revenue_motions m   where m.company_id  = c.id and m.org_id  = $1)
+           or exists (select 1 from partner_accounts pa where pa.company_id = c.id and pa.org_id = $1)
+           or exists (select 1 from pursuits pu         where pu.account_id = c.id and pu.org_id = $1)
+           or exists (select 1 from population_members pm
+                        join account_populations ap on ap.id = pm.population_id
+                       where pm.company_id = c.id and ap.org_id = $1)
+        order by c.legal_name asc, c.id asc limit 300`,
+      [orgId],
     );
 
     return { campaigns, goals, motions, accounts };

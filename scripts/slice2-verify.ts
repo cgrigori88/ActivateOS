@@ -177,6 +177,32 @@ async function main() {
   ck("and it shows BOTH gates, so a flag that is on but dark does not read as a broken switch",
     /envEnabled\(e\.flag\) && e\.on/.test(adminPg));
 
+  /**
+   * THE GLOBAL IDENTITY GRAPH IS NOT A GLOBAL ACCOUNT LIST.
+   *
+   * `companies` deliberately carries NO `org_id` — Slice 2 chose one shared company row over a
+   * per-tenant duplicate — which means RLS cannot scope a read of it and every such read must scope
+   * ITSELF through an org-scoped relationship. The campaigns account picker did not: it was
+   * `select id, legal_name from companies` with no scope, so it offered every company in the
+   * database. With one real tenant that is invisible. In the pilot workspace it rendered another
+   * organization's accounts by name in a <select>, which is an account leak whatever the intent.
+   *
+   * Asserted as a SHAPE, not as one query's text: any rendered picker over the identity graph has
+   * to establish reachability, and the two surfaces that already did say so in their own comments.
+   */
+  const campaignsSrc = codeOf("../src/app/campaigns/page.tsx");
+  ck("BITING — the campaign account picker is scoped to accounts this organization reaches",
+    !/select id, legal_name from companies order by/.test(campaignsSrc)
+    && /from companies c\s*\n?\s*where exists \(select 1 from propensity_scores/.test(campaignsSrc));
+  ck("and it establishes reachability through org-scoped relationships, each RLS-bound on its own table",
+    (campaignsSrc.match(/\.org_id  ?= \$1|ap\.org_id = \$1/g) ?? []).length >= 5);
+  // The two surfaces that already had the rule keep it — a fix that only lands in one place is a
+  // fix that comes undone the next time someone copies the wrong one.
+  ck("search still refuses to widen visibility, and refresh hygiene stays this org's work",
+    /search must never widen visibility/.test(readFileSync(new URL("../src/app/api/palette/route.ts", import.meta.url), "utf8"))
+    && /exists \(select 1 from population_members pm/.test(codeOf("../src/app/api/palette/route.ts"))
+    && /exists \(select 1 from propensity_scores ps where ps\.company_id = c\.id and ps\.org_id = \$1\)/.test(codeOf("../src/lib/today/overview.ts")));
+
   ck("creating an organization makes the creator its owner in ONE transaction",
     /insert into organizations \(name, kind, data_environment\)/.test(adminSrc)
     && /insert into org_members \(org_id, user_id, role\) values \(\$1, \$2, 'owner'\)/.test(adminSrc));
