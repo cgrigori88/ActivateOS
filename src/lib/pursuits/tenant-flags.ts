@@ -14,9 +14,16 @@ import type { PoolClient } from "pg";
  * They are the SERVER-SIDE enforcement; nav/UI hiding never substitutes for them.
  */
 
-export type FeatureFlag =
-  | "pursuits" | "facts" | "routing" | "pursuit_experience"
-  | "federation" | "governed_action" | "outcome_learning";
+/**
+ * The flags, as a value as well as a type — an administrative surface has to ENUMERATE them, and a
+ * second hand-written list beside the union is how the two drift apart.
+ */
+export const FEATURE_FLAGS = [
+  "pursuits", "facts", "routing", "pursuit_experience",
+  "federation", "governed_action", "outcome_learning",
+] as const;
+
+export type FeatureFlag = (typeof FEATURE_FLAGS)[number];
 
 const ENV_VAR: Record<FeatureFlag, string> = {
   pursuits: "PURSUITS_ENABLED", facts: "FACTS_ENABLED", routing: "ROUTING_ENABLED",

@@ -94,8 +94,13 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
     })();
     // Motion context (P1A): deterministic linkage only — a motion names this pursuit_id or nothing.
     const motion = (await db.query<{ id: string; status: string; hypothesis: string }>(
-      `select m.id, m.status, n.name as hypothesis from revenue_motions m
-         join taxonomy_nodes n on n.id = m.taxonomy_node_id
+      // LEFT, because a motion's taxonomy node is optional (nullable since 0001, `on delete set
+      // null`). An inner join hid every motion applied from a technology-agnostic play from its
+      // own pursuit, and would hide any motion whose node was later deleted. The hypothesis label
+      // falls back to the play the motion came from.
+      `select m.id, m.status, coalesce(n.name, ptl.name, 'Motion') as hypothesis from revenue_motions m
+         left join taxonomy_nodes n on n.id = m.taxonomy_node_id
+         left join play_templates ptl on ptl.id = m.play_template_id
         where m.pursuit_id = $1 and m.org_id = $2 order by m.created_at desc, m.id desc limit 1`, [id, orgId])).rows[0] ?? null;
     let federation = null;
     if (fed) {

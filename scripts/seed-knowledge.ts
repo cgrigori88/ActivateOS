@@ -32,9 +32,22 @@ function requestedScopes(argv: string[]): Set<Scope> {
   if (bad.length || asked.length === 0) {
     throw new Error(`unknown seed scope(s): ${bad.join(", ") || "(none given)"} — valid scopes are ${SCOPES.join(", ")}`);
   }
-  // TEMPLATES DEPEND ON TAXONOMY: a template resolves its node by slug, so seeding templates alone
-  // would silently attach them to a null node rather than failing. The dependency is declared here
-  // rather than left to the caller to remember.
+  /**
+   * TEMPLATES DEPEND ON TAXONOMY — as a SCOPE ordering, not as a per-template requirement.
+   *
+   * A template that NAMES a node resolves it by slug from the ids this run just inserted, so
+   * seeding templates without taxonomy in scope would attach that template to null and look like
+   * success. The dependency is declared here rather than left to the caller to remember.
+   *
+   * IT DOES NOT SAY EVERY TEMPLATE HAS A NODE. `play_templates.taxonomy_node_id` is nullable in
+   * 0001 and carries `on delete set null`, and a technology-AGNOSTIC play legitimately names none
+   * — install-base whitespace expansion is about a commercial SHAPE that applies to any product,
+   * and the product it concerns comes from the partner's own book at evaluation time, not from a
+   * node. An earlier wording here read as "every template must resolve a node", which is why a
+   * deliberate null looked like a failed resolution. The difference between the two is what
+   * `slice3-verify` now asserts, and it is the difference between a null the author chose and a
+   * null nobody noticed.
+   */
   const set = new Set(asked as Scope[]);
   if (set.has("templates")) set.add("taxonomy");
   return set;
@@ -108,8 +121,21 @@ async function main() {
         slug: string;
         version: number;
         name: string;
-        taxonomy_node: string;
+        taxonomy_node?: string | null;   // OPTIONAL: a technology-agnostic play declares null (see above)
       };
+      /**
+       * A NULL NODE MUST BE THE AUTHOR'S CHOICE, NEVER A LOOKUP THAT MISSED.
+       *
+       * `nodeIds.get(...) ?? null` cannot tell the two apart on its own: a play naming a node that
+       * does not exist in the ontology lands as null exactly like a play naming none. That is the
+       * silent failure the scope rule above is there to prevent, so it is checked rather than
+       * assumed — a play may omit `taxonomy_node`, but it may not name one that is not there.
+       */
+      if (play.taxonomy_node && !nodeIds.has(play.taxonomy_node)) {
+        throw new Error(
+          `play ${play.slug} v${play.version} names taxonomy node '${play.taxonomy_node}', which is ` +
+          `not in the ontology — a named node that does not resolve is a defect, not an optional binding`);
+      }
       await client.query(
         /**
          * A PUBLISHED VERSION IS IMMUTABLE, so this cannot be an upsert.
@@ -124,7 +150,7 @@ async function main() {
         `insert into play_templates (slug, version, name, taxonomy_node_id, definition)
          values ($1, $2, $3, $4, $5)
          on conflict (slug, version) do nothing`,
-        [play.slug, play.version, play.name, nodeIds.get(play.taxonomy_node) ?? null, play],
+        [play.slug, play.version, play.name, (play.taxonomy_node ? nodeIds.get(play.taxonomy_node)! : null), play],
       );
       const { rows: stored } = await client.query<{ name: string; definition: unknown }>(
         `select name, definition from play_templates where slug = $1 and version = $2`,

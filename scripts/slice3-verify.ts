@@ -114,6 +114,71 @@ async function main() {
                 join taxonomy_nodes n on n.id = pt.taxonomy_node_id
                where n.slug = 'infrastructure-automation'`)).length === 1);
 
+  /**
+   * AN UNBOUND TEMPLATE IS A CHOICE, NOT A FAILED LOOKUP — and the two had to become tellable apart.
+   *
+   * Hosted activation reported `install-base-whitespace-expansion@3 (no taxonomy node)` while the
+   * seed's own comment read as "every template resolves a node". Both statements stood, unexplained,
+   * which is the state where nobody can say whether a null is deliberate.
+   *
+   * It is deliberate, and the MODEL says so first: `play_templates.taxonomy_node_id` and
+   * `revenue_motions.taxonomy_node_id` are nullable in 0001 and carry `on delete set null` — the
+   * schema plans for a motion whose node is removed, so every reader must already tolerate NULL.
+   * The play is technology-AGNOSTIC: whitespace expansion is a commercial shape that applies to any
+   * product, and the product comes from the partner's book at evaluation time. The ontology holds
+   * technologies (virtualization, ai-platforms, infrastructure-automation), not motion shapes, so
+   * there is no honest node to bind it to — and binding it to one is exactly the hijack above.
+   *
+   * What was NOT proven, and is now: that the serving code agrees. Four readers inner-joined the
+   * nullable column, so a motion applied from this play was invisible on /motions, absent from its
+   * own pursuit, 404 as a brief, and reported as "motion not found" by the campaign composer.
+   */
+  const unbound = await one(`select taxonomy_node_id from play_templates
+                              where slug='install-base-whitespace-expansion' and version=3`);
+  const playFile = JSON.parse(readFileSync(
+    new URL("../knowledge/plays/install-base-whitespace-expansion.json", import.meta.url), "utf8"));
+  // EXPLICIT null, not an absent key. The author wrote `"taxonomy_node": null` and said why in the
+  // file's own $comment, so the binding's absence is a recorded decision — which is precisely the
+  // difference between this and a lookup that quietly missed.
+  ck("the install-base template's NULL node is INTENTIONAL — declared null in the play, and the ontology has none to name",
+    unbound?.taxonomy_node_id === null
+    && "taxonomy_node" in playFile && playFile.taxonomy_node === null
+    && /NO TAXONOMY NODE, deliberately/.test(playFile.$comment ?? "")
+    && (await q(`select slug from taxonomy_nodes where slug in ('whitespace','install-base','expansion')`)).length === 0);
+  ck("BITING — the MODEL calls the binding optional: both columns are nullable and set-null on delete",
+    (await q(`select table_name, is_nullable from information_schema.columns
+               where column_name='taxonomy_node_id'
+                 and table_name in ('play_templates','revenue_motions')`)).every((r) => r.is_nullable === "YES"));
+  /**
+   * The seed may not silently swallow a node that was NAMED and did not resolve. That is the one
+   * case the scope rule exists for, and it is the case a bare `?? null` cannot distinguish from an
+   * author who wrote no binding at all.
+   */
+  const seedSrc = codeOf("../scripts/seed-knowledge.ts");
+  ck("BITING — a template NAMING a node that is not in the ontology is refused, not nulled",
+    /if \(play\.taxonomy_node && !nodeIds\.has\(play\.taxonomy_node\)\) \{[\s\S]{0,400}?throw new Error/.test(seedSrc));
+  ck("and the seed no longer claims every template resolves a node",
+    /taxonomy_node\?: string \| null;/.test(seedSrc));
+  /**
+   * THE READERS. Asserted on CODE with comments stripped, because a comment explaining that a join
+   * is left is not a left join.
+   */
+  for (const [file, what] of [
+    ["../src/app/motions/page.tsx", "the motion list"],
+    ["../src/app/pursuits/[id]/page.tsx", "the pursuit's own motion context"],
+    ["../src/app/briefs/[motionId]/page.tsx", "the brief"],
+    ["../src/lib/agents/campaign-composer.ts", "the campaign composer"],
+  ] as const) {
+    const src = codeOf(file);
+    ck(`BITING — ${what} LEFT-joins the optional node, so an unbound motion still appears`,
+      !/\n\s*join taxonomy_nodes n on n\.id = m\.taxonomy_node_id/.test(src)
+      && /left join taxonomy_nodes n on n\.id = m\.taxonomy_node_id/.test(src));
+  }
+  ck("and each one falls back to the PLAY for its label rather than dropping the row",
+    ["../src/app/motions/page.tsx", "../src/app/briefs/[motionId]/page.tsx",
+     "../src/lib/agents/campaign-composer.ts"].every((f) => /coalesce\(n\.slug, pt/.test(codeOf(f)))
+    && /coalesce\(n\.name, ptl\.name/.test(codeOf("../src/app/pursuits/[id]/page.tsx")));
+
   // ── TEMPLATE IMMUTABILITY, AND THE ESCAPE HATCH ───────────────────────────────────────────────
   HD("IMMUTABILITY — a published version cannot change meaning, and the hatch is not application-reachable");
   ck("app_rw holds INSERT and SELECT on play_templates and NOTHING else",

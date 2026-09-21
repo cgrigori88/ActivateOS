@@ -127,12 +127,23 @@ export default async function MotionsPage({
     value: await aggregateValue(db, orgId, { companyIds: scope.companyIds }),
     all: (await db.query<MotionRow>(
       `select m.id, m.status, m.thesis, m.trigger_summary, m.cta, m.confidence, m.operator_notes,
-            m.company_id, c.legal_name, n.slug, c.industry, m.outcome,
+            m.company_id, c.legal_name, coalesce(n.slug, ptl.slug, 'unclassified') as slug,
+            c.industry, m.outcome,
             m.estimated_value_usd, m.effort, p.score as propensity, pa.name as partner_name,
             m.goal_id, g.name as goal_name, m.initiative_id
      from revenue_motions m
      join companies c on c.id = m.company_id
-     join taxonomy_nodes n on n.id = m.taxonomy_node_id
+     /* A MOTION'S TAXONOMY NODE IS OPTIONAL, AND THIS JOIN USED TO PRETEND OTHERWISE.
+        revenue_motions.taxonomy_node_id has been nullable since 0001 and carries
+        'on delete set null', so the schema's own design says every reader must tolerate NULL —
+        deleting a node would otherwise make existing motions disappear from this surface. An
+        inner join here did exactly that. Thin P9 made it reachable: a technology-AGNOSTIC play
+        such as install-base whitespace expansion names no node, so a motion applied from it was
+        invisible everywhere. Same defect, same fix as the campaigns list above.
+        The label falls back to the PLAY the motion was applied from, which for an agnostic play
+        is the more accurate answer than a technology node would have been. */
+     left join taxonomy_nodes n on n.id = m.taxonomy_node_id
+     left join play_templates ptl on ptl.id = m.play_template_id
      left join propensity_scores p on p.id = m.propensity_score_id
      left join partners pa on pa.id = m.partner_id
      left join goals g on g.id = m.goal_id

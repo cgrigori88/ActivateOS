@@ -24,6 +24,7 @@ import { decideOverlapProbe, requestOverlapProbe, type OverlapLevel } from "@/li
 import { addSuppression, removeSuppression, saveIcp } from "@/lib/icp/icp";
 import { clearOrgAnthropicKey, setOrgAnthropicKey } from "@/lib/ai/org-keys";
 import { eraseDataSubject, findDataSubject } from "@/lib/privacy/data-subject";
+import { FEATURE_FLAGS, setOrgFeature, type FeatureFlag } from "@/lib/pursuits/tenant-flags";
 
 function notice(msg: string): never {
   redirect(`/admin?notice=${encodeURIComponent(msg)}`);
@@ -522,6 +523,44 @@ export async function createOrganizationAction(formData: FormData): Promise<void
   }
   revalidatePath("/admin");
   revalidatePath("/");
+}
+
+/**
+ * Turn one product entitlement on or off FOR THE WORKSPACE YOU ARE IN.
+ *
+ * `setOrgFeature` has existed since 0089, with its audit row, and had no caller and no rendered
+ * control — so the only way to entitle a workspace was an engineer with a SQL prompt. That is the
+ * same gap the pilot-workspace form above closed for creation, and it has the same consequence: a
+ * real pilot workspace created through the product arrives with every flag false and no product
+ * path to change it.
+ *
+ * SCOPED TO THE CURRENT ORGANIZATION, DELIBERATELY. `ownerTenant` pins `app.org_id` from the
+ * session and requires owner inside the transaction, so this can only ever entitle the workspace
+ * the caller is already operating in and owns. There is no org id on the form, so there is nothing
+ * to forge — entitling someone else's tenant is not a thing this action can express.
+ *
+ * IT GRANTS NOTHING BY ITSELF. The enforcement rule is unchanged — `envEnabled(flag) &&
+ * org_features.<flag>` — so the deployment master still decides whether a capability is live at
+ * all, and a flag switched on here stays dark where the deployment says dark. It creates no grant,
+ * no credential, no disclosure right and no send authority; it decides which already-built surfaces
+ * this tenant may reach.
+ */
+export async function setWorkspaceEntitlementAction(formData: FormData): Promise<void> {
+  const raw = String(formData.get("flag") ?? "");
+  // Whitelisted against the union, not merely non-empty: the value reaches a column name.
+  const flag = (FEATURE_FLAGS as readonly string[]).includes(raw) ? (raw as FeatureFlag) : null;
+  if (!flag) notice("Unknown entitlement.");
+  const enabled = String(formData.get("enabled") ?? "") === "on";
+  let userId: string | null = null;
+  try { userId = (await (await supabaseServer()).auth.getUser()).data.user?.id ?? null; } catch { userId = null; }
+  const failure = await attempt(
+    () => ownerTenant((db, orgId) => setOrgFeature(db, orgId, flag, enabled, {
+      changedBy: userId, reason: "owner set from /admin",
+    })),
+    "Couldn't change that entitlement.");
+  if (failure) notice(failure);
+  // The whole tree: every surface this flag gates is cached per organization.
+  revalidatePath("/", "layout");
 }
 
 /**

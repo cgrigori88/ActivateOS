@@ -17,6 +17,7 @@ import {
   clearOrgAiKeyAction,
   saveIcpAction, addSuppressionAction, removeSuppressionAction,
   previewDataSubjectAction, eraseDataSubjectAction,
+  setWorkspaceEntitlementAction,
 } from "./actions";
 import { icpFit, listSuppressions, loadIcp, type IcpFit } from "@/lib/icp/icp";
 import { AgentKeys, type KeyRow } from "./agent-keys";
@@ -28,6 +29,7 @@ import {
   type BandsResults, type CountsResults, type NamedResults, type OverlapLadder,
 } from "@/lib/partnerships/overlap";
 import { formatCost } from "@/lib/format/money";
+import { FEATURE_FLAGS, envEnabled, tenantFeatures } from "@/lib/pursuits/tenant-flags";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +42,12 @@ export const dynamic = "force-dynamic";
  *    that was deliberately removed from user-facing Insights lives here, where
  *    the audience is the platform operator.
  */
+
+const FLAG_LABEL: Record<string, string> = {
+  pursuits: "Pursuits", facts: "Facts & context", routing: "Routing",
+  pursuit_experience: "Pursuit experience", federation: "Partner federation",
+  governed_action: "Governed actions", outcome_learning: "Outcome learning",
+};
 
 const ROLES = ["owner", "operator", "viewer"] as const;
 const ROLE_HINT: Record<string, string> = {
@@ -178,8 +186,16 @@ export default async function AdminPage({
       ),
     ]);
 
+    /* Product entitlements for THIS workspace, read inside the same tenant transaction as
+       everything else here — `org_features` is RLS-bound, so a read without the pinned org returns
+       no row and would render every capability as off. */
+    const { rows: featureRows } = await db.query<Record<string, boolean>>(
+      `select ${FEATURE_FLAGS.join(", ")} from org_features where org_id = $1`, [orgId]);
+    const entitlements = FEATURE_FLAGS.map((f) => ({ flag: f, on: !!featureRows[0]?.[f] }));
+    const derived = await tenantFeatures(db, orgId);
+
     return {
-      orgId, hasOwnKey, isGuest,
+      orgId, hasOwnKey, isGuest, entitlements, derived,
       partnerships, grants, ledger, myPartners, myLists, activePartnerships,
       ladders, myBookSize, icp, suppressions, fitById, apiKeys,
       agents, recentRuns, providerErrors, queues,
@@ -187,7 +203,7 @@ export default async function AdminPage({
   });
 
   const {
-    orgId, hasOwnKey, isGuest,
+    orgId, hasOwnKey, isGuest, entitlements, derived,
     partnerships, grants, ledger, myPartners, myLists, activePartnerships,
     ladders, myBookSize, icp, suppressions, fitById, apiKeys,
     agents, recentRuns, providerErrors, queues,
@@ -312,6 +328,55 @@ export default async function AdminPage({
           </label>
           <button className={buttonClass("primary", "md")}>Create workspace</button>
         </form>
+      </Card>
+
+      {/* ── PRODUCT ENTITLEMENTS ───────────────────────────────────────────────────────────────
+          A workspace created by the form above arrives with EVERY flag false, and there was no
+          product path to change that — `setOrgFeature` has carried its audit row since 0089 with no
+          caller and no control, so entitling a real pilot meant an engineer with a SQL prompt. The
+          creation gap and the entitlement gap are the same gap.
+
+          TWO STATES ARE SHOWN, NOT ONE. `live_for(org, flag) === envEnabled(flag) && org_features`,
+          so a flag switched on here can still be dark because the deployment says dark. Showing
+          only the tenant column would make that look like a broken switch. */}
+      <Card className="mb-4">
+        <h2 className="mb-1 text-heading">Product entitlements</h2>
+        <p className="mb-3 text-copy text-neutral-500">
+          Which built capabilities this workspace may reach. A capability is live only when the
+          deployment allows it <i>and</i> this workspace is entitled to it — both columns below.
+          Changing one is recorded with who and when. It grants no credential, no disclosure right
+          and no sending authority.
+        </p>
+        <div className="space-y-1.5">
+          {entitlements.map((e) => {
+            const live = envEnabled(e.flag) && e.on;
+            return (
+              <form key={e.flag} action={setWorkspaceEntitlementAction}
+                    className="flex flex-wrap items-center gap-2 border-b border-neutral-200 py-1.5 last:border-0 dark:border-neutral-800">
+                <input type="hidden" name="flag" value={e.flag} />
+                {!e.on ? <input type="hidden" name="enabled" value="on" /> : null}
+                <span className="min-w-[13rem] text-copy ink-muted">{FLAG_LABEL[e.flag]}</span>
+                <span className="text-body text-neutral-500">
+                  deployment {envEnabled(e.flag) ? "allows" : "dark"} · workspace {e.on ? "on" : "off"}
+                </span>
+                <span className={`tnum rounded-full px-2 py-0.5 text-body ${live
+                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                  : "bg-neutral-500/12 text-neutral-500"}`}>{live ? "live" : "not live"}</span>
+                <button className={`${buttonClass("ghost", "sm")} ml-auto`}>
+                  {e.on ? "Turn off" : "Turn on"}
+                </button>
+              </form>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-body text-neutral-500">
+          Resolved for this workspace: pursuit experience <b className="ink-muted">{derived.experience ? "on" : "off"}</b> ·
+          federation <b className="ink-muted">{derived.federation ? "on" : "off"}</b> ·
+          governed action <b className="ink-muted">{derived.governedAction ? "on" : "off"}</b> ·
+          outcome learning <b className="ink-muted">{derived.outcomeLearning ? "on" : "off"}</b>.
+          The pursuit experience needs all four of pursuits, facts, routing and pursuit experience;
+          federation needs the experience; governed action needs federation.
+        </p>
       </Card>
 
       <Card className="mb-4">

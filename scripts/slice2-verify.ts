@@ -144,6 +144,39 @@ async function main() {
     (orgSrc.match(/await validatedSelectedOrg\(/g) ?? []).length === 2
     && (tenantSrc.match(/await validatedSelectedOrg\(/g) ?? []).length === 1);
 
+  /**
+   * A WORKSPACE THE PRODUCT CAN CREATE BUT NOT ENTITLE IS NOT A WORKSPACE.
+   *
+   * `setOrgFeature` has carried its audit row since 0089 and had ZERO callers and no rendered
+   * control, so a pilot workspace created through the form above arrived with every flag false and
+   * the only way to change that was an engineer with a SQL prompt. Hosted certification found it as
+   * a 404 on /pursuits in the pilot and nearly "fixed" it by flipping the columns directly — which
+   * would have been certification editing a real workspace to reach green, with no record of who
+   * did it or why.
+   */
+  const entSrc = codeOf("../src/app/admin/actions.ts");
+  ck("there is a product path to entitle a workspace, and it goes through the AUDITED function",
+    /export async function setWorkspaceEntitlementAction/.test(entSrc)
+    && /setOrgFeature\(db, orgId, flag, enabled/.test(entSrc)
+    && /changedBy: userId/.test(entSrc));
+  ck("BITING — it is owner-gated and scoped to the CURRENT workspace: no org id is read from the form",
+    /setWorkspaceEntitlementAction[\s\S]{0,1200}?ownerTenant\(\(db, orgId\)/.test(entSrc)
+    && !/setWorkspaceEntitlementAction[\s\S]{0,1200}?formData\.get\(\s*["'](orgId|org_id|organization)["']/.test(entSrc));
+  ck("BITING — the flag is whitelisted against the union before it reaches a column name",
+    /\(FEATURE_FLAGS as readonly string\[\]\)\.includes\(raw\)/.test(entSrc));
+  const flagsSrc = codeOf("../src/lib/pursuits/tenant-flags.ts");
+  ck("and the list and the type are ONE declaration, so an admin surface cannot enumerate a stale set",
+    /export const FEATURE_FLAGS = \[/.test(flagsSrc)
+    && /export type FeatureFlag = \(typeof FEATURE_FLAGS\)\[number\];/.test(flagsSrc));
+  ck("the change is recorded with who and why",
+    /insert into org_feature_changes \(org_id, flag, enabled, changed_by, reason\)/.test(flagsSrc));
+  const adminPg = codeOf("../src/app/admin/page.tsx");
+  ck("BITING — the control is RENDERED, not merely exported: an unreachable action is not a path",
+    /action=\{setWorkspaceEntitlementAction\}/.test(adminPg)
+    && /entitlements\.map/.test(adminPg));
+  ck("and it shows BOTH gates, so a flag that is on but dark does not read as a broken switch",
+    /envEnabled\(e\.flag\) && e\.on/.test(adminPg));
+
   ck("creating an organization makes the creator its owner in ONE transaction",
     /insert into organizations \(name, kind, data_environment\)/.test(adminSrc)
     && /insert into org_members \(org_id, user_id, role\) values \(\$1, \$2, 'owner'\)/.test(adminSrc));

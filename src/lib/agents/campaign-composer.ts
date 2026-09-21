@@ -38,11 +38,16 @@ export async function composeCampaign(
   motionId: string,
 ): Promise<{ campaignId: string; draft: CampaignDraft }> {
   const { rows: motions } = await db.query(
-    `select m.*, c.legal_name, c.industry, c.employee_count, n.slug as target_slug,
+    `select m.*, c.legal_name, c.industry, c.employee_count,
+            coalesce(n.slug, pt.slug) as target_slug,
             pt.definition as play
      from revenue_motions m
      join companies c on c.id = m.company_id
-     join taxonomy_nodes n on n.id = m.taxonomy_node_id
+     -- LEFT: the node is optional, and an inner join made composing a campaign from a motion
+     -- applied via a technology-agnostic play fail as "motion not found" — a missing label
+     -- reported as a missing motion. The play template stays INNER: a campaign genuinely cannot
+     -- be composed without one, and that refusal is about the template, not about a label.
+     left join taxonomy_nodes n on n.id = m.taxonomy_node_id
      join play_templates pt on pt.id = m.play_template_id
      where m.id = $1`,
     [motionId],

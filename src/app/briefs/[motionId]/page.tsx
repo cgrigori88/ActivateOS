@@ -30,11 +30,15 @@ export default async function BriefPage({
   const data = await withTenant(async (db, orgId) => {
     const { rows: motions } = await db.query(
       `select m.*, c.legal_name, c.industry, c.employee_count, c.id as company_id,
-            n.slug, pa.name as partner_name, pa.partner_type, s.name as seller_name,
+            coalesce(n.slug, ptl.slug, 'unclassified') as slug,
+            pa.name as partner_name, pa.partner_type, s.name as seller_name,
             p.score as propensity, p.band
      from revenue_motions m
      join companies c on c.id = m.company_id
-     join taxonomy_nodes n on n.id = m.taxonomy_node_id
+     -- LEFT: the node is optional, and an inner join 404'd the brief for a motion applied from a
+     -- technology-agnostic play. The subtitle falls back to the play the motion came from.
+     left join taxonomy_nodes n on n.id = m.taxonomy_node_id
+     left join play_templates ptl on ptl.id = m.play_template_id
      left join partners pa on pa.id = m.partner_id
      left join sellers s on s.id = m.partner_seller_id
      left join propensity_scores p on p.id = m.propensity_score_id
