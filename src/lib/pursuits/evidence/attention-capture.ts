@@ -12,20 +12,31 @@ import type { DataEnvironment } from "../lineage";
  * the few pilot facts that cannot be reconstructed later at any price, which is the whole test for
  * belonging in this slice.
  *
- * ── AN EXPLICIT PRODUCER, NEVER A READ-PATH WRITE ───────────────────────────────────────────────
+ * ── THE WRITE BOUNDARY IS A DELIBERATE SELECTION, NOT A RENDER ──────────────────────────────────
  *
- * This is called from WRITE paths only. Capturing it while rendering Today would reintroduce
- * exactly the defect D-HIST-1 found and `6f3e65d` closed — `pipeline_snapshots` written from a page
- * render, whose own comment read "Today's snapshot, idempotent — history accrues just by looking."
- * That pattern is why `97e975f0` could not be safely reconstructed during the P45-4 incident.
- * D-HIST-2 established the correction: history has an EXPLICIT PRODUCER. This is one.
+ * This is called from ONE place: redeeming an attention token at the explicit primary CTA on a
+ * ranked surface. Capturing while rendering Today would reintroduce exactly the defect D-HIST-1
+ * found and `6f3e65d` closed — `pipeline_snapshots` written from a page render, whose own comment
+ * read "history accrues just by looking". That pattern is why `97e975f0` could not be safely
+ * reconstructed during the P45-4 incident.
  *
- * ── SELF-DEDUPLICATING, SO THERE IS NO CADENCE TO DECIDE ────────────────────────────────────────
+ * It is equally NOT attached to `recommend_pursuit_plan@1`: that capability never consumed P2, so a
+ * ranking attached to it would be false lineage.
  *
- * The fingerprint identifies the ranking INPUT STATE — algorithm version, scope, comparison-set
- * size, and each ranked subject with its score and band. Capturing again while nothing has moved
- * collides on (org_id, snapshot_fingerprint, pursuit_id) and writes nothing. We capture on CHANGE,
- * not on a timer, so no row count depends on how often anyone happens to act.
+ * ── TWO POSITIONS, AND THEY ARE DIFFERENT NUMBERS ───────────────────────────────────────────────
+ *
+ * `p2_rank` is the canonical portfolio rank the card displayed — "#3 of 18". `surface_ordinal` is
+ * where the card actually sat on the page. On Today these differ by construction (the materiality
+ * policy orders the list and pertinence is only its third key, then a top-K cut applies); on
+ * /pipeline they differ whenever the sort mode is recency. Collapsing them would make the
+ * observation claim something we cannot support, so they are stored separately and the surface
+ * context needed to interpret each is stored with them.
+ *
+ * ── WHAT THIS DOES AND DOES NOT MEAN ────────────────────────────────────────────────────────────
+ *
+ * It means: the user deliberately selected this pursuit for work from this rendered surface, where
+ * these were the displayed ranking facts. It does NOT mean the user agreed the rank was correct,
+ * that P2 caused the decision, or that anything good or bad followed.
  *
  * ── WHAT IS STORED, AND WHAT IS REFUSED ─────────────────────────────────────────────────────────
  *
@@ -42,16 +53,14 @@ import type { DataEnvironment } from "../lineage";
  * absence of a later outcome never becomes a negative fact.
  */
 
-export interface AttentionCaptureInput {
-  orgId: string;
-  view: PortfolioPertinenceView;
-  algorithmVersion: string;
-  /** The decision this ranking stood behind, where one exists. Null is a fact, not a gap. */
-  decision?: { kind: "pursuit_plan_revision"; id: string } | null;
-  dataEnvironment?: DataEnvironment;
+export interface AttentionSelection {
+  /** The server-minted facts, already verified. Never assembled from a request body. */
+  facts: import("./attention-token").AttentionFacts;
+  /** The authenticated selector, resolved independently of the token and re-checked against it. */
+  userId: string | null;
 }
 
-/** The ranking input state. Order matters: a reordering IS a different state. */
+/** The ranking input state, for provenance. Order matters: a reordering IS a different state. */
 export function attentionFingerprint(view: PortfolioPertinenceView, algorithmVersion: string): string {
   const body = [
     `v=${algorithmVersion}`,
@@ -64,36 +73,31 @@ export function attentionFingerprint(view: PortfolioPertinenceView, algorithmVer
 }
 
 /**
- * Persist one attention observation set. Returns the rows actually written — zero when the ranking
- * state is unchanged, which is the normal and expected case.
+ * Persist ONE deliberate selection. Returns whether a row was written — false means this exact
+ * token was already redeemed, which is idempotence rather than an error.
  */
-export async function captureAttention(
-  db: PoolClient, input: AttentionCaptureInput,
-): Promise<{ snapshotId: string; written: number; fingerprint: string }> {
-  const fingerprint = attentionFingerprint(input.view, input.algorithmVersion);
-  const h = createHash("sha256").update(`${input.orgId}:${fingerprint}`).digest("hex");
+export async function recordAttentionSelection(
+  db: PoolClient, sel: AttentionSelection,
+): Promise<{ written: boolean; snapshotId: string }> {
+  const f = sel.facts;
+  const h = createHash("sha256").update(`${f.orgId}:${f.snapshotFingerprint}:${f.nonce}`).digest("hex");
   const snapshotId = `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
-  let written = 0;
-  for (const item of input.view.items) {
-    const r = await db.query(
-      `insert into attention_observations
-         (org_id, snapshot_id, snapshot_fingerprint, algorithm_version, scope, comparison_set_size,
-          withheld_count, decision_ref_kind, decision_ref_id, pursuit_id, rank, score, band,
-          components, data_environment)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       on conflict (org_id, snapshot_fingerprint, pursuit_id) do nothing`,
-      [input.orgId, snapshotId, fingerprint, input.algorithmVersion, input.view.scope,
-       input.view.comparisonSetSize, input.view.withheldCount,
-       input.decision?.kind ?? null, input.decision?.id ?? null,
-       item.pursuitId, item.rank, item.score, item.band,
-       // Numbers and declared signal keys only — never reasons, never evidence text.
-       JSON.stringify((item.signals ?? []).map((s) => {
-         const sig = s as { key?: string; signal?: string; contribution?: number };
-         return { key: sig.key ?? sig.signal ?? null, contribution: sig.contribution ?? null };
-       })),
-       input.dataEnvironment ?? "PRODUCTION"],
-    );
-    written += r.rowCount ?? 0;
-  }
-  return { snapshotId, written, fingerprint };
+  const r = await db.query(
+    `insert into attention_observations
+       (org_id, snapshot_id, snapshot_fingerprint, algorithm_version, scope, comparison_set_size,
+        withheld_count, pursuit_id, p2_rank, surface_ordinal, surface_id, surface_version, sort_mode,
+        filters, display_limit, score, band, components, data_environment,
+        selected_by_user_id, rendered_at, selected_at, token_nonce)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21, now(), $22)
+     -- The predicate is restated because the index is PARTIAL: PostgreSQL only infers a partial
+     -- unique index when the ON CONFLICT clause repeats its WHERE, and without it the insert fails
+     -- with "no unique or exclusion constraint matching the ON CONFLICT specification".
+     on conflict (org_id, token_nonce) where token_nonce is not null do nothing`,
+    [f.orgId, snapshotId, f.snapshotFingerprint, f.algorithmVersion, f.scope, f.comparisonSetSize,
+     f.withheldCount, f.pursuitId, f.p2Rank, f.surfaceOrdinal, f.surfaceId, f.surfaceVersion, f.sortMode,
+     JSON.stringify(f.filters ?? {}), f.displayLimit, f.score, f.band,
+     // Numbers and declared signal keys only — never reasons, never evidence text, never a payload copy.
+     JSON.stringify(f.components ?? []), f.dataEnvironment,
+     sel.userId, f.renderedAt, f.nonce]);
+  return { written: (r.rowCount ?? 0) > 0, snapshotId };
 }

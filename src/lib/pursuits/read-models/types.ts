@@ -72,6 +72,12 @@ export interface DecisionItem {
    * commercial-priority band. The RANK is the product; `score` is for inspection only.
    */
   pertinence?: DecisionPertinence;
+  /**
+   * A SERVER-MINTED ATTENTION TOKEN, present only when this card carries P2 facts and the surface
+   * is a ranked one. It is opaque to the browser: the client may carry it back on the explicit CTA
+   * and may not author its contents. Rendering it writes nothing — redeeming it is the write.
+   */
+  attentionToken?: string;
   /** vNext Slice 2B — the pursuit's other reasons, folded beneath this card instead of becoming cards. */
   others?: DecisionOther[];
 }

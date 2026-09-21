@@ -19,7 +19,7 @@ import { DATA_ENVIRONMENTS, LEARNING_ELIGIBLE_ENVIRONMENTS, REAL_WORLD_DATA_ENVI
          isRealWorldEnvironment, learningCorpusSql, learningEligibleSql,
          realWorldEnvironmentSql } from "../src/lib/pursuits/lineage";
 import { advanceOpportunity, createOpportunityFromMotion } from "../src/lib/opportunities/lifecycle";
-import { attentionFingerprint, captureAttention } from "../src/lib/pursuits/evidence/attention-capture";
+import { attentionFingerprint } from "../src/lib/pursuits/evidence/attention-capture";
 import type { PortfolioPertinenceView } from "../src/lib/pursuits/read-models/portfolio-pertinence";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL_VERIFY ?? process.env.DATABASE_URL ?? "", max: 3 });
@@ -101,47 +101,23 @@ async function main() {
     (await pool.query(`insert into certification_exclusions (org_id, subject_kind, subject_id, reason)
                        values ($1,'governed_action_invocation',$2,'dup') on conflict do nothing`, [org.id, inv.id])).rowCount === 0);
 
-  // ── ATTENTION CAPTURE ─────────────────────────────────────────────────────────────────────────
+  // ── ATTENTION: THE PREPARED SCHEMA, NOW CARRYING TWO POSITIONS ────────────────────────────────
   HD("DECISION-TIME ATTENTION — the one fact that is otherwise unrecoverable");
   const pursuits: string[] = [];
   for (let i = 0; i < 3; i++) pursuits.push((await one(
     `insert into pursuits (org_id, account_id, status, dedup_key, data_environment, pursuit_type)
      values ($1,$2,'QUALIFIED',$3,'PILOT','MODERNIZATION') returning id`, [org.id, co.id, `${NS}-p${i}`])).id);
-  const view = (order: string[]): PortfolioPertinenceView => ({
-    items: order.map((id, idx) => ({
-      pursuitId: id, accountLabel: "acct", label: "l", rank: idx + 1, score: 90 - idx * 10,
-      band: idx === 0 ? "HIGH" : "MEDIUM", signals: [{ key: "timing", contribution: 0.4 } as never],
-      topReasons: ["should not be stored"], commercial: {} as never, comparedToBelow: null, tiedWithBelow: false,
-      disclosure: "DISCLOSED" as never,
-    })) as never,
-    comparisonSetSize: order.length, withheldCount: 2, scope: "portfolio", asOf: new Date().toISOString(),
-    cohortSizes: {} as never,
-  });
-  const v1 = view(pursuits);
-  const cap1 = await captureAttention(pool as never, { orgId: org.id, view: v1, algorithmVersion: "p2-v1", dataEnvironment: "PILOT" });
-  ck("a ranking is captured — one row per eligible subject", cap1.written === 3);
-  const rows = await q(`select rank, score, band, comparison_set_size, withheld_count, components, data_environment
-                          from attention_observations where org_id=$1 order by rank`, [org.id]);
-  ck("rank, score, band and the comparison-set size are preserved — a rank is meaningless without it",
-    rows.length === 3 && rows[0].rank === 1 && Number(rows[0].score) === 90 && rows[0].comparison_set_size === 3 && rows[0].withheld_count === 2);
-  ck("components hold only declared keys and numbers",
-    Array.isArray(rows[0].components) && rows[0].components[0].key === "timing" && rows[0].components[0].contribution === 0.4);
-  ck("NO prose, evidence text or withheld content is stored — `topReasons` never reaches the table",
-    !JSON.stringify(rows).includes("should not be stored"));
-  ck("provenance travels with the observation", rows[0].data_environment === "PILOT");
-
-  const cap2 = await captureAttention(pool as never, { orgId: org.id, view: view(pursuits), algorithmVersion: "p2-v1", dataEnvironment: "PILOT" });
-  ck("CAPTURE ON CHANGE, NOT ON A TIMER — an unchanged ranking writes NOTHING, so there is no cadence to decide",
-    cap2.written === 0 && cap2.fingerprint === cap1.fingerprint);
-  const reordered = [pursuits[1], pursuits[0], pursuits[2]];
-  const cap3 = await captureAttention(pool as never, { orgId: org.id, view: view(reordered), algorithmVersion: "p2-v1", dataEnvironment: "PILOT" });
-  ck("BITING CONTROL — a REORDERING is a different state and IS captured",
-    cap3.written === 3 && cap3.fingerprint !== cap1.fingerprint);
-  ck("and a different algorithm version is also a different state",
-    attentionFingerprint(v1, "p2-v2") !== attentionFingerprint(v1, "p2-v1"));
-  // Decision linkage, and the honesty of its absence.
-  ck("an observation with no decision records NULL — absence is a fact, not a gap to fill later",
-    await n(`select count(*)::int n from attention_observations where org_id=$1 and decision_ref_id is null`, [org.id]) === 6);
+  const attnCols = (await q(`select column_name from information_schema.columns where table_name='attention_observations'`)).map((r) => r.column_name as string);
+  ck("the P2 rank and the surface ordinal are SEPARATE columns — neither is called `rank`",
+    attnCols.includes("p2_rank") && attnCols.includes("surface_ordinal") && !attnCols.includes("rank"));
+  ck("and the surface context needed to interpret either is stored with them",
+    ["surface_id", "surface_version", "sort_mode", "filters", "display_limit", "comparison_set_size"].every((c) => attnCols.includes(c)));
+  ck("render time and selection time are both kept — the gap between them is data, not an error",
+    attnCols.includes("rendered_at") && attnCols.includes("selected_at"));
+  ck("the observation is NOT linked to a plan recommendation — that capability never consumed P2",
+    !attnCols.includes("decision_ref_kind") && !attnCols.includes("decision_ref_id"));
+  ck("replay idempotence is keyed on the token, not on the ranking",
+    (await q(`select indexdef from pg_indexes where tablename='attention_observations' and indexname='attention_observations_token'`)).length === 1);
 
   // ── COMMERCIAL EVENT DURABILITY ───────────────────────────────────────────────────────────────
   HD("COMMERCIAL EVENTS — the ledger is the only append-only store, and now it hears about stages");
@@ -166,37 +142,25 @@ async function main() {
   note("a foreign-org observation naming this org's pursuit is accepted by the single-column FK and bounded by RLS",
     xo === "" ? "inserted (owner bypasses RLS)" : xo.slice(0, 60));
 
-  // ── ATOMICITY AND FORGERY ─────────────────────────────────────────────────────────────────────
-  HD("THE OBSERVATION IS SERVER EVIDENCE — it cannot be forged, and it cannot outlive a rollback");
-  {
-    const client = await pool.connect();
-    try {
-      await client.query("begin");
-      await client.query("savepoint dispatch");
-      const staged = await captureAttention(client as never, {
-        orgId: org.id, view: view([pursuits[2], pursuits[0], pursuits[1]]),
-        algorithmVersion: "p2-rollback", dataEnvironment: "PILOT" });
-      const mid = Number((await client.query(
-        `select count(*)::int n from attention_observations where org_id=$1 and algorithm_version='p2-rollback'`, [org.id])).rows[0].n);
-      // A handler that fails AFTER staging its observation must leave nothing behind: the snapshot
-      // claims a decision boundary, so it may not survive a boundary that did not commit.
-      await client.query("rollback to savepoint dispatch");
-      const after = Number((await client.query(
-        `select count(*)::int n from attention_observations where org_id=$1 and algorithm_version='p2-rollback'`, [org.id])).rows[0].n);
-      await client.query("commit");
-      ck("a failed dispatch leaves NO orphan observation — staged, then rewound to zero",
-        staged.written === 3 && mid === 3 && after === 0);
-    } finally { client.release(); }
-  }
+  // ── THE FINGERPRINT IS SERVER-COMPUTED ────────────────────────────────────────────────────────
+  HD("THE OBSERVATION IS SERVER EVIDENCE — its provenance digest is computed, never accepted");
+  // The selection boundary, token trust and replay semantics belong to Slice 2 and are certified by
+  // `slice2`. What remains this suite's concern is the provenance digest itself.
   const captureSrc = codeOf("../src/lib/pursuits/evidence/attention-capture.ts");
-  const inputShape = captureSrc.slice(captureSrc.indexOf("interface AttentionCaptureInput"), captureSrc.indexOf("export function attentionFingerprint"));
-  ck("the producer accepts NO caller-supplied rank, score, fingerprint, components or eligible set",
-    !/\b(rank|score|band|fingerprint|components|items)\s*[?:]/.test(inputShape), { inputShape: inputShape.replace(/\s+/g, " ").slice(0, 160) });
+  const fakeView = (order: string[]): PortfolioPertinenceView => ({
+    items: order.map((id, idx) => ({ pursuitId: id, rank: idx + 1, score: 90 - idx * 10, band: "HIGH" })) as never,
+    comparisonSetSize: order.length, withheldCount: 2, scope: "portfolio",
+    asOf: "2026-06-01T12:00:00.000Z", cohortSizes: {} as never,
+  });
   ck("the fingerprint is COMPUTED from the server-ranked view, never accepted",
     /function attentionFingerprint\(view: PortfolioPertinenceView/.test(captureSrc)
-    && attentionFingerprint(v1, "p2-v1") === attentionFingerprint(view(pursuits), "p2-v1"));
-  ck("CONTROL — and it is not a constant: a different comparison set is a different fingerprint",
-    attentionFingerprint(view(pursuits.slice(0, 2)), "p2-v1") !== attentionFingerprint(v1, "p2-v1"));
+    && attentionFingerprint(fakeView(pursuits), "p2-v1") === attentionFingerprint(fakeView(pursuits), "p2-v1"));
+  ck("a REORDERING is a different state", attentionFingerprint(fakeView([pursuits[1], pursuits[0], pursuits[2]]), "p2-v1") !== attentionFingerprint(fakeView(pursuits), "p2-v1"));
+  ck("CONTROL — and so is a different comparison set, and a different algorithm version",
+    attentionFingerprint(fakeView(pursuits.slice(0, 2)), "p2-v1") !== attentionFingerprint(fakeView(pursuits), "p2-v1")
+    && attentionFingerprint(fakeView(pursuits), "p2-v2") !== attentionFingerprint(fakeView(pursuits), "p2-v1"));
+  ck("the persisted record carries no prose, no evidence text and no payload copy",
+    !/topReasons|comparedToBelow|whyHere|reason/.test(captureSrc.slice(captureSrc.indexOf("insert into attention_observations"))));
 
   // ── READ PATHS WRITE NOTHING ──────────────────────────────────────────────────────────────────
   HD("READ PATHS — opening a surface records nothing (D-HIST-1 stays closed)");
@@ -218,8 +182,8 @@ async function main() {
       ck("the whole P2 ranking runs inside a READ ONLY transaction — the database itself enforces it",
         false, (e as Error).message);
     } finally { client.release(); }
-    ck("and no observation was written by looking",
-      await n(`select count(*)::int n from attention_observations where org_id=$1 and algorithm_version like 'p2-v%'`, [org.id]) === 6);
+    ck("and no observation was written by looking — the table is still empty",
+      await n(`select count(*)::int n from attention_observations where org_id=$1`, [org.id]) === 0);
     // §1 RULING: recommend_pursuit_plan@1 does not consume P2, so attaching a ranking to it would
     // be FALSE LINEAGE. This asserts the ruling holds — the dispatch writes no observation — and it
     // is the control that would catch someone wiring the producer there anyway.

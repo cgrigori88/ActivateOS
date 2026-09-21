@@ -3,6 +3,7 @@ import type { DecisionItem, DecisionClass } from "@/lib/pursuits/read-models/typ
 import { BandPill } from "./parts";
 import { skillLabel } from "./vocab";
 import { buttonClass } from "@/components/ui";
+import { selectPursuitAction } from "@/app/attention/actions";
 
 /**
  * Today decision queue (Workstream D.5 §20). The operating queue: what needs my
@@ -206,9 +207,22 @@ export function TodayDecisionCard({
           control was blue, red, violet or green depending on which kind of item
           it sat on — four colours for one action. The class is already stated by
           the chip on the left. */}
-      <Link href={item.deepLink} className={composed ? `flex-none self-start sm:self-auto ${buttonClass("primary", "md")}` : `flex-none ${buttonClass("primary", "md")}`}>
-        {action?.label ?? "Open"} →
-      </Link>
+      {/* THE SELECTION BOUNDARY. A plain <Link> is a GET, and a GET also happens on prefetch, on
+          back/forward and on a pasted deep link — so it cannot mean "this person chose to work
+          this". With a server-minted token present, the primary CTA is a form submission: an
+          explicit act, performed only by someone clicking the button. Without a token (P2 off, or a
+          non-ranked card) it stays exactly the link it always was, so the certified flag-OFF card is
+          unchanged. Either way the destination is the same pursuit. */}
+      {item.attentionToken ? (
+        <form action={selectPursuitAction} className={composed ? "flex-none self-start sm:self-auto" : "flex-none"}>
+          <input type="hidden" name="attentionToken" value={item.attentionToken} />
+          <button className={buttonClass("primary", "md")}>{action?.label ?? "Open"} →</button>
+        </form>
+      ) : (
+        <Link href={item.deepLink} className={composed ? `flex-none self-start sm:self-auto ${buttonClass("primary", "md")}` : `flex-none ${buttonClass("primary", "md")}`}>
+          {action?.label ?? "Open"} →
+        </Link>
+      )}
     </div>
   );
 }

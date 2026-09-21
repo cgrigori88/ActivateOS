@@ -9,7 +9,7 @@ import {
   type QueueLineage,
 } from "./pursuit-attention";
 import { freshBasisFor, resolvePlanStanding, selectDisplayPlanAction } from "./pursuit-plan";
-import { DEMO_BANNER, orgHasSynthetic } from "./today";
+import { DEMO_BANNER, mintSurfaceTokens, orgHasSynthetic } from "./today";
 import type { TodayQueueView } from "./types";
 
 /**
@@ -99,7 +99,8 @@ export async function loadPursuitAttention(db: PoolClient, caller: Caller, opts:
  * collapsing, so "View all N" counts cards, not the rows folded beneath them.
  */
 export async function composeTodayAttention(
-  db: PoolClient, caller: Caller, queue: TodayQueueView, opts: AttentionLoadOpts & { limit?: number } = {},
+  db: PoolClient, caller: Caller, queue: TodayQueueView,
+  opts: AttentionLoadOpts & { limit?: number; pertinence?: import("./portfolio-pertinence").PortfolioPertinenceView | null; userId?: string | null; dataEnvironment?: string | null } = {},
 ): Promise<TodayQueueView> {
   const now = opts.now ?? new Date();
   const attention = await loadPursuitAttention(db, caller, { companyIds: opts.companyIds, now });
@@ -115,6 +116,15 @@ export async function composeTodayAttention(
   const composed = composeAttentionQueue({ items: queue.items, attention, tenantPursuitIds: tenant, pursuitLabels, now, limit: opts.limit });
   // The badge answers from what the caller owns, never from an item another org contributed.
   const synthetic = composed.all.some((i) => i.synthetic) || await orgHasSynthetic(db, caller.orgId);
+  // RE-MINTED OVER THE COMPOSED LIST. This is the order and the cut the reader actually receives:
+  // composition folds several rows per pursuit into one card, reorders and applies its own top-N, so
+  // any ordinal minted upstream described a different list.
+  mintSurfaceTokens(composed.items, {
+    orgId: caller.orgId, userId: opts.userId ?? null, pertinence: opts.pertinence ?? null,
+    surfaceId: "today", surfaceVersion: "today-v1", sortMode: "materiality-policy",
+    filters: { companyIds: opts.companyIds ?? null }, displayLimit: opts.limit ?? null,
+    dataEnvironment: opts.dataEnvironment ?? null,
+  });
   return {
     generatedAt: queue.generatedAt, items: composed.items, counts: composed.counts,
     total: composed.total, decisionCount: composed.decisionCount, demoBanner: synthetic ? DEMO_BANNER : null,

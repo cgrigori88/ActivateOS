@@ -2,7 +2,9 @@ import type { PoolClient } from "pg";
 import type { TodayQueueView, DecisionItem, DecisionClass } from "./types";
 import { bandOf, type Caller } from "./helpers";
 import { classifyChange, isMaterial, todaySort, type OperationalUrgency } from "./materiality";
-import type { PortfolioPertinenceView } from "./portfolio-pertinence";
+import { PORTFOLIO_ALGORITHM_VERSION, type PortfolioPertinenceView } from "./portfolio-pertinence";
+import { attentionFingerprint } from "@/lib/pursuits/evidence/attention-capture";
+import { mintAttentionToken } from "@/lib/pursuits/evidence/attention-token";
 import { motionAcceptanceBlockage } from "@/lib/motions/funnel";
 import { getLifecycleHorizon } from "@/lib/lifecycle/horizon";
 import { STAGE_PROBABILITY, type Stage } from "@/lib/opportunities/lifecycle";
@@ -54,6 +56,13 @@ export interface TodayQueueOpts {
    * whether to compute this at all, so with the flag off the query never runs.
    */
   pertinence?: PortfolioPertinenceView | null;
+  /**
+   * The authenticated viewer, for binding the attention token to a person. Absent in a session with
+   * no identity (Basic-Auth demo, scripts), where the token binds to org and subject only.
+   */
+  userId?: string | null;
+  /** The provenance of the operating context this surface belongs to. */
+  dataEnvironment?: string | null;
 }
 
 export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQueueOpts = {}): Promise<TodayQueueView> {
@@ -308,6 +317,13 @@ export async function getTodayQueue(db: PoolClient, caller: Caller, opts: TodayQ
   const total = items.length;
   const anySynthetic = items.some((i) => i.synthetic) || await orgHasSynthetic(db, caller.orgId);
   const cut = opts.limit != null ? items.slice(0, opts.limit) : items;
+
+  mintSurfaceTokens(cut, {
+    orgId: caller.orgId, userId: opts.userId ?? null, pertinence: opts.pertinence ?? null,
+    surfaceId: "today", surfaceVersion: "today-v1", sortMode: "materiality-policy",
+    filters: { companyIds: opts.companyIds ?? null }, displayLimit: opts.limit ?? null,
+    dataEnvironment: opts.dataEnvironment ?? null,
+  });
   return { generatedAt: new Date().toISOString(), items: cut, counts, total, demoBanner: anySynthetic ? DEMO_BANNER : null };
 }
 
@@ -371,3 +387,61 @@ function humanChange(ct: string): string {
 }
 function n(v: string | null): number | null { return v == null ? null : Number(v); }
 function brief(o: Record<string, unknown> | null): string | null { if (!o) return null; const k = Object.keys(o)[0]; return k ? `${o[k]}` : null; }
+
+
+export interface SurfaceTokenContext {
+  orgId: string;
+  userId: string | null;
+  pertinence: PortfolioPertinenceView | null;
+  surfaceId: "today" | "pipeline";
+  surfaceVersion: string;
+  sortMode: string;
+  filters: Record<string, unknown>;
+  displayLimit: number | null;
+  dataEnvironment: string | null;
+}
+
+/**
+ * Mint one attention token per ranked card, OVER THE FINAL DISPLAYED LIST.
+ *
+ * ── WHY THIS IS A SEPARATE FUNCTION CALLED LATE ─────────────────────────────────────────────────
+ *
+ * `surface_ordinal` is where the card ACTUALLY SAT, so it can only be known once the list is in the
+ * order the reader sees. Today's list is not final when `getTodayQueue` returns it: with attention
+ * on, `composeAttentionQueue` collapses several rows per pursuit into one card, reorders, and
+ * applies its own top-N. Minting before that would have recorded an ordinal from a list nobody was
+ * shown — the precise error this observation exists to avoid. So both surfaces call this as their
+ * last step, and the later call simply overwrites the earlier one.
+ *
+ * THE TWO POSITIONS ARE NEVER THE SAME NUMBER, and both are stored. `p2Rank` is the canonical
+ * portfolio rank the card displays ("#3 of 18"); the ordinal is its place on this page under this
+ * sort. On Today they differ by construction, because the materiality policy orders the list and
+ * pertinence is only its third key.
+ *
+ * MINTING WRITES NOTHING. The token is a signed description of this render; the evidence row exists
+ * only if a person later presses the CTA.
+ */
+export function mintSurfaceTokens(items: DecisionItem[], ctx: SurfaceTokenContext): void {
+  if (!ctx.pertinence) return;               // P2 off: no ranked facts, so no token and no CTA change
+  const fingerprint = attentionFingerprint(ctx.pertinence, PORTFOLIO_ALGORITHM_VERSION);
+  const byPursuit = new Map(ctx.pertinence.items.map((p) => [p.pursuitId, p]));
+  items.forEach((it, i) => {
+    if (!it.pursuitId || !it.pertinence) return;
+    const p = byPursuit.get(it.pursuitId);
+    it.attentionToken = mintAttentionToken({
+      orgId: ctx.orgId, userId: ctx.userId, pursuitId: it.pursuitId,
+      surfaceId: ctx.surfaceId, surfaceVersion: ctx.surfaceVersion,
+      sortMode: ctx.sortMode, filters: ctx.filters, displayLimit: ctx.displayLimit,
+      p2Rank: it.pertinence.rank,
+      comparisonSetSize: ctx.pertinence!.comparisonSetSize,
+      withheldCount: ctx.pertinence!.withheldCount,
+      surfaceOrdinal: i + 1,
+      score: it.pertinence.score, band: p?.band ?? "",
+      components: (p?.signals ?? []).map((sg) => ({ key: sg.key ?? null, contribution: sg.contribution ?? null })),
+      algorithmVersion: PORTFOLIO_ALGORITHM_VERSION,
+      snapshotFingerprint: fingerprint,
+      scope: ctx.pertinence!.scope,
+      dataEnvironment: ctx.dataEnvironment ?? "PRODUCTION",
+    });
+  });
+}

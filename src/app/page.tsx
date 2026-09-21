@@ -1,5 +1,11 @@
 import Link from "next/link";
 import { withTenant } from "@/lib/db/tenant";
+import { supabaseServer } from "@/lib/auth/supabase";
+
+/** The authenticated viewer, for binding an attention token. Null outside an identity session. */
+async function currentUserId(): Promise<string | null> {
+  try { return (await (await supabaseServer()).auth.getUser()).data.user?.id ?? null; } catch { return null; }
+}
 import { BandBadge, Card, CountChip, PageHeader, StatusBadge, Metric, SummaryBand, BlockLabel } from "@/components/ui";
 import { RoomTabs } from "@/components/room-tabs";
 import { loadTodayNextActions, loadTodayOverview } from "@/lib/today/overview";
@@ -85,6 +91,12 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
          authorized one — `loadPortfolioCandidates` is org-scoped and RLS-bound — and the scope
          label matches the ecosystem narrowing already applied to this page. */
       const intelligence = vnextEnvEnabled("pursuit_intelligence") && vnextCapabilities(await tenantFeatures(db, orgId)).pursuitIntelligence;
+      /* Who is looking, and what world this is — both server-resolved, both needed only to BIND the
+         attention token that each ranked card carries. Neither reaches the ranking: P2's inputs and
+         ordering are untouched, and with intelligence off no token is minted at all. */
+      const viewerId = await currentUserId();
+      const orgEnv = (await db.query<{ data_environment: string | null }>(
+        `select data_environment from organizations where id = $1`, [orgId])).rows[0]?.data_environment ?? null;
       const pertinence = intelligence
         ? await getPortfolioPertinence(db, caller, { scope: scopeIds ? "Selected ecosystem" : "All pursuits" })
         : null;
@@ -96,11 +108,11 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         pursuitQueue: attention
           ? await composeTodayAttention(db, caller,
               pertinence
-                ? await getTodayQueue(db, caller, { companyIds: scopeIds, pertinence })
+                ? await getTodayQueue(db, caller, { companyIds: scopeIds, pertinence, userId: viewerId, dataEnvironment: orgEnv })
                 : await getTodayQueue(db, caller, { companyIds: scopeIds }),
-              { companyIds: scopeIds, limit })
+              { companyIds: scopeIds, limit, pertinence, userId: viewerId, dataEnvironment: orgEnv })
           : pertinence
-            ? await getTodayQueue(db, caller, { companyIds: scopeIds, limit, pertinence })
+            ? await getTodayQueue(db, caller, { companyIds: scopeIds, limit, pertinence, userId: viewerId, dataEnvironment: orgEnv })
             : await getTodayQueue(db, caller, { companyIds: scopeIds, limit }),
         exposure: await getTodayExposure(db, orgId, scopeIds),
         attentionOn: attention,

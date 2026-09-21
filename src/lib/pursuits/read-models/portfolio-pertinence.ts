@@ -30,6 +30,12 @@ import type { Band, DisclosureClass } from "./types";
 // Signal weights — declared, so the ranking can be argued with.
 // ---------------------------------------------------------------------------
 
+/**
+ * The declared generation of this ranking. An attention observation records it, so a stored rank
+ * can always be read against the arithmetic that produced it rather than against today's.
+ */
+export const PORTFOLIO_ALGORITHM_VERSION = "p2-v1";
+
 export const PORTFOLIO_SIGNAL_WEIGHT = {
   /** A decision is waiting on a person. A pursuit that is blocked ON YOU outranks a merely valuable one. */
   decisionPressure: 0.25,
