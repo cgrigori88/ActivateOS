@@ -135,7 +135,7 @@ function evaluateOne(
   // saying so is more useful than reporting which requirements it happened to meet.
   for (const c of m.disqualifiers ?? []) {
     const r = testClause(c, facts, asOf);
-    clauses.push({ ...r, because: c.because });
+    clauses.push({ ...r, because: narrate(c, r) });
     if (r.satisfied === true) {
       return { slug: t.slug, version: t.version, name: t.name, companyId, verdict: "NOT_ELIGIBLE", clauses, missingContext: m.requiresContext ?? [] };
     }
@@ -144,7 +144,7 @@ function evaluateOne(
   let unknown = false;
   for (const c of m.requires) {
     const r = testClause(c, facts, asOf);
-    clauses.push({ ...r, because: c.because });
+    clauses.push({ ...r, because: narrate(c, r) });
     if (r.satisfied === false) {
       return { slug: t.slug, version: t.version, name: t.name, companyId, verdict: "NOT_ELIGIBLE", clauses, missingContext: m.requiresContext ?? [] };
     }
@@ -177,6 +177,36 @@ function evaluateOne(
     verdict: unknown ? "INSUFFICIENT_CONTEXT" : "ELIGIBLE",
     clauses, missingContext: m.requiresContext ?? [],
   };
+}
+
+/**
+ * THE EXPLANATION FOLLOWS THE EVIDENCE, never the motion's name.
+ *
+ * A motion may be named for the incumbent it most often displaces while its rule matches a whole
+ * category — "VMware Displacement / Datacenter Modernization" is exactly that. The name is product
+ * content and stays; the EXPLANATION may not inherit it. So the narrative is chosen from the value
+ * the evidence actually established: a VMware-family fact may speak of displacement, a Hyper-V or
+ * Nutanix fact speaks of modernization without naming VMware, and a merely generic "virtualization"
+ * fact is never promoted into a named-incumbent claim.
+ *
+ * `{{value}}` substitutes the established value itself, so the sentence can only ever repeat what
+ * the fact said. When nothing was established, the substitution is dropped rather than left as a
+ * placeholder or filled with a guess.
+ */
+function narrate(c: MotionClause, r: Omit<ClauseResult, "because">): string {
+  const established = r.satisfied === true ? (r.observed.find((o) => o.value)?.value ?? null) : null;
+  let text = c.because;
+  if (established && c.narrativeByValue?.length) {
+    const lower = established.toLowerCase();
+    const hit = c.narrativeByValue.find((n) => n.values.some((v) => lower.includes(v.toLowerCase())));
+    text = hit?.text ?? c.narrativeFallback ?? c.because;
+  } else if (established && c.narrativeFallback) {
+    text = c.narrativeFallback;
+  }
+  return established
+    ? text.replace(/\{\{value\}\}/g, established)
+    // No established value: strip the placeholder rather than print it or invent a filler.
+    : text.replace(/\s*\{\{value\}\}/g, "");
 }
 
 /**

@@ -1,7 +1,7 @@
 {
-  "$comment": "Motion B v1. The renewal window is a commercial ATTENTION window, not a prediction. The incumbent platform is REQUIRED context and is never claimed from timing alone — `technology_in_use` must affirmatively name it. budget_reduction_target is not a disqualifier: cost pressure can strengthen a modernization case.",
+  "$comment": "Motion B v2. The renewal window is a commercial ATTENTION window, not a prediction. The incumbent platform is REQUIRED context and is never claimed from timing alone. The EXPLANATION follows the established fact: a VMware-family incumbent may be described as displacement; any other established platform is modernization without naming VMware; a merely generic virtualization fact is never promoted into a named-incumbent claim. budget_reduction_target is not a disqualifier \u2014 cost pressure can strengthen the case.",
   "slug": "vmware-displacement-datacenter-modernization",
-  "version": 1,
+  "version": 3,
   "name": "VMware Displacement / Datacenter Modernization",
   "taxonomy_node": "virtualization",
   "objective": "Qualify and advance a virtualization and datacenter modernization opportunity, timed against a renewal the account is already facing.",
@@ -17,28 +17,77 @@
       {
         "predicate": "technology_in_use",
         "op": "value_in",
-        "values": ["vmware", "vsphere", "esxi", "vcenter", "hyper-v", "nutanix", "virtualization"],
-        "because": "the incumbent virtualization platform is established, so displacement is a real conversation rather than a guess"
+        "values": [
+          "vmware",
+          "vsphere",
+          "esxi",
+          "vcenter",
+          "hyper-v",
+          "nutanix",
+          "virtualization"
+        ],
+        "because": "the incumbent virtualization platform is established as {{value}}",
+        "narrativeByValue": [
+          {
+            "values": [
+              "vmware",
+              "vsphere",
+              "esxi",
+              "vcenter"
+            ],
+            "text": "the incumbent is established as {{value}}, so a VMware displacement and modernization conversation rests on evidence"
+          },
+          {
+            "values": [
+              "hyper-v",
+              "nutanix"
+            ],
+            "text": "the incumbent virtualization platform is established as {{value}}, so this is a datacenter modernization conversation"
+          }
+        ],
+        "narrativeFallback": "a virtualization estate is established as {{value}}; the specific incumbent product is not named by the evidence, so this is a modernization conversation rather than a displacement claim"
       }
     ],
     "requiresContext": [
-      "Installed virtualization platform — until `technology_in_use` names it, an upcoming renewal makes modernization timely but does not establish displacement.",
+      "Installed virtualization platform \u2014 until `technology_in_use` names it, an upcoming renewal makes modernization timely but does not establish displacement.",
       "Support lifecycle position of the installed estate.",
       "Whether a competing modernization purchase has already been made."
     ],
     "goalTemplate": "Qualify and advance a virtualization and datacenter modernization opportunity at {{company}}.",
-    "expectedRoles": ["VENDOR_ACCOUNT_EXECUTIVE", "SOLUTION_ARCHITECT", "PARTNER_ACCOUNT_MANAGER"],
+    "expectedRoles": [
+      "VENDOR_ACCOUNT_EXECUTIVE",
+      "SOLUTION_ARCHITECT",
+      "PARTNER_ACCOUNT_MANAGER"
+    ],
     "campaignGuidance": "Anchor on the renewal the account already knows about. Do not name an incumbent platform the evidence has not established, and do not pitch migration before the renew-versus-modernize arithmetic exists.",
     "measurementAssociations": [
-      "An opportunity opened or advanced on this account after application — association only.",
+      "An opportunity opened or advanced on this account after application \u2014 association only.",
       "A recorded renewal outcome on the account."
     ]
   },
-  "personas": { "primary": "VP Infrastructure", "secondary": "Director of Virtualization / Platform Engineering" },
-  "cta": { "offer": "Renew-versus-modernize cost comparison workshop", "fallback": "Written benchmark of how comparable estates approached the same renewal" },
+  "personas": {
+    "primary": "VP Infrastructure",
+    "secondary": "Director of Virtualization / Platform Engineering"
+  },
+  "cta": {
+    "offer": "Renew-versus-modernize cost comparison workshop",
+    "fallback": "Written benchmark of how comparable estates approached the same renewal"
+  },
   "seller_cadence": [
-    { "step": 1, "action": "Validate the incumbent virtualization platform, renewal timing and modernization drivers", "day": 0 },
-    { "step": 2, "action": "Build the modernization and displacement hypothesis, and scope the technical discovery it requires", "day": 5 },
-    { "step": 3, "action": "Align partner and vendor sellers and technical resources on the customer engagement", "day": 12 }
+    {
+      "step": 1,
+      "action": "Validate the incumbent virtualization platform, renewal timing and modernization drivers",
+      "day": 0
+    },
+    {
+      "step": 2,
+      "action": "Build the modernization and displacement hypothesis, and scope the technical discovery it requires",
+      "day": 5
+    },
+    {
+      "step": 3,
+      "action": "Align partner and vendor sellers and technical resources on the customer engagement",
+      "day": 12
+    }
   ]
 }

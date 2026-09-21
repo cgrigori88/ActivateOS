@@ -4,9 +4,41 @@ import { getPool } from "../src/db/client";
 import { CANONICAL_TO_SCORING, SIGNAL_DEFS } from "../src/lib/signals/types";
 
 /**
- * Seed the Channel Knowledge Base from knowledge/ into the database:
- * ontology nodes + edges, and play templates. Idempotent.
+ * Seed the Channel Knowledge Base from knowledge/ into the database: ontology nodes + edges, play
+ * templates, and signal configuration. Idempotent.
+ *
+ * ── SCOPES ──────────────────────────────────────────────────────────────────────────────────────
+ *
+ *   npx tsx scripts/seed-knowledge.ts                        every scope (unchanged default)
+ *   npx tsx scripts/seed-knowledge.ts --scope taxonomy,templates
+ *
+ * Scoping exists because activation is not the same act as authorship. The 74 signal configs are
+ * canonical source material with ZERO consumers in `src/` today and no thin-P9 or P2 dependency, so
+ * activating them alongside the motion templates would put rows into a serving database for no
+ * current reason. They stay in source, available deliberately later.
+ *
+ * ONE IMPLEMENTATION, NOT TWO. A second "pilot seed" script would drift from this one the first
+ * time a template changed. A scope flag cannot drift, and the default remains everything — so no
+ * existing caller changes behaviour.
  */
+const SCOPES = ["taxonomy", "templates", "signals"] as const;
+type Scope = (typeof SCOPES)[number];
+
+function requestedScopes(argv: string[]): Set<Scope> {
+  const at = argv.indexOf("--scope");
+  if (at < 0) return new Set(SCOPES);
+  const asked = (argv[at + 1] ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const bad = asked.filter((x) => !(SCOPES as readonly string[]).includes(x));
+  if (bad.length || asked.length === 0) {
+    throw new Error(`unknown seed scope(s): ${bad.join(", ") || "(none given)"} — valid scopes are ${SCOPES.join(", ")}`);
+  }
+  // TEMPLATES DEPEND ON TAXONOMY: a template resolves its node by slug, so seeding templates alone
+  // would silently attach them to a null node rather than failing. The dependency is declared here
+  // rather than left to the caller to remember.
+  const set = new Set(asked as Scope[]);
+  if (set.has("templates")) set.add("taxonomy");
+  return set;
+}
 /**
  * A stable rendering of a JSON value, for comparing stored content against a file.
  *
@@ -28,6 +60,8 @@ function canonical(v: unknown): string {
 }
 
 async function main() {
+  const scopes = requestedScopes(process.argv);
+  console.log(`seed scope: ${[...scopes].sort().join(", ")}`);
   const pool = getPool();
   const client = await pool.connect();
   try {
@@ -41,7 +75,7 @@ async function main() {
     await client.query("begin");
 
     const nodeIds = new Map<string, string>();
-    for (const node of ontology.nodes) {
+    for (const node of (scopes.has("taxonomy") ? ontology.nodes : [])) {
       const { rows } = await client.query<{ id: string }>(
         `insert into taxonomy_nodes (slug, name)
          values ($1, $2)
@@ -51,14 +85,14 @@ async function main() {
       );
       nodeIds.set(node.slug, rows[0].id);
     }
-    for (const node of ontology.nodes) {
+    for (const node of (scopes.has("taxonomy") ? ontology.nodes : [])) {
       if (!node.parent) continue;
       await client.query(`update taxonomy_nodes set parent_id = $1 where slug = $2`, [
         nodeIds.get(node.parent),
         node.slug,
       ]);
     }
-    for (const edge of ontology.edges) {
+    for (const edge of (scopes.has("taxonomy") ? ontology.edges : [])) {
       await client.query(
         `insert into taxonomy_edges (from_node_id, to_node_id, edge_type, weight)
          values ($1, $2, $3, $4)
@@ -69,7 +103,7 @@ async function main() {
     }
 
     const playsDir = join(process.cwd(), "knowledge", "plays");
-    for (const file of readdirSync(playsDir).filter((f) => f.endsWith(".json"))) {
+    for (const file of (scopes.has("templates") ? readdirSync(playsDir).filter((f) => f.endsWith(".json")) : [])) {
       const play = JSON.parse(readFileSync(join(playsDir, file), "utf8")) as {
         slug: string;
         version: number;
@@ -104,12 +138,14 @@ async function main() {
     }
 
     await client.query("commit");
-    console.log(`seeded ${ontology.nodes.length} taxonomy nodes, ${ontology.edges.length} edges`);
+    console.log(scopes.has("taxonomy")
+      ? `seeded ${ontology.nodes.length} taxonomy nodes, ${ontology.edges.length} edges`
+      : "taxonomy SKIPPED — not in scope");
 
     // Versioned signal configuration (DIRECTIVE §12): the registry is the
     // source of truth; the DB copy is what admin/config tooling edits.
     let configs = 0;
-    for (const [signalType, def] of Object.entries(SIGNAL_DEFS)) {
+    for (const [signalType, def] of (scopes.has("signals") ? Object.entries(SIGNAL_DEFS) : [])) {
       const family = def.canonical ?? def.family;
       await client.query(
         `insert into signal_configs (signal_type, family, default_half_life_days)
@@ -123,7 +159,9 @@ async function main() {
       configs++;
     }
     void CANONICAL_TO_SCORING; // mapping lives in code; referenced for clarity
-    console.log(`seeded ${configs} signal configs`);
+    console.log(scopes.has("signals")
+      ? `seeded ${configs} signal configs`
+      : "signal configs SKIPPED — not in scope (canonical source retained, activation deferred)");
   } catch (err) {
     await client.query("rollback");
     throw err;

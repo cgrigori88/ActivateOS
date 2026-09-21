@@ -67,6 +67,7 @@ async function main() {
   // ── TEMPLATES ─────────────────────────────────────────────────────────────────────────────────
   HD("TEMPLATES — the pattern is content, and it reuses the primitive that already existed");
   const templates = await tx(org.id, (db) => loadMotionTemplates(db));
+  const displacementSlug = "vmware-displacement-datacenter-modernization";
   ck("the three thin-P9 motions load, and the pre-existing LLM play is ignored rather than broken",
     templates.length === 3
     && !templates.some((t) => t.slug === "infrastructure-automation-modernization"),
@@ -88,6 +89,40 @@ async function main() {
   ck("BITING — a template naming an unknown predicate is REFUSED, not left permanently unknowable",
     /names predicates that do not exist/.test(refused), { refused: refused.slice(0, 80) });
   await q(`delete from play_templates where slug=$1`, [`${NS}-bogus`]);
+
+  // ── TEMPLATE IMMUTABILITY, AND THE ESCAPE HATCH ───────────────────────────────────────────────
+  HD("IMMUTABILITY — a published version cannot change meaning, and the hatch is not application-reachable");
+  ck("app_rw holds INSERT and SELECT on play_templates and NOTHING else",
+    /app_rw=ar\//.test((await one(`select array_to_string(relacl,',') a from pg_class where relname='play_templates'`)).a));
+  ck("and no column-level UPDATE grant sneaks back in",
+    (await q(`select column_name from information_schema.column_privileges
+               where grantee='app_rw' and table_name='play_templates' and privilege_type in ('UPDATE','DELETE')`)).length === 0);
+  ck("a trigger refuses an in-place update even for a role that HAS the privilege",
+    (await q(`select tgname from pg_trigger where tgrelid='play_templates'::regclass and not tgisinternal
+               and tgname='play_templates_no_update'`)).length === 1);
+  let ownerRewrite = "";
+  try { await q(`update play_templates set name = 'rewritten' where slug = $1`, [displacementSlug]); }
+  catch (e) { ownerRewrite = (e as Error).message; }
+  ck("BEHAVIOURAL — even the owner is refused without the deliberate maintenance setting",
+    /published and immutable/.test(ownerRewrite), { refused: ownerRewrite.slice(0, 70) });
+  /**
+   * THE HATCH IS NOT REACHABLE FROM ORDINARY EXECUTION.
+   *
+   * `pursuitos.allow_template_rewrite` is a custom GUC, and any role may set one — so the setting
+   * is NOT the barrier and must not be relied on as one. The barrier is the PRIVILEGE: app_rw
+   * cannot UPDATE or DELETE this table at all, so setting the GUC buys it nothing. The remaining
+   * question is whether some SECURITY DEFINER function runs as the owner and could be induced to
+   * write here; none does.
+   */
+  ck("NO SECURITY DEFINER function touches play_templates — there is no owner-privileged path in",
+    (await q(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+               where n.nspname='public' and p.prosecdef and pg_get_functiondef(p.oid) ilike '%play_templates%'`)).length === 0);
+  const srcAll = ["../src/lib/motions/apply.ts", "../src/lib/motions/eligibility.ts",
+                  "../src/app/pursuits/[id]/actions.ts", "../src/lib/pursuits/federation/skills.ts"]
+    .map((f) => codeOf(f)).join("\n");
+  ck("and no application path sets the maintenance GUC or writes a template",
+    !/allow_template_rewrite/.test(srcAll)
+    && !/(insert|update|delete)[\s\S]{0,40}play_templates/i.test(srcAll));
 
   // ── ELIGIBILITY: THREE STATES ─────────────────────────────────────────────────────────────────
   HD("ELIGIBILITY — three states, because two would turn missing evidence into a negative finding");
@@ -113,6 +148,36 @@ async function main() {
   const withPlatform = await tx(org.id, (db) => evaluateMotions(db, org.id, [displacement], [qualifying], ASOF));
   ck("renewal window PLUS an established incumbent platform ⇒ ELIGIBLE",
     withPlatform.get(qualifying)![0].verdict === "ELIGIBLE", { got: withPlatform.get(qualifying)![0].verdict });
+  /**
+   * THE EXPLANATION FOLLOWS THE FACT, NOT THE MOTION'S NAME.
+   *
+   * The motion is called "VMware Displacement / Datacenter Modernization" whatever the evidence
+   * says. The sentence shown to the reader may not inherit that name.
+   */
+  const platformNarrative = (fit: { clauses: { predicate: string; because: string }[] }) =>
+    fit.clauses.find((c) => c.predicate === "technology_in_use")?.because ?? "";
+  ck("a VMware-family incumbent MAY be described as displacement, naming the established value",
+    /VMware displacement/i.test(platformNarrative(withPlatform.get(qualifying)![0]))
+    && platformNarrative(withPlatform.get(qualifying)![0]).includes("VMware vSphere"),
+    { narrative: platformNarrative(withPlatform.get(qualifying)![0]).slice(0, 90) });
+  const hyperv = await co("HyperV Co");
+  await putFact(org.id, hyperv, "renewal_date", { objectType: "DATE", date: new Date(ASOF.getTime() + 90 * 86_400_000), family: "trigger" });
+  await putFact(org.id, hyperv, "technology_in_use", { objectType: "STRING", text: "Hyper-V", family: "technology" });
+  const hvFit = await tx(org.id, (db) => evaluateMotions(db, org.id, [displacement], [hyperv], ASOF));
+  ck("THE BITE — a NON-VMware incumbent is ELIGIBLE but the explanation does NOT claim VMware",
+    hvFit.get(hyperv)![0].verdict === "ELIGIBLE"
+    && !/vmware/i.test(platformNarrative(hvFit.get(hyperv)![0]))
+    && /modernization/i.test(platformNarrative(hvFit.get(hyperv)![0]))
+    && platformNarrative(hvFit.get(hyperv)![0]).includes("Hyper-V"),
+    { narrative: platformNarrative(hvFit.get(hyperv)![0]).slice(0, 110) });
+  const generic = await co("Generic Co");
+  await putFact(org.id, generic, "renewal_date", { objectType: "DATE", date: new Date(ASOF.getTime() + 90 * 86_400_000), family: "trigger" });
+  await putFact(org.id, generic, "technology_in_use", { objectType: "STRING", text: "virtualization", family: "technology" });
+  const genFit = await tx(org.id, (db) => evaluateMotions(db, org.id, [displacement], [generic], ASOF));
+  ck("and a merely GENERIC category fact is never promoted into a named-incumbent claim",
+    !/vmware|hyper-v|nutanix/i.test(platformNarrative(genFit.get(generic)![0]))
+    && /not named by the evidence/i.test(platformNarrative(genFit.get(generic)![0])),
+    { narrative: platformNarrative(genFit.get(generic)![0]).slice(0, 110) });
   ck("ABSENT — an account with no renewal fact is INSUFFICIENT_CONTEXT, NOT ineligible",
     fits.get(silent)![0].verdict === "INSUFFICIENT_CONTEXT", { got: fits.get(silent)![0].verdict });
   ck("DEFINITIVE — a renewal outside the window IS a negative, because the fact exists and answers",
@@ -218,7 +283,7 @@ async function main() {
     && await n(`select count(*)::int n from actor_capability_grants where org_id=$1`, [org.id]) === 0);
   const app = await one(`select * from motion_applications where id=$1`, [applied.applicationId]);
   ck("THE ACT IS RECORDED: template, version, subject, who, when, what resulted, and the verdict",
-    app.template_slug === displacement.slug && app.template_version === 1
+    app.template_slug === displacement.slug && app.template_version === displacement.version
     && app.subject_kind === "company" && app.subject_id === qualifying
     && app.applied_by_user_id === user && !!app.applied_at
     && app.pursuit_id === applied.pursuitId && app.eligibility === "ELIGIBLE"
@@ -248,18 +313,20 @@ async function main() {
     && await n(`select count(*)::int n from motion_applications where org_id=$1`, [org.id]) === 1
     && await n(`select count(*)::int n from revenue_motions where org_id=$1`, [org.id]) === 1);
   // Evolve the template. The historical application must not move.
+  const nextVersion = displacement.version + 1;
   await q(`insert into play_templates (slug, version, name, taxonomy_node_id, definition, status)
-           select slug, 2, name || ' v2', taxonomy_node_id, definition, 'active' from play_templates where slug=$1 and version=1`,
-          [displacement.slug]);
+           select slug, $2, name || ' next', taxonomy_node_id, definition, 'active'
+             from play_templates where slug=$1 and version=$3`,
+          [displacement.slug, nextVersion, displacement.version]);
   const histApp = await one(`select template_version, play_template_id from motion_applications where id=$1`, [applied.applicationId]);
-  ck("VERSION — the historical application still names v1 after v2 is published",
-    histApp.template_version === 1
-    && histApp.play_template_id === (await one(`select id from play_templates where slug=$1 and version=1`, [displacement.slug])).id);
+  ck("VERSION — the historical application still names its own version after a newer one is published",
+    histApp.template_version === displacement.version
+    && histApp.play_template_id === (await one(`select id from play_templates where slug=$1 and version=$2`, [displacement.slug, displacement.version])).id);
   const v2 = await tx(org.id, (db) => applyMotion(db, {
     orgId: org.id, slug: displacement.slug, subjectKind: "company", subjectId: qualifying,
     appliedByUserId: user, dataEnvironment: "DEMO", now: ASOF }));
   ck("and applying the NEWER version is a DIFFERENT act, which is what makes a rerun explicit",
-    v2.status === "APPLIED" && v2.appliedVersion === 2 && v2.applicationId !== applied.applicationId);
+    v2.status === "APPLIED" && v2.appliedVersion === nextVersion && v2.applicationId !== applied.applicationId);
 
   // ── MULTIPLE MOTIONS ──────────────────────────────────────────────────────────────────────────
   HD("MULTIPLE MOTIONS — the existing pursuit identity rule already answers this");

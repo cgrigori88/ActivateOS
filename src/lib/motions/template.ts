@@ -51,8 +51,25 @@ export interface MotionClause {
   values?: string[];
   /** For `within_days`. */
   days?: number;
-  /** Shown to the reader when this clause decides the outcome. Plain commercial language. */
+  /**
+   * Shown to the reader when this clause decides the outcome. Plain commercial language.
+   *
+   * `{{value}}` is substituted with the value the evidence ACTUALLY established, so a clause can
+   * never describe something the facts did not say.
+   */
   because: string;
+  /**
+   * NARROWER PHRASING FOR SPECIFIC ESTABLISHED VALUES — an explanation rule, not a new subtype.
+   *
+   * A motion may legitimately be named for the incumbent it most often displaces while its rule
+   * matches a whole category. "VMware Displacement / Datacenter Modernization" matches any
+   * established virtualization platform, but the EXPLANATION must not claim VMware when the
+   * evidence says Hyper-V, and must not claim a named incumbent at all when the fact is only the
+   * generic category. The first entry whose values match the established fact wins; `fallback`
+   * covers everything else.
+   */
+  narrativeByValue?: { values: string[]; text: string }[];
+  narrativeFallback?: string;
 }
 
 export interface MotionPartnerContext {
