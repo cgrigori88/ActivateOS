@@ -237,6 +237,11 @@ export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Pr
     );
     const populationId = popRows[0].id;
     await eff({ subjectKind: "account_population", subjectId: populationId, effect: "CREATED_REVERSIBLE" });
+    // ONE effect for the whole membership set, not one per row. `population_members` has a composite
+    // key and no id of its own, so this effect's subject is the POPULATION — recording it per row
+    // gave one subject N creation events, which is exactly the shape the provenance resolver treats
+    // as an invariant violation. Reversal deletes the members by population, so one is all it needs.
+    await eff({ subjectKind: "population_member", subjectId: populationId, effect: "CREATED_REVERSIBLE" });
 
     const surfacedSet = new Set(args.surfaced);
     const result: CommitResult = {
@@ -313,24 +318,26 @@ export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Pr
          do update set attributes = population_members.attributes || excluded.attributes`,
         [populationId, companyId, JSON.stringify(attributes)],
       );
-      // The member row's identity is (population, company); the population is the reversible handle.
-      await eff({ sourceRowNo: row.row_no, subjectKind: "population_member", subjectId: populationId, effect: "CREATED_REVERSIBLE" });
       result.imported++;
 
       // Partner-list membership keeps Intake analytics + screening working.
       if (args.population.partnerId) {
-        await db.query(
+        const paRes = await db.query<{ id: string; created: boolean }>(
           `insert into partner_accounts (org_id, partner_id, company_id, batch_id, target_product, installed)
            values ($1, $2, $3, $4, nullif($5, ''), $6)
            on conflict (partner_id, company_id) do update set
              batch_id = excluded.batch_id,
              target_product = coalesce(excluded.target_product, partner_accounts.target_product),
-             installed = partner_accounts.installed or excluded.installed`,
+             installed = partner_accounts.installed or excluded.installed
+           returning id, (xmax = 0) as created`,
           [args.orgId, args.population.partnerId, companyId, args.batchId, get("target_product"), !!get("installed_products")],
         );
-        const pa = (await db.query<{ id: string; created: boolean }>(
-          `select id, (batch_id = $3) as created from partner_accounts where partner_id = $1 and company_id = $2`,
-          [args.population.partnerId, companyId, args.batchId])).rows[0];
+        // CREATED OR MATCHED, DECIDED BY THE UPSERT ITSELF. The previous test was
+        // `batch_id = this batch`, which the upsert had just SET — so a re-import of the same file
+        // recorded CREATED a second time, giving one canonical subject two creation events and
+        // breaking the at-most-one invariant the provenance resolver depends on. `xmax = 0` is
+        // PostgreSQL's own answer to "did this row INSERT or UPDATE", read from the same statement.
+        const pa = paRes.rows[0];
         if (pa) await eff({ sourceRowNo: row.row_no, subjectKind: "partner_account", subjectId: pa.id,
                             effect: pa.created ? "CREATED_REVERSIBLE" : "MATCHED_PREEXISTING" });
       }
@@ -338,23 +345,21 @@ export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Pr
       // Buying-side contact, when the file carries one and the field is kept.
       const contactEmail = get("contact_email").toLowerCase();
       if (contactEmail && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contactEmail)) {
-        await db.query(
+        const ctRes = await db.query<{ id: string; fresh: boolean; name: string | null; title: string | null; phone: string | null }>(
           `insert into contacts (org_id, company_id, email, name, title, phone, contact_type, source)
            values ($1, $2, $3, nullif($4, ''), nullif($5, ''), nullif($6, ''), 'end_user', 'manual')
            on conflict (org_id, email) where source <> 'population' do update set
              company_id = coalesce(contacts.company_id, excluded.company_id),
              name = coalesce(excluded.name, contacts.name),
              title = coalesce(excluded.title, contacts.title),
-             phone = coalesce(excluded.phone, contacts.phone)`,
+             phone = coalesce(excluded.phone, contacts.phone)
+           returning id, (xmax = 0) as fresh, name, title, phone`,
           [args.orgId, companyId, contactEmail, get("contact_name"), get("contact_title"), get("contact_phone")],
         );
-        // CREATED vs FILLED, distinguished by the row's own age rather than by the upsert's silence.
-        // `xmax = 0` is PostgreSQL's own answer to "did this insert, or did it update?" — but it is
-        // not available after the fact, so the age of the row is used instead: a contact whose
-        // created_at is this statement's transaction time is one this batch brought into existence.
-        const ct = (await db.query<{ id: string; fresh: boolean; name: string | null; title: string | null; phone: string | null }>(
-          `select id, (created_at >= transaction_timestamp()) as fresh, name, title, phone
-             from contacts where org_id = $1 and email = $2`, [args.orgId, contactEmail])).rows[0];
+        // CREATED vs FILLED, decided by the upsert itself. An earlier version compared `created_at`
+        // against the transaction clock, which misreports the second of two rows carrying the same
+        // email in ONE file — both look fresh, and the subject acquires two creation events.
+        const ct = ctRes.rows[0];
         if (ct) {
           if (ct.fresh) await eff({ sourceRowNo: row.row_no, subjectKind: "contact", subjectId: ct.id, effect: "CREATED_REVERSIBLE" });
           else {

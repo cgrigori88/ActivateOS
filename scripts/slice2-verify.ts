@@ -112,6 +112,19 @@ async function main() {
     (await analyzeCsvToBatch(pool as never, { orgId: pilotOrg.id, csv, filename: `${NS}-${kind}.csv`,
       uploadedBy: "web", uploadedByUserId: uploader, dataEnvironment: env as never, kind })).batchId;
 
+  /**
+   * A GENUINELY PRE-EXISTING CONTACT, so the fill-only update branch is reached by a real update.
+   *
+   * The first version of this fixture relied on the batch's own contacts being classified as
+   * updates — which they were, but only because the classifier compared `created_at` against
+   * `transaction_timestamp()` while the commit ran on a POOL, where every statement is its own
+   * transaction. Contacts the batch had just created therefore looked pre-existing. Fixing the
+   * classifier to use `xmax = 0` corrected that and, correctly, broke this test: it had been
+   * exercising the conflict branch through a defect. This contact predates the batch for real.
+   */
+  await q(`insert into contacts (org_id, email, name, contact_type, source) values ($1,$2,$3,'end_user','manual')`,
+    [pilotOrg.id, "rm@contoso-freight.example", "Sam Ihara"]);
+
   const b1 = await analyze(ACCOUNTS_CSV, "book", "PILOT");
   const bRow = await one(`select data_environment, uploaded_by_user_id, row_count from import_batches where id=$1`, [b1]);
   ck("the batch takes PILOT from the operating context, and the file never gets a vote",
@@ -210,7 +223,11 @@ async function main() {
   const contactRow = await one(`select id, name from contacts where org_id=$1 and email='ops@northwind.example'`, [pilotOrg.id]);
   const oppRow = await one(`select id from opportunities where org_id=$1 and name like 'Northwind%'`, [pilotOrg.id]);
   // A later human change on one contact, so the conflict branch is reached by real divergence.
-  const conflicted = await one(`select id from contacts where org_id=$1 and email='rm@contoso-freight.example'`, [pilotOrg.id]);
+  const conflicted = await one(`select id, title from contacts where org_id=$1 and email='rm@contoso-freight.example'`, [pilotOrg.id]);
+  ck("the pre-existing contact was FILLED by the batch, not created by it — the update branch is genuinely reached",
+    await n(`select count(*)::int n from import_batch_effects
+              where batch_id=$1 and subject_kind='contact' and subject_id=$2 and effect='UPDATED_REVERSIBLE'`,
+            [b1, conflicted.id]) === 1, { title: conflicted.title });
   await q(`update contacts set title = 'Changed by a person' where id=$1`, [conflicted.id]);
   // And a downstream reference on the opportunity, so the referenced branch is reached too.
   const pu = await one(`insert into pursuits (org_id, account_id, status, dedup_key, data_environment, pursuit_type)
@@ -270,6 +287,121 @@ async function main() {
   ck("append-only: app_rw can neither edit nor delete batch lineage or reversal history",
     /app_rw=ar\//.test((await one(`select array_to_string(relacl,',') a from pg_class where relname='import_batch_effects'`)).a)
     && /app_rw=ar\//.test((await one(`select array_to_string(relacl,',') a from pg_class where relname='import_batch_reversals'`)).a));
+
+  // ── CANONICAL SUBJECT PROVENANCE ──────────────────────────────────────────────────────────────
+  HD("SUBJECT PROVENANCE — origin is the creation event, never the latest batch to touch it");
+  const { subjectOriginProvenance, opportunityOriginEnvironment } = await import("../src/lib/pursuits/provenance");
+  const asOrg = async <T>(orgId: string, fn: (db: import("pg").PoolClient) => Promise<T>): Promise<T> => {
+    const c = await pool.connect();
+    try { await c.query("begin"); await c.query(`select set_config('app.org_id',$1,true)`, [orgId]);
+      const r = await fn(c); await c.query("commit"); return r; }
+    catch (e) { await c.query("rollback"); throw e; } finally { c.release(); }
+  };
+
+  // The CRM batch created two opportunities under PILOT provenance.
+  const madeOpp = await one(`select e.subject_id from import_batch_effects e
+                              where e.batch_id=$1 and e.subject_kind='opportunity' and e.effect='CREATED_REVERSIBLE' limit 1`, [b2]);
+  const origin = await asOrg(pilotOrg.id, (db) => subjectOriginProvenance(db, pilotOrg.id, "opportunity", madeOpp.subject_id));
+  ck("CREATED — an opportunity an intake created resolves to that import's environment",
+    origin.status === "ESTABLISHED" && origin.environment === "PILOT", origin);
+
+  // MATCHED must not relabel. A DEMO opportunity that a PILOT batch later references.
+  const demoOpp = await one(`insert into opportunities (org_id, company_id, name, stage, amount_usd)
+                             values ($1,(select company_id from opportunities where id=$2),$3,'discovery',1000) returning id`,
+                            [pilotOrg.id, oppRow.id, `${NS} pre-existing`]);
+  await q(`insert into import_batch_effects (org_id, batch_id, subject_kind, subject_id, effect, data_environment)
+           values ($1,$2,'opportunity',$3,'MATCHED_PREEXISTING','PILOT')`, [pilotOrg.id, b2, demoOpp.id]);
+  const matched = await asOrg(pilotOrg.id, (db) => subjectOriginProvenance(db, pilotOrg.id, "opportunity", demoOpp.id));
+  ck("MATCHED DOES NOT RELABEL — a PILOT batch matching a subject establishes nothing about it",
+    matched.status === "UNESTABLISHED", matched);
+  ck("UNKNOWN DOES NOT BECOME KNOWN — and it certainly does not become PRODUCTION",
+    (await asOrg(pilotOrg.id, (db) => opportunityOriginEnvironment(db, pilotOrg.id, demoOpp.id, null))) === null);
+  // ... and where the subject DOES have its own established provenance, that is what is used.
+  const demoPursuit = await one(`insert into pursuits (org_id, account_id, status, dedup_key, data_environment, pursuit_type)
+                                 values ($1,(select company_id from opportunities where id=$2),'QUALIFIED',$3,'DEMO','MODERNIZATION') returning id`,
+                                [pilotOrg.id, demoOpp.id, `${NS}-demo-pu`]);
+  await q(`update opportunities set pursuit_id=$2 where id=$1`, [demoOpp.id, demoPursuit.id]);
+  ck("an established canonical provenance is PRESERVED — a DEMO subject matched by a PILOT batch stays DEMO",
+    (await asOrg(pilotOrg.id, (db) => opportunityOriginEnvironment(db, pilotOrg.id, demoOpp.id, demoPursuit.id))) === "DEMO");
+
+  // MULTI-BATCH: later effects, in any order, cannot move the answer.
+  for (const env of ["CERTIFICATION", "DEMO"]) {
+    await q(`insert into import_batch_effects (org_id, batch_id, subject_kind, subject_id, effect, data_environment, recorded_at)
+             values ($1,$2,'opportunity',$3,'MATCHED_PREEXISTING',$4, now() + interval '1 hour')`,
+            [pilotOrg.id, b2, madeOpp.subject_id, env]);
+  }
+  const afterTouches = await asOrg(pilotOrg.id, (db) => subjectOriginProvenance(db, pilotOrg.id, "opportunity", madeOpp.subject_id));
+  ck("MULTI-BATCH — two later batches touch the subject, one of them CERTIFICATION; the origin is still PILOT",
+    afterTouches.status === "ESTABLISHED" && afterTouches.environment === "PILOT", afterTouches);
+  // Reordering by time must be irrelevant, because time is not consulted.
+  await q(`update import_batch_effects set recorded_at = now() - interval '10 years'
+            where subject_id=$1 and effect='CREATED_REVERSIBLE'`, [madeOpp.subject_id]);
+  const reordered = await asOrg(pilotOrg.id, (db) => subjectOriginProvenance(db, pilotOrg.id, "opportunity", madeOpp.subject_id));
+  ck("NO LATEST-ROW DEPENDENCE — making the creation event the OLDEST row changes nothing",
+    reordered.status === "ESTABLISHED" && reordered.environment === "PILOT");
+  const provSrc = codeOf("../src/lib/pursuits/provenance.ts");
+  ck("BITING — the resolver reads ONLY creation effects, and orders by nothing",
+    /effect = 'CREATED_REVERSIBLE'/.test(provSrc)
+    && !/order by[\s\S]{0,40}recorded_at/.test(provSrc) && !/limit 1/.test(provSrc.slice(provSrc.indexOf("subjectOriginProvenance"))));
+  // The other two readers are the reversal engine (which reads effects to compensate, not to label)
+  // and the intake page (which counts them). Neither derives an environment, and this asserts that
+  // directly rather than by listing filenames a refactor would invalidate.
+  ck("and no OTHER reader of batch effects derives an environment from them",
+    !/data_environment/.test(codeOf("../src/app/intake/page.tsx").slice(0, 20_000).match(/import_batch_effects[^`]*/)?.[0] ?? "")
+    && !/select[^`]*data_environment[^`]*from import_batch_effects/.test(codeOf("../src/lib/ingest/lineage.ts")));
+
+  // TWO CREATION EVENTS IS A DEFECT, NOT A TIE.
+  await q(`insert into import_batch_effects (org_id, batch_id, subject_kind, subject_id, effect, data_environment)
+           values ($1,$2,'opportunity',$3,'CREATED_REVERSIBLE','CERTIFICATION')`, [pilotOrg.id, b2, madeOpp.subject_id]);
+  const ambiguous = await asOrg(pilotOrg.id, (db) => subjectOriginProvenance(db, pilotOrg.id, "opportunity", madeOpp.subject_id));
+  ck("AMBIGUOUS LINEAGE IS REFUSED — a subject created twice is a defect, not a timestamp to break",
+    ambiguous.status === "AMBIGUOUS", ambiguous);
+  ck("and a refused resolution yields NO environment rather than a guess",
+    (await asOrg(pilotOrg.id, (db) => opportunityOriginEnvironment(db, pilotOrg.id, madeOpp.subject_id, null))) === null);
+  await q(`delete from import_batch_effects where subject_id=$1 and data_environment='CERTIFICATION' and effect='CREATED_REVERSIBLE'`, [madeOpp.subject_id]);
+
+  // THE SLICE-1 GAP: an intake-created opportunity with NO pursuit, moved by a real lifecycle action.
+  HD("SUBJECT PROVENANCE — the Slice-1 imported-opportunity gap, closed");
+  // A FRESH import: the earlier CRM batch was reversed above, which removed its unreferenced
+  // opportunity — so reusing it here would have tested a deleted row.
+  // A BRAND-NEW ACCOUNT. The CRM lane syncs in but never overwrites: it creates an opportunity only
+  // where the account has no open one, so reusing an account that already has one would silently
+  // produce no subject to test.
+  const b5 = await analyze(
+    `Company,Opportunity Name,Deal Stage,Deal Value,Close Date\nOrphan Works ${NS},${NS} orphan deal,Qualification,90000,2027-03-01`,
+    "crm", "PILOT");
+  await commitCrmBatch(pool as never, { orgId: pilotOrg.id, batchId: b5,
+    targets: { 0: "company", 1: "opportunity_name", 2: "deal_stage", 3: "deal_value", 4: "close_date" } });
+  const orphan = await one(`select subject_id from import_batch_effects
+                             where batch_id=$1 and subject_kind='opportunity' and effect='CREATED_REVERSIBLE' limit 1`, [b5]);
+  ck("the fresh import created an opportunity to test with", !!orphan?.subject_id);
+  ck("the fixture is genuinely unlinked — no pursuit to derive from",
+    (await one(`select pursuit_id from opportunities where id=$1`, [orphan.subject_id])).pursuit_id === null);
+  await asOrg(pilotOrg.id, async (db) => {
+    const { advanceOpportunity } = await import("../src/lib/opportunities/lifecycle");
+    await advanceOpportunity(db, pilotOrg.id, orphan.subject_id, "proposal");
+  });
+  const orphanLedger = await q(`select change_type, data_environment from change_ledger where entity_id=$1`, [orphan.subject_id]);
+  ck("A STAGE CHANGE ON AN IMPORTED, PURSUIT-LESS OPPORTUNITY NOW WRITES IMMUTABLE PILOT HISTORY",
+    orphanLedger.length === 1 && orphanLedger[0].change_type === "STAGE_CHANGED" && orphanLedger[0].data_environment === "PILOT",
+    orphanLedger);
+  // NO FALLBACK: remove the creation lineage and the same action must decline, not default.
+  const noLineage = await one(`insert into opportunities (org_id, company_id, name, stage, amount_usd)
+                               values ($1,(select company_id from opportunities where id=$2),$3,'discovery',2000) returning id`,
+                              [pilotOrg.id, orphan.subject_id, `${NS} no-lineage`]);
+  await asOrg(pilotOrg.id, async (db) => {
+    const { advanceOpportunity } = await import("../src/lib/opportunities/lifecycle");
+    await advanceOpportunity(db, pilotOrg.id, noLineage.id, "proposal");
+  });
+  ck("NO FALLBACK — without creation lineage the ledger write is WITHHELD, never defaulted to PRODUCTION",
+    await n(`select count(*)::int n from change_ledger where entity_id=$1`, [noLineage.id]) === 0);
+  ck("CONTROL — and the business mutation itself still succeeded, so the refusal is evidentiary only",
+    (await one(`select stage from opportunities where id=$1`, [noLineage.id])).stage === "proposal");
+
+  // TENANT ISOLATION on the lineage itself.
+  const foreignOrigin = await asOrg(demoOrg.id, (db) => subjectOriginProvenance(db, demoOrg.id, "opportunity", orphan.subject_id));
+  ck("TENANT — another organization cannot discover or borrow provenance through this org's lineage",
+    foreignOrigin.status === "UNESTABLISHED", foreignOrigin);
 
   // ── ATTENTION: THE TOKEN ──────────────────────────────────────────────────────────────────────
   HD("ATTENTION — the token is evidence context, minted at render, redeemed at selection");

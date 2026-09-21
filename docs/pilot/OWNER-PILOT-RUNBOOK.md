@@ -87,6 +87,23 @@ Reversing twice is safe: the second attempt reports and does not act again.
 `/admin` → **Members**. Creates the account, adds the membership, sets the role, and removes it
 again. The last owner cannot be demoted. This subsystem already existed and was not rebuilt.
 
+## What provenance an imported row carries
+
+Two different facts, kept apart on purpose.
+
+**Where the import happened** is recorded on the batch and on every effect it produced. It stays
+true forever, including when it disagrees with the row it touched.
+
+**What a row IS** is fixed when the row comes into existence, and never changes afterwards. An
+opportunity your pilot import created is pilot data permanently — a later import that merely matches
+it does not relabel it, and a demo account that a pilot import matches stays demo. A row nobody can
+establish an origin for stays unestablished; it is never promoted, and never quietly called
+production.
+
+That is why a stage change on an imported opportunity lands on the ledger as pilot history even when
+no pursuit exists yet, and why one on a row with no traceable origin is left unrecorded rather than
+mislabelled.
+
 ## Scale
 
 Certified locally to **low hundreds of active pursuits**. That is an operating range, not a product

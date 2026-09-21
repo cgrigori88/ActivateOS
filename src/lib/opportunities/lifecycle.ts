@@ -3,7 +3,7 @@ import { meddpiccFor, meddpiccScore, ELEMENTS } from "./meddpicc";
 import { bridgePursuitOutcome } from "../pursuits/bridge/outcome-bridge";
 import { recordChange } from "../pursuits/ledger";
 import type { DataEnvironment } from "../pursuits/lineage";
-import { pursuitEnvironment } from "../pursuits/provenance";
+import { opportunityOriginEnvironment } from "../pursuits/provenance";
 
 /**
  * Opportunity lifecycle (BLUEPRINT Phase 6) — same discipline as motions:
@@ -98,26 +98,26 @@ export function stakeholderGaps(stakeholders: StakeholderRow[]): string[] {
  * `pursuits.data_environment` is the subject's own label, read server-side under the caller's org,
  * which is the same derivation the Pursuit Coordination server actions already use.
  *
- * ── AN OPPORTUNITY WITH NO PURSUIT HAS NO SUBJECT, AND SO GETS NO LEDGER ROW ────────────────────
+ * ── AN OPPORTUNITY WITH NO PURSUIT: THE SLICE-1 GAP, NOW CLOSED ─────────────────────────────────
  *
- * CRM intake creates opportunities that are linked to no pursuit, and `opportunities` carries no
- * `data_environment` of its own, so for those there is genuinely nothing to derive from. Both
- * emissions below are SKIPPED rather than written with an invented label.
+ * CRM intake creates opportunities linked to no pursuit, and `opportunities` carries no
+ * `data_environment` of its own. Slice 1 had nothing to derive from for those, so it SKIPPED the
+ * ledger emission — losing the history rather than inventing a label, which was the right call with
+ * the information available but is not a resting place.
  *
- * That is not a loss of evidence: before this slice `advanceOpportunity` and
- * `createOpportunityFromMotion` wrote NO ledger row at all. Skipping restores exactly the prior
- * behaviour for the unlabelled case and adds history only where the history can be truthfully
- * labelled. The alternative — writing PRODUCTION — would put unlabelled CRM activity into the one
- * environment a learning corpus admits, in the one store that cannot be corrected afterwards.
+ * Slice 2 gives them a trustworthy source: the intake CREATION event in `import_batch_effects`. An
+ * opportunity an import brought into existence carries that import's environment, permanently,
+ * because origin is the creation event and not the latest batch to touch it.
  *
- * Closing the residual means giving intake its own provenance (§7's intake-scoped class), which is
- * a Slice 2 concern and is documented rather than guessed at here.
+ * The order is deliberate. A pursuit, where one exists, remains the canonical subject; the intake
+ * lineage is consulted only when there is none. And where neither answers, the emission is still
+ * skipped — writing PRODUCTION into the one store that cannot be corrected, in the one environment
+ * a learning corpus admits, would be worse than the absence.
  */
 async function subjectEnvironment(
-  db: pg.PoolClient, orgId: string, pursuitId: string | null,
+  db: pg.PoolClient, orgId: string, opportunityId: string, pursuitId: string | null,
 ): Promise<DataEnvironment | null> {
-  if (!pursuitId) return null;
-  return pursuitEnvironment(db, orgId, pursuitId);
+  return opportunityOriginEnvironment(db, orgId, opportunityId, pursuitId);
 }
 
 export async function advanceOpportunity(
@@ -177,7 +177,7 @@ export async function advanceOpportunity(
    *
    * This records WHAT HAPPENED. It asserts nothing about why, and nothing about whether it was good.
    */
-  const stageEnv = await subjectEnvironment(db, orgId, opp.pursuit_id);
+  const stageEnv = await subjectEnvironment(db, orgId, opportunityId, opp.pursuit_id);
   if (stageEnv) await recordChange(db, {
     orgId, pursuitId: opp.pursuit_id, entityType: "opportunity", entityId: opportunityId,
     changeType: "STAGE_CHANGED", materiality: closing ? "HIGH" : "MEDIUM",
@@ -311,7 +311,7 @@ export async function createOpportunityFromMotion(
    * vocabulary already contained OPPORTUNITY_CREATED with no writer, so again: no new table, only
    * the missing emission.
    */
-  const createEnv = await subjectEnvironment(db, orgId, m.pursuit_id ?? null);
+  const createEnv = await subjectEnvironment(db, orgId, opportunityId, m.pursuit_id ?? null);
   if (createEnv) await recordChange(db, {
     orgId, pursuitId: m.pursuit_id ?? null, entityType: "opportunity", entityId: opportunityId,
     changeType: "OPPORTUNITY_CREATED", materiality: "HIGH",
