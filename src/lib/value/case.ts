@@ -1,7 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { formatMoney } from "@/lib/format/money";
 import {
-  loadDrivers, driverBounds, LADDER_LABEL, LADDER_RANK,
+  loadDrivers, loadDriversBulk, driverBounds, LADDER_LABEL, LADDER_RANK,
   type Driver, type Ladder, type DriverRole,
 } from "./drivers";
 
@@ -151,6 +151,57 @@ export async function getValueCase(
     opp?.amount != null ? Number(opp.amount) : null,
     p.evw != null ? Number(p.evw) : null,
     drivers);
+}
+
+/**
+ * MANY pursuits' value cases, in THREE queries rather than 3N (Slice 2).
+ *
+ * P2 called `getValueCase` once per pursuit, so `loadPortfolioCandidates` cost 3N + 9 statements and
+ * grew without bound with the portfolio. This reads the same three inputs in bulk and hands each
+ * pursuit's inputs to the SAME `assembleCase` the single-pursuit path uses.
+ *
+ * THE ARITHMETIC IS NOT TOUCHED, AND CANNOT BE. Every economic rule — the BASELINE exclusion, the
+ * interval subtraction, the defensibility test, the supported-share, the state machine — lives in
+ * `assembleCase`, which is called here with identical arguments. This function contains no
+ * economics at all; it is a reader. That is the whole reason it is safe to introduce, and the
+ * equivalence harness proves it by comparing full output, not a summary.
+ *
+ * `asOf` is still ONE instant for the whole evaluation, captured by the caller, exactly as the
+ * single-pursuit path requires.
+ */
+export async function getValueCasesBulk(
+  db: Pool | PoolClient, orgId: string, pursuitIds: string[], asOf?: Date,
+): Promise<Map<string, ValueCase>> {
+  const at = asOf ?? new Date();
+  const out = new Map<string, ValueCase>();
+  if (pursuitIds.length === 0) return out;
+
+  const { rows: pursuits } = await db.query<{ id: string; account_id: string; legal_name: string; evw: string | null }>(
+    `select p.id, p.account_id, c.legal_name, p.expected_value_weighted evw
+       from pursuits p join companies c on c.id = p.account_id
+      where p.id = any($1::uuid[]) and p.org_id = $2`, [pursuitIds, orgId]);
+  if (pursuits.length === 0) return out;
+
+  // The largest OPEN opportunity per account — the same set the single-pursuit path takes `max` of,
+  // grouped instead of filtered one account at a time.
+  const companyIds = [...new Set(pursuits.map((p) => p.account_id))];
+  const { rows: opps } = await db.query<{ company_id: string; amount: string | null }>(
+    `select company_id, max(amount_usd) amount from opportunities
+      where company_id = any($1::uuid[]) and org_id = $2 and stage not in ('closed_won','closed_lost')
+      group by company_id`, [companyIds, orgId]);
+  const amountOf = new Map(opps.map((o) => [o.company_id, o.amount]));
+
+  const driversByCompany = await loadDriversBulk(db, orgId, companyIds, at);
+
+  for (const p of pursuits) {
+    const amount = amountOf.get(p.account_id) ?? null;
+    out.set(p.id, assembleCase(p.id, p.account_id, p.legal_name,
+      amount != null ? Number(amount) : null,
+      p.evw != null ? Number(p.evw) : null,
+      // An account with no economic facts yields no drivers — an empty list, never a missing key.
+      driversByCompany.get(p.account_id) ?? []));
+  }
+  return out;
 }
 
 /** Pure assembly — separated so tests can drive the arithmetic without a database. */

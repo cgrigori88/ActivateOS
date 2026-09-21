@@ -71,6 +71,40 @@ Migrations are **forward-only** (no down-path). Recovery is therefore restore-ba
 - **RLS/cutover regression** — the documented RLS-level rollback: repoint `DATABASE_URL` at the owner string and redeploy (RLS goes inert); investigate; re-point at `app_rw`.
 - **Bad schema change / data corruption** — provision a fresh database, bootstrap + `db:migrate` to the target schema, then `backup-restore` the last good logical backup into it and cut over. Rehearsed end-to-end by `release-rehearsal`.
 
+## A quiet interval is not a safety mechanism
+
+**If a migration changes the MEANING of writes the currently serving runtime produces, schema and
+runtime activation are ONE boundary, not two.**
+
+Slice 1 is the worked example. Migration 0120 gave credentials a data provenance and taught
+`/api/mcp` to read it; the runtime still serving at that moment was `1f4fabb`, whose `/api/mcp`
+assigned the literal `"PRODUCTION"` to every governed invocation. Between applying 0120 and moving
+the canonical alias, the deployment was **schema-compatible and provenance-unsafe**: any MCP call in
+that window would have written a row that the new schema could describe correctly and the old
+runtime labelled wrongly — into the one environment a learning corpus admits, in tables that are
+append-only.
+
+Nothing went wrong, and that is precisely the problem with how it was made safe. The interval held
+because no MCP traffic happened to arrive, which is an observation about the past, not a control.
+
+So, for any migration in this class:
+
+* **Name the class explicitly** in the migration header: does it reinterpret writes the serving
+  runtime already produces? Most migrations do not, and this section does not apply to them.
+* **Prefer one controlled boundary** — apply the migration and move the alias as a single sequence,
+  with the certification gates run against the new deployment's *direct URL* beforehand, as Slice 1
+  did. Direct-URL certification is what makes the sequence short.
+* **Where an interval is unavoidable, gate it mechanically.** Revoke the credential, disable the
+  entry point, or make the old runtime fail closed. A gate is a thing that refuses; a quiet period is
+  a thing that was not tested.
+* **If unexpected traffic does arrive in the interval, STOP** and reconcile its exact provenance
+  before continuing. Do not reason about it in aggregate — name the rows.
+
+Reversing the order is worse, not better: activating the new runtime before the schema it depends on
+means the new code reads columns that do not exist. The asymmetry is the point — one order produces
+wrong data, the other produces loud errors, and neither is a substitute for treating the two as one
+boundary.
+
 ## Pre-pilot checklist (release-blocking)
 
 - [ ] Reconcile the prod migration tracker per the safe procedure above (verify, then `db:migrate` or `--baseline`).

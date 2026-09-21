@@ -155,15 +155,26 @@ function boundsOf(r: FactRow): { low: number; high: number; currency: string } |
 }
 
 /**
- * Load the economic drivers for one account. RLS-scoped; the caller supplies any narrowing.
- * Superseded and REJECTED rows are kept but separated into `history` — an economic assertion that
- * was replaced is part of the audit trail, not part of the current model.
+ * The driver projection, written ONCE. Both the single-account and bulk readers append their own
+ * company predicate to this, so the two paths cannot drift into selecting different columns or a
+ * different `family` — which is the way a "faster" variant usually stops agreeing.
+ *
+ * ── THE ORDER IS TOTAL, AND IT HAS TO BE (D-G5-1) ───────────────────────────────────────────────
+ *
+ * `order by predicate_key, observed_last_at desc` alone is NOT a total order: two economic facts
+ * asserted at the same instant tie on every key, and PostgreSQL may then return them in either
+ * order. That order is not cosmetic — it becomes `Driver.values[]`, which is part of the value
+ * case, and on a tie between a VERIFIED $1.8M and an INFERRED $2.4M assertion it decides what the
+ * case reports.
+ *
+ * It was latent for as long as one plan happened to be stable, and the equivalence harness for the
+ * bulk reader is what surfaced it: the bulk query sorts a larger row set, the planner chose a
+ * different arrangement of the tied pair, and the two readers disagreed on one account out of
+ * eleven. The defect was never the batching — it was an ordering the repository's own
+ * ordering-determinism discipline already forbids. `f.id` is the declared final key: arbitrary, and
+ * arbitrary is exactly what a tie-break must be, so long as it is DECLARED and stable.
  */
-export async function loadDrivers(
-  db: Pool | PoolClient, orgId: string, companyId: string, asOf: Date,
-): Promise<Driver[]> {
-  const { rows } = await db.query<FactRow>(
-    `select f.id, f.predicate_key, p.signal_type,
+const FACT_DRIVER_SELECT = `select f.id, f.predicate_key, p.signal_type,
             f.money_amount, f.money_currency, f.number_value,
             f.object_type, f.object_value, f.provenance_class, f.status, f.disclosure_class,
             f.subject_label, f.observed_last_at, f.confidence, f.superseded_by, f.supersedes,
@@ -173,10 +184,65 @@ export async function loadDrivers(
                      where fc.status = 'open' and (fc.fact_id_a = f.id or fc.fact_id_b = f.id)) contradiction_open
        from facts f
        join fact_predicates p on p.key = f.predicate_key
-      where f.org_id = $1 and f.company_id = $2 and p.family = 'economic'
-      order by f.predicate_key, f.observed_last_at desc`,
-    [orgId, companyId]);
+      where f.org_id = $1 and p.family = 'economic'`;
+const FACT_DRIVER_ORDER = `f.predicate_key, f.observed_last_at desc, f.id`;
 
+/**
+ * Load the economic drivers for one account. RLS-scoped; the caller supplies any narrowing.
+ * Superseded and REJECTED rows are kept but separated into `history` — an economic assertion that
+ * was replaced is part of the audit trail, not part of the current model.
+ */
+export async function loadDrivers(
+  db: Pool | PoolClient, orgId: string, companyId: string, asOf: Date,
+): Promise<Driver[]> {
+  const { rows } = await db.query<FactRow>(
+    FACT_DRIVER_SELECT + ` and f.company_id = $2 order by ` + FACT_DRIVER_ORDER,
+    [orgId, companyId]);
+  return assembleDrivers(rows, asOf);
+}
+
+/**
+ * The same drivers, for MANY accounts, in ONE query (Slice 2).
+ *
+ * WHY THIS EXISTS. `loadPortfolioCandidates` called `getValueCase` once per pursuit, and each call
+ * issued three statements — so P2's cost was 3N + 9 and grew without bound with the portfolio. The
+ * fix is a READ-LAYER change only: the predicate becomes `= any($2)`, the rows are partitioned by
+ * company, and each partition is handed to the SAME `assembleDrivers` the single-account path uses.
+ *
+ * NOT A SECOND IMPLEMENTATION. Every rule that decides what a driver is — supersession, the
+ * validity window against the caller's single `asOf`, the ladder ordering, the conflict rule, the
+ * tie collapse, the spread arithmetic — lives in `assembleDrivers` and is executed identically by
+ * both paths. If that function changes, both change. A parallel copy of this logic would be a
+ * second source of truth for the economics, which `case.ts` is explicit about refusing.
+ */
+export async function loadDriversBulk(
+  db: Pool | PoolClient, orgId: string, companyIds: string[], asOf: Date,
+): Promise<Map<string, Driver[]>> {
+  const out = new Map<string, Driver[]>();
+  if (companyIds.length === 0) return out;
+  const { rows } = await db.query<FactRow & { company_id: string }>(
+    // The partition key leads the sort so rows arrive grouped, but the WITHIN-company order is the
+    // identical total order the single-account reader uses — which is what makes the two agree.
+    FACT_DRIVER_SELECT.replace("select f.id,", "select f.company_id, f.id,")
+      + ` and f.company_id = any($2::uuid[]) order by f.company_id, ` + FACT_DRIVER_ORDER,
+    [orgId, companyIds]);
+  const byCompany = new Map<string, FactRow[]>();
+  for (const r of rows) {
+    const list = byCompany.get(r.company_id) ?? [];
+    list.push(r);
+    byCompany.set(r.company_id, list);
+  }
+  for (const [companyId, facts] of byCompany) out.set(companyId, assembleDrivers(facts, asOf));
+  return out;
+}
+
+/**
+ * ONE ACCOUNT'S FACT ROWS → ITS DRIVERS. Pure: no database, no clock of its own.
+ *
+ * Extracted verbatim from `loadDrivers` so the bulk path can reuse it rather than restate it. The
+ * ONLY change is that the rows arrive as an argument instead of from a query immediately above.
+ */
+export function assembleDrivers(rows: FactRow[], asOf: Date): Driver[] {
   const byPredicate = new Map<string, FactRow[]>();
   for (const r of rows) {
     const list = byPredicate.get(r.predicate_key) ?? [];

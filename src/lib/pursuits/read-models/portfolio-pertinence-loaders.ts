@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { loadStageWeights } from "@/lib/opportunities/stage-weights";
-import { getValueCase } from "@/lib/value/case";
+import { getValueCasesBulk } from "@/lib/value/case";
 import type { Stage } from "@/lib/opportunities/lifecycle";
 import type { Caller } from "./helpers";
 import {
@@ -132,8 +132,12 @@ export async function loadPortfolioCandidates(
  */
 async function loadModeledImpact(db: PoolClient, orgId: string, ids: string[], asOf: Date): Promise<Map<string, number>> {
   const out = new Map<string, number>();
+  // BULK, NOT PER PURSUIT. This loop used to call `getValueCase` once per id, three statements each,
+  // which is what made the whole P2 read 3N + 9 and unbounded in the portfolio size. The admission
+  // rules below are UNCHANGED, character for character — only where the inputs come from moved.
+  const cases = await getValueCasesBulk(db, orgId, ids, asOf);
   for (const id of ids) {
-    const vc = await getValueCase(db, orgId, id, asOf);
+    const vc = cases.get(id);
     if (!vc || !vc.defensible || vc.modeledImpact == null) continue;
     if (vc.state !== "STRONG" && vc.state !== "INCOMPLETE") continue;   // CONFLICTING earns no commercial credit
     out.set(id, (vc.modeledImpact.low + vc.modeledImpact.high) / 2);
