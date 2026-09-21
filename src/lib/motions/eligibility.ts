@@ -46,6 +46,8 @@ export interface ClauseResult {
   because: string;
   /** Fact ids that answered it — references only, never evidence text (P6). */
   factIds: string[];
+  /** The evaluated state by value, so the verdict stays interpretable if the facts later move. */
+  observed: { factId: string; polarity: number; value: string | null; observedAt: string }[];
 }
 
 export interface MotionFit {
@@ -71,6 +73,8 @@ export interface MotionFit {
 interface FactRow {
   id: string; company_id: string; predicate_key: string; object_type: string | null;
   text_value: string | null; date_value: Date | null; number_value: string | null;
+  /** +1 asserts the fact; -1 asserts its NEGATION. Both are evidence; silence is neither. */
+  polarity: number; observed_last_at: Date;
 }
 
 /**
@@ -90,7 +94,8 @@ export async function evaluateMotions(
   // supersession and validity-window rule the value case uses, so two parts of the product cannot
   // disagree about what is currently true.
   const { rows: facts } = await db.query<FactRow>(
-    `select f.id, f.company_id, f.predicate_key, f.object_type, f.text_value, f.date_value, f.number_value
+    `select f.id, f.company_id, f.predicate_key, f.object_type, f.text_value, f.date_value,
+            f.number_value, f.polarity, f.observed_last_at
        from facts f
       where f.org_id = $1 and f.company_id = any($2::uuid[]) and f.predicate_key = any($3::text[])
         and f.superseded_by is null and f.status not in ('SUPERSEDED', 'REJECTED')
@@ -146,19 +151,19 @@ function evaluateOne(
     if (r.satisfied === null) unknown = true;
   }
 
-  if (m.partnerContext?.whitespace) {
-    // WHITESPACE IS A THREE-STATE TEST TOO. An account on no partner's book tells us nothing about
-    // whitespace; an account on a book with the product already installed tells us plenty.
+  if (m.partnerContext?.coverage) {
+    // COVERAGE, NOT WHITESPACE. Being on a partner's book says the partner has a relationship with
+    // this account — it says nothing about whether the product is installed, because
+    // `partner_accounts.installed` defaults to false and is written from the presence of a CSV
+    // column. Whether the product is absent is a separate clause, stated with `absent`.
     const onBook = book.length > 0;
-    const anyUninstalled = book.some((b) => !b.installed);
     const result: ClauseResult = {
-      predicate: "partner_accounts.installed", op: "whitespace",
-      satisfied: !onBook ? null : anyUninstalled ? true : false,
-      because: anyUninstalled
-        ? "a partner holds this account and the product is not yet installed"
-        : onBook ? "a partner holds this account and the product is already installed"
-          : "no partner book covers this account, so whitespace cannot be established",
-      factIds: [],
+      predicate: "partner_accounts", op: "coverage",
+      satisfied: onBook ? true : null,
+      because: onBook
+        ? "a partner already has an account relationship here"
+        : "no partner book covers this account, so partner coverage is not established",
+      factIds: [], observed: [],
     };
     clauses.push(result);
     if (result.satisfied === false) {
@@ -181,17 +186,46 @@ function evaluateOne(
  * being recorded as "we looked and it is not so".
  */
 function testClause(c: MotionClause, facts: FactRow[], asOf: Date): Omit<ClauseResult, "because"> {
-  const mine = facts.filter((f) => f.predicate_key === c.predicate);
-  const base = { predicate: c.predicate, op: c.op, factIds: mine.map((f) => f.id) };
-  if (mine.length === 0) return { ...base, satisfied: null };
+  const all = facts.filter((f) => f.predicate_key === c.predicate);
+  // POLARITY SPLITS EVIDENCE FROM ITS NEGATION. A `technology_in_use` fact with polarity -1 says
+  // "this is NOT in use" — it must never satisfy `present`, and it is the only thing that can
+  // satisfy `absent`. An earlier version ignored polarity entirely and would have read a denial as
+  // a confirmation.
+  const affirm = all.filter((f) => f.polarity >= 0);
+  const deny = all.filter((f) => f.polarity < 0);
+  const base = { predicate: c.predicate, op: c.op, factIds: all.map((f) => f.id), observed: observedOf(all) };
 
-  if (c.op === "present") return { ...base, satisfied: true };
+  if (c.op === "absent") {
+    const want = (c.values ?? []).map((v) => v.toLowerCase());
+    const denials = want.length
+      ? deny.filter((f) => f.text_value && want.some((w) => f.text_value!.toLowerCase().includes(w)))
+      : deny;
+    if (denials.length) return { ...base, satisfied: true, factIds: denials.map((f) => f.id), observed: observedOf(denials) };
+    // An affirmative fact is a definitive answer the other way. Silence is not.
+    const affirms = want.length
+      ? affirm.filter((f) => f.text_value && want.some((w) => f.text_value!.toLowerCase().includes(w)))
+      : affirm;
+    if (affirms.length) return { ...base, satisfied: false, factIds: affirms.map((f) => f.id), observed: observedOf(affirms) };
+    return { ...base, satisfied: null, factIds: [], observed: [] };
+  }
+
+  if (affirm.length === 0) {
+    // Either nothing at all, or only denials — in both cases the affirmative claim is unsupported.
+    // A denial makes it definitively false; silence leaves it unknown.
+    return deny.length
+      ? { ...base, satisfied: false, factIds: deny.map((f) => f.id), observed: observedOf(deny) }
+      : { ...base, satisfied: null, factIds: [], observed: [] };
+  }
+  const mine = affirm;
+
+  if (c.op === "present") return { ...base, satisfied: true, factIds: mine.map((f) => f.id), observed: observedOf(mine) };
 
   if (c.op === "value_in") {
     const want = (c.values ?? []).map((v) => v.toLowerCase());
     const hit = mine.filter((f) => f.text_value && want.some((w) => f.text_value!.toLowerCase().includes(w)));
     // A fact exists and does not match: that IS a definitive negative, unlike absence.
-    return { ...base, satisfied: hit.length > 0, factIds: (hit.length ? hit : mine).map((f) => f.id) };
+    const chosen = hit.length ? hit : mine;
+    return { ...base, satisfied: hit.length > 0, factIds: chosen.map((f) => f.id), observed: observedOf(chosen) };
   }
 
   if (c.op === "within_days") {
@@ -200,12 +234,35 @@ function testClause(c: MotionClause, facts: FactRow[], asOf: Date): Omit<ClauseR
       .filter((f) => f.date_value != null)
       .map((f) => ({ f, at: f.date_value!.getTime() }));
     // A date predicate whose value is not a date answers nothing.
-    if (dated.length === 0) return { ...base, satisfied: null };
+    if (dated.length === 0) return { ...base, satisfied: null, factIds: [], observed: [] };
     const inWindow = dated.filter((x) => x.at <= horizon && x.at >= asOf.getTime() - 86_400_000);
-    return { ...base, satisfied: inWindow.length > 0, factIds: (inWindow.length ? inWindow : dated).map((x) => x.f.id) };
+    const chosen = (inWindow.length ? inWindow : dated).map((x) => x.f);
+    return { ...base, satisfied: inWindow.length > 0, factIds: chosen.map((f) => f.id), observed: observedOf(chosen) };
   }
 
-  return { ...base, satisfied: null };
+  return { ...base, satisfied: null, factIds: [], observed: [] };
+}
+
+/**
+ * THE EVALUATED STATE, CAPTURED BY VALUE.
+ *
+ * `facts` is `app_rw=arwd`: a decisive fact can later be superseded, corrected or deleted outright.
+ * A historical application that stored only fact IDS would therefore become uninterpretable — the
+ * ids would resolve to nothing, or to something that now says the opposite — and re-evaluating
+ * against today's facts answers a different question from "what did this look like when the person
+ * decided".
+ *
+ * So the normalized observed value travels with the reference: predicate, polarity, the value as
+ * categorised, and when it was observed. NO RAW PROSE: `text_value` is a normalized category or a
+ * date, never evidence narrative, and nothing disclosure-controlled is copied out (P6).
+ */
+function observedOf(facts: FactRow[]): { factId: string; polarity: number; value: string | null; observedAt: string }[] {
+  return facts.slice(0, 8).map((f) => ({
+    factId: f.id,
+    polarity: f.polarity,
+    value: f.date_value ? f.date_value.toISOString() : f.text_value ?? (f.number_value != null ? String(f.number_value) : null),
+    observedAt: f.observed_last_at.toISOString(),
+  }));
 }
 
 /**

@@ -60,8 +60,8 @@ export interface ApplyMotionResult {
 /** The pursuit type each motion establishes. Existing vocabulary; no enum was added. */
 const PURSUIT_TYPE_FOR: Record<string, "EXPANSION" | "COMPETITIVE_DISPLACEMENT" | "NET_NEW"> = {
   "install-base-whitespace-expansion": "EXPANSION",
-  "datacenter-modernization-displacement": "COMPETITIVE_DISPLACEMENT",
-  "ai-platform-growth": "NET_NEW",
+  "vmware-displacement-datacenter-modernization": "COMPETITIVE_DISPLACEMENT",
+  "rhai-nvidia-ai-growth": "NET_NEW",
 };
 
 export async function applyMotion(db: PoolClient, input: ApplyMotionInput): Promise<ApplyMotionResult> {
@@ -93,6 +93,10 @@ export async function applyMotion(db: PoolClient, input: ApplyMotionInput): Prom
   if (fit.verdict === "NOT_ELIGIBLE") {
     return { status: "REFUSED", reason: "this motion does not apply to this account", fit };
   }
+  // INSUFFICIENT_CONTEXT PROCEEDS, AND IS RECORDED AS SUCH. A person may know things the system does
+  // not, so they may start the work — but the verdict written below is the one the evaluation
+  // produced. Choosing to proceed never promotes it to ELIGIBLE: the missing facts did not become
+  // true because somebody pressed a button.
 
   // 1. THE PURSUIT. Deduped by the existing identity rule, so applying a second motion that targets
   //    the same category and type joins the work already under way instead of forking it.
@@ -148,9 +152,25 @@ export async function applyMotion(db: PoolClient, input: ApplyMotionInput): Prom
     [input.orgId, template.slug, template.version, await templateRowId(db, template),
      input.subjectKind, input.subjectId, pursuit.id, motionId, planRevisionId,
      fit.verdict,
-     // References and verdicts only. No evidence text is copied out of the disclosure-controlled
-     // evidence system into this table (P6).
-     JSON.stringify(fit.clauses.map((c) => ({ predicate: c.predicate, op: c.op, satisfied: c.satisfied, factIds: c.factIds }))),
+     /**
+      * THE EVALUATION AS IT STOOD, not a pointer to facts that may move.
+      *
+      * `facts` is `app_rw=arwd`: a decisive fact can later be superseded, corrected or deleted, so
+      * storing only ids would leave a historical application resolving to nothing — or to something
+      * that now says the opposite. The normalized observed value and its observation timestamp
+      * travel with the reference, plus the missing context as it stood, so "why did this look
+      * applicable then" survives.
+      *
+      * References, categories and timestamps only. No evidence prose crosses into this table (P6).
+      */
+     JSON.stringify({
+       clauses: fit.clauses.map((c) => ({
+         predicate: c.predicate, op: c.op, satisfied: c.satisfied, because: c.because,
+         factIds: c.factIds, observed: c.observed,
+       })),
+       missingContext: fit.missingContext,
+       evaluatedAt: now.toISOString(),
+     }),
      input.appliedByUserId, input.dataEnvironment]);
 
   return { status: "APPLIED", applicationId: appRows[0].id, pursuitId: pursuit.id, motionId,

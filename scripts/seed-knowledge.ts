@@ -7,6 +7,26 @@ import { CANONICAL_TO_SCORING, SIGNAL_DEFS } from "../src/lib/signals/types";
  * Seed the Channel Knowledge Base from knowledge/ into the database:
  * ontology nodes + edges, and play templates. Idempotent.
  */
+/**
+ * A stable rendering of a JSON value, for comparing stored content against a file.
+ *
+ * PostgreSQL stores `jsonb` with its own key order, so a round-trip does not preserve the order the
+ * file was written in — comparing `JSON.stringify` output directly reports every identical rerun as
+ * a mismatch. Sorting keys at every level makes the comparison about CONTENT, which is the thing
+ * the immutability rule is actually protecting.
+ */
+function canonical(v: unknown): string {
+  const walk = (x: unknown): unknown => {
+    if (Array.isArray(x)) return x.map(walk);
+    if (x && typeof x === "object") {
+      return Object.fromEntries(Object.keys(x as Record<string, unknown>).sort()
+        .map((k) => [k, walk((x as Record<string, unknown>)[k])]));
+    }
+    return x;
+  };
+  return JSON.stringify(walk(v));
+}
+
 async function main() {
   const pool = getPool();
   const client = await pool.connect();
@@ -57,14 +77,29 @@ async function main() {
         taxonomy_node: string;
       };
       await client.query(
+        /**
+         * A PUBLISHED VERSION IS IMMUTABLE, so this cannot be an upsert.
+         *
+         * It was `do update set definition = excluded.definition`, which meant editing a play file
+         * and re-seeding silently rewrote the meaning of a version that motion history already
+         * points at. `do nothing` makes an identical rerun idempotent; the check below turns a
+         * CONTENT MISMATCH into a loud failure instead of a silent overwrite. A semantic change is
+         * a new version row — which is cheap, and is the only thing that keeps a recorded
+         * application interpretable.
+         */
         `insert into play_templates (slug, version, name, taxonomy_node_id, definition)
          values ($1, $2, $3, $4, $5)
-         on conflict (slug, version) do update
-           set name = excluded.name,
-               taxonomy_node_id = excluded.taxonomy_node_id,
-               definition = excluded.definition`,
+         on conflict (slug, version) do nothing`,
         [play.slug, play.version, play.name, nodeIds.get(play.taxonomy_node) ?? null, play],
       );
+      const { rows: stored } = await client.query<{ name: string; definition: unknown }>(
+        `select name, definition from play_templates where slug = $1 and version = $2`,
+        [play.slug, play.version]);
+      if (stored[0] && canonical(stored[0].definition) !== canonical(play)) {
+        throw new Error(
+          `play ${play.slug} v${play.version} is already published with different content — ` +
+          `publish a new version rather than editing a version motion history points at`);
+      }
       console.log(`seeded play ${play.slug} v${play.version}`);
     }
 

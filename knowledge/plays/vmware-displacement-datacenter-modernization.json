@@ -1,0 +1,44 @@
+{
+  "$comment": "Motion B v1. The renewal window is a commercial ATTENTION window, not a prediction. The incumbent platform is REQUIRED context and is never claimed from timing alone — `technology_in_use` must affirmatively name it. budget_reduction_target is not a disqualifier: cost pressure can strengthen a modernization case.",
+  "slug": "vmware-displacement-datacenter-modernization",
+  "version": 1,
+  "name": "VMware Displacement / Datacenter Modernization",
+  "taxonomy_node": "virtualization",
+  "objective": "Qualify and advance a virtualization and datacenter modernization opportunity, timed against a renewal the account is already facing.",
+  "motion_v1": {
+    "objective": "Qualify and advance a virtualization and datacenter modernization opportunity, timed against a renewal the account is already facing.",
+    "requires": [
+      {
+        "predicate": "renewal_date",
+        "op": "within_days",
+        "days": 365,
+        "because": "a renewal inside the next year is when a modernization alternative can actually be considered"
+      },
+      {
+        "predicate": "technology_in_use",
+        "op": "value_in",
+        "values": ["vmware", "vsphere", "esxi", "vcenter", "hyper-v", "nutanix", "virtualization"],
+        "because": "the incumbent virtualization platform is established, so displacement is a real conversation rather than a guess"
+      }
+    ],
+    "requiresContext": [
+      "Installed virtualization platform — until `technology_in_use` names it, an upcoming renewal makes modernization timely but does not establish displacement.",
+      "Support lifecycle position of the installed estate.",
+      "Whether a competing modernization purchase has already been made."
+    ],
+    "goalTemplate": "Qualify and advance a virtualization and datacenter modernization opportunity at {{company}}.",
+    "expectedRoles": ["VENDOR_ACCOUNT_EXECUTIVE", "SOLUTION_ARCHITECT", "PARTNER_ACCOUNT_MANAGER"],
+    "campaignGuidance": "Anchor on the renewal the account already knows about. Do not name an incumbent platform the evidence has not established, and do not pitch migration before the renew-versus-modernize arithmetic exists.",
+    "measurementAssociations": [
+      "An opportunity opened or advanced on this account after application — association only.",
+      "A recorded renewal outcome on the account."
+    ]
+  },
+  "personas": { "primary": "VP Infrastructure", "secondary": "Director of Virtualization / Platform Engineering" },
+  "cta": { "offer": "Renew-versus-modernize cost comparison workshop", "fallback": "Written benchmark of how comparable estates approached the same renewal" },
+  "seller_cadence": [
+    { "step": 1, "action": "Validate the incumbent virtualization platform, renewal timing and modernization drivers", "day": 0 },
+    { "step": 2, "action": "Build the modernization and displacement hypothesis, and scope the technical discovery it requires", "day": 5 },
+    { "step": 3, "action": "Align partner and vendor sellers and technical resources on the customer engagement", "day": 12 }
+  ]
+}

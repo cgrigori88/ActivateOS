@@ -35,16 +35,17 @@ const ASOF = new Date("2026-09-21T12:00:00.000Z");
  * the failures about the thing under test.
  */
 const putFact = async (orgId: string, companyId: string, predicate: string,
-  v: { objectType: "DATE" | "STRING"; date?: Date; text?: string; family: string }) => {
+  v: { objectType: "DATE" | "STRING"; date?: Date; text?: string; family: string; polarity?: number }) => {
   const at = new Date();
   await q(
     `insert into facts (org_id, company_id, subject_scope, subject_label, predicate_key, object_type,
                         date_value, text_value, status, provenance_class, origin_kind, family,
                         as_of, observed_at, observed_first_at, observed_last_at,
-                        fact_identity_key, fact_value_key, data_environment)
-     values ($1,$2,'COMPANY',$3,$4,$5,$6,$7,'CURRENT','FIRST_PARTY','HUMAN',$8,$9,$9,$9,$9,$10,$11,'DEMO')`,
+                        fact_identity_key, fact_value_key, data_environment, polarity)
+     values ($1,$2,'COMPANY',$3,$4,$5,$6,$7,'CURRENT','FIRST_PARTY','HUMAN',$8,$9,$9,$9,$9,$10,$11,'DEMO',$12)`,
     [orgId, companyId, `fixture ${NS}`, predicate, v.objectType, v.date ?? null, v.text ?? null,
-     v.family, at, `${companyId}|${predicate}`, `${predicate}|${v.date?.toISOString() ?? v.text ?? ""}`]);
+     v.family, at, `${companyId}|${predicate}|${v.text ?? ""}`,
+     `${companyId}|${predicate}|${v.polarity ?? 1}|${v.date?.toISOString() ?? v.text ?? ""}`, v.polarity ?? 1]);
 };
 
 const tx = async <T>(orgId: string, fn: (db: import("pg").PoolClient) => Promise<T>): Promise<T> => {
@@ -67,7 +68,7 @@ async function main() {
   HD("TEMPLATES — the pattern is content, and it reuses the primitive that already existed");
   const templates = await tx(org.id, (db) => loadMotionTemplates(db));
   ck("the three thin-P9 motions load, and the pre-existing LLM play is ignored rather than broken",
-    templates.length === 3 && templates.every((t) => t.version === 1)
+    templates.length === 3
     && !templates.some((t) => t.slug === "infrastructure-automation-modernization"),
     templates.map((t) => `${t.slug}@${t.version}`));
   ck("NO NEW TEMPLATE TABLE — identity and version come from play_templates, unique on (slug, version)",
@@ -101,9 +102,17 @@ async function main() {
   await putFact(org.id, distant, 'renewal_date', { objectType: 'DATE', date: new Date(ASOF.getTime() + 900 * 86_400_000), family: 'trigger' });
 
   const live = await tx(org.id, (db) => loadMotionTemplates(db));
-  const displacement = live.find((t) => t.slug === "datacenter-modernization-displacement")!;
+  const displacement = live.find((t) => t.slug === "vmware-displacement-datacenter-modernization")!;
   const fits = await tx(org.id, (db) => evaluateMotions(db, org.id, [displacement], [qualifying, silent, distant], ASOF));
-  ck("QUALIFYING — a renewal inside the window is ELIGIBLE", fits.get(qualifying)![0].verdict === "ELIGIBLE");
+  ck("MOTION B BITE — renewal inside the window but the incumbent platform UNKNOWN ⇒ INSUFFICIENT_CONTEXT",
+    fits.get(qualifying)![0].verdict === "INSUFFICIENT_CONTEXT", { got: fits.get(qualifying)![0].verdict });
+  ck("the explanation says why: timely, but the platform is not established",
+    fits.get(qualifying)![0].clauses.some((c) => c.predicate === "technology_in_use" && c.satisfied === null)
+    && fits.get(qualifying)![0].missingContext.some((m) => /virtualization platform/i.test(m)));
+  await putFact(org.id, qualifying, "technology_in_use", { objectType: "STRING", text: "VMware vSphere", family: "technology" });
+  const withPlatform = await tx(org.id, (db) => evaluateMotions(db, org.id, [displacement], [qualifying], ASOF));
+  ck("renewal window PLUS an established incumbent platform ⇒ ELIGIBLE",
+    withPlatform.get(qualifying)![0].verdict === "ELIGIBLE", { got: withPlatform.get(qualifying)![0].verdict });
   ck("ABSENT — an account with no renewal fact is INSUFFICIENT_CONTEXT, NOT ineligible",
     fits.get(silent)![0].verdict === "INSUFFICIENT_CONTEXT", { got: fits.get(silent)![0].verdict });
   ck("DEFINITIVE — a renewal outside the window IS a negative, because the fact exists and answers",
@@ -115,29 +124,71 @@ async function main() {
     fits.get(qualifying)![0].missingContext.some((m) => /technology_in_use|no observations|unobserved/i.test(m)),
     fits.get(qualifying)![0].missingContext.slice(0, 1));
 
-  // A disqualifier overrides everything else.
-  await putFact(org.id, qualifying, 'budget_reduction_target', { objectType: 'STRING', text: '15%', family: 'trigger' });
-  const afterDq = await tx(org.id, (db) => evaluateMotions(db, org.id, [displacement], [qualifying], ASOF));
-  ck("a disqualifier makes the motion inapplicable whatever else holds",
-    afterDq.get(qualifying)![0].verdict === "NOT_ELIGIBLE");
-  await q(`delete from facts where company_id=$1 and predicate_key='budget_reduction_target'`, [qualifying]);
+  // OWNER RULING — cost pressure is NOT generically disqualifying, and may strengthen the case.
+  await putFact(org.id, qualifying, "budget_reduction_target", { objectType: "STRING", text: "15%", family: "trigger" });
+  const withBudget = await tx(org.id, (db) => evaluateMotions(db, org.id, [displacement], [qualifying], ASOF));
+  ck("BITING — budget_reduction_target does NOT independently produce NOT_ELIGIBLE",
+    withBudget.get(qualifying)![0].verdict === "ELIGIBLE", { got: withBudget.get(qualifying)![0].verdict });
+  ck("and no v1 motion declares a disqualifier merely to populate the field",
+    live.every((t) => (t.motion.disqualifiers ?? []).length === 0));
 
-  // Whitespace is three-state too.
+  // ── MOTION A: WHITESPACE IS NEVER INFERRED FROM ABSENCE ───────────────────────────────────────
+  HD("MOTION A — coverage is not whitespace, and silence is not evidence of absence");
   const whitespace = live.find((t) => t.slug === "install-base-whitespace-expansion")!;
   const partner = await one(`insert into partners (org_id, name, partner_type) values ($1,$2,'distributor') returning id`, [org.id, `P ${NS}`]);
-  const onBook = await co("Booked Co");
+  const covered = await co("Covered Co");
   await q(`insert into partner_accounts (org_id, partner_id, company_id, target_product, installed)
-           values ($1,$2,$3,'Platform',false)`, [org.id, partner.id, onBook]);
-  const held = await co("Held Co");
+           values ($1,$2,$3,'Platform',false)`, [org.id, partner.id, covered]);
+  const ws1 = await tx(org.id, (db) => evaluateMotions(db, org.id, [whitespace], [covered], ASOF));
+  ck("THE BITE — a partner covers the account and install status is UNKNOWN ⇒ INSUFFICIENT_CONTEXT",
+    ws1.get(covered)![0].verdict === "INSUFFICIENT_CONTEXT", { got: ws1.get(covered)![0].verdict });
+  ck("and `installed = false` is proved to be the ABSENCE OF A STATEMENT, not a statement of absence",
+    (await one(`select coalesce(column_default,'(none)') d, is_nullable from information_schema.columns
+                 where table_name='partner_accounts' and column_name='installed'`)).d === "false");
+  ck("the missing context names install-base confirmation explicitly",
+    ws1.get(covered)![0].missingContext.some((m) => /install-base|product-state|installed/i.test(m)));
+
+  // POSITIVE CONTROL — authoritative product-absence, which the model CAN state: polarity -1.
+  await putFact(org.id, covered, "technology_in_use", { objectType: "STRING", text: "Infrastructure Automation", family: "technology", polarity: -1 });
+  const ws2 = await tx(org.id, (db) => evaluateMotions(db, org.id, [whitespace], [covered], ASOF));
+  ck("POSITIVE CONTROL — explicit evidence that the capability is NOT in use ⇒ ELIGIBLE",
+    ws2.get(covered)![0].verdict === "ELIGIBLE", { got: ws2.get(covered)![0].verdict });
+  // And the opposite affirmative closes it.
+  const installedCo = await co("Installed Co");
   await q(`insert into partner_accounts (org_id, partner_id, company_id, target_product, installed)
-           values ($1,$2,$3,'Platform',true)`, [org.id, partner.id, held]);
-  const ws = await tx(org.id, (db) => evaluateMotions(db, org.id, [whitespace], [onBook, held, silent], ASOF));
-  ck("WHITESPACE — a partner holds the account and the product is not installed ⇒ ELIGIBLE",
-    ws.get(onBook)![0].verdict === "ELIGIBLE");
-  ck("already installed ⇒ NOT_ELIGIBLE — that is genuine whitespace closing, not missing data",
-    ws.get(held)![0].verdict === "NOT_ELIGIBLE");
-  ck("on no partner's book ⇒ INSUFFICIENT_CONTEXT — absence of a book is not absence of whitespace",
-    ws.get(silent)![0].verdict === "INSUFFICIENT_CONTEXT");
+           values ($1,$2,$3,'Platform',true)`, [org.id, partner.id, installedCo]);
+  await putFact(org.id, installedCo, "technology_in_use", { objectType: "STRING", text: "Infrastructure Automation", family: "technology" });
+  const ws3 = await tx(org.id, (db) => evaluateMotions(db, org.id, [whitespace], [installedCo], ASOF));
+  ck("an affirmative install fact closes the whitespace ⇒ NOT_ELIGIBLE", ws3.get(installedCo)![0].verdict === "NOT_ELIGIBLE");
+  ck("silence never satisfies `absent` — an account with no facts at all stays unknown",
+    await (async () => {
+      const bare = await co("Bare Co");
+      const r = await tx(org.id, (db) => evaluateMotions(db, org.id, [whitespace], [bare], ASOF));
+      return r.get(bare)![0].verdict === "INSUFFICIENT_CONTEXT";
+    })());
+  /**
+   * THE DIRECT POLARITY CONTROL.
+   *
+   * A fact that DENIES `technology_in_use: VMware` must never satisfy an affirmative clause looking
+   * for that value — it says the opposite. Without this, ignoring polarity in the affirmative filter
+   * passed the whole suite, because every other case happened to route through the `absent` branch.
+   */
+  const denier = await co("Denier Co");
+  await putFact(org.id, denier, "renewal_date", { objectType: "DATE", date: new Date(ASOF.getTime() + 100 * 86_400_000), family: "trigger" });
+  await putFact(org.id, denier, "technology_in_use", { objectType: "STRING", text: "VMware vSphere", family: "technology", polarity: -1 });
+  const denied = await tx(org.id, (db) => evaluateMotions(db, org.id, [displacement], [denier], ASOF));
+  ck("BITING — a DENIAL of the incumbent platform is a definitive NO, never a match",
+    denied.get(denier)![0].verdict === "NOT_ELIGIBLE"
+    && denied.get(denier)![0].clauses.some((c) => c.predicate === "technology_in_use" && c.satisfied === false),
+    { got: denied.get(denier)![0].verdict });
+  ck("CONTROL — the same value asserted AFFIRMATIVELY does match, so the check is about polarity",
+    await (async () => {
+      const affirmer = await co("Affirmer Co");
+      await putFact(org.id, affirmer, "renewal_date", { objectType: "DATE", date: new Date(ASOF.getTime() + 100 * 86_400_000), family: "trigger" });
+      await putFact(org.id, affirmer, "technology_in_use", { objectType: "STRING", text: "VMware vSphere", family: "technology" });
+      const r = await tx(org.id, (db) => evaluateMotions(db, org.id, [displacement], [affirmer], ASOF));
+      return r.get(affirmer)![0].verdict === "ELIGIBLE";
+    })());
 
   // ── APPLYING ──────────────────────────────────────────────────────────────────────────────────
   HD("APPLYING — an explicit act that composes existing primitives");
@@ -172,10 +223,16 @@ async function main() {
     && app.applied_by_user_id === user && !!app.applied_at
     && app.pursuit_id === applied.pursuitId && app.eligibility === "ELIGIBLE"
     && app.data_environment === "DEMO");
-  ck("the basis holds fact REFERENCES and verdicts only — no evidence text crossed into this table",
-    Array.isArray(app.eligibility_basis)
-    && app.eligibility_basis.every((b: Record<string, unknown>) =>
-      Object.keys(b).every((k) => ["predicate", "op", "satisfied", "factIds"].includes(k))));
+  ck("the basis holds REFERENCES, CATEGORIES and TIMESTAMPS — and the missing context as it stood",
+    Array.isArray(app.eligibility_basis.clauses)
+    && app.eligibility_basis.clauses.every((b: Record<string, unknown>) =>
+      Object.keys(b).every((k) => ["predicate", "op", "satisfied", "because", "factIds", "observed"].includes(k)))
+    && Array.isArray(app.eligibility_basis.missingContext) && !!app.eligibility_basis.evaluatedAt);
+  ck("BITING — the evaluated STATE is captured by value, so the verdict survives the facts moving",
+    app.eligibility_basis.clauses.some((c: { observed?: { value?: string; observedAt?: string }[] }) =>
+      (c.observed ?? []).some((o) => !!o.observedAt && o.value !== undefined)));
+  ck("and no evidence prose crossed into it — values are normalized categories or dates",
+    !JSON.stringify(app.eligibility_basis).includes("SPONSOR_ONLY"));
   ck("NO CAUSAL COLUMN EXISTS — there is nothing here to read as 'the motion caused it'",
     (await q(`select column_name from information_schema.columns where table_name='motion_applications'
                and (column_name like '%outcome%' or column_name like '%result%' or column_name like '%effect%'
@@ -207,12 +264,32 @@ async function main() {
   // ── MULTIPLE MOTIONS ──────────────────────────────────────────────────────────────────────────
   HD("MULTIPLE MOTIONS — the existing pursuit identity rule already answers this");
   const multi = await tx(org.id, (db) => applyMotion(db, {
-    orgId: org.id, slug: whitespace.slug, subjectKind: "company", subjectId: onBook,
+    orgId: org.id, slug: whitespace.slug, subjectKind: "company", subjectId: covered,
     appliedByUserId: user, dataEnvironment: "DEMO", now: ASOF }));
   ck("a different motion on a different account creates its own pursuit", multi.status === "APPLIED" && multi.pursuitId !== applied.pursuitId);
+  // ── MOTION C: AN AI INITIATIVE IS A REASON TO INVESTIGATE, NOT PRODUCT FIT ────────────────────
+  HD("MOTION C — a declared AI initiative does not establish RHAI or NVIDIA fit");
+  const ai = live.find((t) => t.slug === "rhai-nvidia-ai-growth")!;
+  const aiCo = await co("AI Co");
+  await putFact(org.id, aiCo, "strategic_initiative", { objectType: "STRING", text: "GenAI platform rollout", family: "initiative" });
+  const aiOnly = await tx(org.id, (db) => evaluateMotions(db, org.id, [ai], [aiCo], ASOF));
+  ck("THE BITE — AI initiative present, platform/accelerator context missing ⇒ INSUFFICIENT_CONTEXT",
+    aiOnly.get(aiCo)![0].verdict === "INSUFFICIENT_CONTEXT", { got: aiOnly.get(aiCo)![0].verdict });
+  ck("and the missing context names workload, GPU estate, platform and accelerator relationship",
+    ["workload", "GPU", "latform", "ccelerator"].every((w) => aiOnly.get(aiCo)![0].missingContext.join(" ").includes(w)));
+  const nonAi = await co("NonAI Co");
+  await putFact(org.id, nonAi, "strategic_initiative", { objectType: "STRING", text: "cost reduction programme", family: "initiative" });
+  const nonAiFit = await tx(org.id, (db) => evaluateMotions(db, org.id, [ai], [nonAi], ASOF));
+  ck("a non-AI initiative is a DEFINITIVE negative under v1 — the fact exists and answers",
+    nonAiFit.get(nonAi)![0].verdict === "NOT_ELIGIBLE");
+  await putFact(org.id, aiCo, "technology_in_use", { objectType: "STRING", text: "OpenShift with NVIDIA GPU nodes", family: "technology" });
+  const aiFull = await tx(org.id, (db) => evaluateMotions(db, org.id, [ai], [aiCo], ASOF));
+  ck("initiative PLUS established platform/accelerator context ⇒ ELIGIBLE — reachable with real predicates",
+    aiFull.get(aiCo)![0].verdict === "ELIGIBLE", { got: aiFull.get(aiCo)![0].verdict });
+
   // Same account, second motion, different taxonomy node ⇒ different pursuit, by the dedup key.
-  await putFact(org.id, qualifying, 'strategic_initiative', { objectType: 'STRING', text: 'GenAI platform rollout', family: 'initiative' });
-  const ai = live.find((t) => t.slug === "ai-platform-growth")!;
+  await putFact(org.id, qualifying, "strategic_initiative", { objectType: "STRING", text: "GenAI platform rollout", family: "initiative" });
+  await putFact(org.id, qualifying, "technology_in_use", { objectType: "STRING", text: "OpenShift", family: "technology" });
   const second = await tx(org.id, (db) => applyMotion(db, {
     orgId: org.id, slug: ai.slug, subjectKind: "company", subjectId: qualifying,
     appliedByUserId: user, dataEnvironment: "DEMO", now: ASOF }));
@@ -221,9 +298,11 @@ async function main() {
     { node: aiNode?.id ? "ai-platforms" : "(absent)" });
   ck("and the account now legitimately carries two motions — one pursuit is not one playbook",
     await n(`select count(*)::int n from revenue_motions where org_id=$1 and company_id=$2`, [org.id, qualifying]) >= 2);
-  // Same motion, same account, applied to the PURSUIT rather than the company: joins, never forks.
+  // Applied to the PURSUIT rather than the company: joins, never forks. The AI motion is used here
+  // because this account now has affirmative technology facts, which correctly CLOSE the whitespace
+  // motion — the fixture follows the semantics rather than the other way round.
   const onPursuit = await tx(org.id, (db) => applyMotion(db, {
-    orgId: org.id, slug: whitespace.slug, subjectKind: "pursuit", subjectId: applied.pursuitId!,
+    orgId: org.id, slug: ai.slug, subjectKind: "pursuit", subjectId: applied.pursuitId!,
     appliedByUserId: user, dataEnvironment: "DEMO", now: ASOF }));
   ck("applying to an existing PURSUIT joins that work instead of forking a new pursuit",
     onPursuit.status === "APPLIED" && onPursuit.pursuitId === applied.pursuitId);

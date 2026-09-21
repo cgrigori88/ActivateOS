@@ -1,0 +1,45 @@
+{
+  "$comment": "Motion C v1. A declared AI initiative establishes a reason to INVESTIGATE, never product fit. Platform, workload and accelerator context are required and are not claimed from the initiative alone — no predicate records GPU estate, so it stays required context until one does.",
+  "slug": "rhai-nvidia-ai-growth",
+  "version": 1,
+  "name": "RHAI + NVIDIA AI Growth",
+  "taxonomy_node": "ai-platforms",
+  "objective": "Qualify and advance a joint AI-platform opportunity where the account has declared an AI initiative.",
+  "motion_v1": {
+    "objective": "Qualify and advance a joint AI-platform opportunity where the account has declared an AI initiative.",
+    "requires": [
+      {
+        "predicate": "strategic_initiative",
+        "op": "value_in",
+        "values": ["ai", "artificial intelligence", "machine learning", "genai", "generative ai", "gpu", "inference", "data science"],
+        "because": "the account has declared an initiative that names AI workloads"
+      },
+      {
+        "predicate": "technology_in_use",
+        "op": "value_in",
+        "values": ["gpu", "nvidia", "cuda", "kubernetes", "openshift", "ai platform", "ml platform"],
+        "because": "platform or accelerator context is established, so a joint solution hypothesis has something to rest on"
+      }
+    ],
+    "requiresContext": [
+      "AI workload and use-case class — training, fine-tuning or inference is unrecorded.",
+      "Compute and GPU estate — no predicate records accelerator infrastructure.",
+      "Platform and runtime context for where the workload would run.",
+      "Accelerator vendor relationship — `partner_relationship_exists` holds no observations."
+    ],
+    "goalTemplate": "Qualify and advance a joint AI-platform opportunity at {{company}}.",
+    "expectedRoles": ["VENDOR_ACCOUNT_EXECUTIVE", "SOLUTION_ARCHITECT"],
+    "campaignGuidance": "Open on the initiative the account has already declared. Do not assert a platform, accelerator or workload the evidence has not established — the first conversation exists to find those out.",
+    "measurementAssociations": [
+      "An opportunity opened on this account in the AI platform category after application — association only.",
+      "Evidence added recording accelerator estate or workload class, which would close the largest gaps."
+    ]
+  },
+  "personas": { "primary": "VP Data / Head of AI Platform", "secondary": "Director of Infrastructure" },
+  "cta": { "offer": "Workload readiness review for the declared initiative", "fallback": "Reference architecture for the stated workload class" },
+  "seller_cadence": [
+    { "step": 1, "action": "Validate the AI workload and use case, the platform context and the accelerator estate", "day": 0 },
+    { "step": 2, "action": "Determine the RHAI and NVIDIA solution hypothesis and the gaps it depends on", "day": 5 },
+    { "step": 3, "action": "Align partner and vendor technical and sales resources on the next customer action", "day": 12 }
+  ]
+}

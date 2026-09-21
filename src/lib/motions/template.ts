@@ -33,7 +33,15 @@ export type ClauseOp =
   /** A live fact whose object_value matches one of the declared values (case-insensitive). */
   | "value_in"
   /** A live DATE fact falling within N days from the evaluation instant — forward-looking. */
-  | "within_days";
+  | "within_days"
+  /**
+   * A live fact that AFFIRMATIVELY STATES ABSENCE — `polarity = -1`, optionally naming a value.
+   *
+   * This exists because "we hold no fact" and "we hold a fact saying no" are different answers, and
+   * only the second is evidence. A motion that needs to know something is NOT present must say so
+   * with this operator; it can never be satisfied by silence.
+   */
+  | "absent";
 
 export interface MotionClause {
   /** A `fact_predicates.key`. Validated against the database at load time, never assumed. */
@@ -49,11 +57,21 @@ export interface MotionClause {
 
 export interface MotionPartnerContext {
   /**
-   * The account is on a partner's book with this product NOT installed — the canonical whitespace
-   * shape, read from `partner_accounts.installed`. It is the one partner-context test the data
-   * supports directly, so it is the only one v1 offers.
+   * The account appears on a partner's book at all — partner COVERAGE, and nothing more.
+   *
+   * ── WHAT THIS DELIBERATELY NO LONGER MEANS ────────────────────────────────────────────────────
+   *
+   * An earlier version read `partner_accounts.installed = false` as whitespace. It is not.
+   * That column is `NOT NULL DEFAULT false`, written as `!!get("installed_products")` and upserted
+   * `installed OR excluded.installed` — so `false` means "no import row ever said the product was
+   * installed", which is the ABSENCE OF A STATEMENT, not a statement of absence. Reading it as
+   * whitespace inferred a commercial fact from silence, which is precisely the inversion this
+   * product refuses everywhere else.
+   *
+   * So coverage is all this asserts. Whether the product is actually absent is a separate clause
+   * that must be stated with `absent`, against real evidence.
    */
-  whitespace?: boolean;
+  coverage?: boolean;
 }
 
 export interface MotionTemplateV1 {

@@ -44,17 +44,25 @@ export function RecommendedMotions({ fits, pursuitId, apply }: {
                 <span className="block text-copy font-semibold">{f.name}</span>
                 <span className="mt-0.5 block text-label text-neutral-500">
                   {f.verdict === "ELIGIBLE" ? "Appears to fit"
-                    : f.verdict === "INSUFFICIENT_CONTEXT" ? "May fit — some context is missing"
+                    : f.verdict === "INSUFFICIENT_CONTEXT" ? "Not yet qualified — worth investigating"
                       : "Does not fit"}
                 </span>
               </span>
               {f.verdict === "NOT_ELIGIBLE" ? (
                 <span className="flex-none text-label text-neutral-500">not offered</span>
               ) : (
+                /* ── THE CTA CARRIES THE EPISTEMIC STATE ──────────────────────────────────────
+                   A person may legitimately start work PursuitOS cannot yet qualify — they may
+                   know things the system does not. But the control must not look like a qualified
+                   recommendation, so an unqualified motion offers DISCOVERY, in the subdued
+                   treatment, and says so. What is recorded stays INSUFFICIENT_CONTEXT either way:
+                   choosing to proceed does not make the missing facts true. */
                 <form action={async (fd: FormData) => { "use server"; await apply(fd); }} className="flex-none">
                   <input type="hidden" name="slug" value={f.slug} />
                   <input type="hidden" name="pursuitId" value={pursuitId} />
-                  <button className={buttonClass("primary", "md")}>Apply motion →</button>
+                  <button className={buttonClass(f.verdict === "ELIGIBLE" ? "primary" : "subtle", "md")}>
+                    {f.verdict === "ELIGIBLE" ? "Apply motion →" : "Start discovery →"}
+                  </button>
                 </form>
               )}
             </div>
