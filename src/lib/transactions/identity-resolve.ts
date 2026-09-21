@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import type { DataEnvironment } from "../pursuits/lineage";
 import { normalizeCompanyName, nameSimilarity } from "../identity/normalize";
 import { recordChange } from "../pursuits/ledger";
 
@@ -20,7 +21,19 @@ export type ResolutionStatus = "AUTO_RESOLVED" | "REVIEW_REQUIRED" | "UNRESOLVED
  * first-party ones (source_org_id is null) — one org's mapping can never resolve
  * another org's signal onto the wrong company. Omit it for legacy first-party callers.
  */
-export interface ResolveInput { orgId: string; sourceSystem: string; sourceOrgId?: string | null; externalId?: string | null; domain?: string | null; duns?: string | null; externalName?: string | null; }
+export interface ResolveInput {
+  orgId: string; sourceSystem: string; sourceOrgId?: string | null;
+  externalId?: string | null; domain?: string | null; duns?: string | null; externalName?: string | null;
+  /**
+   * INTAKE-SCOPED PROVENANCE, supplied by the caller that owns the intake.
+   *
+   * This module opens an entity-resolution review and writes a ledger event for it, and it has no
+   * canonical subject to derive from — the whole point of a resolution review is that the subject is
+   * not yet identified. So the only honest source is the intake that triggered it, and the caller
+   * must state it. It was previously omitted, which meant `PRODUCTION`.
+   */
+  dataEnvironment: DataEnvironment;
+}
 export interface ResolveResult { companyId: string | null; method: ResolutionMethod | null; confidence: number; status: ResolutionStatus; }
 
 const AUTO = 0.95, REVIEW = 0.75;
@@ -84,5 +97,6 @@ async function openReview(db: PoolClient, input: ResolveInput, candidateId: stri
     changeType: "ENTITY_RESOLUTION_REVIEW", materiality: "LOW",
     reason: `Entity resolution ${status} (${method}, ${confidence.toFixed(2)})`, actorType: "SYSTEM",
     triggerType: "CRM_SYNC", after: { method, confidence, status },
+    dataEnvironment: input.dataEnvironment,
   });
 }

@@ -3,6 +3,7 @@ import { meddpiccFor, meddpiccScore, ELEMENTS } from "./meddpicc";
 import { bridgePursuitOutcome } from "../pursuits/bridge/outcome-bridge";
 import { recordChange } from "../pursuits/ledger";
 import type { DataEnvironment } from "../pursuits/lineage";
+import { pursuitEnvironment } from "../pursuits/provenance";
 
 /**
  * Opportunity lifecycle (BLUEPRINT Phase 6) — same discipline as motions:
@@ -95,18 +96,28 @@ export function stakeholderGaps(stakeholders: StakeholderRow[]): string[] {
  * provenance the subject never had, in the ONE store that cannot be corrected by UPDATE.
  *
  * `pursuits.data_environment` is the subject's own label, read server-side under the caller's org,
- * which is the same derivation the Pursuit Coordination server actions already use. An opportunity
- * with no pursuit has no subject to derive from: rather than assert a provenance we cannot know,
- * the caller omits the field and the column default stands, and that residual gap is reported
- * rather than disguised — a defaulted label is not a derived one.
+ * which is the same derivation the Pursuit Coordination server actions already use.
+ *
+ * ── AN OPPORTUNITY WITH NO PURSUIT HAS NO SUBJECT, AND SO GETS NO LEDGER ROW ────────────────────
+ *
+ * CRM intake creates opportunities that are linked to no pursuit, and `opportunities` carries no
+ * `data_environment` of its own, so for those there is genuinely nothing to derive from. Both
+ * emissions below are SKIPPED rather than written with an invented label.
+ *
+ * That is not a loss of evidence: before this slice `advanceOpportunity` and
+ * `createOpportunityFromMotion` wrote NO ledger row at all. Skipping restores exactly the prior
+ * behaviour for the unlabelled case and adds history only where the history can be truthfully
+ * labelled. The alternative — writing PRODUCTION — would put unlabelled CRM activity into the one
+ * environment a learning corpus admits, in the one store that cannot be corrected afterwards.
+ *
+ * Closing the residual means giving intake its own provenance (§7's intake-scoped class), which is
+ * a Slice 2 concern and is documented rather than guessed at here.
  */
 async function subjectEnvironment(
   db: pg.PoolClient, orgId: string, pursuitId: string | null,
-): Promise<DataEnvironment | undefined> {
-  if (!pursuitId) return undefined;
-  const { rows } = await db.query<{ data_environment: string }>(
-    `select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId]);
-  return (rows[0]?.data_environment as DataEnvironment | undefined) ?? undefined;
+): Promise<DataEnvironment | null> {
+  if (!pursuitId) return null;
+  return pursuitEnvironment(db, orgId, pursuitId);
 }
 
 export async function advanceOpportunity(
@@ -166,12 +177,13 @@ export async function advanceOpportunity(
    *
    * This records WHAT HAPPENED. It asserts nothing about why, and nothing about whether it was good.
    */
-  await recordChange(db, {
+  const stageEnv = await subjectEnvironment(db, orgId, opp.pursuit_id);
+  if (stageEnv) await recordChange(db, {
     orgId, pursuitId: opp.pursuit_id, entityType: "opportunity", entityId: opportunityId,
     changeType: "STAGE_CHANGED", materiality: closing ? "HIGH" : "MEDIUM",
     reason: `Opportunity stage ${opp.stage} → ${to}`,
     actorType: "USER", triggerType: "USER_OVERRIDE",
-    dataEnvironment: await subjectEnvironment(db, orgId, opp.pursuit_id),
+    dataEnvironment: stageEnv,
     // Amount travels with the stage so a close is reconstructable, but a stage event is NOT the
     // record of an amount change: an amount-only mutation would produce no stage event at all, and
     // `pilot-evidence-verify` pins the fact that no application path can perform one.
@@ -299,12 +311,13 @@ export async function createOpportunityFromMotion(
    * vocabulary already contained OPPORTUNITY_CREATED with no writer, so again: no new table, only
    * the missing emission.
    */
-  await recordChange(db, {
+  const createEnv = await subjectEnvironment(db, orgId, m.pursuit_id ?? null);
+  if (createEnv) await recordChange(db, {
     orgId, pursuitId: m.pursuit_id ?? null, entityType: "opportunity", entityId: opportunityId,
     changeType: "OPPORTUNITY_CREATED", materiality: "HIGH",
     reason: `Opportunity opened from motion — ${m.legal_name}`,
     actorType: "USER", triggerType: "USER_OVERRIDE", triggerId: motionId,
-    dataEnvironment: await subjectEnvironment(db, orgId, m.pursuit_id ?? null),
+    dataEnvironment: createEnv,
     // `before` is absent because there was nothing before: this is an origination, and an empty
     // object would be a claim about a prior state that did not exist.
     after: { stage: "discovery", amountUsd: m.estimated_value_usd == null ? null : Number(m.estimated_value_usd), motionId },

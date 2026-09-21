@@ -240,11 +240,25 @@ export async function mintApiKeyAction(
   try {
     const name = String(formData.get("name") ?? "").trim().slice(0, 80);
     if (!name) return { error: "Name the key so you can recognize it later." };
+    /**
+     * PROVENANCE IS CHOSEN AT ISSUE, AND THERE IS NO DEFAULT (0120).
+     *
+     * A credential's environment is what `/api/mcp` records as the provenance of every row the
+     * agent writes, and it is IMMUTABLE afterwards — `app_rw` can update only `revoked_at`, so a
+     * mistake here is corrected by revoking and re-minting, never by editing. That is why the form
+     * asks rather than assuming: a silent default would put an agent's output into whichever
+     * environment the code happened to name, which is exactly how 18 hosted invocations came to
+     * claim PRODUCTION on a project holding none.
+     */
+    const { asDataEnvironment } = await import("@/lib/pursuits/provenance");
+    const env = asDataEnvironment(String(formData.get("dataEnvironment") ?? "").trim());
+    if (!env) return { error: "Choose the data environment this key's activity belongs to." };
     const { mintKey } = await import("@/lib/agents/mcp-tools");
     const { plaintext, hash } = mintKey();
     await ownerTenant(async (db, orgId) => {
-      await db.query(`insert into api_keys (org_id, name, key_hash) values ($1, $2, $3)`, [orgId, name, hash]);
-      await audit(db, orgId, "agent_key.minted", { name });
+      await db.query(`insert into api_keys (org_id, name, key_hash, data_environment) values ($1, $2, $3, $4)`,
+        [orgId, name, hash, env]);
+      await audit(db, orgId, "agent_key.minted", { name, dataEnvironment: env });
     });
     revalidatePath("/admin");
     return { key: plaintext, name };

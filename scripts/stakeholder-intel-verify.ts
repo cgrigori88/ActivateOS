@@ -113,13 +113,13 @@ async function main() {
 
     // ---- 4. Title is never authority; agents never verify ---------------------------------------
     await db.query("begin");
-    const titleVerified = await dispatchSkill(db, "assert_stakeholder_role", user, { pursuitId: globexPursuit,
+    const titleVerified = await dispatchSkill(db, "assert_stakeholder_role", user, { dataEnvironment: "PRODUCTION", pursuitId: globexPursuit,
       args: { opportunityId: globexOpp, contactId: dana, role: "economic_buyer", assertionState: "verified", source: "test", evidence: "VP Infrastructure", basis: ["title"] } });
-    const titleInferred = await dispatchSkill(db, "assert_stakeholder_role", user, { pursuitId: globexPursuit,
+    const titleInferred = await dispatchSkill(db, "assert_stakeholder_role", user, { dataEnvironment: "PRODUCTION", pursuitId: globexPursuit,
       args: { opportunityId: globexOpp, contactId: dana, role: "economic_buyer", assertionState: "inferred", source: "test", basis: ["title"] } });
-    const agentVerify = await dispatchSkill(db, "assert_stakeholder_role", agent, { pursuitId: globexPursuit,
+    const agentVerify = await dispatchSkill(db, "assert_stakeholder_role", agent, { dataEnvironment: "PRODUCTION", pursuitId: globexPursuit,
       args: { opportunityId: globexOpp, contactId: dana, role: "economic_buyer", assertionState: "verified", source: "ai:test", evidence: "x", basis: ["customer_confirmation"] } });
-    const agentPropose = await dispatchSkill(db, "assert_stakeholder_role", agent, { pursuitId: globexPursuit,
+    const agentPropose = await dispatchSkill(db, "assert_stakeholder_role", agent, { dataEnvironment: "PRODUCTION", pursuitId: globexPursuit,
       args: { opportunityId: globexOpp, contactId: dana, role: "influencer", assertionState: "inferred", source: "ai:test", evidence: "attended", basis: ["meeting_attendance"] } });
     await db.query("rollback");
     ok("title alone cannot establish a verified role", titleVerified.status === "FAILED" && /title/i.test(titleVerified.reason ?? ""), titleVerified.reason);
@@ -218,7 +218,7 @@ async function main() {
       const cross = await asOrg(foreign.id, async (c) => Number((await c.query<{ n: string }>(`select count(*)::text n from stakeholders where opportunity_id=$1`, [globexOpp])).rows[0].n));
       ok("RLS: the owning org reads its stakeholders; a foreign tenant reads ZERO rows", visible >= 3 && cross === 0, `own=${visible} foreign=${cross}`);
       await db.query("begin");
-      const crossAssert = await dispatchSkill(db, "assert_stakeholder_role", { type: "USER", id: null, orgId: foreign.id, role: "operator" }, {
+      const crossAssert = await dispatchSkill(db, "assert_stakeholder_role", { type: "USER", id: null, orgId: foreign.id, role: "operator" }, { dataEnvironment: "PRODUCTION",
         args: { opportunityId: globexOpp, contactId: dana, role: "champion", assertionState: "unverified", source: "attack" } });
       await db.query("rollback");
       ok("cross-tenant role assertion is REJECTED (audited precheck)", crossAssert.status === "REJECTED" && /not found in this org/.test(crossAssert.reason ?? ""), crossAssert.reason);

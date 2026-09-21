@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { mintKey } from "@/lib/agents/mcp-tools";
+import type { DataEnvironment } from "@/lib/pursuits/lineage";
 
 /**
  * P45-4 — THE CANONICAL PROVISIONING SEQUENCE, AS ONE OPERATION.
@@ -34,7 +35,14 @@ export interface ProvisionAgentInput {
   /** Optional expiry. Absent means the grant is live until revoked. */
   expiresAt?: Date | null;
   keyName: string;
-  dataEnvironment?: string;
+  /**
+   * REQUIRED (0120). The data provenance of everything this agent's executions will produce. It is
+   * written to BOTH the durable actor and the credential: the actor's copy describes the agent, and
+   * the credential's is what `/api/mcp` actually reads at dispatch, because the credential is the
+   * only thing an external caller cannot choose. It was optional and defaulted to PRODUCTION, which
+   * is how a certification agent came to write into the one learning-eligible environment.
+   */
+  dataEnvironment: DataEnvironment;
   ownerUserId?: string | null;
 }
 
@@ -56,7 +64,7 @@ export async function provisionGovernedAgent(
                                   owner_user_id, data_environment)
      values ($1, 'AGENT', $2, $3, $4, 'ACTIVE', $5, $6)
      returning id`,
-    [orgId, i.key, i.displayName, i.purpose ?? null, i.ownerUserId ?? null, i.dataEnvironment ?? "PRODUCTION"],
+    [orgId, i.key, i.displayName, i.purpose ?? null, i.ownerUserId ?? null, i.dataEnvironment],
   );
 
   // 2. The authority instrument, naming the EXACT capability version. A wildcard grant
@@ -74,10 +82,10 @@ export async function provisionGovernedAgent(
   //    which agent a credential represents means revoking it and issuing a new one.
   const { plaintext, hash } = mintKey();
   const { rows: key } = await db.query<{ id: string }>(
-    `insert into api_keys (org_id, name, key_hash, scope, governed_actor_id)
-     values ($1, $2, $3, 'write', $4)
+    `insert into api_keys (org_id, name, key_hash, scope, governed_actor_id, data_environment)
+     values ($1, $2, $3, 'write', $4, $5)
      returning id`,
-    [orgId, i.keyName, hash, actor[0].id],
+    [orgId, i.keyName, hash, actor[0].id, i.dataEnvironment],
   );
 
   return { actorId: actor[0].id, grantId: grant[0].id, keyId: key[0].id, plaintext };

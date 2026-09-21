@@ -220,12 +220,30 @@ async function main() {
     } finally { client.release(); }
     ck("and no observation was written by looking",
       await n(`select count(*)::int n from attention_observations where org_id=$1 and algorithm_version like 'p2-v%'`, [org.id]) === 6);
+    // §1 RULING: recommend_pursuit_plan@1 does not consume P2, so attaching a ranking to it would
+    // be FALSE LINEAGE. This asserts the ruling holds — the dispatch writes no observation — and it
+    // is the control that would catch someone wiring the producer there anyway.
+    const beforeObs = await n(`select count(*)::int n from attention_observations where org_id=$1`, [org.id]);
+    const c2 = await pool.connect();
+    try {
+      await c2.query("begin");
+      await c2.query(`select set_config('app.org_id', $1, true)`, [org.id]);
+      const { dispatchSkill } = await import("../src/lib/pursuits/federation/skills");
+      const d = await dispatchSkill(c2, "recommend_pursuit_plan",
+        { type: "SYSTEM", id: null, orgId: org.id, role: "operator" },
+        { pursuitId: pursuits[0], dataEnvironment: "PILOT" });
+      const after = Number((await c2.query(`select count(*)::int n from attention_observations where org_id=$1`, [org.id])).rows[0].n);
+      await c2.query("commit");
+      ck("recommend_pursuit_plan@1 writes NO attention observation — it never consumed P2, so it may not claim one",
+        after === beforeObs, { dispatch: d.status, before: beforeObs, after });
+    } catch (e) { await pool.query("rollback").catch(() => {}); ck("recommend_pursuit_plan@1 writes no attention observation", false, (e as Error).message); }
+    finally { c2.release(); }
   }
 
   // ── COMMERCIAL EVENTS: CREATION, STAGE, AMOUNT ────────────────────────────────────────────────
   HD("COMMERCIAL EVENTS — creation is not import, and provenance is derived from the subject");
   const node = (await one(`select id from taxonomy_nodes limit 1`))?.id ?? null;
-  for (const env of ["DEMO", "PILOT"] as const) {
+  for (const env of ["DEMO", "PILOT", "CERTIFICATION"] as const) {
     const pu = await one(`insert into pursuits (org_id, account_id, status, dedup_key, data_environment, pursuit_type)
                           values ($1,$2,'QUALIFIED',$3,$4,'MODERNIZATION') returning id`, [org.id, co.id, `${NS}-opp-${env}`, env]);
     const motion = await one(`insert into revenue_motions (org_id, company_id, taxonomy_node_id, status, estimated_value_usd, pursuit_id)
@@ -310,18 +328,139 @@ async function main() {
     { method: "exact ids read from the manifest" });
   ck("and it never rewrites a source row", !/update\s+(governed_action_invocations|change_ledger|pursuits)/i.test(activator));
 
+  // ── CREDENTIAL-BOUND PROVENANCE ───────────────────────────────────────────────────────────────
+  HD("CREDENTIAL PROVENANCE — the one thing an external caller cannot choose");
+  const { mintKey } = await import("../src/lib/agents/mcp-tools");
+  const { resolveKey } = await import("../src/lib/agents/mcp-tools");
+  const mint = async (orgId: string, label: string, env: string | null) => {
+    const { plaintext, hash } = mintKey();
+    const r = await one(`insert into api_keys (org_id, name, key_hash, scope, data_environment)
+                         values ($1,$2,$3,'write',$4) returning id`, [orgId, `${NS}-${label}`, hash, env]);
+    return { id: r.id as string, bearer: plaintext };
+  };
+  const certKey = await mint(org.id, "cert", "CERTIFICATION");
+  const pilotKey = await mint(org.id, "pilot", "PILOT");
+  const legacyKey = await mint(org.id, "legacy", null);
+  // A CREDENTIAL MINTED BY A PATH THAT NEVER MENTIONS PROVENANCE — which is what every issuing path
+  // did before 0120, and what a careless new one would do again. The column must have NO DEFAULT:
+  // an explicit null proves nothing about a default, and an earlier version of this control tested
+  // only that, so adding `default 'PRODUCTION'` back to the schema passed it silently.
+  const silentKey = await (async () => {
+    const { plaintext, hash } = mintKey();
+    const r = await one(`insert into api_keys (org_id, name, key_hash, scope) values ($1,$2,$3,'write') returning id`,
+      [org.id, `${NS}-silent`, hash]);
+    return { id: r.id as string, bearer: plaintext };
+  })();
+  const foreignKey = await mint(other.id, "foreign", "PRODUCTION");
+
+  const rc = await resolveKey(pool as never, certKey.bearer);
+  const rp = await resolveKey(pool as never, pilotKey.bearer);
+  const rl = await resolveKey(pool as never, legacyKey.bearer);
+  const rf = await resolveKey(pool as never, foreignKey.bearer);
+  ck("a certification credential resolves CERTIFICATION", rc?.dataEnvironment === "CERTIFICATION" && rc?.orgId === org.id);
+  ck("a pilot credential resolves PILOT", rp?.dataEnvironment === "PILOT" && rp?.orgId === org.id);
+  ck("BITING — an unclassified credential resolves NULL, and NULL is not a synonym for PRODUCTION",
+    rl !== null && rl.dataEnvironment === null, { keyId: rl?.keyId });
+  const rs = await resolveKey(pool as never, silentKey.bearer);
+  ck("BITING — a credential issued WITHOUT naming provenance stays unclassified: the column has NO default",
+    rs !== null && rs.dataEnvironment === null,
+    { got: rs?.dataEnvironment, why: "a default here would recreate the exact defect, at the schema level" });
+  ck("and the schema confirms it directly",
+    (await one(`select coalesce(column_default,'-') d from information_schema.columns
+                 where table_name='api_keys' and column_name='data_environment'`)).d === "-");
+  ck("a foreign-org credential carries its OWN org and its OWN provenance — it cannot lend either",
+    rf?.orgId === other.id && rf?.dataEnvironment === "PRODUCTION" && rf?.orgId !== org.id);
+  // The resolver is the whole trust boundary, so nothing about the REQUEST may move its answer.
+  const rc2 = await resolveKey(pool as never, certKey.bearer);
+  ck("resolution is a property of the bearer alone — repeated resolution is identical",
+    JSON.stringify(rc) === JSON.stringify(rc2));
+  ck("a bearer that is not ours costs no lookup and yields nothing",
+    (await resolveKey(pool as never, "not-a-key")) === null && (await resolveKey(pool as never, null)) === null);
+
+  // IMMUTABLE AFTER ISSUE, BY PRIVILEGE. 0116 narrowed app_rw to `update (revoked_at)`; a column
+  // added to this table inherits that, which is the whole reason provenance lives here.
+  const colUpd = await q(`select column_name from information_schema.column_privileges
+                           where grantee='app_rw' and table_name='api_keys' and privilege_type='UPDATE'`);
+  ck("app_rw may update ONLY revoked_at on a credential — provenance cannot drift CERTIFICATION → PILOT",
+    colUpd.length === 1 && colUpd[0].column_name === "revoked_at");
+  ck("POSITIVE CONTROL — the legitimate lifecycle operation still works: a credential can be revoked",
+    (await pool.query(`update api_keys set revoked_at = now() where id = $1 and revoked_at is null`, [legacyKey.id])).rowCount === 1);
+  ck("and a revoked credential resolves to nothing at all",
+    (await resolveKey(pool as never, legacyKey.bearer)) === null);
+  ck("app_rw may INSERT provenance (issue) but the column is bounded by CHECK",
+    (await q(`select column_name from information_schema.column_privileges
+               where grantee='app_rw' and table_name='api_keys' and privilege_type='INSERT'
+                 and column_name='data_environment'`)).length === 1);
+  let badKeyEnv = "";
+  try { await pool.query(`insert into api_keys (org_id, name, key_hash, data_environment) values ($1,$2,$3,'NONSENSE')`,
+                         [org.id, `${NS}-bad`, `${NS}-bad-hash`]); }
+  catch (e) { badKeyEnv = (e as Error).message; }
+  ck("CONTROL — an unknown credential environment is refused by the database",
+    /violates check constraint/.test(badKeyEnv));
+
+  // ── THE DISPATCH BOUNDARY CANNOT FORGET PROVENANCE ────────────────────────────────────────────
+  HD("DISPATCH — provenance is required, so a new call site cannot inherit PRODUCTION by silence");
+  const skillsSrc = codeOf("../src/lib/pursuits/federation/skills.ts");
+  ck("DispatchCtx.dataEnvironment is REQUIRED, not optional",
+    /dataEnvironment: DataEnvironment;/.test(skillsSrc) && !/dataEnvironment\?:/.test(skillsSrc));
+  ck("and no `?? \"PRODUCTION\"` survives anywhere on the governed dispatch path",
+    !skillsSrc.includes('?? "PRODUCTION"'));
+  const ledgerSrc = codeOf("../src/lib/pursuits/ledger.ts");
+  ck("recordChange cannot omit provenance either — the ledger is append-only and cannot be corrected",
+    /dataEnvironment: DataEnvironment;/.test(ledgerSrc) && !ledgerSrc.includes('?? "PRODUCTION"'));
+  const routeSrc = codeOf("../src/app/api/mcp/route.ts");
+  ck("BITING — /api/mcp no longer contains the literal \"PRODUCTION\" at all",
+    !routeSrc.includes('"PRODUCTION"'));
+  ck("and it FAILS CLOSED on an unclassified credential rather than substituting a value",
+    /key\.dataEnvironment/.test(routeSrc) && /provenance/i.test(routeSrc));
+  const provSrc = codeOf("../src/lib/pursuits/provenance.ts");
+  ck("the shared subject resolver returns null rather than a default",
+    /Promise<DataEnvironment \| null>/.test(provSrc) && !provSrc.includes('"PRODUCTION"'));
+
+  // BEHAVIOURAL: the whole dispatch, with a real credential's provenance.
+  {
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(`select set_config('app.org_id', $1, true)`, [org.id]);
+      const { dispatchSkill } = await import("../src/lib/pursuits/federation/skills");
+      const actor = { type: "AGENT" as const, id: null, orgId: org.id, role: "operator" as const };
+      for (const [label, cred] of [["CERTIFICATION", rc], ["PILOT", rp]] as const) {
+        const d = await dispatchSkill(client, "explain_route", actor, { dataEnvironment: cred!.dataEnvironment! });
+        const row = await (await client.query(`select data_environment from governed_action_invocations where id=$1`, [d.invocationId])).rows[0];
+        ck(`a ${label} credential's invocation is recorded as ${label}, not PRODUCTION`,
+          d.status === "EXECUTED" && row.data_environment === label);
+      }
+      await client.query("commit");
+    } catch (e) { await pool.query("rollback").catch(() => {}); ck("credential provenance reaches the invocation row", false, (e as Error).message); }
+    finally { client.release(); }
+  }
+
   // ── WHO GETS TO SAY WHAT ENVIRONMENT THIS IS ──────────────────────────────────────────────────
   HD("ENVIRONMENT TRUST — a caller may not declare its own provenance");
   const appSrc = ["src/app/pursuits/[id]/actions.ts", "src/app/api/mcp/route.ts", "src/app/experience/pursuits/actions.ts"]
     .map((f) => codeOf(`../${f}`)).join("\n");
   ck("no entry point reads dataEnvironment from a request body, params or tool arguments",
     !/(args|body|params|input|payload|searchParams)[^\n]{0,40}\.(dataEnvironment|data_environment)/.test(appSrc));
-  ck("the UI path DERIVES it from the subject row, server-side, under the caller's org",
-    /select data_environment from pursuits where id = \$1 and org_id = \$2/.test(appSrc));
+  // The derivation moved OUT of the surfaces into one resolver, which is why this looks for the
+  // resolver rather than for five copies of a query string. Five copies is how the `?? "PRODUCTION"`
+  // tail spread in the first place: once written, a default looks like the house style.
+  ck("the UI path DERIVES it through the shared subject resolver, not from a request",
+    /pursuitEnvironment\(db, orgId,/.test(appSrc) && /PROVENANCE_UNRESOLVED/.test(appSrc));
+  ck("and that resolver reads the SUBJECT ROW, server-side, under the caller's org",
+    /select data_environment from pursuits where id = \$1 and org_id = \$2/.test(provSrc));
+  ck("a surface REFUSES when the subject yields no provenance — it never substitutes one",
+    (appSrc.match(/PROVENANCE_UNRESOLVED/g) ?? []).length >= 5);
   const certPursuit = await one(`select data_environment from pursuits where org_id=$1 and dedup_key=$2`, [org.id, `${NS}-CERTIFICATION`]);
   ck("BEHAVIOURAL — that derivation returns CERTIFICATION for a certification subject, not PRODUCTION",
     certPursuit.data_environment === "CERTIFICATION");
-  note("OPEN, AND REPORTED RATHER THAN PATCHED — /api/mcp passes the literal \"PRODUCTION\" for every call, "
+  ck("no MCP tool argument, body field or parameter can name a provenance",
+    !/(args|body|params|input|payload|searchParams)\s*(\.|\[["']?)(dataEnvironment|data_environment)/.test(appSrc));
+  note("RESIDUAL, NAMED — an opportunity linked to no pursuit has no subject to derive from and "
+    + "`opportunities` carries no environment of its own, so both ledger emissions are SKIPPED for it "
+    + "rather than written with an invented label. Before this slice they wrote nothing at all, so "
+    + "nothing is lost; closing it means giving CRM intake its own provenance, which is Slice 2.");
+  note("SUPERSEDED — /api/mcp's hardcoded \"PRODUCTION\" is gone — /api/mcp passes the literal \"PRODUCTION\" for every call, "
     + "so MCP traffic cannot yet be PILOT or CERTIFICATION. That is the source of all 18 mislabelled hosted invocations. "
     + "A trusted replacement is an owner ruling (§5), not something this slice may guess.");
 

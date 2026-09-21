@@ -244,11 +244,11 @@ async function main() {
   // ---- §61.37-41 entity resolution ----
   console.log("§61.37  Entity resolution: deterministic, thresholds, unresolved-quarantine, hierarchy");
   await asOrg(s.orgA, async (db) => {
-    const byId = await resolveCompany(db, { orgId: s.orgA, sourceSystem: "distributor", externalId: "TDS-000123" });
+    const byId = await resolveCompany(db, { dataEnvironment: "PRODUCTION", orgId: s.orgA, sourceSystem: "distributor", externalId: "TDS-000123" });
     check("external-id resolution auto-resolves", byId.status === "AUTO_RESOLVED" && byId.companyId === s.companyA, `${byId.status}`);
-    const byDuns = await resolveCompany(db, { orgId: s.orgA, sourceSystem: "distributor", duns: "150483782" });
+    const byDuns = await resolveCompany(db, { dataEnvironment: "PRODUCTION", orgId: s.orgA, sourceSystem: "distributor", duns: "150483782" });
     check("DUNS resolution works", byDuns.companyId === s.companyA);
-    const fuzzy = await resolveCompany(db, { orgId: s.orgA, sourceSystem: "distributor", externalName: "Globex Holdings International" });
+    const fuzzy = await resolveCompany(db, { dataEnvironment: "PRODUCTION", orgId: s.orgA, sourceSystem: "distributor", externalName: "Globex Holdings International" });
     check("ambiguous fuzzy name → review (not silently linked)", fuzzy.status === "REVIEW_REQUIRED" || fuzzy.status === "UNRESOLVED", `${fuzzy.status} ${fuzzy.confidence.toFixed(2)}`);
     check("review row opened for ambiguous match", Number((await db.query<{ n: string }>(`select count(*)::text n from entity_resolution_reviews where org_id=$1 and status in ('REVIEW_REQUIRED','UNRESOLVED')`, [s.orgA])).rows[0].n) >= 1);
     // Unresolved transaction (canonical_company_id null) must not influence route score.

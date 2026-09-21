@@ -55,28 +55,28 @@ async function main() {
   // ---- draft_campaign_touch through the governed boundary ----
   console.log("R1-G1.2  draft_campaign_touch is governed");
   const draftArgs = { campaign: s.campName, name: "Pilot follow-up", subject: "Following up", body: "Hi there" };
-  const asViewer = await asOrg(s.vendor, (db) => dispatchSkill(db, "draft_campaign_touch", agent(s.vendor, "viewer"), { args: draftArgs }));
+  const asViewer = await asOrg(s.vendor, (db) => dispatchSkill(db, "draft_campaign_touch", agent(s.vendor, "viewer"), { dataEnvironment: "PRODUCTION", args: draftArgs }));
   check("a read-scoped (viewer) actor is REJECTED for an INTERNAL_WRITE", asViewer.status === "REJECTED");
-  const asOp = await asOrg(s.vendor, (db) => dispatchSkill(db, "draft_campaign_touch", agent(s.vendor, "operator"), { args: draftArgs }));
+  const asOp = await asOrg(s.vendor, (db) => dispatchSkill(db, "draft_campaign_touch", agent(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", args: draftArgs }));
   check("an operator actor EXECUTES the governed draft", asOp.status === "EXECUTED");
   check("the draft touch was really created", (await asOrg(s.vendor, async (db) => (await db.query<{ n: string }>(`select count(*)::text n from campaign_touches where campaign_id=$1`, [s.camp])).rows[0].n)) !== "0");
   check("a governed_action_invocations row records the write (auditable)", (await asOrg(s.vendor, async (db) => (await db.query<{ n: string }>(`select count(*)::text n from governed_action_invocations where skill_id='draft_campaign_touch' and org_id=$1 and status='EXECUTED'`, [s.vendor])).rows[0].n)) !== "0");
 
   console.log("R1-G1.3  Idempotency");
   const key = `g1-idem-${RID}`;
-  const a = await asOrg(s.vendor, (db) => dispatchSkill(db, "draft_campaign_touch", agent(s.vendor, "operator"), { args: draftArgs, idempotencyKey: key }));
-  const b = await asOrg(s.vendor, (db) => dispatchSkill(db, "draft_campaign_touch", agent(s.vendor, "operator"), { args: draftArgs, idempotencyKey: key }));
+  const a = await asOrg(s.vendor, (db) => dispatchSkill(db, "draft_campaign_touch", agent(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", args: draftArgs, idempotencyKey: key }));
+  const b = await asOrg(s.vendor, (db) => dispatchSkill(db, "draft_campaign_touch", agent(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", args: draftArgs, idempotencyKey: key }));
   check("a repeated idempotency key dedupes to one invocation", a.invocationId === b.invocationId);
 
   // ---- request_warm_intro cross-tenant authority ----
   console.log("R1-G1.4  request_warm_intro is a governed cross-tenant action");
-  const noAuth = await asOrg(s.vendor, (db) => dispatchSkill(db, "request_warm_intro", agent(s.vendor, "operator"), { args: { partner: s.partnerName, account: "nonexistent" } }));
+  const noAuth = await asOrg(s.vendor, (db) => dispatchSkill(db, "request_warm_intro", agent(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", args: { partner: s.partnerName, account: "nonexistent" } }));
   check("REJECTED without an active partnership (own partnership-consent authority)", noAuth.status === "REJECTED");
   check("the rejection is recorded as a governed invocation (not a silent skip)", (await asOrg(s.vendor, async (db) => (await db.query<{ n: string }>(`select count(*)::text n from governed_action_invocations where skill_id='request_warm_intro' and org_id=$1 and status='REJECTED'`, [s.vendor])).rows[0].n)) !== "0");
   // Seed an active partnership so authority passes; the account is not on a named-overlap rung,
   // so the handler fails INSIDE the boundary — still governed (an invocation is recorded), never a raw write.
   await asOwner((db) => db.query(`insert into partnerships (initiator_org_id, initiator_partner_id, invite_code, status, activated_at) values ($1,$2,$3,'active',now())`, [s.vendor, s.partner, `INV-${RID}`]));
-  const authed = await asOrg(s.vendor, (db) => dispatchSkill(db, "request_warm_intro", agent(s.vendor, "operator"), { args: { partner: s.partnerName, account: `G1 Acct ${RID}` } }));
+  const authed = await asOrg(s.vendor, (db) => dispatchSkill(db, "request_warm_intro", agent(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", args: { partner: s.partnerName, account: `G1 Acct ${RID}` } }));
   check("with authority, the action is dispatched through the boundary (invocation recorded)", authed.invocationId !== null);
   check("the cross-tenant write only ever happens via a CROSS_TENANT_ACTION invocation", (await asOrg(s.vendor, async (db) => (await db.query<{ effect_class: string }>(`select effect_class from governed_action_invocations where id=$1`, [authed.invocationId])).rows[0]?.effect_class)) === "CROSS_TENANT_ACTION");
 

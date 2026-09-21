@@ -1,3 +1,4 @@
+import type { DataEnvironment } from "../src/lib/pursuits/lineage";
 import { Pool, type PoolClient } from "pg";
 import { callerFor } from "../src/lib/pursuits/read-models/caller";
 import type { Caller } from "../src/lib/pursuits/read-models/helpers";
@@ -161,7 +162,7 @@ async function main(): Promise<void> {
     const rec = resolvePlanStanding(recsBefore.revisions).pending!;
     const recRow = (await db.query(`select content, basis, created_at from pursuit_plan_revisions where id = $1`, [rec.id])).rows[0];
     const res = await dispatchSkill(db, "decide_pursuit_plan", operator, {
-      pursuitId: hero.id, args: { planId: recsBefore.plan!.id, recommendationId: rec.id, decision: "APPROVED" }, dataEnvironment: hero.env,
+      pursuitId: hero.id, args: { planId: recsBefore.plan!.id, recommendationId: rec.id, decision: "APPROVED" }, dataEnvironment: hero.env as DataEnvironment,
     });
     check("approve dispatches EXECUTED through the governed boundary", res.status === "EXECUTED", res.reason ?? "");
     const after = await loadPlanRecords(db, caller, hero.id);
@@ -190,7 +191,7 @@ async function main(): Promise<void> {
 
     // Deciding the same recommendation twice is refused.
     const again = await dispatchSkill(db, "decide_pursuit_plan", operator, {
-      pursuitId: hero.id, args: { planId: after.plan!.id, recommendationId: rec.id, decision: "APPROVED" }, dataEnvironment: hero.env,
+      pursuitId: hero.id, args: { planId: after.plan!.id, recommendationId: rec.id, decision: "APPROVED" }, dataEnvironment: hero.env as DataEnvironment,
     });
     check("a recommendation can be decided only once", again.status === "FAILED" && /no longer awaiting/.test(again.reason ?? ""));
 
@@ -200,7 +201,7 @@ async function main(): Promise<void> {
     const opp = (await db.query<{ id: string }>(`select id from opportunities where pursuit_id = $1 limit 1`, [hero.id])).rows[0].id;
     const dana = (await db.query<{ id: string }>(`select id from contacts where name = 'Dana Whitfield' limit 1`)).rows[0]?.id;
     const assert = await dispatchSkill(db, "assert_stakeholder_role", operator, {
-      pursuitId: hero.id, dataEnvironment: hero.env,
+      pursuitId: hero.id, dataEnvironment: hero.env as DataEnvironment,
       args: { opportunityId: opp, contactId: dana, role: "economic_buyer", assertionState: "verified", source: "verifier", evidence: "Customer confirmed budget ownership on the call.", basis: ["human_statement"] },
     });
     check("a governed assertion verifies the economic buyer", assert.status === "EXECUTED", assert.reason ?? "");
@@ -210,7 +211,7 @@ async function main(): Promise<void> {
     check("review says why: the focus moved", (v2?.review.reasons ?? []).some((r) => /most important gap is now/i.test(r)));
     const stillInForce = resolvePlanStanding((await loadPlanRecords(db, caller, hero.id)).revisions).inForce;
     check("the approved plan was NOT rewritten by the new evidence", stillInForce?.id === st.inForce?.id && v2?.nextAction?.text === v?.nextAction?.text);
-    const rr = await dispatchSkill(db, "recommend_pursuit_plan", operator, { pursuitId: hero.id, dataEnvironment: hero.env });
+    const rr = await dispatchSkill(db, "recommend_pursuit_plan", operator, { pursuitId: hero.id, dataEnvironment: hero.env as DataEnvironment });
     const rrResult = rr.result as { status: string; reviewRequired: boolean } | undefined;
     check("an updated recommendation is recorded with a review trigger", rr.status === "EXECUTED" && rrResult?.status === "RECORDED" && rrResult.reviewRequired === true);
     const trig = (await db.query<{ review_trigger: { reasons: string[]; fromRevisionId: string } }>(`select review_trigger from pursuit_plan_revisions where plan_id = $1 order by revision_no desc limit 1`, [after.plan!.id])).rows[0].review_trigger;
@@ -220,7 +221,7 @@ async function main(): Promise<void> {
     check("the surface offers the update while the approved plan stays shown", !!v3?.review.update && !v3.review.update.stale && v3.nextAction?.text === v?.nextAction?.text);
     check("the update's focus moved off the economic buyer", !/economic buyer/i.test(v3?.review.update?.focusHeadline ?? "economic buyer"));
     const approveUpdate = await dispatchSkill(db, "decide_pursuit_plan", operator, {
-      pursuitId: hero.id, args: { planId: after.plan!.id, recommendationId: v3!.review.update!.revisionId, decision: "APPROVED" }, dataEnvironment: hero.env,
+      pursuitId: hero.id, args: { planId: after.plan!.id, recommendationId: v3!.review.update!.revisionId, decision: "APPROVED" }, dataEnvironment: hero.env as DataEnvironment,
     });
     check("a person approves the update", approveUpdate.status === "EXECUTED", approveUpdate.reason ?? "");
     const v4 = await loadPursuitPlanView(db, caller, hero.id);
@@ -235,12 +236,12 @@ async function main(): Promise<void> {
     const recs = await loadPlanRecords(db, caller, hero.id);
     const rec = resolvePlanStanding(recs.revisions).pending!;
     const noReason = await dispatchSkill(db, "decide_pursuit_plan", operator, {
-      pursuitId: hero.id, args: { planId: recs.plan!.id, recommendationId: rec.id, decision: "ADJUSTED", adjustments: { dueInDays: 3 } }, dataEnvironment: hero.env,
+      pursuitId: hero.id, args: { planId: recs.plan!.id, recommendationId: rec.id, decision: "ADJUSTED", adjustments: { dueInDays: 3 } }, dataEnvironment: hero.env as DataEnvironment,
     });
     check("an adjustment without a reason is refused", noReason.status === "FAILED");
     const specialist = (await db.query<{ id: string }>(`select id from pursuit_team_members where pursuit_id = $1 and role = 'VENDOR_SPECIALIST' limit 1`, [hero.id])).rows[0].id;
     const adj = await dispatchSkill(db, "decide_pursuit_plan", operator, {
-      pursuitId: hero.id, dataEnvironment: hero.env,
+      pursuitId: hero.id, dataEnvironment: hero.env as DataEnvironment,
       args: { planId: recs.plan!.id, recommendationId: rec.id, decision: "ADJUSTED", reason: "Specialist already knows the CFO office", adjustments: { ownerTeamMemberId: specialist, dueInDays: 3 } },
     });
     check("an adjusted approval is accepted", adj.status === "EXECUTED", adj.reason ?? "");
@@ -265,7 +266,7 @@ async function main(): Promise<void> {
     const recs = await loadPlanRecords(db, caller, hero.id);
     const rec = resolvePlanStanding(recs.revisions).pending!;
     const rej = await dispatchSkill(db, "decide_pursuit_plan", operator, {
-      pursuitId: hero.id, args: { planId: recs.plan!.id, recommendationId: rec.id, decision: "REJECTED", reason: "Waiting for the QBR" }, dataEnvironment: hero.env,
+      pursuitId: hero.id, args: { planId: recs.plan!.id, recommendationId: rec.id, decision: "REJECTED", reason: "Waiting for the QBR" }, dataEnvironment: hero.env as DataEnvironment,
     });
     check("a decline with a reason is recorded", rej.status === "EXECUTED", rej.reason ?? "");
     const after = await loadPlanRecords(db, caller, hero.id);
@@ -297,9 +298,9 @@ async function main(): Promise<void> {
     const goal0 = r0.goal!;
     const plan0 = r0.plan!;
     const rec0 = resolvePlanStanding(r0.revisions).pending!;
-    await dispatchSkill(db, "decide_pursuit_plan", operator, { pursuitId: hero.id, args: { planId: plan0.id, recommendationId: rec0.id, decision: "APPROVED" }, dataEnvironment: hero.env });
+    await dispatchSkill(db, "decide_pursuit_plan", operator, { pursuitId: hero.id, args: { planId: plan0.id, recommendationId: rec0.id, decision: "APPROVED" }, dataEnvironment: hero.env as DataEnvironment });
 
-    const toCdw = await dispatchSkill(db, "select_partner_route", operator, { pursuitId: hero.id, args: { candidateKey: await routeCandidate(db, "CDW") }, dataEnvironment: hero.env });
+    const toCdw = await dispatchSkill(db, "select_partner_route", operator, { pursuitId: hero.id, args: { candidateKey: await routeCandidate(db, "CDW") }, dataEnvironment: hero.env as DataEnvironment });
     check("route WWT → CDW through the governed route decision", toCdw.status === "EXECUTED", toCdw.reason ?? "");
     const r1 = await loadPlanRecords(db, caller, hero.id);
     const v1 = await loadPursuitPlanView(db, caller, hero.id);
@@ -307,17 +308,17 @@ async function main(): Promise<void> {
     check("WWT → CDW: the approved PLAN becomes reviewable because the route changed",
       v1?.review.state === "REVIEW_NEEDED" && v1.review.reasons.some((r) => /^Route is now CDW/.test(r)), JSON.stringify(v1?.review.reasons));
     check("WWT → CDW: no review reason claims the objective changed", !(v1?.review.reasons ?? []).some((r) => /goal|objective/i.test(r)));
-    const rr = await dispatchSkill(db, "recommend_pursuit_plan", operator, { pursuitId: hero.id, dataEnvironment: hero.env });
+    const rr = await dispatchSkill(db, "recommend_pursuit_plan", operator, { pursuitId: hero.id, dataEnvironment: hero.env as DataEnvironment });
     const r1b = await loadPlanRecords(db, caller, hero.id);
     check("WWT → CDW: plan history gains a recommendation on the SAME plan, with a review trigger",
       rr.status === "EXECUTED" && r1b.plan?.id === plan0.id && r1b.revisions.length === r1.revisions.length + 1 && !!r1b.revisions.at(-1)?.reviewTrigger);
     const upd = resolvePlanStanding(r1b.revisions).pending!;
     check("WWT → CDW: the updated plan names the route a person approved (a recommendation accepted is still a choice)",
       upd.content.why.some((w) => w.text === "Runs through CDW, the recommended route, approved by a person."), JSON.stringify(upd.content.why.map((w) => w.text)));
-    const ap = await dispatchSkill(db, "decide_pursuit_plan", operator, { pursuitId: hero.id, args: { planId: plan0.id, recommendationId: upd.id, decision: "APPROVED" }, dataEnvironment: hero.env });
+    const ap = await dispatchSkill(db, "decide_pursuit_plan", operator, { pursuitId: hero.id, args: { planId: plan0.id, recommendationId: upd.id, decision: "APPROVED" }, dataEnvironment: hero.env as DataEnvironment });
     check("WWT → CDW: a person approves the route-updated plan; the goal row is unchanged", ap.status === "EXECUTED" && (await loadPlanRecords(db, caller, hero.id)).goal?.id === goal0.id);
 
-    const toWwt = await dispatchSkill(db, "override_partner_route", operator, { pursuitId: hero.id, args: { candidateKey: await routeCandidate(db, "WWT"), reason: "exec relationship", category: "EXECUTIVE_DIRECTION" }, dataEnvironment: hero.env });
+    const toWwt = await dispatchSkill(db, "override_partner_route", operator, { pursuitId: hero.id, args: { candidateKey: await routeCandidate(db, "WWT"), reason: "exec relationship", category: "EXECUTIVE_DIRECTION" }, dataEnvironment: hero.env as DataEnvironment });
     const r2 = await loadPlanRecords(db, caller, hero.id);
     const v2 = await loadPursuitPlanView(db, caller, hero.id);
     check("CDW → WWT: the SAME goal again; only the plan is reviewable",
@@ -328,7 +329,7 @@ async function main(): Promise<void> {
   await scenario(hero.org_id, async (db) => {
     const r0 = await loadPlanRecords(db, caller, hero.id);
     const rec0 = resolvePlanStanding(r0.revisions).pending!;
-    await dispatchSkill(db, "decide_pursuit_plan", operator, { pursuitId: hero.id, args: { planId: r0.plan!.id, recommendationId: rec0.id, decision: "APPROVED" }, dataEnvironment: hero.env });
+    await dispatchSkill(db, "decide_pursuit_plan", operator, { pursuitId: hero.id, args: { planId: r0.plan!.id, recommendationId: rec0.id, decision: "APPROVED" }, dataEnvironment: hero.env as DataEnvironment });
     await transitionMotion(db, hero.org_id, rec0.content.motion.motionId!, "abandoned");
     const r1 = await loadPlanRecords(db, caller, hero.id);
     const v = await loadPursuitPlanView(db, caller, hero.id);
@@ -340,13 +341,13 @@ async function main(): Promise<void> {
     const r0 = await loadPlanRecords(db, caller, hero.id);
     const old = (await db.query(`select * from pursuit_goals where id = $1`, [r0.goal!.id])).rows[0];
     const revs0 = r0.revisions.length;
-    const noReason = await dispatchSkill(db, "replace_pursuit_goal", operator, { pursuitId: hero.id, args: { objective: "Consolidate onto one platform" }, dataEnvironment: hero.env });
+    const noReason = await dispatchSkill(db, "replace_pursuit_goal", operator, { pursuitId: hero.id, args: { objective: "Consolidate onto one platform" }, dataEnvironment: hero.env as DataEnvironment });
     check("replacing a goal without a reason is refused", noReason.status === "FAILED");
-    const same = await dispatchSkill(db, "replace_pursuit_goal", operator, { pursuitId: hero.id, args: { objective: old.objective, reason: "restated" }, dataEnvironment: hero.env });
+    const same = await dispatchSkill(db, "replace_pursuit_goal", operator, { pursuitId: hero.id, args: { objective: old.objective, reason: "restated" }, dataEnvironment: hero.env as DataEnvironment });
     check("restating the current objective is not a replacement", same.status === "FAILED");
     const newObjective = "Exit legacy virtualization and consolidate onto one platform before renewal";
     const rep = await dispatchSkill(db, "replace_pursuit_goal", operator, {
-      pursuitId: hero.id, args: { objective: newObjective, targetDate: "2026-12-15", reason: "Customer widened the program at the QBR" }, dataEnvironment: hero.env,
+      pursuitId: hero.id, args: { objective: newObjective, targetDate: "2026-12-15", reason: "Customer widened the program at the QBR" }, dataEnvironment: hero.env as DataEnvironment,
     });
     check("a genuinely different objective replaces the goal (governed, human, with a reason)", rep.status === "EXECUTED", rep.reason ?? "");
     const res = rep.result as { goalId: string; replacedGoalId: string; supersededPlanId: string | null };
@@ -363,7 +364,7 @@ async function main(): Promise<void> {
     check("GOAL_REPLACED is on the ledger", await count(db, `select count(*)::text n from change_ledger where pursuit_id = $1 and change_type = 'GOAL_REPLACED'`, [hero.id]) === 1);
     const v0 = await loadPursuitPlanView(db, caller, hero.id);
     check("the old plan is not shown as the new goal's plan", v0?.exists === false);
-    const rr = await dispatchSkill(db, "recommend_pursuit_plan", operator, { pursuitId: hero.id, dataEnvironment: hero.env });
+    const rr = await dispatchSkill(db, "recommend_pursuit_plan", operator, { pursuitId: hero.id, dataEnvironment: hero.env as DataEnvironment });
     const r2 = await loadPlanRecords(db, caller, hero.id);
     check("the next recommendation starts a NEW plan implementing the NEW goal", rr.status === "EXECUTED" && r2.goal?.id === res.goalId && r2.plan?.goalId === res.goalId && r2.plan.id !== r0.plan!.id && r2.revisions.length === 1);
     const v2 = await loadPursuitPlanView(db, caller, hero.id);
@@ -394,7 +395,7 @@ async function main(): Promise<void> {
   });
 
   await scenario(otherOrg, async (db) => {
-    const r = await dispatchSkill(db, "replace_pursuit_goal", { type: "USER", id: null, orgId: otherOrg, role: "operator" }, {
+    const r = await dispatchSkill(db, "replace_pursuit_goal", { type: "USER", id: null, orgId: otherOrg, role: "operator" }, { dataEnvironment: "PRODUCTION",
       pursuitId: hero.id, args: { objective: "hijacked objective", reason: "x" } });
     check("another org cannot replace this pursuit's goal", r.status === "REJECTED");
   });
@@ -409,11 +410,11 @@ async function main(): Promise<void> {
     check("another org sees no goal, plan or revisions", r.goal === null && r.plan === null && r.revisions.length === 0);
   });
   await scenario(otherOrg, async (db) => {
-    const res = await dispatchSkill(db, "decide_pursuit_plan", { type: "USER", id: null, orgId: otherOrg, role: "operator" }, {
+    const res = await dispatchSkill(db, "decide_pursuit_plan", { type: "USER", id: null, orgId: otherOrg, role: "operator" }, { dataEnvironment: "PRODUCTION",
       pursuitId: hero.id, args: { planId: "00000000-0000-0000-0000-000000000000", recommendationId: "00000000-0000-0000-0000-000000000000", decision: "APPROVED" },
     });
     check("another org's decision is REJECTED at the governed boundary", res.status === "REJECTED" && /not found in this org/.test(res.reason ?? ""));
-    const rr = await dispatchSkill(db, "recommend_pursuit_plan", { type: "USER", id: null, orgId: otherOrg, role: "operator" }, { pursuitId: hero.id });
+    const rr = await dispatchSkill(db, "recommend_pursuit_plan", { type: "USER", id: null, orgId: otherOrg, role: "operator" }, { dataEnvironment: "PRODUCTION", pursuitId: hero.id });
     check("another org cannot record a recommendation on it either", rr.status === "REJECTED");
   });
   await scenario(hero.org_id, async (db) => {

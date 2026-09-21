@@ -93,6 +93,10 @@ async function main() {
   const agent = await withTenantOrg(org.id, (db) => provisionGovernedAgent(db, org.id, {
     key: `${NS}-agent`, displayName: `Research Agent ${NS}`, purpose: "P45-4 acceptance",
     skillId: "draft_campaign_touch", skillVersion: 1, keyName: `${NS}-bound`,
+    // This suite IS a certification gate, and now says so. Before 0120 its provisioning inherited
+    // PRODUCTION by default, which is precisely how the hosted gate credential produced 17
+    // invocations claiming the one learning-eligible environment.
+    dataEnvironment: "CERTIFICATION",
   }));
   const actorRow = await one(`select actor_type, lifecycle, principal_user_id from governed_actors where id = $1`, [agent.actorId]);
   ck("a governed AGENT exists, ACTIVE, with no user principal", actorRow.actor_type === "AGENT"
@@ -104,13 +108,37 @@ async function main() {
   ck("the credential is bound to that actor at issue", keyRow.governed_actor_id === agent.actorId, keyRow);
 
   // A legacy Slice 14 credential — UNBOUND, exactly as one minted before this slice.
+  //
+  // IT IS UNBOUND, NOT UNCLASSIFIED, AND SINCE 0120 THOSE ARE TWO INDEPENDENT FACTS. Binding is
+  // about AUTHORITY (which governed actor acts); provenance is about DATA (what kind of rows the
+  // execution produces). This fixture exists to prove the authority compatibility contract, so it
+  // carries provenance and varies only the binding — otherwise it would be testing two changes at
+  // once and would fail for the wrong reason.
   const { mintKey } = await import("../src/lib/agents/mcp-tools");
   const legacy = mintKey();
   const legacyId = (await one(
-    `insert into api_keys (org_id, name, key_hash, scope) values ($1,$2,$3,'write') returning id`,
+    `insert into api_keys (org_id, name, key_hash, scope, data_environment)
+     values ($1,$2,$3,'write','CERTIFICATION') returning id`,
     [org.id, `${NS}-legacy`, legacy.hash])).id;
   ck("a legacy unbound credential exists for the compatibility control",
     (await one(`select governed_actor_id from api_keys where id = $1`, [legacyId])).governed_actor_id === null);
+  // And the OTHER half of that separation: a credential with no provenance at all cannot write,
+  // whatever its binding. The route refuses before dispatching, so no invocation row is created —
+  // which is the only coherent outcome, since that row could not be labelled either.
+  const unclassified = mintKey();
+  const unclassifiedId = (await one(
+    `insert into api_keys (org_id, name, key_hash, scope) values ($1,$2,$3,'write') returning id`,
+    [org.id, `${NS}-unclassified`, unclassified.hash])).id;
+  const invCount = async () => Number((await one(`select count(*)::int n from governed_action_invocations where org_id=$1`, [org.id])).n);
+  const beforeUnclassified = await invCount();
+  const unclassifiedCall = await mcpCall(unclassified.plaintext, "draft_touch", draftArgs(`${NS} unclassified`));
+  // The refusal is a JSON-RPC ERROR, not a tool result carrying isError — the same channel the
+  // identity refusal two lines above uses, because in both cases the CALL is inadmissible rather
+  // than the tool having failed.
+  ck("a credential with NO data provenance is refused, and writes no invocation at all",
+    unclassifiedCall.rpcError !== null && /provenance/i.test(unclassifiedCall.rpcError)
+    && (await invCount()) === beforeUnclassified,
+    { rpcError: unclassifiedCall.rpcError, keyId: unclassifiedId });
 
   // ── CORE POSITIVE ─────────────────────────────────────────────────────────────────────────────
   HD("CORE POSITIVE — enforcement ON, through the real /api/mcp route");
@@ -212,7 +240,7 @@ async function main() {
   const excluded = (await one(`insert into actor_capability_grants (org_id, actor_id, skill_id, skill_version, status)
                                values ($1,$2,'assemble_pursuit_team',1,'ACTIVE') returning id`, [org.id, agent.actorId])).id;
   const inel = await withEnforcement(true, () => withTenantOrg(org.id, (db) => dispatchSkill(db, "assemble_pursuit_team",
-    { type: "AGENT", id: agent.keyId, orgId: org.id, role: "operator" }, { governedActorId: agent.actorId, args: {} })));
+    { type: "AGENT", id: agent.keyId, orgId: org.id, role: "operator" }, { dataEnvironment: "PRODUCTION", governedActorId: agent.actorId, args: {} })));
   ck("a grant for a skill whose registry EXCLUDES agents still rejects, at the eligibility check",
     inel.status === "REJECTED" && /not eligible/.test(inel.reason ?? ""), inel.reason);
   await pool.query(`delete from actor_capability_grants where id=$1`, [excluded]);
@@ -234,7 +262,7 @@ async function main() {
   ck("a foreign-org grant cannot name this actor — refused relationally", /foreign key/i.test(grantErr), grantErr.slice(0, 80));
   const unknownActor = await withEnforcement(true, () => withTenantOrg(org.id, (db) => dispatchSkill(db, "draft_campaign_touch",
     { type: "AGENT", id: agent.keyId, orgId: org.id, role: "operator" },
-    { governedActorId: "00000000-0000-0000-0000-000000000000", args: draftArgs(`${NS} unknown`) })));
+    { dataEnvironment: "PRODUCTION", governedActorId: "00000000-0000-0000-0000-000000000000", args: draftArgs(`${NS} unknown`) })));
   ck("an actor id that does not exist is reported UNKNOWN, never as a permission failure",
     unknownActor.reason === "unknown governed actor", unknownActor.reason);
 
@@ -293,7 +321,7 @@ async function main() {
   const workerId = randomUUID();
   for (const on of [false, true]) {
     const r = await withEnforcement(on, () => withTenantOrg(org.id, (db) => dispatchSkill(db, "send_campaign_touch",
-      { type: "WORKER", id: workerId, orgId: org.id, role: "operator" }, { args: {} })));
+      { type: "WORKER", id: workerId, orgId: org.id, role: "operator" }, { dataEnvironment: "PRODUCTION", args: {} })));
     ck(`a WORKER dispatch is NOT rejected by the new gate (enforcement ${on ? "ON" : "OFF"})`,
       !/requires an AGENT to act as a governed actor/.test(r.reason ?? ""), r.reason?.slice(0, 60));
   }
@@ -307,7 +335,7 @@ async function main() {
   {
     const verified = await withTenantOrg(org.id, (db) => dispatchSkill(db, "assert_stakeholder_role",
       { type: "AGENT", id: agent.keyId, orgId: org.id, role: "operator" },
-      { args: { opportunityId: opp.id, contactId: contact.id, role: "economic_buyer", assertionState: "verified", source: NS, evidence: "x" } }));
+      { dataEnvironment: "PRODUCTION", args: { opportunityId: opp.id, contactId: contact.id, role: "economic_buyer", assertionState: "verified", source: NS, evidence: "x" } }));
     ck("the pre-existing agent/human authority boundary still holds, independent of anything here",
       verified.status === "FAILED" && /may not assert verified/.test(verified.reason ?? ""), verified.reason?.slice(0, 60));
   }

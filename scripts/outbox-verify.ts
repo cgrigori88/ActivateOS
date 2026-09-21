@@ -118,7 +118,7 @@ async function main() {
 
   // ---- 6: cross-tenant action without a valid grant fails closed ----
   console.log("R1-G4.8  Cross-tenant without grant fails closed");
-  const cross = await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero }));
+  const cross = await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero }));
   check("a CROSS_TENANT_ACTION without an ACTION grant is REJECTED (no outbox, no execution)", cross.status === "REJECTED");
 
   // ---- 7: revoked authority BEFORE execution → compensated, not executed ----

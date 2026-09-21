@@ -44,8 +44,13 @@ async function main() {
   await q(`insert into campaigns (org_id, company_id, name, status, source) values ($1,$2,$3,'draft','user')`, [org.id, co.id, campaignName]);
   await q(`insert into org_features (org_id, governed_action) values ($1,true) on conflict (org_id) do update set governed_action = true`, [org.id]);
   const USER = (o = org.id): Actor => ({ type: "USER", id: null, orgId: o, role: "operator" });
+  // `ctx as never` is what let an omitted provenance through the type system and surface as a
+  // savepoint error three layers away. The helper now supplies it — this suite IS a certification
+  // gate, so CERTIFICATION is the truthful label for everything it writes — and any caller may
+  // still override it.
   const disp = (skill: string, ctx: Record<string, unknown>, actor: Actor = USER()) =>
-    withTenantOrg(actor.orgId, (db) => dispatchSkill(db, skill, actor, ctx as never));
+    withTenantOrg(actor.orgId, (db) => dispatchSkill(db, skill, actor,
+      { dataEnvironment: "CERTIFICATION", ...ctx } as Parameters<typeof dispatchSkill>[3]));
 
   // ── REGISTRY INTEGRITY ────────────────────────────────────────────────────────────────────────
   HD("REGISTRY — the database, not application code, decides who may be marked");

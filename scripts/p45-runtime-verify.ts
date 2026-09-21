@@ -229,7 +229,7 @@ async function main(): Promise<void> {
   // A grant cannot rescue an actor the registry refuses: viewer < operator.
   const vExec = await withTenantOrg(f.orgId, (rwDb) => dispatchSkill(rwDb, SKILL,
     { type: "USER", id: f.principal, orgId: f.orgId, role: "viewer" },
-    { governedActorId: f.actorId, args: { campaign: f.campaignName }, idempotencyKey: `viewer-${randomUUID()}` }));
+    { dataEnvironment: "PRODUCTION", governedActorId: f.actorId, args: { campaign: f.campaignName }, idempotencyKey: `viewer-${randomUUID()}` }));
   check("17: a grant does NOT override required_permission — viewer is still refused",
     vExec.status === "REJECTED" && /insufficient permission/i.test(vExec.reason ?? ""), `${vExec.status}: ${vExec.reason}`);
 

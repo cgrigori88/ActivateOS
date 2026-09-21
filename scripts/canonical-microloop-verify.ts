@@ -82,17 +82,17 @@ async function main() {
       (await tx(pool, orgA, (db) => getTodayQueue(db, internal(orgA), {}))).items.some((i) => i.type === "ROUTE_APPROVAL" && i.pursuitId === pursuitId));
 
     // ---- Rollback/failure BEFORE the happy path: a viewer may not decide. ----
-    const viewerAttempt = await tx(pool, orgA, (db) => dispatchSkill(db, "override_partner_route", { type: "USER", id: null, orgId: orgA, role: "viewer" }, { pursuitId, args: { candidateKey: alt.key, reason: "nope", category: "OTHER" }, correlationId: null }));
+    const viewerAttempt = await tx(pool, orgA, (db) => dispatchSkill(db, "override_partner_route", { type: "USER", id: null, orgId: orgA, role: "viewer" }, { dataEnvironment: "PRODUCTION", pursuitId, args: { candidateKey: alt.key, reason: "nope", category: "OTHER" }, correlationId: null }));
     ok("R1. viewer override REJECTED (insufficient permission)", viewerAttempt.status === "REJECTED");
     ok("R1b. rejected attempt did not select anything", !(await tx(pool, orgA, (db) => getRouteComparison(db, internal(orgA), pursuitId))).decided);
 
     // ---- Failure: an unknown candidate id fails cleanly (FAILED invocation, no mutation). ----
-    const badCand = await tx(pool, orgA, (db) => dispatchSkill(db, "override_partner_route", { type: "USER", id: null, orgId: orgA, role: "operator" }, { pursuitId, args: { candidateKey: "00000000-0000-0000-0000-000000000000", reason: "bad", category: "OTHER" }, correlationId: null }));
+    const badCand = await tx(pool, orgA, (db) => dispatchSkill(db, "override_partner_route", { type: "USER", id: null, orgId: orgA, role: "operator" }, { dataEnvironment: "PRODUCTION", pursuitId, args: { candidateKey: "00000000-0000-0000-0000-000000000000", reason: "bad", category: "OTHER" }, correlationId: null }));
     ok("R2. unknown candidate → FAILED invocation (audited), no mutation", badCand.status === "FAILED");
 
     // ---- (2)(3)(4) The authorized human override, through the governed mutation authority. ----
     const correlationId = randomUUID();
-    const decision = await tx(pool, orgA, (db) => dispatchSkill(db, "override_partner_route", { type: "USER", id: null, orgId: orgA, role: "operator" }, {
+    const decision = await tx(pool, orgA, (db) => dispatchSkill(db, "override_partner_route", { type: "USER", id: null, orgId: orgA, role: "operator" }, { dataEnvironment: "PRODUCTION",
       pursuitId, args: { candidateKey: alt.key, reason: "Existing exec relationship at the account", category: "RELATIONSHIP_KNOWLEDGE" }, correlationId }));
     ok("3. governed skill invocation EXECUTED", decision.status === "EXECUTED", decision.status);
 

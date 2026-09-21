@@ -64,7 +64,7 @@ async function main() {
     console.log(`\n  · pursuit ${pid.slice(0, 8)} — recommended=${before.recommended?.label}, will select=${wwt.label}\n`);
 
     // Governed decision → select WWT (recommended stays CDW).
-    await tx(pool, org, (db) => dispatchSkill(db, "override_partner_route", { type: "USER", id: null, orgId: org, role: "operator" }, {
+    await tx(pool, org, (db) => dispatchSkill(db, "override_partner_route", { type: "USER", id: null, orgId: org, role: "operator" }, { dataEnvironment: "PRODUCTION",
       pursuitId: pid, args: { candidateKey: wwt.key, reason: "Exec relationship at the account", category: "RELATIONSHIP_KNOWLEDGE" }, correlationId: randomUUID() }));
     const s1 = await snapshot(pool, pid);
     ok("1. recommended=CDW, selected=WWT", (await partnerName(pool, s1.recommended_partner_id)) === "CDW" && (await partnerName(pool, s1.selected_partner_id)) === wwt.label);
@@ -102,7 +102,7 @@ async function main() {
     // And a governed decision CAN change it (to the recommended route), recorded as a new decision.
     const recNow = (await snapshot(pool, pid)).recommended_partner_id;
     const recCand = (await pool.query<{ id: string }>(`select rc.id from route_candidates rc join pursuit_route_snapshots s on s.id=rc.route_snapshot_id where s.pursuit_id=$1 and s.is_current and rc.is_recommended`, [pid])).rows[0];
-    await tx(pool, org, (db) => dispatchSkill(db, "select_partner_route", { type: "USER", id: null, orgId: org, role: "operator" }, { pursuitId: pid, args: { candidateKey: recCand.id }, correlationId: randomUUID() }));
+    await tx(pool, org, (db) => dispatchSkill(db, "select_partner_route", { type: "USER", id: null, orgId: org, role: "operator" }, { dataEnvironment: "PRODUCTION", pursuitId: pid, args: { candidateKey: recCand.id }, correlationId: randomUUID() }));
     ok("7b. only a governed selection changes the decision (now matches recommendation)", (await partnerName(pool, (await snapshot(pool, pid)).selected_partner_id)) === (await partnerName(pool, recNow)));
 
     console.log(`\n[route-persistence-verify] ${pass} passed, ${fail} failed`);

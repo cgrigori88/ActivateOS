@@ -43,8 +43,8 @@ async function main() {
   // The SAME external id in two orgs' id spaces points at two different companies.
   await asOrg(s.orgA, (db) => recordAlias(db, { companyId: s.acme, alias: `EXT-777-${RID}`, aliasType: "distributor_account_id", sourceOrgId: s.orgA, resolutionMethod: "EXTERNAL_ID", resolutionConfidence: 1 }));
   await asOrg(s.orgB, (db) => recordAlias(db, { companyId: s.globex, alias: `EXT-777-${RID}`, aliasType: "distributor_account_id", sourceOrgId: s.orgB, resolutionMethod: "EXTERNAL_ID", resolutionConfidence: 1 }));
-  const ra = await asOrg(s.orgA, (db) => resolveIdentity(db, { orgId: s.orgA, sourceSystem: "distributor", sourceOrgId: s.orgA, externalId: `EXT-777-${RID}` }));
-  const rb = await asOrg(s.orgB, (db) => resolveIdentity(db, { orgId: s.orgB, sourceSystem: "distributor", sourceOrgId: s.orgB, externalId: `EXT-777-${RID}` }));
+  const ra = await asOrg(s.orgA, (db) => resolveIdentity(db, { dataEnvironment: "PRODUCTION", orgId: s.orgA, sourceSystem: "distributor", sourceOrgId: s.orgA, externalId: `EXT-777-${RID}` }));
+  const rb = await asOrg(s.orgB, (db) => resolveIdentity(db, { dataEnvironment: "PRODUCTION", orgId: s.orgB, sourceSystem: "distributor", sourceOrgId: s.orgB, externalId: `EXT-777-${RID}` }));
   check("external-id resolution runs against the real schema (alias drift fixed)", ra.companyId !== null || ra.status !== undefined);
   check("the same external id resolves to each org's OWN company (no collision, §14)", ra.companyId === s.acme && rb.companyId === s.globex && ra.companyId !== rb.companyId);
   check("org A's id space cannot see org B's mapping for the same id", ra.companyId !== s.globex);
@@ -52,13 +52,13 @@ async function main() {
   // ---- Global (null-scoped) alias ----
   console.log("E3-G.2  Global first-party alias");
   await asOwner((db) => recordAlias(db, { companyId: s.acme, alias: `DUNS-GLOBAL-${RID}`, aliasType: "vendor_account_id", sourceOrgId: null, resolutionMethod: "LEGAL_IDENTITY", resolutionConfidence: 1 }));
-  const gA = await asOrg(s.orgA, (db) => resolveIdentity(db, { orgId: s.orgA, sourceSystem: "import", sourceOrgId: s.orgA, externalId: `DUNS-GLOBAL-${RID}` }));
-  const gB = await asOrg(s.orgB, (db) => resolveIdentity(db, { orgId: s.orgB, sourceSystem: "import", sourceOrgId: s.orgB, externalId: `DUNS-GLOBAL-${RID}` }));
+  const gA = await asOrg(s.orgA, (db) => resolveIdentity(db, { dataEnvironment: "PRODUCTION", orgId: s.orgA, sourceSystem: "import", sourceOrgId: s.orgA, externalId: `DUNS-GLOBAL-${RID}` }));
+  const gB = await asOrg(s.orgB, (db) => resolveIdentity(db, { dataEnvironment: "PRODUCTION", orgId: s.orgB, sourceSystem: "import", sourceOrgId: s.orgB, externalId: `DUNS-GLOBAL-${RID}` }));
   check("a global (null-scoped) alias resolves for any org", gA.companyId === s.acme && gB.companyId === s.acme);
 
   // ---- Quarantine of an unresolved identity (§31) ----
   console.log("E3-G.3  Quarantine of unresolved identity (§31)");
-  const q = await asOrg(s.orgA, (db) => resolveIdentity(db, { orgId: s.orgA, sourceSystem: "distributor", sourceOrgId: s.orgA, externalId: `UNKNOWN-${RID}` }));
+  const q = await asOrg(s.orgA, (db) => resolveIdentity(db, { dataEnvironment: "PRODUCTION", orgId: s.orgA, sourceSystem: "distributor", sourceOrgId: s.orgA, externalId: `UNKNOWN-${RID}` }));
   check("an unknown external id is quarantined (companyId null, never guessed)", q.companyId === null && q.quarantined === true && q.status === "UNRESOLVED");
   const review = await asOrg(s.orgA, async (db) => (await db.query<{ source_org_id: string | null; status: string }>(`select source_org_id, status from entity_resolution_reviews where org_id=$1 and external_id=$2 order by created_at desc limit 1`, [s.orgA, `UNKNOWN-${RID}`])).rows[0]);
   check("a source-org-scoped review row is opened for the quarantined identity", review && review.source_org_id === s.orgA && review.status === "UNRESOLVED");

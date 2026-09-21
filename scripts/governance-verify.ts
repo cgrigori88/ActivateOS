@@ -46,20 +46,20 @@ async function main() {
   // ---- Permission + actor eligibility (R9) ----
   console.log("E3-D.2  Permission + actor eligibility");
   const partId = await asOrg(s.vendor, (db) => addParticipant(db, { pursuitId: s.hero, orgId: s.dist, roleKey: "DISTRIBUTOR", sponsorOrgId: s.vendor }));
-  check("READ skill executes for a viewer", (await asOrg(s.vendor, (db) => dispatchSkill(db, "explain_route", actor(s.vendor, "viewer"), { pursuitId: s.hero }))).status === "EXECUTED");
+  check("READ skill executes for a viewer", (await asOrg(s.vendor, (db) => dispatchSkill(db, "explain_route", actor(s.vendor, "viewer"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero }))).status === "EXECUTED");
   check("INTERNAL_WRITE rejected for a viewer (insufficient permission)",
-    (await asOrg(s.vendor, (db) => dispatchSkill(db, "accept_participation", actor(s.vendor, "viewer"), { pursuitId: s.hero, args: { participantId: partId } }))).status === "REJECTED");
+    (await asOrg(s.vendor, (db) => dispatchSkill(db, "accept_participation", actor(s.vendor, "viewer"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, args: { participantId: partId } }))).status === "REJECTED");
   check("INTERNAL_WRITE rejected for an ineligible actor type (AGENT)",
-    (await asOrg(s.vendor, (db) => dispatchSkill(db, "accept_participation", actor(s.vendor, "operator", "AGENT"), { pursuitId: s.hero, args: { participantId: partId } }))).status === "REJECTED");
-  const accepted = await asOrg(s.dist, (db) => dispatchSkill(db, "accept_participation", actor(s.dist, "operator"), { pursuitId: s.hero, args: { participantId: partId } }));
+    (await asOrg(s.vendor, (db) => dispatchSkill(db, "accept_participation", actor(s.vendor, "operator", "AGENT"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, args: { participantId: partId } }))).status === "REJECTED");
+  const accepted = await asOrg(s.dist, (db) => dispatchSkill(db, "accept_participation", actor(s.dist, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, args: { participantId: partId } }));
   check("INTERNAL_WRITE executes for an operator and performs the mutation", accepted.status === "EXECUTED" &&
     (await asOrg(s.dist, async (db) => (await db.query(`select participation_state from pursuit_participants where id=$1`, [partId])).rows[0].participation_state)) === "ACTIVE");
 
   // ---- Idempotency ----
   console.log("E3-D.3  Idempotency");
   const key = `idem-${RID}`;
-  const first = await asOrg(s.vendor, (db) => dispatchSkill(db, "explain_route", actor(s.vendor, "operator"), { pursuitId: s.hero, idempotencyKey: key }));
-  const second = await asOrg(s.vendor, (db) => dispatchSkill(db, "explain_route", actor(s.vendor, "operator"), { pursuitId: s.hero, idempotencyKey: key }));
+  const first = await asOrg(s.vendor, (db) => dispatchSkill(db, "explain_route", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, idempotencyKey: key }));
+  const second = await asOrg(s.vendor, (db) => dispatchSkill(db, "explain_route", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, idempotencyKey: key }));
   check("idempotency key dedupes to a single invocation", first.invocationId === second.invocationId);
 
   // ---- CROSS_TENANT_ACTION authority (R24) ----
@@ -81,12 +81,12 @@ async function main() {
     [s.vendor, s.hero],
   ))).rows[0].id;
   check("CROSS_TENANT_ACTION rejected without an ACTION grant",
-    (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero, args: { memberId } }))).status === "REJECTED");
+    (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, args: { memberId } }))).status === "REJECTED");
   // distributor grants vendor DATA (must NOT authorize) then ACTION (authorizes)
   const dataG = await asOrg(s.dist, (db) => proposeGrant(db, { pursuitId: s.hero, fromOrgId: s.dist, toOrgId: s.vendor, grantKind: "DATA", purpose: "share" }));
   await asOrg(s.vendor, (db) => acceptGrant(db, s.vendor, dataG));
   check("a DATA grant does NOT authorize a CROSS_TENANT_ACTION (R24)",
-    (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero, args: { memberId } }))).status === "REJECTED");
+    (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, args: { memberId } }))).status === "REJECTED");
   const actG = await asOrg(s.dist, (db) => proposeGrant(db, { pursuitId: s.hero, fromOrgId: s.dist, toOrgId: s.vendor, grantKind: "ACTION", actionFamily: "team.request_acceptance", purpose: "authorize team ask" }));
   await asOrg(s.vendor, (db) => acceptGrant(db, s.vendor, actG));
   /* §6 proof: the two rejections above changed nothing. The skill's only
@@ -100,11 +100,11 @@ async function main() {
     (await asOrg(s.vendor, async (db) => (await db.query<{ n: string }>(
       `select count(*)::text n from governed_action_invocations where pursuit_id=$1 and skill_id='request_team_acceptance' and status='REJECTED'`, [s.hero])).rows[0].n)) === "2");
   check("an ACTION grant authorizes the CROSS_TENANT_ACTION",
-    (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero, args: { memberId } }))).status === "EXECUTED");
+    (await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, args: { memberId } }))).status === "EXECUTED");
 
   // ---- EXTERNAL_ACTION outbox + receipt (R25/R26) ----
   console.log("E3-D.5  External-action outbox + receipt");
-  const ext = await asOrg(s.vendor, (db) => dispatchSkill(db, "send_partner_intro", actor(s.vendor, "operator"), { pursuitId: s.hero, args: { to: "cdw" } }));
+  const ext = await asOrg(s.vendor, (db) => dispatchSkill(db, "send_partner_intro", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, args: { to: "cdw" } }));
   check("EXTERNAL_ACTION is queued (EXECUTING), not run inline (R25)", ext.status === "EXECUTING" && ext.queued === true);
   check("an outbox row exists PENDING before any executor runs",
     (await asOrg(s.vendor, async (db) => (await db.query(`select count(*)::int n from action_outbox where invocation_id=$1 and status='PENDING'`, [ext.invocationId])).rows[0].n)) === 1);
@@ -117,9 +117,9 @@ async function main() {
   // ---- Loop guard (R23) ----
   console.log("E3-D.6  Loop guard");
   const corr = randomUUID();
-  await asOrg(s.vendor, async (db) => { for (let i = 0; i < 25; i++) await dispatchSkill(db, "explain_route", actor(s.vendor, "operator"), { pursuitId: s.hero, correlationId: corr }); });
+  await asOrg(s.vendor, async (db) => { for (let i = 0; i < 25; i++) await dispatchSkill(db, "explain_route", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, correlationId: corr }); });
   check("action chain beyond the loop-guard depth is rejected",
-    (await asOrg(s.vendor, (db) => dispatchSkill(db, "explain_route", actor(s.vendor, "operator"), { pursuitId: s.hero, correlationId: corr }))).status === "REJECTED");
+    (await asOrg(s.vendor, (db) => dispatchSkill(db, "explain_route", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, correlationId: corr }))).status === "REJECTED");
 
   // ---- Flag fail-safe ----
   console.log("E3-D.7  Governed-action flag fail-safe");

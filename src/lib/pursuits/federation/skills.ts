@@ -7,7 +7,7 @@ import type { OverrideCategory } from "../../routing/types";
 import { assembleTeam, transitionMember } from "../../routing/team";
 import { approveMotion, rejectMotion, type EditableField } from "../../motions/approve";
 import { recordChange } from "../ledger";
-import type { DataEnvironment } from "../lineage";
+import { DATA_ENVIRONMENTS, type DataEnvironment } from "../lineage";
 import { reportEvent } from "../../obs/reporter";
 import { governedAgentEnforcementEnabled } from "@/lib/env/environment";
 import { liveGrantFor, type LiveGrant } from "@/lib/runtime/grant-liveness";
@@ -37,7 +37,20 @@ export interface DispatchCtx {
   idempotencyKey?: string | null;
   correlationId?: string | null;
   causationId?: string | null;
-  dataEnvironment?: string;
+  /**
+   * THE DATA PROVENANCE OF THIS EXECUTION. REQUIRED, AND DELIBERATELY NOT OPTIONAL.
+   *
+   * It was `dataEnvironment?: string`, and every consumer below ended in `?? "PRODUCTION"`. That
+   * made forgetting it not merely possible but INVISIBLE — a new call site simply inherited the one
+   * environment a learning corpus admits. `/api/mcp` forgot it for its entire life and wrote 18
+   * such rows on a project holding no production data at all.
+   *
+   * Making it required moves that failure from runtime to `tsc`: a dispatch that cannot say where
+   * its data comes from no longer compiles. Callers get it from the credential (the MCP path) or
+   * from the subject row (the server-action path); no caller invents it, and none may read it from
+   * a request payload.
+   */
+  dataEnvironment: DataEnvironment;
   /**
    * P45-1. The registered governed actor (P4) on whose authority this dispatch is made, and the
    * runtime step that requested it. BOTH ARE OPTIONAL AND ADDITIVE: every pre-existing caller omits
@@ -104,12 +117,12 @@ export const SKILL_REGISTRY: SkillDef[] = [
   { skillId: "select_partner_route", version: 1, description: "Approve (select) a recommended partner route", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER"], requiredPermission: "operator", precheck: pursuitInOrg,
     handler: async (db, actor, ctx) => selectRouteByCandidate(db, actor.orgId, String(ctx.pursuitId), String(ctx.args?.candidateKey), {
-      actorId: actor.id ?? null, env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null }) },
+      actorId: actor.id ?? null, env: ctx.dataEnvironment, correlationId: ctx.correlationId ?? null }) },
   { skillId: "override_partner_route", version: 1, description: "Override the recommended partner route (human decision)", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER"], requiredPermission: "operator", precheck: pursuitInOrg,
     handler: async (db, actor, ctx) => selectRouteByCandidate(db, actor.orgId, String(ctx.pursuitId), String(ctx.args?.candidateKey), {
       actorId: actor.id ?? null, reason: ctx.args?.reason ? String(ctx.args.reason) : undefined,
-      category: (ctx.args?.category as OverrideCategory) ?? "OTHER", env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION",
+      category: (ctx.args?.category as OverrideCategory) ?? "OTHER", env: ctx.dataEnvironment,
       correlationId: ctx.correlationId ?? null }) },
   { skillId: "explain_partner_route", version: 1, description: "Explain the route candidate comparison (read-only)", effectClass: "READ",
     eligibleActors: ["USER", "AGENT", "WORKER", "SYSTEM"], requiredPermission: "viewer",
@@ -127,7 +140,7 @@ export const SKILL_REGISTRY: SkillDef[] = [
   { skillId: "assemble_pursuit_team", version: 1, description: "Assemble the recommended pursuit team from the selected route", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER", "SYSTEM"], requiredPermission: "operator", precheck: pursuitInOrg,
     handler: async (db, _a, ctx) => {
-      const r = await assembleTeam(db, String(ctx.pursuitId), (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION",
+      const r = await assembleTeam(db, String(ctx.pursuitId), ctx.dataEnvironment,
         observedInvocationId(ctx));
       // Exactly one ref per row THIS dispatch inserted. Every role already filled ⇒ N = 0, which is
       // the canonical supported-and-empty case: marked invocation, zero effects, and that is a fact.
@@ -136,13 +149,13 @@ export const SKILL_REGISTRY: SkillDef[] = [
     } },
   { skillId: "confirm_team_member", version: 1, description: "Confirm (invite) a recommended team member — the human team decision", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER"], requiredPermission: "operator", precheck: teamMemberInOrg,
-    handler: async (db, _a, ctx) => { await transitionMember(db, String(ctx.args?.memberId), "INVITED", (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION"); return { confirmed: true, memberId: ctx.args?.memberId }; } },
+    handler: async (db, _a, ctx) => { await transitionMember(db, String(ctx.args?.memberId), "INVITED", ctx.dataEnvironment); return { confirmed: true, memberId: ctx.args?.memberId }; } },
   { skillId: "accept_team_member", version: 1, description: "Record a confirmed team member's acceptance (feeds readiness)", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER"], requiredPermission: "operator", precheck: teamMemberInOrg,
-    handler: async (db, _a, ctx) => { await transitionMember(db, String(ctx.args?.memberId), "ACCEPTED", (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION"); return { accepted: true, memberId: ctx.args?.memberId }; } },
+    handler: async (db, _a, ctx) => { await transitionMember(db, String(ctx.args?.memberId), "ACCEPTED", ctx.dataEnvironment); return { accepted: true, memberId: ctx.args?.memberId }; } },
   { skillId: "decline_team_member", version: 1, description: "Record that an invited team member declined the role", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER"], requiredPermission: "operator", precheck: teamMemberInOrg,
-    handler: async (db, _a, ctx) => { await transitionMember(db, String(ctx.args?.memberId), "DECLINED", (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION"); return { declined: true, memberId: ctx.args?.memberId }; } },
+    handler: async (db, _a, ctx) => { await transitionMember(db, String(ctx.args?.memberId), "DECLINED", ctx.dataEnvironment); return { declined: true, memberId: ctx.args?.memberId }; } },
   { skillId: "request_team_acceptance", version: 1, description: "Ask a partner org to accept a confirmed pursuit-team role (cross-tenant)", effectClass: "CROSS_TENANT_ACTION",
     eligibleActors: ["USER"], requiredPermission: "operator", actionFamily: "team.request_acceptance",
     handler: async (db, actor, ctx) => {
@@ -156,7 +169,7 @@ export const SKILL_REGISTRY: SkillDef[] = [
       if (m.status !== "INVITED") throw new Error(`team member must be confirmed (INVITED) before requesting acceptance — is ${m.status}`);
       await recordChange(db, { orgId: actor.orgId, pursuitId: m.pursuit_id, entityType: "pursuit", entityId: m.pursuit_id,
         changeType: "TEAM_CHANGED", materiality: "MEDIUM", reason: `Acceptance requested for ${m.role}`, actorType: "USER", actorId: actor.id ?? null,
-        triggerType: "GOVERNED_ACTION", dataEnvironment: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION" });
+        triggerType: "GOVERNED_ACTION", dataEnvironment: ctx.dataEnvironment });
       return { requested: true, memberId: ctx.args?.memberId, role: m.role };
     } },
   // Motion approval — the human gate as a governed mutation (Phase C4). Approval/rejection run
@@ -202,14 +215,14 @@ export const SKILL_REGISTRY: SkillDef[] = [
     eligibleActors: ["USER", "AGENT"], requiredPermission: "operator",
     precheck: async (db, actor, ctx) => (await import("../../stakeholders/assert")).stakeholderInOrg(db, actor.orgId, ctx.args),
     handler: async (db, actor, ctx) => (await import("../../stakeholders/assert")).assertStakeholderRole(
-      db, actor, ctx.args ?? {}, (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION") },
+      db, actor, ctx.args ?? {}, ctx.dataEnvironment) },
   // Canonical economic assertion (P2B §7): the ONLY authoritative path for an economic driver.
   // Migration 0099's trigger rejects a trusted-provenance economic fact written outside it.
   { skillId: "assert_economic_fact", version: 1, description: "Assert an economic driver (point or range) with provenance, source and evidence", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER", "AGENT"], requiredPermission: "operator",
     precheck: async (db, actor, ctx) => (await import("../../value/assert")).economicSubjectInOrg(db, actor.orgId, ctx.args),
     handler: async (db, actor, ctx) => (await import("../../value/assert")).assertEconomicFact(
-      db, actor, ctx.args ?? {}, (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION") },
+      db, actor, ctx.args ?? {}, ctx.dataEnvironment) },
 ];
 
 /**
@@ -246,7 +259,7 @@ export const COORDINATION_SKILLS: SkillDef[] = [
     eligibleActors: ["USER", "AGENT", "WORKER", "SYSTEM"], requiredPermission: "operator", precheck: pursuitInOrg,
     handler: async (db, actor, ctx) => (await import("../coordination/plan-store")).recordPlanRecommendation(
       db, { type: actor.type, id: actor.id ?? null, orgId: actor.orgId }, String(ctx.pursuitId),
-      { env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null,
+      { env: ctx.dataEnvironment, correlationId: ctx.correlationId ?? null,
         effects: effectSinkOf(ctx), invocationId: observedInvocationId(ctx) }) },
   { skillId: "decide_pursuit_plan", version: 1, description: "Approve, adjust or decline a recommended pursuit plan (human decision)", effectClass: "INTERNAL_WRITE",
     eligibleActors: ["USER"], requiredPermission: "operator", precheck: pursuitInOrg,
@@ -258,7 +271,7 @@ export const COORDINATION_SKILLS: SkillDef[] = [
         adjustments: (ctx.args?.adjustments as import("../read-models/pursuit-plan").PlanAdjustments | undefined) ?? undefined,
         reason: ctx.args?.reason ? String(ctx.args.reason) : null,
       },
-      { env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null , effects: effectSinkOf(ctx), invocationId: observedInvocationId(ctx) }) },
+      { env: ctx.dataEnvironment, correlationId: ctx.correlationId ?? null , effects: effectSinkOf(ctx), invocationId: observedInvocationId(ctx) }) },
   // Replacing the COMMERCIAL OBJECTIVE itself (D-033) — a person only, with a reason. Append-only:
   // the old goal keeps its meaning and is superseded; the new goal names it. A route, motion or
   // action change never comes here — those are plan decisions above.
@@ -270,7 +283,7 @@ export const COORDINATION_SKILLS: SkillDef[] = [
         pursuitId: String(ctx.pursuitId), objective: String(ctx.args?.objective ?? ""),
         targetDate: ctx.args?.targetDate ? String(ctx.args.targetDate) : null, reason: String(ctx.args?.reason ?? ""),
       },
-      { env: (ctx.dataEnvironment as DataEnvironment) ?? "PRODUCTION", correlationId: ctx.correlationId ?? null }) },
+      { env: ctx.dataEnvironment, correlationId: ctx.correlationId ?? null }) },
 ];
 
 /** Tenant guard for pursuit-scoped skills: the pursuit id in the request must belong to the actor's org. */
@@ -334,9 +347,29 @@ async function chainDepth(db: PoolClient, correlationId: string): Promise<number
  * Returns the invocation status; it never throws for a policy rejection (the
  * REJECTED invocation is the audit record).
  */
-export async function dispatchSkill(db: PoolClient, skillId: string, actor: Actor, ctx: DispatchCtx = {}): Promise<DispatchResult> {
+// `ctx` HAS NO DEFAULT ANY MORE. `ctx: DispatchCtx = {}` is what made an omitted provenance
+// legal at the type level; with the field required, the empty default cannot satisfy it and a
+// caller must say what kind of data its execution produces.
+export async function dispatchSkill(db: PoolClient, skillId: string, actor: Actor, ctx: DispatchCtx): Promise<DispatchResult> {
   const def = defFor(skillId, ctx.args && (ctx as { version?: number }).version);
   if (!def) return { status: "REJECTED", invocationId: null, reason: `Unknown skill ${skillId}` };
+
+  /**
+   * PROVENANCE IS A PRECONDITION OF BEING AUDITABLE AT ALL, so it is checked before anything else.
+   *
+   * The type already requires it — but a cast defeats a type, and one did: a verifier helper passed
+   * its context `as never`, so `undefined` reached the NOT NULL `data_environment` column. The
+   * INSERT failed AFTER the savepoint had been released, the catch then tried to roll back to a
+   * savepoint that no longer existed, and the real cause surfaced as `savepoint "sp_…" does not
+   * exist` — the same class of masked failure the savepoint itself was introduced to prevent.
+   *
+   * THIS RETURNS WITHOUT AN INVOCATION ROW, which is the only honest option: the audit row carries
+   * `data_environment NOT NULL`, so a dispatch that cannot say where its data comes from cannot be
+   * recorded either. Refusing to run is strictly better than recording it as PRODUCTION.
+   */
+  if (!DATA_ENVIRONMENTS.includes(ctx.dataEnvironment)) {
+    return { status: "REJECTED", invocationId: null, reason: "data provenance was not established for this dispatch" };
+  }
 
   // P45-4. The authority instrument this dispatch ran on, carried forward from the ONE query that
   // authorized it to the audit row that records it. It is never re-derived afterwards: a second
@@ -452,7 +485,7 @@ export async function dispatchSkill(db: PoolClient, skillId: string, actor: Acto
        values ($1,$2,$3,$4,$5,'PENDING',$6,$7,$8)
        on conflict (org_id, idempotency_key) where idempotency_key is not null do nothing`,
       [inv.invocationId, actor.orgId, def.provider ?? "unknown", def.actionFamily ?? null, JSON.stringify(ctx.args ?? {}),
-       ctx.idempotencyKey ?? null, ctx.correlationId ?? null, ctx.dataEnvironment ?? "PRODUCTION"]);
+       ctx.idempotencyKey ?? null, ctx.correlationId ?? null, ctx.dataEnvironment]);
     return { ...inv, queued: true };
   }
 
@@ -538,7 +571,7 @@ async function record(db: PoolClient, def: SkillDef, actor: Actor, ctx: Dispatch
     [actor.orgId, def.skillId, def.version, def.effectClass, actor.type, actor.id ?? null, actor.role,
      ctx.pursuitId ?? null, ctx.target?.kind ?? null, ctx.target?.id ?? null, JSON.stringify(ctx.args ?? {}),
      ctx.idempotencyKey ?? null, status, extra.reason ?? null, ctx.causationId ?? null, ctx.correlationId ?? null,
-     extra.result !== undefined ? JSON.stringify(extra.result) : null, extra.error ?? null, ctx.dataEnvironment ?? "PRODUCTION",
+     extra.result !== undefined ? JSON.stringify(extra.result) : null, extra.error ?? null, ctx.dataEnvironment,
      ctx.governedActorId ?? null, ctx.runStepId ?? null, extra.grantId ?? null,
      extra.invocationId ?? null, extra.observationVersion ?? null],
   );
@@ -553,7 +586,7 @@ async function record(db: PoolClient, def: SkillDef, actor: Actor, ctx: Dispatch
       severity: status === "FAILED" ? "error" : crossTenant ? "warning" : "info",
       message: `${def.skillId} ${status}${extra.reason ? `: ${extra.reason}` : ""}`,
       orgId: actor.orgId, pursuitId: ctx.pursuitId ?? null, actionInvocationId: rows[0].id,
-      correlationId: ctx.correlationId ?? null, effectClass: def.effectClass, environment: ctx.dataEnvironment ?? "PRODUCTION",
+      correlationId: ctx.correlationId ?? null, effectClass: def.effectClass, environment: ctx.dataEnvironment,
     });
   }
   return { status, invocationId: rows[0].id, reason: extra.reason, result: extra.result };

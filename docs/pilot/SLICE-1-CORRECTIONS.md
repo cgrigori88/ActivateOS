@@ -1,11 +1,31 @@
-# Pilot Evidence Foundation — Slice 1 correction pass
+# Pilot Evidence Foundation — Slice 1 corrections
 
-Two of the four corrections completed. Two hit their own explicitly stated STOP condition and are
-reported here rather than guessed at.
+Two passes. The first completed two corrections and stopped on two. The owner ruled on both stops;
+the second pass implements those rulings. This document is the durable record of both.
+
+## Status at a glance
+
+| | |
+| --- | --- |
+| **Decision-time P2 / attention capture** | **PREPARED — NOT YET ACTIVATED.** The producer and its table exist, are append-only, and are tested. Nothing writes to them. Attention history is **not** active, and no surface may claim it is. |
+| Owner pilot start | Gated on Slice 2 giving attention capture a truthful interaction boundary. |
+| Credential-bound provenance | **ACTIVE locally.** `/api/mcp` reads provenance from the credential and fails closed without it. |
+| Legacy certification exclusion | Manifest frozen, 33 entries. **Not populated hosted.** |
+| P2 `3N + 9` query shape | **Open scalability finding**, carried to Slice 2. Not a Slice-1 blocker: Slice 1 invokes P2 from no new write path. |
 
 ---
 
 ## STOP 1 — the attention hook cannot be wired without a bound that does not exist
+
+> **OWNER RULING.** Do not wire P2 capture into `recommend_pursuit_plan@1`; attaching a ranking to a
+> capability that never consumed it would create false lineage. The future boundary is an explicit
+> **human attention selection** from a ranked surface — "the user acted on this pursuit while it
+> occupied this position" — not "P2 caused the later recommendation". Slice 2 determines and
+> implements that boundary before owner pilot usage begins. The producer may remain dormant while it
+> stays harmless and tested.
+>
+> The verifier now enforces the ruling directly: a real `recommend_pursuit_plan@1` dispatch is
+> asserted to write **zero** attention observations, so wiring it there would fail the suite.
 
 > *"Computing portfolio pertinence inside the governed write path is accepted only if the existing
 > certified P2 computation is bounded … If P2 has no existing bounded portfolio limit: STOP and
@@ -73,6 +93,11 @@ boundary to attach it to. Three ways out, none chosen here:
 ---
 
 ## STOP 2 — one deployment serves certification and pilot, and nothing tells them apart
+
+> **OWNER RULING.** The credential is the correct trust boundary. Provenance is added to the
+> credential binding, taken from the existing `DataEnvironment` vocabulary, fixed at issue, and is
+> **metadata, not authority** — P45 authority remains the governed actor, its grant and the skill
+> registry, untouched. Implemented below as migration 0120.
 
 > *"If the same deployment must support both kinds of traffic: STOP and return the smallest trusted
 > request/actor/org-scoped provenance mechanism needed."*
@@ -146,3 +171,101 @@ named here rather than disguised.
   `invocation_id` is NULL.
 * **§6 cardinality** — one header-bearing row per (snapshot, pursuit); N per snapshot, N = the P2
   comparison set. Bounded by the same non-existent bound as §1. `withheld_count` is a count only.
+
+
+---
+
+# Second pass — credential-bound provenance (migration 0120)
+
+## The credential schema
+
+`api_keys.data_environment text`, **nullable, no default**, CHECK-bounded to the full
+`DataEnvironment` vocabulary.
+
+* **No default is the whole point.** A default would recreate the defect at the schema level, and
+  `PRODUCTION` as that default would recreate it in the most damaging direction. NULL means "not
+  established" and callers fail closed on it. A first version of the verifier control tested only an
+  explicit `null` and therefore did *not* catch a reintroduced `default 'PRODUCTION'`; it now mints a
+  credential through a path that never mentions the column, and asserts `column_default` is absent.
+* **Immutable by privilege, using the device that was already here.** 0116 narrowed `app_rw` to
+  `update (revoked_at)` so a credential's governed-actor binding could not drift. A column added to
+  this table inherits that narrowing, so provenance cannot drift CERTIFICATION → PILOT either.
+  Changing it means revoke-and-reissue — 0116's own lifecycle convention. No conflict with any
+  existing invariant, so no stop was required.
+* `resolve_api_key` recreated to return it, **carrying 0105's hardened
+  `search_path = pg_catalog, public, pg_temp`** — the trap 0116 documented when it recreated the same
+  function.
+
+## Existing credential inventory and disposition
+
+Every `api_keys` row in existence was enumerated before the backfill was written.
+
+| where | credential | disposition |
+| --- | --- | --- |
+| hosted Preview | `a3f6ad1e…` · "P45-4 campaign drafting agent" · bound to governed actor `9e5f147e…` | **CERTIFICATION** — that actor appears on 17 of the 18 mislabelled invocations |
+| local | *(none exist)* | — |
+
+The backfill is therefore **one `UPDATE`, keyed to one exact id**, not the rule "old credentials are
+CERTIFICATION" — which would be unfalsifiable and would have been wrong the first time a second key
+existed. It is a no-op on any database not holding that row, including every local clone.
+
+## `/api/mcp` provenance flow
+
+    bearer → resolve_api_key (SECURITY DEFINER, app_rw cannot bypass)
+           → ResolvedApiCredential.dataEnvironment
+           → null ? refuse the call outright
+           → dispatchSkill({ dataEnvironment })
+           → governed_action_invocations.data_environment
+
+Nothing from the request body, params, tool arguments or headers can reach it. The refusal is a
+JSON-RPC error on the same channel the adjacent identity refusal uses, because in both cases the
+*call* is inadmissible rather than the tool having failed.
+
+## PRODUCTION fallbacks: removed, and retained
+
+**Removed** — every one of these was reachable from pilot or certification traffic:
+
+| site | replacement |
+| --- | --- |
+| `/api/mcp` literal `"PRODUCTION"` | the credential's provenance; refuses when absent |
+| `DispatchCtx.dataEnvironment?` + 12 × `?? "PRODUCTION"` in `skills.ts` | **required field**; omission is a compile error |
+| `dispatchSkill(…, ctx = {})` default argument | removed — the empty default is what made omission legal |
+| `ChangeEvent.dataEnvironment?` + `?? "PRODUCTION"` in `recordChange` | **required field** |
+| five copy-pasted `?? "PRODUCTION"` tails in the pursuit server actions | one shared `pursuitEnvironment` resolver returning `null`; the surface refuses |
+| `pipeline/actions.ts` stakeholder dispatch with no provenance at all | derived from the opportunity's pursuit |
+| `provisionGovernedAgent` `?? "PRODUCTION"` | required; written to the actor **and** the credential |
+| `mintApiKeyAction` minting with no environment | an explicit, validated choice on the form |
+| `ResolveInput` (entity-resolution reviews) | intake-scoped provenance, supplied by the caller |
+
+A **runtime guard** was added at `dispatchSkill` as well as the type, because a cast defeats a type
+and one did: a verifier helper passed its context `as never`, `undefined` reached the `NOT NULL`
+column, and the real cause surfaced three layers away as `savepoint "sp_…" does not exist`. A
+dispatch that cannot say where its data comes from is now refused **without an invocation row**,
+which is the only coherent outcome — that row could not have been labelled either.
+
+**Retained, named, and tested:**
+
+* The **database default** `change_ledger.data_environment DEFAULT 'PRODUCTION'` stays. Removing it
+  across 25 tables would broaden the migration for no gain, and no application writer relies on it
+  any more — every reachable writer now supplies the value explicitly.
+* **An opportunity linked to no pursuit** has no subject to derive from, and `opportunities` carries
+  no environment of its own. Both ledger emissions are **skipped** for it rather than written with an
+  invented label. Nothing is lost: before this slice neither emission existed at all. Closing it
+  means giving CRM intake its own provenance — §7's intake-scoped class — which is Slice 2.
+
+## Verifier and regression
+
+`pilot-evidence` **94/0**. New controls mutation-tested: restoring the `/api/mcp` literal, granting
+`app_rw` UPDATE on provenance, and adding `default 'PRODUCTION'` back to the schema each fail the
+suite at the right assertion.
+
+Two certified suites needed their fixtures corrected, both for the same reason — they asserted a
+contract that genuinely changed:
+
+* `p45-4` minted its legacy credential with no provenance. **Unbound** (no governed actor) and
+  **unclassified** (no provenance) are now two independent facts; the compatibility fixture carries
+  provenance and varies only the binding, and a new assertion covers the other half.
+* `p8-0` passed its dispatch context `as never` — the cast described above.
+* `search-path`'s shadow `api_keys` temp table needed the new column, or its negative control throws
+  instead of demonstrating the exploit and retires itself silently. Exactly the case its own comment
+  warned about when `governed_actor_id` arrived with 0116.

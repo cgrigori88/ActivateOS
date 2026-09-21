@@ -54,7 +54,7 @@ async function main() {
   console.log("R1-G3.2  A cannot mutate B through a governed action");
   // B invites its own participant; A (naming B's participant id) must not be able to accept it.
   const bPart = await asOrg(s.b, (db) => addParticipant(db, { pursuitId: s.pB, orgId: s.b, roleKey: "VENDOR", sponsorOrgId: s.b, state: "ACTIVE" }));
-  const foreignAccept = await asOrg(s.a, (db) => dispatchSkill(db, "accept_participation", actor(s.a, "operator"), { pursuitId: s.pB, args: { participantId: bPart } }));
+  const foreignAccept = await asOrg(s.a, (db) => dispatchSkill(db, "accept_participation", actor(s.a, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.pB, args: { participantId: bPart } }));
   check("a governed accept on B's participant does not EXECUTE for org A", foreignAccept.status !== "EXECUTED");
   check("B's participant is unchanged (no cross-tenant mutation)", (await asOrg(s.b, async (db) => (await db.query<{ state: string }>(`select participation_state state from pursuit_participants where id=$1`, [bPart])).rows[0].state)) === "ACTIVE");
 

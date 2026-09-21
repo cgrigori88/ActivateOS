@@ -8,6 +8,7 @@ import { pursuitExperienceEnabled } from "@/lib/pursuits/experience-flags";
 import { experienceEnabledFor, tenantFeatures } from "@/lib/pursuits/tenant-flags";
 import { vnextCapabilities } from "@/lib/env/vnext-flags";
 import { dispatchSkill } from "@/lib/pursuits/federation/skills";
+import { PROVENANCE_UNRESOLVED, pursuitEnvironment } from "@/lib/pursuits/provenance";
 import { ACTION_CAPABILITIES } from "@/lib/experience/surface/actions";
 import { currentPrincipal, type RenderBinding } from "./binding";
 
@@ -76,9 +77,10 @@ export async function assemblePursuitTeamFromSurface(
       return { ok: false as const, error: "Read-only access — ask an owner to make you an operator." };
     }
     // Keep DEMO/synthetic pursuits labeled DEMO through the ledger and recompute (never PRODUCTION).
-    const env = (await db.query<{ data_environment: string }>(
-      `select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId]
-    )).rows[0]?.data_environment ?? "PRODUCTION";
+    // A pursuit this org does not hold yields no provenance, and the action refuses rather than
+    // asserting the one environment a learning corpus admits.
+    const env = await pursuitEnvironment(db, orgId, pursuitId);
+    if (!env) return { ok: false as const, error: PROVENANCE_UNRESOLVED };
 
     const dispatch = await dispatchSkill(db, capability.skillId, { type: "USER", id: null, orgId, role }, {
       pursuitId,

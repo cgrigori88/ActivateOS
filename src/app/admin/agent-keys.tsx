@@ -62,6 +62,23 @@ export function AgentKeys({
             className="w-52 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900"
           />
         </label>
+        <label className="text-copy">
+          <span className="mb-1 block text-body text-neutral-500">Data environment</span>
+          {/* No preselected option: the field is `required` and the server refuses an unrecognised
+              value, so issuing a key is a deliberate statement about what its activity is. */}
+          <select
+            name="dataEnvironment"
+            required
+            defaultValue=""
+            className="w-52 rounded-control border border-neutral-300 bg-white px-2 py-1.5 text-copy dark:border-neutral-700 dark:bg-neutral-900"
+          >
+            <option value="" disabled>Choose…</option>
+            <option value="PILOT">Pilot — real-world activity</option>
+            <option value="CERTIFICATION">Certification — gate traffic</option>
+            <option value="DEMO">Demo</option>
+            <option value="PRODUCTION">Production</option>
+          </select>
+        </label>
         <button
           disabled={pending}
           className={buttonClass("primary", "md")}

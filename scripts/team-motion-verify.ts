@@ -16,6 +16,7 @@
  *   PURSUIT_EXPERIENCE_ENABLED=on FEDERATION_ENABLED=on GOVERNED_ACTION_ENABLED=on \
  *   npx tsx scripts/team-motion-verify.ts
  */
+import type { DataEnvironment } from "../src/lib/pursuits/lineage";
 import { Pool, type PoolClient } from "pg";
 import { assertSeededClone } from "./seeded-clone";
 import { dispatchSkill, type Actor } from "../src/lib/pursuits/federation/skills";
@@ -60,7 +61,7 @@ async function main() {
 
     // ── C1: selected route → proposed team (governed) ─────────────────────────────────────────
     const decide = await tx(pool, org, (db) => dispatchSkill(db, "select_partner_route", actor, {
-      pursuitId, args: { candidateKey: cand.id }, correlationId: null, dataEnvironment: env,
+      pursuitId, args: { candidateKey: cand.id }, correlationId: null, dataEnvironment: env as DataEnvironment,
       idempotencyKey: `verify-team:${pursuitId}:${Date.now()}` }));
     ok("route decision EXECUTED through dispatchSkill", decide.status === "EXECUTED", decide.reason);
     const proposed = await num(`select count(*)::text n from pursuit_team_members where pursuit_id=$1 and status='RECOMMENDED'`, [pursuitId]);
@@ -73,7 +74,7 @@ async function main() {
     ok("readiness NOT met while roles are only recommended", beforeMet.met === false && beforeMet.missing.length > 0);
 
     const confirm = await tx(pool, org, (db) => dispatchSkill(db, "confirm_team_member", actor, {
-      pursuitId, args: { memberId: pam.id }, dataEnvironment: env }));
+      pursuitId, args: { memberId: pam.id }, dataEnvironment: env as DataEnvironment }));
     ok("confirm_team_member EXECUTED (RECOMMENDED → INVITED)", confirm.status === "EXECUTED", confirm.reason);
     ok("confirmed member is now INVITED (the human team decision)", (await one<{ status: string }>(`select status from pursuit_team_members where id=$1`, [pam.id])).status === "INVITED");
     ok("ledger recorded TEAM_MEMBER_INVITED", await num(`select count(*)::text n from change_ledger where pursuit_id=$1 and change_type='TEAM_MEMBER_INVITED'`, [pursuitId]) >= 1);
@@ -88,7 +89,7 @@ async function main() {
 
     // request_team_acceptance is now REAL — needs a confirmed (INVITED) role.
     const reqAccept = await tx(pool, org, (db) => dispatchSkill(db, "request_team_acceptance", actor, {
-      pursuitId, args: { memberId: pam.id }, dataEnvironment: env }));
+      pursuitId, args: { memberId: pam.id }, dataEnvironment: env as DataEnvironment }));
     // Cross-tenant authority may or may not be granted in the demo; either way it must NOT be a stub —
     // if authorized it records the ask, if not it is a governed rejection. Both are acceptable; a
     // silent {requested:true} with no confirmation gate is not.
@@ -96,13 +97,13 @@ async function main() {
       reqAccept.status === "EXECUTED" || reqAccept.status === "REJECTED", reqAccept.reason);
 
     const accept = await tx(pool, org, (db) => dispatchSkill(db, "accept_team_member", actor, {
-      pursuitId, args: { memberId: pam.id }, dataEnvironment: env }));
+      pursuitId, args: { memberId: pam.id }, dataEnvironment: env as DataEnvironment }));
     ok("accept_team_member EXECUTED (INVITED → ACCEPTED)", accept.status === "EXECUTED", accept.reason);
 
     // Confirm+accept the other required role so readiness can flip to met.
     const ae = await one<{ id: string }>(`select id from pursuit_team_members where pursuit_id=$1 and role='VENDOR_ACCOUNT_EXECUTIVE' and status='RECOMMENDED'`, [pursuitId]);
-    await tx(pool, org, (db) => dispatchSkill(db, "confirm_team_member", actor, { pursuitId, args: { memberId: ae.id }, dataEnvironment: env }));
-    await tx(pool, org, (db) => dispatchSkill(db, "accept_team_member", actor, { pursuitId, args: { memberId: ae.id }, dataEnvironment: env }));
+    await tx(pool, org, (db) => dispatchSkill(db, "confirm_team_member", actor, { pursuitId, args: { memberId: ae.id }, dataEnvironment: env as DataEnvironment }));
+    await tx(pool, org, (db) => dispatchSkill(db, "accept_team_member", actor, { pursuitId, args: { memberId: ae.id }, dataEnvironment: env as DataEnvironment }));
     const afterMet = await tx(pool, org, (db) => requiredRolesMet(db, org, pursuitId, P.pursuit_type));
     ok("readiness MET once required roles are accepted", afterMet.met === true, `missing ${afterMet.missing.join(",")}`);
 
@@ -110,31 +111,31 @@ async function main() {
     await tx(pool, org, (db) => drainRecomputeQueue(db, { emitDownstream: false }));
     ok("recompute drain does NOT touch the confirmed member", (await one<{ status: string }>(`select status from pursuit_team_members where id=$1`, [pam.id])).status === "ACCEPTED");
     // Re-decide the same route (re-runs assembleTeam) — must not remove or reset confirmed members.
-    await tx(pool, org, (db) => dispatchSkill(db, "select_partner_route", actor, { pursuitId, args: { candidateKey: cand.id }, dataEnvironment: env, idempotencyKey: `verify-team:${pursuitId}:re:${Date.now()}` }));
+    await tx(pool, org, (db) => dispatchSkill(db, "select_partner_route", actor, { pursuitId, args: { candidateKey: cand.id }, dataEnvironment: env as DataEnvironment, idempotencyKey: `verify-team:${pursuitId}:re:${Date.now()}` }));
     ok("re-decision (re-assembly) preserves the confirmed ACCEPTED member", (await one<{ status: string }>(`select status from pursuit_team_members where id=$1`, [pam.id])).status === "ACCEPTED");
     ok("re-assembly did not duplicate the confirmed role", await num(`select count(*)::text n from pursuit_team_members where pursuit_id=$1 and role='PARTNER_ACCOUNT_MANAGER' and status<>'SUPERSEDED'`, [pursuitId]) === 1);
 
     // ── Tenant isolation: a cross-tenant member id is a governed REJECTION ─────────────────────
     const otherOrg = (await one<{ id: string }>(`select id from organizations where id<>$1 order by created_at asc limit 1`, [org])).id;
     const foreignActor: Actor = { type: "USER", id: null, orgId: otherOrg, role: "operator" };
-    const cross = await tx(pool, otherOrg, (db) => dispatchSkill(db, "confirm_team_member", foreignActor, { pursuitId, args: { memberId: ae.id }, dataEnvironment: env }));
+    const cross = await tx(pool, otherOrg, (db) => dispatchSkill(db, "confirm_team_member", foreignActor, { pursuitId, args: { memberId: ae.id }, dataEnvironment: env as DataEnvironment }));
     ok("cross-tenant confirm REJECTED (member not in actor's org)", cross.status === "REJECTED", cross.status);
     ok("cross-tenant attempt did NOT mutate the member", (await one<{ status: string }>(`select status from pursuit_team_members where id=$1`, [ae.id])).status === "ACCEPTED");
 
     // ── Illegal transition guard (append-only lifecycle) ──────────────────────────────────────
-    const illegal = await tx(pool, org, (db) => dispatchSkill(db, "accept_team_member", actor, { pursuitId, args: { memberId: pam.id }, dataEnvironment: env }));
+    const illegal = await tx(pool, org, (db) => dispatchSkill(db, "accept_team_member", actor, { pursuitId, args: { memberId: pam.id }, dataEnvironment: env as DataEnvironment }));
     ok("illegal transition (ACCEPTED → ACCEPTED via accept) is a no-op or refused, never a crash", illegal.status === "EXECUTED" || illegal.status === "FAILED");
 
     // ── C4: governed Motion approval/rejection (no CRUD bypass) ────────────────────────────────
     const draftM = await one<{ id: string; org_id: string }>(`select id, org_id from revenue_motions where status='draft' limit 1`, []);
     if (draftM) {
       const mActor: Actor = { type: "USER", id: null, orgId: draftM.org_id, role: "operator" };
-      const appr = await tx(pool, draftM.org_id, (db) => dispatchSkill(db, "approve_motion", mActor, { args: { motionId: draftM.id }, dataEnvironment: env }));
+      const appr = await tx(pool, draftM.org_id, (db) => dispatchSkill(db, "approve_motion", mActor, { args: { motionId: draftM.id }, dataEnvironment: env as DataEnvironment }));
       ok("approve_motion EXECUTED through dispatchSkill", appr.status === "EXECUTED", appr.reason);
       ok("motion is now approved (status moved via the governed path)", (await one<{ status: string }>(`select status from revenue_motions where id=$1`, [draftM.id])).status === "approved");
       ok("governed invocation recorded for approve_motion", await num(`select count(*)::text n from governed_action_invocations where skill_id='approve_motion' and status='EXECUTED'`, []) >= 1);
       // reject on an already-approved motion → handler error surfaces as FAILED (not silent).
-      const rej = await tx(pool, draftM.org_id, (db) => dispatchSkill(db, "reject_motion", mActor, { args: { motionId: draftM.id }, dataEnvironment: env }));
+      const rej = await tx(pool, draftM.org_id, (db) => dispatchSkill(db, "reject_motion", mActor, { args: { motionId: draftM.id }, dataEnvironment: env as DataEnvironment }));
       ok("reject_motion on a non-draft motion is a governed FAILED (not a silent bypass)", rej.status === "FAILED", rej.status);
     } else {
       console.log("  · no draft motion available — skipping Motion approval checks");

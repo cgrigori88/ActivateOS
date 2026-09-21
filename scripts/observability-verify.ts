@@ -45,7 +45,7 @@ async function main() {
   // ---- dispatch rejection (permission) ----
   console.log("OR-3.1  Governed-action rejection is reported");
   sink.events = [];
-  await asOrg(s.vendor, (db) => dispatchSkill(db, "draft_campaign_touch", actor(s.vendor, "viewer"), { pursuitId: s.hero, args: { secret: SECRET } }));
+  await asOrg(s.vendor, (db) => dispatchSkill(db, "draft_campaign_touch", actor(s.vendor, "viewer"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, args: { secret: SECRET } }));
   check("a REJECTED dispatch emits a telemetry event", sink.events.some((e) => e.kind === "dispatch_skill"));
   check("the event carries org + pursuit + invocation ids", sink.events.some((e) => e.orgId === s.vendor && e.pursuitId === s.hero && !!e.actionInvocationId));
   check("no confidential arg value appears anywhere in the telemetry", !serialize(sink.events).includes(SECRET) && !serialize(sink.events).includes("1840000"));
@@ -53,13 +53,13 @@ async function main() {
   // ---- cross-tenant authority denial → tenant-isolation signal ----
   console.log("OR-3.2  Cross-tenant authority denial is a tenant-isolation signal");
   sink.events = [];
-  await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero }));
+  await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero }));
   check("a cross-tenant denial emits a tenant_isolation_failure event", sink.events.some((e) => e.kind === "tenant_isolation_failure"));
 
   // ---- governed-action handler failure (error) ----
   console.log("OR-3.3  Governed-action failure is reported at error severity");
   sink.events = [];
-  await asOrg(s.vendor, (db) => dispatchSkill(db, "accept_participation", actor(s.vendor, "operator"), { pursuitId: s.hero, args: { participantId: randomUUID(), secret: SECRET } }));
+  await asOrg(s.vendor, (db) => dispatchSkill(db, "accept_participation", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero, args: { participantId: randomUUID(), secret: SECRET } }));
   check("a FAILED handler emits a governed_action error event", sink.events.some((e) => e.kind === "governed_action" && e.severity === "error"));
   check("the failure event leaks no confidential arg", !serialize(sink.events).includes(SECRET));
 

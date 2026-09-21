@@ -84,13 +84,13 @@ async function main() {
 
   // Human decision (record) vs governed action (audited) are SEPARATE objects.
   await asOrg(s.vendor, (db) => recordChange(db, { orgId: s.vendor, pursuitId: s.hero, entityType: "route", entityId: s.hero, changeType: "ROUTE_SELECTED", reason: "operator approved CDW", actorType: "USER", dataEnvironment: "DEMO" }));
-  const approve = await asOrg(s.vendor, (db) => dispatchSkill(db, "explain_route", actor(s.vendor, "operator"), { pursuitId: s.hero }));
+  const approve = await asOrg(s.vendor, (db) => dispatchSkill(db, "explain_route", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero }));
   check("a governed action runs and is audited (recommendation ≠ decision ≠ action)", approve.status === "EXECUTED" && approve.invocationId !== null);
   const acts = await asOrg(s.vendor, (db) => getGovernedActions(db, actor(s.vendor, "operator"), s.hero));
   check("the governed-action history records the invocation as a distinct object", acts.history.some((h) => h.skillId === "explain_route" && h.status === "EXECUTED"));
 
   // Consent enforcement: a cross-tenant ask without an ACTION grant is refused.
-  const crossNoAuth = await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { pursuitId: s.hero }));
+  const crossNoAuth = await asOrg(s.vendor, (db) => dispatchSkill(db, "request_team_acceptance", actor(s.vendor, "operator"), { dataEnvironment: "PRODUCTION", pursuitId: s.hero }));
   check("a cross-tenant action is refused without ACTION authority (DATA grant ≠ action authority)", crossNoAuth.status === "REJECTED");
 
   // Interaction/outcome → event → recompute at the event's as-of → Today advances.

@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
+import type { DataEnvironment } from "../pursuits/lineage";
 import { loadStageWeights } from "../opportunities/stage-weights";
 import { weightedPipelineValue, type Stage } from "../opportunities/lifecycle";
 import { listJointPursuits, pursuitEvents } from "../partnerships/joint";
@@ -47,6 +48,38 @@ export interface ResolvedApiCredential {
   scope: string;
   /** The durable governed actor this credential is bound to, or null for a legacy unbound key. */
   governedActorId: string | null;
+  /**
+   * The DATA PROVENANCE of everything this credential's executions produce (0120).
+   *
+   * NULL MEANS UNESTABLISHED, AND IS NOT A SYNONYM FOR PRODUCTION. It is the honest answer for a
+   * credential issued before provenance existed, and callers must fail closed on it rather than
+   * substitute a value. Substituting one is the precise defect this field was added to close.
+   *
+   * It is METADATA, NOT AUTHORITY: it says what kind of data an execution yields and confers no
+   * permission whatsoever. Authority remains the governed actor, its capability grant and the skill
+   * registry, untouched by this.
+   */
+  dataEnvironment: DataEnvironment | null;
+}
+
+interface ResolverRow {
+  org_id: string; key_id: string; scope: string;
+  governed_actor_id: string | null; data_environment: string | null;
+}
+
+/**
+ * The resolver row is the ONLY source of a credential's facts. Built once, so the two transport
+ * branches below cannot drift into disagreeing about what a credential means — `scope` already had
+ * its fallback duplicated across both.
+ */
+function credentialOf(r: ResolverRow): ResolvedApiCredential {
+  return {
+    orgId: r.org_id, keyId: r.key_id, scope: r.scope ?? "write",
+    governedActorId: r.governed_actor_id ?? null,
+    // NO `?? "PRODUCTION"`. An unclassified credential stays unclassified all the way to the caller,
+    // which is what lets the caller refuse it instead of quietly certifying it.
+    dataEnvironment: (r.data_environment as DataEnvironment | null) ?? null,
+  };
 }
 
 export async function resolveKey(
@@ -64,23 +97,21 @@ export async function resolveKey(
   const ms = statementTimeoutOf(policy);
   if (ms !== null && typeof (pool as Pool).connect === "function") {
     const rows = await withStatementBound(pool as Pool, ms, async (db) =>
-      (await db.query<{ org_id: string; key_id: string; scope: string; governed_actor_id: string | null }>(
-        `select org_id, key_id, scope, governed_actor_id from public.resolve_api_key($1)`, [hash])).rows);
+      (await db.query<ResolverRow>(
+        `select org_id, key_id, scope, governed_actor_id, data_environment from public.resolve_api_key($1)`, [hash])).rows);
     if (!rows[0]) return null;
-    return { orgId: rows[0].org_id, keyId: rows[0].key_id, scope: rows[0].scope ?? "write",
-             governedActorId: rows[0].governed_actor_id ?? null };
+    return credentialOf(rows[0]);
   }
   // RISK-1: resolve_api_key() (migration 0062) is SECURITY DEFINER — it looks up
   // the key's org and stamps last_used_at in owner context, so this works before
   // any tenant scope is set and under app_rw (which cannot read api_keys itself).
   // On the owner connection it runs as the same owner: unchanged behavior.
-  const { rows } = await pool.query<{ org_id: string; key_id: string; scope: string; governed_actor_id: string | null }>(
-    `select org_id, key_id, scope, governed_actor_id from public.resolve_api_key($1)`,
+  const { rows } = await pool.query<ResolverRow>(
+    `select org_id, key_id, scope, governed_actor_id, data_environment from public.resolve_api_key($1)`,
     [hash],
   );
   if (!rows[0]) return null;
-  return { orgId: rows[0].org_id, keyId: rows[0].key_id, scope: rows[0].scope ?? "write",
-           governedActorId: rows[0].governed_actor_id ?? null };
+  return credentialOf(rows[0]);
 }
 
 // ── Tools ───────────────────────────────────────────────────────────────────

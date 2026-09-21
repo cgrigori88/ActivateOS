@@ -9,6 +9,10 @@ import { experienceEnabledFor, tenantFeatures } from "@/lib/pursuits/tenant-flag
 import { dispatchSkill } from "@/lib/pursuits/federation/skills";
 import { vnextCapabilities } from "@/lib/env/vnext-flags";
 import type { PlanAdjustments } from "@/lib/pursuits/read-models/pursuit-plan";
+// PROVENANCE IS DERIVED FROM THE SUBJECT, ONCE, IN ONE PLACE. These five actions each carried
+// their own copy of the same query ending in `?? "PRODUCTION"`; a pursuit that does not exist in
+// this org now refuses the action instead of being recorded as production activity.
+import { PROVENANCE_UNRESOLVED, pursuitEnvironment } from "@/lib/pursuits/provenance";
 
 /**
  * Pursuit Coordination (vNext Slice 2A) — the two human entry points for the plan.
@@ -36,7 +40,8 @@ export async function requestPlanRecommendationAction(pursuitId: string): Promis
     const refused = await coordinationGate(db, orgId);
     if (refused) return { ok: false as const, error: refused };
     const role = await currentRole(db);
-    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId])).rows[0]?.data_environment ?? "PRODUCTION";
+    const env = await pursuitEnvironment(db, orgId, pursuitId);
+    if (!env) return { ok: false as const, error: PROVENANCE_UNRESOLVED };
     const dispatch = await dispatchSkill(db, "recommend_pursuit_plan", { type: "USER", id: null, orgId, role }, {
       pursuitId, correlationId, idempotencyKey: `plan-recommend:${pursuitId}:${correlationId}`, dataEnvironment: env,
     });
@@ -59,7 +64,8 @@ export async function decidePlanAction(
     const refused = await coordinationGate(db, orgId);
     if (refused) return { ok: false as const, error: refused };
     const role = await currentRole(db);
-    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId])).rows[0]?.data_environment ?? "PRODUCTION";
+    const env = await pursuitEnvironment(db, orgId, pursuitId);
+    if (!env) return { ok: false as const, error: PROVENANCE_UNRESOLVED };
     const dispatch = await dispatchSkill(db, "decide_pursuit_plan", { type: "USER", id: null, orgId, role }, {
       pursuitId,
       args: { planId: input.planId, recommendationId: input.recommendationId, decision: input.decision, adjustments: input.adjustments, reason: input.reason ?? undefined },
@@ -101,7 +107,8 @@ export async function decideRouteAction(
     if (role !== "owner" && role !== "operator") return { ok: false as const, error: "Read-only access — ask an owner to make you an operator." };
 
     // Keep DEMO/synthetic pursuits labeled DEMO through the ledger + recompute (never PRODUCTION).
-    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId])).rows[0]?.data_environment ?? "PRODUCTION";
+    const env = await pursuitEnvironment(db, orgId, pursuitId);
+    if (!env) return { ok: false as const, error: PROVENANCE_UNRESOLVED };
 
     const skillId = mode === "override" ? "override_partner_route" : "select_partner_route";
     const dispatch = await dispatchSkill(db, skillId, { type: "USER", id: null, orgId, role }, {
@@ -140,7 +147,8 @@ export async function decideTeamAction(
     if (!(await experienceEnabledFor(db, orgId))) return { ok: false as const, error: "Not enabled for this tenant." };
     const role = await currentRole(db);
     if (role !== "owner" && role !== "operator") return { ok: false as const, error: "Read-only access — ask an owner to make you an operator." };
-    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId])).rows[0]?.data_environment ?? "PRODUCTION";
+    const env = await pursuitEnvironment(db, orgId, pursuitId);
+    if (!env) return { ok: false as const, error: PROVENANCE_UNRESOLVED };
     const dispatch = await dispatchSkill(db, skillId, { type: "USER", id: null, orgId, role }, {
       pursuitId, args: { memberId }, dataEnvironment: env });
     return { ok: dispatch.status === "EXECUTED", status: dispatch.status, error: dispatch.status === "EXECUTED" ? undefined : (dispatch.reason ?? "Team decision was not accepted.") };
@@ -172,7 +180,8 @@ export async function assertStakeholderAction(pursuitId: string, formData: FormD
     if (!(await experienceEnabledFor(db, orgId))) return { ok: false as const };
     const roleName = await currentRole(db);
     if (roleName !== "owner" && roleName !== "operator") return { ok: false as const };
-    const env = (await db.query<{ data_environment: string }>(`select data_environment from pursuits where id = $1 and org_id = $2`, [pursuitId, orgId])).rows[0]?.data_environment ?? "PRODUCTION";
+    const env = await pursuitEnvironment(db, orgId, pursuitId);
+    if (!env) return { ok: false as const, error: PROVENANCE_UNRESOLVED };
     const dispatch = await dispatchSkill(db, "assert_stakeholder_role", { type: "USER", id: null, orgId, role: roleName }, {
       pursuitId,
       args: { opportunityId, contactId, role, assertionState, source: "human:pursuit-detail", evidence, basis: evidence ? ["human_statement"] : null },

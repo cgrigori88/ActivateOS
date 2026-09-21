@@ -173,7 +173,7 @@ async function main(): Promise<void> {
     const rec = resolvePlanStanding(recs.revisions).pending!;
     const motionId = rec.content.motion.motionId!;
     const dec = await dispatchSkill(db, "decide_pursuit_plan", operator, {
-      pursuitId: hero.id, args: { planId: recs.plan!.id, recommendationId: rec.id, decision: "APPROVED" }, dataEnvironment: hero.env,
+      pursuitId: hero.id, args: { planId: recs.plan!.id, recommendationId: rec.id, decision: "APPROVED" }, dataEnvironment: hero.env as DataEnvironment,
     });
     check("B: a person approves the recommendation (governed)", dec.status === "EXECUTED", dec.reason ?? "");
     const inForce = resolvePlanStanding((await loadPlanRecords(db, caller, hero.id)).revisions).inForce!;
@@ -214,7 +214,7 @@ async function main(): Promise<void> {
     const opp = (await db.query<{ id: string }>(`select id from opportunities where pursuit_id = $1 limit 1`, [hero.id])).rows[0].id;
     const dana = (await db.query<{ id: string }>(`select id from contacts where name = 'Dana Whitfield' limit 1`)).rows[0]?.id;
     const eb = await dispatchSkill(db, "assert_stakeholder_role", operator, {
-      pursuitId: hero.id, dataEnvironment: hero.env,
+      pursuitId: hero.id, dataEnvironment: hero.env as DataEnvironment,
       args: { opportunityId: opp, contactId: dana, role: "economic_buyer", assertionState: "verified", source: "verifier", evidence: "Customer confirmed budget ownership on the call.", basis: ["human_statement"] },
     });
     check("C: the economic buyer is verified through the governed path", eb.status === "EXECUTED", eb.reason ?? "");
@@ -248,7 +248,7 @@ async function main(): Promise<void> {
         && framed.focus?.headline === viewC.focus?.headline && framed.nextAction?.text === viewC.nextAction?.text);
 
     // ── D: an updated recommendation, not yet decided ─────────────────────────
-    const rr = await dispatchSkill(db, "recommend_pursuit_plan", operator, { pursuitId: hero.id, dataEnvironment: hero.env });
+    const rr = await dispatchSkill(db, "recommend_pursuit_plan", operator, { pursuitId: hero.id, dataEnvironment: hero.env as DataEnvironment });
     check("D: an updated recommendation is recorded", rr.status === "EXECUTED" && (rr.result as { reviewRequired?: boolean } | undefined)?.reviewRequired === true, rr.reason ?? "");
     const viewD = (await loadPursuitPlanView(db, caller, hero.id))!;
     check("D: history holds three separate records — recommendation, human approval, updated recommendation",

@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import type { DataEnvironment } from "../pursuits/lineage";
 import { resolveCompany as resolveDeterministic, type ResolveResult } from "../transactions/identity-resolve";
 import { resolveCompany as matchInMemory, type CompanyCandidate } from "./resolve";
 
@@ -24,6 +25,8 @@ export interface IdentityInput {
   domain?: string | null;
   duns?: string | null;
   name?: string | null;
+  /** Intake-scoped provenance, carried from whatever federation intake triggered this resolution. */
+  dataEnvironment: DataEnvironment;
 }
 
 export interface IdentityResolution extends ResolveResult { quarantined: boolean }
@@ -33,7 +36,7 @@ export async function resolveIdentity(db: PoolClient, input: IdentityInput): Pro
   const r = await resolveDeterministic(db, {
     orgId: input.orgId, sourceSystem: input.sourceSystem, sourceOrgId: input.sourceOrgId ?? null,
     externalId: input.externalId ?? null, domain: input.domain ?? null, duns: input.duns ?? null,
-    externalName: input.name ?? null,
+    externalName: input.name ?? null, dataEnvironment: input.dataEnvironment,
   });
   // Quarantine: anything not AUTO_RESOLVED yields no company id — the signal is held,
   // never applied to a Pursuit, and a source-org-scoped review row already exists.

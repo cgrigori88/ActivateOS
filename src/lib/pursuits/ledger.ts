@@ -71,7 +71,17 @@ export interface ChangeEvent {
   triggerId?: string | null;
   modelVersion?: string | null;
   agentRunId?: string | null;
-  dataEnvironment?: DataEnvironment;
+  /**
+   * REQUIRED (Slice 1 correction). It was optional, and the INSERT below ended in
+   * `?? "PRODUCTION"` — so a call site that simply forgot it wrote the one environment a learning
+   * corpus admits. That is not a hypothetical: the STAGE_CHANGED emission added in `c014f6e` forgot
+   * it, and two hosted ledger rows say PRODUCTION about a DEMO pursuit because of the same tail.
+   *
+   * `change_ledger` is append-only — app_rw holds INSERT and SELECT and nothing else — so a wrong
+   * provenance here can never be corrected, only annotated. That is precisely why the field may not
+   * be optional: the one store that cannot be fixed is the one that must not be guessed at.
+   */
+  dataEnvironment: DataEnvironment;
   occurredAt?: Date;
   /**
    * P45-1 governed-runtime linkage (migration 0109), all optional and all written IN THE INSERT.
@@ -109,7 +119,7 @@ export async function recordChange(db: PoolClient, e: ChangeEvent): Promise<stri
       e.after === undefined ? null : JSON.stringify(e.after),
       e.materiality ?? "MEDIUM", e.reason ?? null, e.actorType ?? "SYSTEM", e.actorId ?? null,
       e.triggerType ?? null, e.triggerId ?? null, e.modelVersion ?? null, e.agentRunId ?? null,
-      e.dataEnvironment ?? "PRODUCTION", e.occurredAt ?? null,
+      e.dataEnvironment, e.occurredAt ?? null,
       // Absent for every pre-existing caller, which is exactly the pre-P45 behaviour.
       e.runId ?? null, e.runStepId ?? null, e.invocationId ?? null, e.governedActorId ?? null,
     ],

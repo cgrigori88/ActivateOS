@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { currentRole, requireWrite } from "@/lib/auth/org";
 import { withTenant } from "@/lib/db/tenant";
+import { opportunityEnvironment } from "@/lib/pursuits/provenance";
 import { dispatchSkill } from "@/lib/pursuits/federation/skills";
 import { assignInitiative } from "@/lib/partnerships/initiatives";
 import { decideWriteback, draftWritebacks } from "@/lib/opportunities/writeback";
@@ -137,9 +138,18 @@ export async function setStakeholderAction(
       `select role from stakeholders where opportunity_id = $1 and contact_id = $2`, [opportunityId, contactId])).rows[0];
     if (current && current.role !== role) {
       const roleName = await currentRole(db);
-      await dispatchSkill(db, "assert_stakeholder_role", { type: "USER", id: null, orgId, role: roleName }, {
-        args: { opportunityId, contactId, role, assertionState: "unverified", source: "human:pipeline" },
-      });
+      // The stakeholder belongs to an opportunity, which belongs (or does not) to a pursuit — so the
+      // pursuit is the subject that carries provenance. An opportunity with no pursuit yields none,
+      // and the role assertion is skipped rather than recorded as production activity: the sentiment
+      // update above has already been applied, and inventing an environment for the audit row would
+      // be worse than not writing one.
+      const env = await opportunityEnvironment(db, orgId, opportunityId);
+      if (env) {
+        await dispatchSkill(db, "assert_stakeholder_role", { type: "USER", id: null, orgId, role: roleName }, {
+          args: { opportunityId, contactId, role, assertionState: "unverified", source: "human:pipeline" },
+          dataEnvironment: env,
+        });
+      }
     }
   });
   revalidatePath("/pipeline");

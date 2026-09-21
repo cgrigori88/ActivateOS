@@ -168,8 +168,32 @@ async function handleMessage(msg: RpcRequest, key: ResolvedKey): Promise<Record<
             }
           }
           const idem = typeof args.idempotencyKey === "string" ? args.idempotencyKey : null;
+          /**
+           * PROVENANCE COMES FROM THE CREDENTIAL (0120), AND FROM NOTHING ELSE.
+           *
+           * This line used to read `dataEnvironment: "PRODUCTION"`. It was not an observation, it
+           * was an assumption, and it is how a Preview project whose every pursuit is DEMO came to
+           * hold 18 invocations claiming the one environment a learning corpus would admit — 17 of
+           * them written by the certification gate itself.
+           *
+           * The credential is the only thing in an MCP request the caller cannot choose: it is
+           * resolved server-side through a SECURITY DEFINER function `app_rw` cannot bypass. Body,
+           * params, tool arguments and headers are all caller-controlled and are therefore worthless
+           * as provenance — the loop just above already refuses a request that tries to name its own
+           * identity, and provenance is refused on exactly the same grounds.
+           *
+           * AN UNCLASSIFIED CREDENTIAL FAILS CLOSED. Substituting a value here would reintroduce the
+           * defect in one line; refusing means a key issued before 0120 must be classified
+           * deliberately before it can write anything, which is the point.
+           */
+          const provenance = key.dataEnvironment;
+          if (provenance === null) {
+            return rpcError(id, -32603,
+              "This credential has no data provenance recorded. Re-issue it with an environment before using governed tools.");
+          }
           const disp = await withTenantOrg(orgId, (db) =>
-            dispatchSkill(db, tool.skillId!, actor, { args, idempotencyKey: idem, dataEnvironment: "PRODUCTION",
+            dispatchSkill(db, tool.skillId!, actor, { args, idempotencyKey: idem,
+                                                      dataEnvironment: provenance,
                                                       governedActorId: key.governedActorId }));
           const ok = disp.status === "EXECUTED" || disp.status === "EXECUTING";
           const payload = ok ? (disp.result ?? { status: disp.status }) : { status: disp.status, reason: disp.reason };
