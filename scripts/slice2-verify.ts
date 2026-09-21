@@ -68,9 +68,9 @@ async function main() {
   // comment can satisfy is not a control. The fallback IS the ordered single-row membership query.
   ck("a forged organization id degrades to the user's own membership rather than granting anything",
     /order by created_at asc, org_id asc limit 1/.test(orgSrc)
-    && /if \(rows\[0\]\) return rows\[0\]\.org_id;/.test(orgSrc));
+    && /return rows\[0\] \? \{ orgId: rows\[0\]\.org_id, role: rows\[0\]\.role \} : null;/.test(orgSrc));
   ck("the ROLE follows the selected organization, so a switch cannot carry another org's role",
-    /select role from org_members where org_id = \$1 and user_id = \$2/.test(orgSrc));
+    /const selected = await validatedSelectedOrg\(userId\);\s*if \(selected\) return selected\.role;/.test(orgSrc));
   const adminSrc = codeOf("../src/app/admin/actions.ts");
   ck("switching checks membership server-side before it will set anything",
     /select 1 from org_members where org_id = \$1 and user_id = \$2/.test(adminSrc)
@@ -110,11 +110,39 @@ async function main() {
    * shipped, and why an assertion that renders the default proves nothing.
    */
   ck("BITING — the cookie's membership is validated on the OWNER pool, not the tenant connection",
-    /const chosen = await selectedOrgCookie\(\)[\s\S]{0,900}?getOwnerPool\(\)\.query[\s\S]{0,200}?from org_members m where m\.org_id = \$1 and m\.user_id = \$2/.test(orgSrc));
-  ck("and the ROLE is read the same way, so it cannot answer about a different organization",
-    (orgSrc.match(/getOwnerPool\(\)\.query/g) ?? []).length === 2);
-  ck("both reads stay scoped to the authenticated user — the connection widens, the subject does not",
-    (orgSrc.match(/m\.user_id = \$2|user_id = \$2/g) ?? []).length >= 2);
+    /const chosen = await selectedOrgCookie\(\)[\s\S]{0,600}?getOwnerPool\(\)\.query[\s\S]{0,240}?from org_members m where m\.org_id = \$1 and m\.user_id = \$2/.test(orgSrc));
+  ck("the read stays scoped to the authenticated user — the connection widens, the subject does not",
+    /where m\.org_id = \$1 and m\.user_id = \$2/.test(orgSrc));
+  /**
+   * THREE RESOLVERS, ONE RULE — and the one that mattered most did not have it.
+   *
+   * Hosted certification found the switch still not working after the fix above. It was not a leak:
+   * `sessionOrgId` is a THIRD resolver, the one `withTenant` uses to pin `app.org_id`, and it asked
+   * `resolve_user_org(uid)` — a SECURITY DEFINER function that returns the user's OLDEST membership
+   * and knows nothing about a selection. So the shell switched and the data did not, which on the
+   * page looked exactly like another tenant's pursuits bleeding into the pilot.
+   *
+   * The repair is structural rather than a third copy of the check: one exported helper, which all
+   * three resolvers call. These assertions are about THAT — a fourth resolver added later still
+   * fails the count below unless it routes through the same helper.
+   */
+  ck("BITING — there is exactly ONE validated-selection implementation, not one per resolver",
+    (orgSrc.match(/getOwnerPool\(\)\.query/g) ?? []).length === 1
+    && /export async function validatedSelectedOrg\(/.test(orgSrc));
+  ck("and it refuses to honour a preference in demo mode, where there is no membership to check it against",
+    /export async function validatedSelectedOrg\([\s\S]{0,240}?if \(!userId\) return null;/.test(orgSrc));
+  const tenantSrc = codeOf("../src/lib/db/tenant.ts");
+  ck("BITING — the resolver that PINS app.org_id consults the selection, so the data follows the switch",
+    /const selected = await validatedSelectedOrg\(uid\);\s*if \(selected\) return selected\.orgId;/.test(tenantSrc));
+  // ORDER, NOT MERE PRESENCE — and both anchors must EXIST. Written as a bare `indexOf < indexOf`
+  // this passed vacuously when the call was deleted, because a missing anchor is -1 and -1 is less
+  // than everything. A control that survives the deletion of the thing it checks is not a control.
+  ck("and it consults it BEFORE resolve_user_org, whose answer is the user's oldest membership",
+    tenantSrc.includes("validatedSelectedOrg(uid)") && tenantSrc.includes("public.resolve_user_org($1)")
+    && tenantSrc.indexOf("validatedSelectedOrg(uid)") < tenantSrc.indexOf("public.resolve_user_org($1)"));
+  ck("all three resolvers go through the one helper — shell, role and tenant scope cannot disagree",
+    (orgSrc.match(/await validatedSelectedOrg\(/g) ?? []).length === 2
+    && (tenantSrc.match(/await validatedSelectedOrg\(/g) ?? []).length === 1);
 
   ck("creating an organization makes the creator its owner in ONE transaction",
     /insert into organizations \(name, kind, data_environment\)/.test(adminSrc)

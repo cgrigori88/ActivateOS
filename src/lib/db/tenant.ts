@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { getPool } from "@/db/client";
+import { validatedSelectedOrg } from "@/lib/auth/org";
 import { authConfigured, supabaseServer } from "@/lib/auth/supabase";
 import { statementTimeoutOf, type ExecutionPolicy } from "./execution-policy";
 
@@ -54,6 +55,23 @@ export async function sessionOrgId(db: PoolClient): Promise<string | null> {
       /* outside a request scope (worker/scripts) — fall through to sole org */
     }
   }
+  /**
+   * THE SELECTION BINDS THE DATA, NOT JUST THE SHELL.
+   *
+   * This is the resolver that pins `app.org_id`, so it decides what every RLS-scoped read on a page
+   * can see — and it was the one resolver that never consulted the selection. `resolve_user_org`
+   * answers "this user's oldest membership" and has no notion of a choice, so after a switch the
+   * switcher named the new organization while `withTenant` kept serving the old one's pipeline,
+   * pursuits and facts. It read as a data leak; it was a resolver disagreeing with itself.
+   *
+   * `validatedSelectedOrg` is the SAME check `currentOrgId` and `currentRole` make, so all three now
+   * answer about one organization. It returns null unless the cookie names an organization this
+   * authenticated user is actually a member of, which leaves the `resolve_user_org` default below
+   * as the behaviour for every caller that has no selection — worker, webhook, demo mode, first
+   * visit — exactly as before.
+   */
+  const selected = await validatedSelectedOrg(uid);
+  if (selected) return selected.orgId;
   const { rows } = await db.query<{ org: string | null }>(
     `select public.resolve_user_org($1) as org`,
     [uid],
