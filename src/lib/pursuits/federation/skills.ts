@@ -272,6 +272,23 @@ export const COORDINATION_SKILLS: SkillDef[] = [
         reason: ctx.args?.reason ? String(ctx.args.reason) : null,
       },
       { env: ctx.dataEnvironment, correlationId: ctx.correlationId ?? null , effects: effectSinkOf(ctx), invocationId: observedInvocationId(ctx) }) },
+  // Thin P9 — APPLYING A REUSABLE COMMERCIAL MOTION. A person chooses a pattern and PursuitOS
+  // establishes the pursuit structure from it: pursuit, motion instance bound to an exact template
+  // version, the template's own cadence, and a RECOMMENDATION through P3. It composes existing
+  // primitives and adds no authority: INTERNAL_WRITE, operator, USER only — a motion cannot be
+  // applied by an agent, because "which pattern fits this account" is the human judgement the whole
+  // slice exists to support. It reaches no provider and sends nothing.
+  { skillId: "apply_pursuit_motion", version: 1, description: "Apply a reusable commercial motion to an account or pursuit (establishes the recommended structure — never approves or sends)", effectClass: "INTERNAL_WRITE",
+    eligibleActors: ["USER"], requiredPermission: "operator",
+    handler: async (db, actor, ctx) => (await import("../../motions/apply")).applyMotion(db, {
+      orgId: actor.orgId,
+      slug: String(ctx.args?.slug ?? ""),
+      subjectKind: (ctx.args?.subjectKind as "company" | "opportunity" | "pursuit") ?? "company",
+      subjectId: String(ctx.args?.subjectId ?? ""),
+      appliedByUserId: actor.id ?? null,
+      dataEnvironment: ctx.dataEnvironment,
+    }) },
+
   // Replacing the COMMERCIAL OBJECTIVE itself (D-033) — a person only, with a reason. Append-only:
   // the old goal keeps its meaning and is superseded; the new goal names it. A route, motion or
   // action change never comes here — those are plan decisions above.

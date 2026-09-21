@@ -31,6 +31,8 @@ import { FederationBento } from "@/components/pursuit/federation";
 import { StakeholderPanel } from "@/components/pursuit/stakeholders";
 import { LifecycleBento } from "@/components/pursuit/lifecycle";
 import { ValueCaseCard } from "@/components/pursuit/value-case";
+import { RecommendedMotions } from "@/components/pursuit/motions";
+import { applyMotionAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -74,6 +76,22 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
     const role = await currentRole(db);
     const canDecide = role === "owner" || role === "operator";
     const outcome = await getPursuitOutcomeSummary(db, orgId, id);
+    /**
+     * THIN P9 — which reusable commercial motions appear to apply to this account.
+     *
+     * Read-only and deterministic: evaluating eligibility instantiates NOTHING. It is two bounded
+     * statements for every template against this one account, and it contributes nothing to P2 —
+     * motion fit answers "does this pattern apply here", which is a different question from "what
+     * deserves attention relative to the comparison set".
+     */
+    const motionFits = await (async () => {
+      try {
+        const [{ loadMotionTemplates, evaluateMotions }] = await Promise.all([import("@/lib/motions/eligibility")]);
+        const templates = await loadMotionTemplates(db);
+        if (templates.length === 0) return [];
+        return (await evaluateMotions(db, orgId, templates, [detail.accountId], new Date())).get(detail.accountId) ?? [];
+      } catch { return []; }   // a malformed template must not take the pursuit page down with it
+    })();
     // Motion context (P1A): deterministic linkage only — a motion names this pursuit_id or nothing.
     const motion = (await db.query<{ id: string; status: string; hypothesis: string }>(
       `select m.id, m.status, n.name as hypothesis from revenue_motions m
@@ -120,7 +138,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
        CURRENT APPROVED PLAN, so its preserved content is not read as current reality. Nothing is
        rewritten, and with the attention capability off the Slice 2A view passes through untouched. */
     return {
-      kind: "sponsor" as const, detail, federation, canDecide, outcome, motion, contacts, pursuitContext,
+      kind: "sponsor" as const, detail, federation, canDecide, outcome, motion, contacts, pursuitContext, motionFits,
       pursuitPlan: pursuitPlan && vnext.pursuitAttention ? frameApprovedPlan(pursuitPlan) : pursuitPlan,
     };
   });
@@ -196,6 +214,15 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
      immediately beneath "What matters now" and full width like it. Same order
      slot, so it follows the context on desktop and mobile without moving any
      other panel. Null with the flag off. */
+  const motionSection = loaded.kind === "sponsor" && loaded.motionFits?.length ? (
+    <div id="motions" className="order-2 scroll-mt-16 lg:col-span-2">
+      <Panel eyebrow="Reusable commercial patterns, matched against what we hold"
+        title="Recommended motions" accent="var(--color-route)">
+        <RecommendedMotions fits={loaded.motionFits} pursuitId={d.pursuitId} apply={applyMotionAction} />
+      </Panel>
+    </div>
+  ) : null;
+
   const planSection = loaded.pursuitPlan ? (
           <div id="plan" className="order-2 scroll-mt-16 lg:order-2 lg:col-span-2">
             <Panel title="Pursuit plan" hint="What we are trying to achieve, and the next move" accent="var(--color-readiness)"
@@ -262,6 +289,7 @@ export default async function PursuitDetail({ params }: { params: Promise<{ id: 
             serialized tree with the flag off, so the flag-OFF payload would no
             longer match the pre-slice page byte for byte (U-16). */}
         {planSection ? <>{whyNowSection}{planSection}</> : whyNowSection}
+        {motionSection}
 
         {/* Value Case (P2B §12) — economics on the Pursuit, not in a room of its own. `#value` is
             the deep-link anchor from Today, the Brief and ⌘K. */}

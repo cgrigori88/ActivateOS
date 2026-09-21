@@ -1,0 +1,46 @@
+{
+  "$comment": "Thin-P9 motion template v1. The commercial story is a virtualization displacement; the RULE is keyed on the renewal and lifecycle predicates this product actually holds. Which platform is installed is NOT claimed — `technology_in_use` holds no facts, so it is declared as missing context instead of asserted.",
+  "slug": "datacenter-modernization-displacement",
+  "version": 1,
+  "name": "Datacenter modernization and virtualization displacement",
+  "taxonomy_node": "virtualization",
+  "objective": "Convert a dated virtualization estate into a modernization evaluation, timed against a contract or lifecycle event the account is already facing.",
+  "motion_v1": {
+    "objective": "Convert a dated virtualization estate into a modernization evaluation, timed against a contract or lifecycle event the account is already facing.",
+    "requires": [
+      {
+        "predicate": "renewal_date",
+        "op": "within_days",
+        "days": 365,
+        "because": "a renewal inside the next year is the moment a modernization alternative can actually be considered"
+      }
+    ],
+    "disqualifiers": [
+      {
+        "predicate": "budget_reduction_target",
+        "op": "present",
+        "because": "an account under a declared budget reduction is not a migration conversation this year"
+      }
+    ],
+    "requiresContext": [
+      "Which virtualization platform is installed — `technology_in_use` holds no observations, so the estate is not asserted.",
+      "Support lifecycle position of the installed estate — `end_of_support_date` is available as a predicate but unobserved here.",
+      "Whether a competing modernization purchase has already been made."
+    ],
+    "goalTemplate": "Determine whether {{company}} will evaluate a modernization alternative ahead of its renewal, and what would have to be true for that evaluation to happen.",
+    "expectedRoles": ["VENDOR_ACCOUNT_EXECUTIVE", "SOLUTION_ARCHITECT", "PARTNER_ACCOUNT_MANAGER"],
+    "campaignGuidance": "Anchor on the renewal date the account already knows about. Offer a comparison of what modernizing would cost against what renewing costs — never a migration pitch before that arithmetic exists.",
+    "measurementAssociations": [
+      "An opportunity opened or advanced on this account after application — association only.",
+      "A recorded renewal outcome on the account."
+    ]
+  },
+  "personas": { "primary": "VP Infrastructure", "secondary": "Director of Virtualization / Platform Engineering" },
+  "cta": { "offer": "Renew-versus-modernize cost comparison workshop", "fallback": "Written benchmark of how comparable estates approached the same renewal" },
+  "seller_cadence": [
+    { "step": 1, "action": "Confirm the renewal date and who owns the decision", "day": 0 },
+    { "step": 2, "action": "Send the renew-versus-modernize comparison offer", "day": 3 },
+    { "step": 3, "action": "Technical discovery on the installed estate with a solution architect", "day": 10 },
+    { "step": 4, "action": "Joint recommendation with the partner who would deliver the migration", "day": 21 }
+  ]
+}

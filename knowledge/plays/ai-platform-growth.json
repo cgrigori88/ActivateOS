@@ -1,0 +1,38 @@
+{
+  "$comment": "Thin-P9 motion template v1. Eligibility keys on the one initiative predicate this product observes. The AI-infrastructure specifics a real qualification would need are declared as missing context, not fabricated: no predicate records GPU estate, workload type or accelerator vendor.",
+  "slug": "ai-platform-growth",
+  "version": 1,
+  "name": "AI platform growth",
+  "taxonomy_node": "ai-platforms",
+  "objective": "Pursue accounts whose declared strategic initiative points at AI workloads, where a platform and accelerator partner motion applies.",
+  "motion_v1": {
+    "objective": "Pursue accounts whose declared strategic initiative points at AI workloads, where a platform and accelerator partner motion applies.",
+    "requires": [
+      {
+        "predicate": "strategic_initiative",
+        "op": "value_in",
+        "values": ["ai", "artificial intelligence", "machine learning", "genai", "generative ai", "gpu", "inference", "data science"],
+        "because": "the account has declared an initiative that names AI workloads"
+      }
+    ],
+    "requiresContext": [
+      "Whether the account operates GPU infrastructure today — no predicate records accelerator estate.",
+      "Which workloads are in scope (training, fine-tuning, inference) — unobserved.",
+      "Whether an accelerator vendor relationship already exists — `partner_relationship_exists` holds no observations."
+    ],
+    "goalTemplate": "Determine what {{company}} actually needs to run its declared AI initiative in production, and whether a platform-plus-accelerator motion fits.",
+    "expectedRoles": ["VENDOR_ACCOUNT_EXECUTIVE", "SOLUTION_ARCHITECT"],
+    "campaignGuidance": "Open on the initiative the account has already declared, not on the technology stack. The first conversation is about what has to run in production and what is blocking it.",
+    "measurementAssociations": [
+      "An opportunity opened on this account in the AI platform category after application — association only.",
+      "Evidence added that records accelerator estate, which would close the largest missing-context gap."
+    ]
+  },
+  "personas": { "primary": "VP Data / Head of AI Platform", "secondary": "Director of Infrastructure" },
+  "cta": { "offer": "Workload readiness review for the declared initiative", "fallback": "Reference architecture for the stated workload class" },
+  "seller_cadence": [
+    { "step": 1, "action": "Confirm the declared initiative and its production timeline", "day": 0 },
+    { "step": 2, "action": "Workload readiness conversation with the platform owner", "day": 4 },
+    { "step": 3, "action": "Joint architecture session with the accelerator partner", "day": 14 }
+  ]
+}

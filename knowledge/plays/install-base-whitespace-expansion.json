@@ -1,0 +1,31 @@
+{
+  "$comment": "Thin-P9 motion template v1. `motion_v1` is the machine-evaluable block: every predicate it names is a real fact_predicates key, and anything this product cannot observe is declared in requiresContext rather than invented as a signal.",
+  "slug": "install-base-whitespace-expansion",
+  "version": 1,
+  "name": "Install-base whitespace expansion",
+  "taxonomy_node": "infrastructure-automation",
+  "objective": "Open an expansion conversation on accounts a partner already holds where the target product is not yet installed.",
+  "motion_v1": {
+    "objective": "Open an expansion conversation on accounts a partner already holds where the target product is not yet installed.",
+    "requires": [],
+    "partnerContext": { "whitespace": true },
+    "requiresContext": [
+      "Whether the account has evaluated this product category before — no predicate records prior evaluations.",
+      "Which partner seller owns the relationship day to day — `partner_accounts` names the partner, not the person."
+    ],
+    "goalTemplate": "Establish whether {{company}} has a case for the partner's target product, which they do not hold today.",
+    "expectedRoles": ["PARTNER_ACCOUNT_MANAGER", "VENDOR_ACCOUNT_EXECUTIVE"],
+    "campaignGuidance": "Lead with the partner relationship, not the product. The opening should reference what the partner already supports at this account and offer a short fit conversation — never a pitch for a product they have not asked about.",
+    "measurementAssociations": [
+      "An opportunity opened on this account after application — association only, never attribution.",
+      "A stage change on an existing opportunity for this account."
+    ]
+  },
+  "personas": { "primary": "Director of Infrastructure", "secondary": "IT Operations Manager" },
+  "cta": { "offer": "30-minute fit conversation with the partner present", "fallback": "Written summary of what comparable accounts on this partner's book have adopted" },
+  "seller_cadence": [
+    { "step": 1, "action": "Partner seller confirms the account relationship is live and warm", "day": 0 },
+    { "step": 2, "action": "Joint outreach referencing the partner's existing footprint at the account", "day": 2 },
+    { "step": 3, "action": "Fit conversation with the infrastructure owner, partner present", "day": 7 }
+  ]
+}

@@ -195,3 +195,37 @@ export async function assertStakeholderAction(pursuitId: string, formData: FormD
     revalidatePath("/");
   }
 }
+
+/**
+ * Apply a reusable commercial motion to this pursuit.
+ *
+ * It runs through `dispatchSkill` like every other governed mutation on this surface, so the act is
+ * permission-checked, tenant-scoped and audited by the same boundary — and it creates a PROPOSAL:
+ * a pursuit structure and a plan RECOMMENDATION that a person still has to decide.
+ */
+export async function applyMotionAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const pursuitId = String(formData.get("pursuitId") ?? "");
+  const slug = String(formData.get("slug") ?? "");
+  if (!pursuitId || !slug) return { ok: false, error: "Missing motion or pursuit." };
+  if (!pursuitExperienceEnabled()) return { ok: false, error: "Pursuit experience is not enabled." };
+  const correlationId = randomUUID();
+  const result = await withTenant(async (db, orgId) => {
+    const refused = await coordinationGate(db, orgId);
+    if (refused) return { ok: false as const, error: refused };
+    const role = await currentRole(db);
+    const env = await pursuitEnvironment(db, orgId, pursuitId);
+    if (!env) return { ok: false as const, error: PROVENANCE_UNRESOLVED };
+    const dispatch = await dispatchSkill(db, "apply_pursuit_motion", { type: "USER", id: null, orgId, role }, {
+      pursuitId, correlationId, dataEnvironment: env,
+      idempotencyKey: `apply-motion:${slug}:${pursuitId}`,
+      args: { slug, subjectKind: "pursuit", subjectId: pursuitId },
+    });
+    const res = dispatch.result as { status?: string; reason?: string } | undefined;
+    return {
+      ok: dispatch.status === "EXECUTED" && res?.status !== "REFUSED",
+      error: res?.reason ?? (dispatch.status === "EXECUTED" ? undefined : dispatch.reason ?? "That motion was not applied."),
+    };
+  });
+  if (result.ok) revalidatePath(`/pursuits/${pursuitId}`);
+  return result;
+}
