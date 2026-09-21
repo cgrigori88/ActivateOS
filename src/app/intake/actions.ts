@@ -4,6 +4,16 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireWrite } from "@/lib/auth/org";
 import { withTenant } from "@/lib/db/tenant";
+import { asDataEnvironment } from "@/lib/pursuits/provenance";
+import { supabaseServer } from "@/lib/auth/supabase";
+
+/** The authenticated uploader, or null outside an identity session. Never from the request body. */
+async function currentUserId(): Promise<string | null> {
+  try {
+    const { data } = await (await supabaseServer()).auth.getUser();
+    return data.user?.id ?? null;
+  } catch { return null; }
+}
 import {
   analyzeCsvToBatch,
   commitCrmBatch,
@@ -38,11 +48,28 @@ export async function analyzeUploadAction(formData: FormData): Promise<void> {
 
   const batchId = await withTenant(async (db, orgId) => {
     await requireWrite(db); // viewers are read-only (multi-tenant slice 3)
+    /**
+     * BOTH OF THESE COME FROM THE SERVER, AND NEITHER CAN COME FROM THE FILE.
+     *
+     * The uploader was the literal string "web", so no committed import could say who ran it. The
+     * provenance is the ORGANIZATION'S — a CSV may not declare itself PILOT, DEMO, CERTIFICATION or
+     * PRODUCTION, because a file that names its own environment can place anything into the one
+     * environment a learning corpus admits.
+     *
+     * An organization with no provenance recorded yields null, and the batch stays unclassified
+     * rather than inheriting a guess. That is the same rule 0120 applied to credentials, one level
+     * up: the thing that has not been classified must not be silently classified as PRODUCTION.
+     */
+    const uploadedByUserId = await currentUserId();
+    const { rows: orgRows } = await db.query<{ data_environment: string | null }>(
+      `select data_environment from organizations where id = $1`, [orgId]);
     const result = await analyzeCsvToBatch(db, {
       orgId,
       csv,
       filename: file.name || null,
       uploadedBy: "web",
+      uploadedByUserId,
+      dataEnvironment: asDataEnvironment(orgRows[0]?.data_environment ?? null),
       kind,
       sourceLabel: sourceLabel || undefined,
     });
@@ -188,4 +215,28 @@ export async function discardImportAction(batchId: string): Promise<void> {
   });
   revalidatePath("/intake");
   redirect("/intake");
+}
+
+
+/**
+ * Reverse a committed import.
+ *
+ * THIS IS THE ACTION THAT REMOVES THE ENGINEER FROM THE LOOP. Before it, undoing a bad pilot upload
+ * meant someone with a SQL prompt guessing which rows had come from which file — and the
+ * information needed to guess correctly had been deleted at commit time.
+ *
+ * It compensates; it does not erase. The batch, its effects and the disposition of every reversal
+ * attempt all survive, including the ones that refused: a shared identity record retained by rule, a
+ * field a person has since corrected, an opportunity a pursuit now depends on.
+ */
+export async function reverseImportAction(batchId: string): Promise<void> {
+  const summary = await withTenant(async (db, orgId) => {
+    await requireWrite(db);
+    const { reverseBatch } = await import("@/lib/ingest/lineage");
+    const { data } = await (await supabaseServer()).auth.getUser().catch(() => ({ data: { user: null } }));
+    return reverseBatch(db, { orgId, batchId, userId: data.user?.id ?? null });
+  });
+  void summary;
+  revalidatePath("/intake");
+  revalidatePath(`/intake/${batchId}`);
 }

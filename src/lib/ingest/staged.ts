@@ -1,4 +1,6 @@
 import type pg from "pg";
+import { recordEffect } from "./lineage";
+import type { DataEnvironment } from "@/lib/pursuits/lineage";
 import { extractDomain, normalizeCompanyName } from "../identity/normalize";
 import { resolveCompany, type CompanyCandidate } from "../identity/resolve";
 import { verifyEvidence } from "../quality/verify";
@@ -36,7 +38,23 @@ export interface AnalyzeResult {
 
 export async function analyzeCsvToBatch(
   db: pg.PoolClient,
-  args: { orgId: string; csv: string; filename: string | null; uploadedBy?: string; kind?: "book" | "crm" | "enrichment"; sourceLabel?: string },
+  args: {
+    orgId: string; csv: string; filename: string | null; uploadedBy?: string;
+    kind?: "book" | "crm" | "enrichment"; sourceLabel?: string;
+    /**
+     * THE REAL UPLOADER, DERIVED BY THE SERVER. `uploadedBy` has always been the literal string
+     * "web", so no committed import could say who ran it. A file cannot supply this and neither can
+     * the browser: the action reads it from the authenticated session.
+     */
+    uploadedByUserId?: string | null;
+    /**
+     * THE OPERATING CONTEXT'S PROVENANCE, also server-side. It comes from the organization, not from
+     * the upload — a CSV may not declare itself PILOT, PRODUCTION, DEMO or CERTIFICATION, because a
+     * file that can name its own environment can put anything into the one environment a learning
+     * corpus admits.
+     */
+    dataEnvironment?: DataEnvironment | null;
+  },
 ): Promise<AnalyzeResult> {
   if (Buffer.byteLength(args.csv, "utf8") > MAX_CSV_BYTES) {
     throw new Error(`File too large — the cap is ${Math.round(MAX_CSV_BYTES / 1024 / 1024)}MB per upload.`);
@@ -64,12 +82,14 @@ export async function analyzeCsvToBatch(
   );
 
   const { rows: batchRows } = await db.query<{ id: string }>(
-    `insert into import_batches (org_id, filename, uploaded_by, row_count, status, mapping)
-     values ($1, $2, $3, $4, 'analyzed', $5) returning id`,
+    `insert into import_batches (org_id, filename, uploaded_by, uploaded_by_user_id, data_environment, row_count, status, mapping)
+     values ($1, $2, $3, $4, $5, $6, 'analyzed', $7) returning id`,
     [
       args.orgId,
       args.filename,
       args.uploadedBy ?? null,
+      args.uploadedByUserId ?? null,
+      args.dataEnvironment ?? null,
       sniffed.rows.length,
       JSON.stringify({
         kind: args.kind ?? "book",
@@ -125,14 +145,54 @@ export interface CommitResult {
 
 const CSV_TRUST = 0.85;
 
+/**
+ * Persist a batch failure THROUGH A VALID TRANSACTION BOUNDARY, and preserve the original cause.
+ *
+ * ── THE DEFECT THIS REPLACES ────────────────────────────────────────────────────────────────────
+ *
+ * Every lane used to write `update import_batches set status = 'failed'` from inside its own catch
+ * block. In PostgreSQL a failed statement ABORTS the transaction, so that UPDATE was itself refused
+ * with 25P02 ("current transaction is aborted") — and the exception that escaped was that, not the
+ * real cause. Even when the underlying failure was not a database error, `withTenant` then rolled
+ * the whole transaction back, discarding the 'failed' status and its message along with it. So a
+ * failed import reported the wrong reason and recorded nothing at all.
+ *
+ * ── THE FIX ─────────────────────────────────────────────────────────────────────────────────────
+ *
+ * The status is written on a SEPARATE connection from the owner pool, outside the doomed
+ * transaction. Nothing it does can touch the caller's rollback, and the rollback cannot discard it —
+ * which is the whole point: the canonical mutations must all disappear, and the record that they
+ * were attempted and failed must not.
+ *
+ * The original error is re-thrown untouched. This function never becomes the reason a caller cannot
+ * see what actually went wrong: if recording the failure itself fails, that is swallowed, because an
+ * error about recording an error is not the error anyone needs.
+ */
+async function markBatchFailed(batchId: string, orgId: string, err: unknown): Promise<void> {
+  const message = err instanceof Error ? err.message : String(err);
+  try {
+    const { getOwnerPool } = await import("@/db/client");
+    await getOwnerPool().query(
+      `update import_batches set status = 'failed', error = $3 where id = $1 and org_id = $2`,
+      [batchId, orgId, message.slice(0, 2000)]);
+  } catch {
+    /* recording the failure must never replace the failure */
+  }
+}
+
 export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Promise<CommitResult> {
-  const { rows: batchRows } = await db.query<{ id: string; status: string; mapping: { headers: string[] } | null }>(
-    `select id, status, mapping from import_batches where id = $1 and org_id = $2`,
+  const { rows: batchRows } = await db.query<{ id: string; status: string; mapping: { headers: string[] } | null; data_environment: string | null }>(
+    `select id, status, mapping, data_environment from import_batches where id = $1 and org_id = $2`,
     [args.batchId, args.orgId],
   );
   const batch = batchRows[0];
   if (!batch) throw new Error("Import not found (or it belongs to another organization).");
   if (batch.status !== "analyzed") throw new Error(`Import is ${batch.status} — only an analyzed upload can be committed.`);
+  // THE BATCH'S OWN PROVENANCE, set at analyze time from the operating context. Read back here so
+  // the commit cannot be handed a different one, and so no row in this loop consults the file.
+  const env = (batch.data_environment as DataEnvironment | null) ?? null;
+  const eff = (e: Omit<Parameters<typeof recordEffect>[1], "orgId" | "batchId" | "dataEnvironment">) =>
+    recordEffect(db, { ...e, orgId: args.orgId, batchId: args.batchId, dataEnvironment: env });
 
   // The company column is the anchor; refuse to import rows into nothing.
   const companyCol = Object.entries(args.targets).find(([, t]) => t === "company")?.[0];
@@ -176,6 +236,7 @@ export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Pr
       [args.orgId, args.population.partnerId, args.population.name, args.population.category, args.batchId, args.surfaced],
     );
     const populationId = popRows[0].id;
+    await eff({ subjectKind: "account_population", subjectId: populationId, effect: "CREATED_REVERSIBLE" });
 
     const surfacedSet = new Set(args.surfaced);
     const result: CommitResult = {
@@ -209,6 +270,9 @@ export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Pr
       if (resolution) {
         companyId = resolution.companyId;
         result.matched++;
+        // Matched, not created — and global either way. Recorded so reversal can REPORT it rather
+        // than reason about it, and so provenance is never rewritten onto an object we only found.
+        await eff({ sourceRowNo: row.row_no, subjectKind: "company", subjectId: companyId, effect: "MATCHED_PREEXISTING" });
       } else {
         const employeesRaw = get("employees").replace(/[,\s]/g, "");
         const { rows: inserted } = await db.query<{ id: string }>(
@@ -219,6 +283,9 @@ export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Pr
         companyId = inserted[0].id;
         candidates.push({ id: companyId, normalizedName: normalized, primaryDomain: domain });
         result.created++;
+        // CREATED, AND STILL NEVER REVERSED. `companies` carries no org_id: it is shared identity
+        // infrastructure, not this organization's property because its batch got there first.
+        await eff({ sourceRowNo: row.row_no, subjectKind: "company", subjectId: companyId, effect: "GLOBAL_IDENTITY_RETAINED" });
       }
 
       await db.query(
@@ -246,6 +313,8 @@ export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Pr
          do update set attributes = population_members.attributes || excluded.attributes`,
         [populationId, companyId, JSON.stringify(attributes)],
       );
+      // The member row's identity is (population, company); the population is the reversible handle.
+      await eff({ sourceRowNo: row.row_no, subjectKind: "population_member", subjectId: populationId, effect: "CREATED_REVERSIBLE" });
       result.imported++;
 
       // Partner-list membership keeps Intake analytics + screening working.
@@ -259,6 +328,11 @@ export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Pr
              installed = partner_accounts.installed or excluded.installed`,
           [args.orgId, args.population.partnerId, companyId, args.batchId, get("target_product"), !!get("installed_products")],
         );
+        const pa = (await db.query<{ id: string; created: boolean }>(
+          `select id, (batch_id = $3) as created from partner_accounts where partner_id = $1 and company_id = $2`,
+          [args.population.partnerId, companyId, args.batchId])).rows[0];
+        if (pa) await eff({ sourceRowNo: row.row_no, subjectKind: "partner_account", subjectId: pa.id,
+                            effect: pa.created ? "CREATED_REVERSIBLE" : "MATCHED_PREEXISTING" });
       }
 
       // Buying-side contact, when the file carries one and the field is kept.
@@ -274,6 +348,28 @@ export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Pr
              phone = coalesce(excluded.phone, contacts.phone)`,
           [args.orgId, companyId, contactEmail, get("contact_name"), get("contact_title"), get("contact_phone")],
         );
+        // CREATED vs FILLED, distinguished by the row's own age rather than by the upsert's silence.
+        // `xmax = 0` is PostgreSQL's own answer to "did this insert, or did it update?" — but it is
+        // not available after the fact, so the age of the row is used instead: a contact whose
+        // created_at is this statement's transaction time is one this batch brought into existence.
+        const ct = (await db.query<{ id: string; fresh: boolean; name: string | null; title: string | null; phone: string | null }>(
+          `select id, (created_at >= transaction_timestamp()) as fresh, name, title, phone
+             from contacts where org_id = $1 and email = $2`, [args.orgId, contactEmail])).rows[0];
+        if (ct) {
+          if (ct.fresh) await eff({ sourceRowNo: row.row_no, subjectKind: "contact", subjectId: ct.id, effect: "CREATED_REVERSIBLE" });
+          else {
+            // Only the fields this batch actually supplied, and only where they landed in an empty
+            // column. The before-state is structurally NULL, so it is not stored — the value WRITTEN
+            // is what a later conflict check has to compare against.
+            const wrote: Record<string, unknown> = {};
+            if (get("contact_name") && ct.name === get("contact_name")) wrote.name = ct.name;
+            if (get("contact_title") && ct.title === get("contact_title")) wrote.title = ct.title;
+            if (get("contact_phone") && ct.phone === get("contact_phone")) wrote.phone = ct.phone;
+            await eff({ sourceRowNo: row.row_no, subjectKind: "contact", subjectId: ct.id,
+                        effect: Object.keys(wrote).length ? "UPDATED_REVERSIBLE" : "NO_CHANGE",
+                        fieldsWritten: Object.keys(wrote).length ? wrote : null });
+          }
+        }
         result.contactsUpserted++;
       }
 
@@ -303,7 +399,9 @@ export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Pr
       }
     }
 
-    // Close out: counts onto the batch, staged rows GONE (data minimization).
+    // Close out. The raw upload is discarded (data minimization, unchanged) — but the BATCH EFFECTS
+    // recorded above survive, which is the difference between an import that can be explained and
+    // reversed and one that leaves three integers behind.
     await db.query(`delete from import_rows where batch_id = $1`, [args.batchId]);
     await db.query(
       `update import_batches set status = 'imported', matched_count = $2, created_count = $3, evidence_count = $4,
@@ -322,10 +420,7 @@ export async function commitImportBatch(db: pg.PoolClient, args: CommitArgs): Pr
     );
     return result;
   } catch (err) {
-    await db.query(`update import_batches set status = 'failed', error = $2 where id = $1`, [
-      args.batchId,
-      err instanceof Error ? err.message : String(err),
-    ]);
+    await markBatchFailed(args.batchId, args.orgId, err);
     throw err;
   }
 }
@@ -384,13 +479,18 @@ export interface CrmCommitResult {
  * book lane.
  */
 export async function commitCrmBatch(db: pg.PoolClient, args: CrmCommitArgs): Promise<CrmCommitResult> {
-  const { rows: batchRows } = await db.query<{ id: string; status: string; mapping: { kind?: string } | null }>(
-    `select id, status, mapping from import_batches where id = $1 and org_id = $2`,
+  const { rows: batchRows } = await db.query<{ id: string; status: string; mapping: { kind?: string } | null; data_environment: string | null }>(
+    `select id, status, mapping, data_environment from import_batches where id = $1 and org_id = $2`,
     [args.batchId, args.orgId],
   );
   const batch = batchRows[0];
   if (!batch) throw new Error("Import not found (or it belongs to another organization).");
   if (batch.status !== "analyzed") throw new Error(`Import is ${batch.status} — only an analyzed upload can be committed.`);
+  // THE BATCH'S OWN PROVENANCE, set at analyze time from the operating context. Read back here so
+  // the commit cannot be handed a different one, and so no row in this loop consults the file.
+  const env = (batch.data_environment as DataEnvironment | null) ?? null;
+  const eff = (e: Omit<Parameters<typeof recordEffect>[1], "orgId" | "batchId" | "dataEnvironment">) =>
+    recordEffect(db, { ...e, orgId: args.orgId, batchId: args.batchId, dataEnvironment: env });
   if (batch.mapping?.kind !== "crm") throw new Error("This upload isn't a CRM export — commit it as a list instead.");
 
   const companyCol = Object.entries(args.targets).find(([, t]) => t === "company")?.[0];
@@ -445,6 +545,9 @@ export async function commitCrmBatch(db: pg.PoolClient, args: CrmCommitArgs): Pr
       if (resolution) {
         companyId = resolution.companyId;
         result.matched++;
+        // Matched, not created — and global either way. Recorded so reversal can REPORT it rather
+        // than reason about it, and so provenance is never rewritten onto an object we only found.
+        await eff({ sourceRowNo: row.row_no, subjectKind: "company", subjectId: companyId, effect: "MATCHED_PREEXISTING" });
       } else {
         const { rows: inserted } = await db.query<{ id: string }>(
           `insert into companies (legal_name, normalized_name, primary_domain, industry)
@@ -454,6 +557,9 @@ export async function commitCrmBatch(db: pg.PoolClient, args: CrmCommitArgs): Pr
         companyId = inserted[0].id;
         candidates.push({ id: companyId, normalizedName: normalized, primaryDomain: domain });
         result.created++;
+        // CREATED, AND STILL NEVER REVERSED. `companies` carries no org_id: it is shared identity
+        // infrastructure, not this organization's property because its batch got there first.
+        await eff({ sourceRowNo: row.row_no, subjectKind: "company", subjectId: companyId, effect: "GLOBAL_IDENTITY_RETAINED" });
       }
 
       const oppName = get("opportunity_name") || `${companyName} — CRM opportunity`;
@@ -465,11 +571,12 @@ export async function commitCrmBatch(db: pg.PoolClient, args: CrmCommitArgs): Pr
       const closeDate = closeRaw && !Number.isNaN(Date.parse(closeRaw)) ? new Date(closeRaw).toISOString().slice(0, 10) : null;
 
       // 1. The snapshot — what the CRM said, verbatim and normalized.
-      await db.query(
+      const snap = await db.query<{ id: string }>(
         `insert into crm_snapshots (org_id, company_id, opportunity_name, stage, stage_raw, amount_usd, close_date, batch_id)
-         values ($1, $2, $3, $4, nullif($5, ''), $6, $7, $8)`,
+         values ($1, $2, $3, $4, nullif($5, ''), $6, $7, $8) returning id`,
         [args.orgId, companyId, oppName.slice(0, 200), stage, stageRaw, amount, closeDate, args.batchId],
       );
+      await eff({ sourceRowNo: row.row_no, subjectKind: "crm_snapshot", subjectId: snap.rows[0].id, effect: "CREATED_REVERSIBLE" });
       result.snapshots++;
 
       // 2. Sync-in, never overwrite: create a live opportunity only when the
@@ -481,11 +588,12 @@ export async function commitCrmBatch(db: pg.PoolClient, args: CrmCommitArgs): Pr
           [args.orgId, companyId],
         );
         if (open.length === 0) {
-          await db.query(
+          const madeOpp = await db.query<{ id: string }>(
             `insert into opportunities (org_id, company_id, name, stage, amount_usd, expected_close_date)
-             values ($1, $2, $3, $4, $5, $6)`,
+             values ($1, $2, $3, $4, $5, $6) returning id`,
             [args.orgId, companyId, oppName.slice(0, 200), stage, amount, closeDate],
           );
+          await eff({ sourceRowNo: row.row_no, subjectKind: "opportunity", subjectId: madeOpp.rows[0].id, effect: "CREATED_REVERSIBLE" });
           result.oppsCreated++;
         }
       }
@@ -497,6 +605,7 @@ export async function commitCrmBatch(db: pg.PoolClient, args: CrmCommitArgs): Pr
          values ($1, $2, 'crm_export', $3, $4, 0.9, now()) returning id`,
         [args.orgId, companyId, claim, claim],
       );
+      await eff({ sourceRowNo: row.row_no, subjectKind: "evidence", subjectId: ev[0].id, effect: "CREATED_REVERSIBLE" });
       result.evidenceAdded++;
       await verifyEvidence(db, {
         id: ev[0].id,
@@ -521,10 +630,7 @@ export async function commitCrmBatch(db: pg.PoolClient, args: CrmCommitArgs): Pr
     );
     return result;
   } catch (err) {
-    await db.query(`update import_batches set status = 'failed', error = $2 where id = $1`, [
-      args.batchId,
-      err instanceof Error ? err.message : String(err),
-    ]);
+    await markBatchFailed(args.batchId, args.orgId, err);
     throw err;
   }
 }
@@ -559,13 +665,18 @@ export async function commitEnrichmentBatch(
   db: pg.PoolClient,
   args: CommitArgsBase,
 ): Promise<EnrichmentCommitResult> {
-  const { rows: batchRows } = await db.query<{ id: string; status: string; mapping: { kind?: string; sourceLabel?: string | null } | null }>(
-    `select id, status, mapping from import_batches where id = $1 and org_id = $2`,
+  const { rows: batchRows } = await db.query<{ id: string; status: string; mapping: { kind?: string; sourceLabel?: string | null } | null; data_environment: string | null }>(
+    `select id, status, mapping, data_environment from import_batches where id = $1 and org_id = $2`,
     [args.batchId, args.orgId],
   );
   const batch = batchRows[0];
   if (!batch) throw new Error("Import not found (or it belongs to another organization).");
   if (batch.status !== "analyzed") throw new Error(`Import is ${batch.status} — only an analyzed upload can be committed.`);
+  // THE BATCH'S OWN PROVENANCE, set at analyze time from the operating context. Read back here so
+  // the commit cannot be handed a different one, and so no row in this loop consults the file.
+  const env = (batch.data_environment as DataEnvironment | null) ?? null;
+  const eff = (e: Omit<Parameters<typeof recordEffect>[1], "orgId" | "batchId" | "dataEnvironment">) =>
+    recordEffect(db, { ...e, orgId: args.orgId, batchId: args.batchId, dataEnvironment: env });
   if (batch.mapping?.kind !== "enrichment") throw new Error("This upload isn't an enrichment export — commit it as a list or CRM export instead.");
 
   const companyCol = Object.entries(args.targets).find(([, t]) => t === "company")?.[0];
@@ -623,6 +734,9 @@ export async function commitEnrichmentBatch(
       if (resolution) {
         companyId = resolution.companyId;
         result.matched++;
+        // Matched, not created — and global either way. Recorded so reversal can REPORT it rather
+        // than reason about it, and so provenance is never rewritten onto an object we only found.
+        await eff({ sourceRowNo: row.row_no, subjectKind: "company", subjectId: companyId, effect: "MATCHED_PREEXISTING" });
       } else {
         const { rows: inserted } = await db.query<{ id: string }>(
           `insert into companies (legal_name, normalized_name, primary_domain, industry)
@@ -632,6 +746,9 @@ export async function commitEnrichmentBatch(
         companyId = inserted[0].id;
         candidates.push({ id: companyId, normalizedName: normalized, primaryDomain: domain });
         result.created++;
+        // CREATED, AND STILL NEVER REVERSED. `companies` carries no org_id: it is shared identity
+        // infrastructure, not this organization's property because its batch got there first.
+        await eff({ sourceRowNo: row.row_no, subjectKind: "company", subjectId: companyId, effect: "GLOBAL_IDENTITY_RETAINED" });
       }
 
       // Firmographic fill-only: enrich emptiness, never overwrite observation.
@@ -648,7 +765,14 @@ export async function commitEnrichmentBatch(
            or (country is null and nullif($4, '') is not null))`,
         [companyId, get("industry"), employees, get("country").toLowerCase()],
       );
-      if (filled) result.firmographicsFilled++;
+      if (filled) {
+        // A FILL-ONLY UPDATE TO A GLOBAL COMPANY. Recorded so the reversal report can say it
+        // happened, and classified GLOBAL_IDENTITY_RETAINED so the reversal never rewrites it:
+        // `companies` is shared, and un-filling a field for every tenant because one tenant
+        // reversed its import is exactly the cross-org damage the ruling forbids.
+        await eff({ sourceRowNo: row.row_no, subjectKind: "company", subjectId: companyId, effect: "GLOBAL_IDENTITY_RETAINED" });
+        result.firmographicsFilled++;
+      }
 
       // Each recognized signal column → one evidence claim, vendor named.
       const claims: string[] = [];
@@ -696,10 +820,7 @@ export async function commitEnrichmentBatch(
     );
     return result;
   } catch (err) {
-    await db.query(`update import_batches set status = 'failed', error = $2 where id = $1`, [
-      args.batchId,
-      err instanceof Error ? err.message : String(err),
-    ]);
+    await markBatchFailed(args.batchId, args.orgId, err);
     throw err;
   }
 }

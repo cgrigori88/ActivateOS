@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { PoolClient } from "pg";
 import { getOwnerPool } from "@/db/client";
-import { currentOrgId, requireOwner } from "@/lib/auth/org";
+import { ORG_COOKIE, currentOrgId, requireOwner } from "@/lib/auth/org";
 import { withTenant } from "@/lib/db/tenant";
-import { authConfigured, supabaseAdmin } from "@/lib/auth/supabase";
+import { authConfigured, supabaseAdmin, supabaseServer } from "@/lib/auth/supabase";
 import {
   acceptListGrant,
   audit,
@@ -431,4 +432,90 @@ export async function eraseDataSubjectAction(formData: FormData): Promise<void> 
     `Erased ${r.email}: ${r.contacts} contact(s), ${r.sellers} seller(s), ${r.messagesAuthored} authored message(s), ` +
     `${r.messagesRecipient} recipient reference(s), ${r.meetingNotes} meeting note(s) redacted. This is irreversible.`,
   );
+}
+
+// ── PILOT OPERATING CONTEXT (Slice 2) ─────────────────────────────────────────────────────────
+
+/**
+ * Create a new FULL organization and make the creator its owner.
+ *
+ * WHY THIS EXISTS. The organization is the only real tenant boundary in this product, and until now
+ * no product path created one: `guest.ts` mints guest organizations for partnership invitations, and
+ * everything else was seeded by a script. So standing up a clean pilot world required an engineer
+ * with a SQL prompt — which is precisely the thing the pilot criterion forbids.
+ *
+ * PROVENANCE IS CHOSEN HERE, SERVER-SIDE, AND NEVER AGAIN. Every import run inside this
+ * organization inherits it, so the one decision that keeps real pilot evidence out of the demo
+ * world is made once, by a person, at creation. There is no default: an organization whose
+ * provenance nobody stated is not something to guess at (0120's rule, applied one level up).
+ *
+ * The name is product data the user supplies. No customer or partner name belongs in this code.
+ */
+export async function createOrganizationAction(formData: FormData): Promise<void> {
+  const pool = getOwnerPool();
+  await requireOwner(pool);
+  const name = String(formData.get("name") ?? "").trim().slice(0, 120);
+  if (!name) notice("Name the organization.");
+  const { asDataEnvironment } = await import("@/lib/pursuits/provenance");
+  const env = asDataEnvironment(String(formData.get("dataEnvironment") ?? "").trim());
+  if (!env) notice("Choose the data environment this organization operates in.");
+
+  const supabase = await supabaseServer();
+  const { data } = await supabase.auth.getUser();
+  const userId = data.user?.id ?? null;
+  if (!userId) notice("Sign in before creating an organization.");
+
+  const client = await pool.connect();
+  let created: string | null = null;
+  try {
+    // ONE TRANSACTION. An organization with no owner is unreachable — nobody could administer it,
+    // and no switcher would offer it — so creation and membership are not two steps.
+    await client.query("begin");
+    const { rows } = await client.query<{ id: string }>(
+      `insert into organizations (name, kind, data_environment) values ($1, 'full', $2) returning id`,
+      [name, env]);
+    created = rows[0].id;
+    await client.query(
+      `insert into org_members (org_id, user_id, role) values ($1, $2, 'owner')`, [created, userId]);
+    // Feature posture is per-organization; a new context starts from the same row shape every other
+    // organization has rather than from missing rows that read as "off" in some places and "absent"
+    // in others.
+    await client.query(
+      `insert into org_features (org_id) values ($1) on conflict (org_id) do nothing`, [created]);
+    await client.query("commit");
+  } catch (err) {
+    await client.query("rollback").catch(() => {});
+    notice(`Couldn't create the organization: ${err instanceof Error ? err.message : String(err)}`);
+  } finally { client.release(); }
+
+  if (created) {
+    await audit(pool, created, "organization.created", { name, dataEnvironment: env });
+    // Switch into it immediately: creating a context and then not being in it is a trap.
+    (await cookies()).set(ORG_COOKIE, created, { httpOnly: true, sameSite: "lax", secure: true, path: "/" });
+  }
+  revalidatePath("/admin");
+  revalidatePath("/");
+}
+
+/**
+ * Switch the authenticated user's active organization.
+ *
+ * THE COOKIE IS A PREFERENCE, NOT A GRANT. This checks membership before setting it, and
+ * `currentOrgId` checks it again on every read — so the guard does not depend on this action being
+ * the only writer. A value naming an organization the user does not belong to is refused here and
+ * would be ignored there.
+ */
+export async function switchOrganizationAction(orgId: string): Promise<void> {
+  const pool = getOwnerPool();
+  const supabase = await supabaseServer();
+  const { data } = await supabase.auth.getUser();
+  const userId = data.user?.id ?? null;
+  if (!userId) notice("Sign in first.");
+  const { rows } = await pool.query(
+    `select 1 from org_members where org_id = $1 and user_id = $2`, [orgId, userId]);
+  if (!rows[0]) notice("You are not a member of that organization.");
+  (await cookies()).set(ORG_COOKIE, orgId, { httpOnly: true, sameSite: "lax", secure: true, path: "/" });
+  // Every cached render is scoped to the previous organization, so the whole tree is revalidated:
+  // a stale segment after a switch would be showing one tenant's data under another's heading.
+  revalidatePath("/", "layout");
 }
