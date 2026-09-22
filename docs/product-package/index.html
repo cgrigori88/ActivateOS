@@ -1,0 +1,625 @@
+<title>PursuitOS Surface Atlas</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+  /* Tokens lifted from the product's own globals.css so this handoff speaks the
+     same visual language as the thing it documents. Group hues ARE the app's
+     domain colours (route/timing/evidence/propensity/readiness), not decoration. */
+  :root {
+    --ground: #f6f8fc;
+    --surface: #ffffff;
+    --surface-sunk: #eef2f9;
+    --rail: #101a2e;
+    --rail-ink: #e8edf7;
+    --rail-ink-soft: #8fa0c0;
+
+    --ink: #0d1628;
+    --ink-soft: #46536b;
+    --ink-faint: #8593ab;
+    --hair: #dfe5f0;
+    --hair-strong: #c7d1e2;
+
+    --accent: #2563eb;
+    --accent-wash: #eff5ff;
+
+    --g-core: #2563eb;
+    --g-ecosystem: #0d9488;
+    --g-outreach: #d97706;
+    --g-intelligence: #0891b2;
+    --g-execution: #7c3aed;
+    --g-revenue: #059669;
+    --g-platform: #6366f1;
+    --g-admin: #64748b;
+    --g-public: #94a3b8;
+
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground: #0a121f;
+      --surface: #131c2e;
+      --surface-sunk: #0e1626;
+      --rail: #060c16;
+      --ink: #e8edf7;
+      --ink-soft: #a6b3ca;
+      --ink-faint: #6f7d95;
+      --hair: #1f2a3e;
+      --hair-strong: #2c3950;
+      --accent: #60a5fa;
+      --accent-wash: #16233a;
+      --g-core: #60a5fa;
+      --g-ecosystem: #2dd4bf;
+      --g-outreach: #fbbf24;
+      --g-intelligence: #22d3ee;
+      --g-execution: #a78bfa;
+      --g-revenue: #34d399;
+      --g-platform: #818cf8;
+      --g-admin: #94a3b8;
+      --g-public: #64748b;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #0a121f; --surface: #131c2e; --surface-sunk: #0e1626; --rail: #060c16;
+    --ink: #e8edf7; --ink-soft: #a6b3ca; --ink-faint: #6f7d95;
+    --hair: #1f2a3e; --hair-strong: #2c3950;
+    --accent: #60a5fa; --accent-wash: #16233a;
+    --g-core: #60a5fa; --g-ecosystem: #2dd4bf; --g-outreach: #fbbf24;
+    --g-intelligence: #22d3ee; --g-execution: #a78bfa; --g-revenue: #34d399;
+    --g-platform: #818cf8; --g-admin: #94a3b8; --g-public: #64748b;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  a { color: var(--accent); }
+
+  /* ---- masthead ---------------------------------------------------------- */
+  .mast {
+    background: var(--rail);
+    color: var(--rail-ink);
+    padding-block: 44px 38px;
+  }
+  .mast-in { max-width: 1240px; margin-inline: auto; padding-inline: 20px; }
+  .mark {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-size: 13px; font-weight: 700; letter-spacing: .02em;
+    color: var(--rail-ink);
+  }
+  .mark svg { width: 19px; height: 19px; }
+  .mast h1 {
+    font-size: clamp(30px, 5.2vw, 46px);
+    font-weight: 800; letter-spacing: -.033em; line-height: 1.05;
+    margin-top: 18px;
+  }
+  .mast .lede {
+    color: var(--rail-ink-soft);
+    max-width: 62ch; margin-top: 12px; font-size: 16px;
+  }
+  .stamps { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 22px; }
+  .stamp {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .01em;
+    padding: 5px 9px; border-radius: 5px;
+    background: rgba(255,255,255,.07); color: var(--rail-ink-soft);
+    border: 1px solid rgba(255,255,255,.09);
+  }
+  .stamp b { color: var(--rail-ink); font-weight: 600; }
+
+  /* ---- shell ------------------------------------------------------------- */
+  .shell {
+    max-width: 1240px; margin-inline: auto;
+    padding-inline: 20px; padding-block: 34px 72px;
+    display: grid; grid-template-columns: 216px minmax(0, 1fr); gap: 40px;
+    align-items: start;
+  }
+  @media (max-width: 900px) { .shell { grid-template-columns: 1fr; gap: 26px; } }
+
+  .index { position: sticky; top: 18px; }
+  @media (max-width: 900px) { .index { position: static; } }
+  .index h4 {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .09em; color: var(--ink-faint); margin: 0 0 9px;
+  }
+  .index ol { list-style: none; margin: 0 0 18px; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+  .index a {
+    display: flex; align-items: baseline; gap: 8px;
+    text-decoration: none; color: var(--ink-soft);
+    font-size: 13px; padding: 4px 8px; border-radius: 6px;
+    border-left: 2px solid transparent;
+  }
+  .index a:hover { background: var(--surface); color: var(--ink); }
+  .index a .n { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+  .index a[data-g="ecosystem"] { border-left-color: var(--g-ecosystem); }
+  .index a[data-g="outreach"] { border-left-color: var(--g-outreach); }
+  .index a[data-g="intelligence"] { border-left-color: var(--g-intelligence); }
+  .index a[data-g="execution"] { border-left-color: var(--g-execution); }
+  .index a[data-g="revenue"] { border-left-color: var(--g-revenue); }
+  .index a[data-g="platform"] { border-left-color: var(--g-platform); }
+  .index a[data-g="admin"] { border-left-color: var(--g-admin); }
+  .index a[data-g="core"] { border-left-color: var(--g-core); }
+  .index a[data-g="public"] { border-left-color: var(--g-public); }
+
+  /* ---- method note ------------------------------------------------------- */
+  .method {
+    background: var(--surface); border: 1px solid var(--hair);
+    border-radius: 10px; padding: 20px 22px; margin-bottom: 40px;
+  }
+  .method h2 { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+  .method p { color: var(--ink-soft); font-size: 14px; margin: 9px 0 0; max-width: 72ch; }
+  /* Exactly three columns so six facts fill two complete rows — an auto-fit
+     track left one cell stranded beside four empty ones. */
+  .method dl {
+    margin: 16px 0 0; display: grid; gap: 1px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    background: var(--hair); border: 1px solid var(--hair); border-radius: 8px; overflow: hidden;
+  }
+  @media (max-width: 720px) { .method dl { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 420px) { .method dl { grid-template-columns: 1fr; } }
+  .method dl > div { background: var(--surface); padding: 11px 13px; }
+  .method dt {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--ink-faint);
+  }
+  .method dd {
+    margin: 3px 0 0; font-family: var(--mono); font-size: 12px;
+    color: var(--ink); font-variant-numeric: tabular-nums; word-break: break-word;
+  }
+  .caveat {
+    margin-top: 16px; padding: 12px 14px; border-radius: 8px;
+    background: var(--accent-wash); border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+    font-size: 13.5px; color: var(--ink-soft);
+  }
+  .caveat b { color: var(--ink); font-weight: 600; }
+
+  /* ---- groups ------------------------------------------------------------ */
+  .group { margin-bottom: 52px; scroll-margin-top: 16px; }
+  .group-head { display: flex; align-items: center; gap: 11px; margin-bottom: 4px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .group h2 {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .13em; color: var(--ink-soft);
+  }
+  .group > p.gsub { color: var(--ink-faint); font-size: 14px; margin: 0 0 22px 20px; max-width: 70ch; }
+
+  /* ---- room -------------------------------------------------------------- */
+  .room {
+    background: var(--surface); border: 1px solid var(--hair);
+    border-radius: 12px; overflow: hidden; margin-bottom: 20px;
+    scroll-margin-top: 16px;
+  }
+  .room-head { padding: 18px 22px 16px; border-bottom: 1px solid var(--hair); }
+  .room-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+  .room h3 { font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+  .route {
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint);
+    background: var(--surface-sunk); padding: 3px 7px; border-radius: 5px;
+  }
+  .dims {
+    margin-left: auto; font-family: var(--mono); font-size: 11px;
+    color: var(--ink-faint); font-variant-numeric: tabular-nums;
+  }
+  .room-head p { margin: 10px 0 0; color: var(--ink-soft); font-size: 14.5px; max-width: 78ch; }
+  .room-head p + p { margin-top: 7px; }
+  .does { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .does span {
+    font-size: 11.5px; padding: 3px 8px; border-radius: 20px;
+    background: var(--surface-sunk); color: var(--ink-soft);
+    border: 1px solid var(--hair);
+  }
+
+  .shot { position: relative; background: var(--surface-sunk); display: block; width: 100%; border: 0; padding: 0; cursor: zoom-in; }
+  .shot img {
+    display: block; width: 100%; height: auto;
+    max-height: 560px; object-fit: cover; object-position: top center;
+  }
+  .shot.tall img { max-height: 620px; }
+  .shot figcaption {
+    position: absolute; right: 10px; bottom: 10px;
+    font-family: var(--mono); font-size: 10.5px;
+    background: color-mix(in srgb, var(--rail) 88%, transparent); color: var(--rail-ink);
+    padding: 4px 9px; border-radius: 5px; letter-spacing: .01em;
+  }
+  .shot:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+
+  /* ---- lightbox ---------------------------------------------------------- */
+  .lb {
+    position: fixed; inset: 0; z-index: 50;
+    background: color-mix(in srgb, #060c16 94%, transparent);
+    overflow: auto; padding: 0;
+  }
+  .lb-bar {
+    position: sticky; top: 0; display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    background: #060c16; color: var(--rail-ink); border-bottom: 1px solid rgba(255,255,255,.1);
+  }
+  .lb-bar .t { font-weight: 600; font-size: 14px; }
+  .lb-bar .r { font-family: var(--mono); font-size: 11px; color: var(--rail-ink-soft); }
+  .lb-bar button {
+    margin-left: auto; background: rgba(255,255,255,.1); color: var(--rail-ink);
+    border: 1px solid rgba(255,255,255,.16); border-radius: 6px;
+    font: inherit; font-size: 13px; padding: 5px 12px; cursor: pointer;
+  }
+  .lb img { display: block; width: 100%; max-width: 1440px; margin: 0 auto; height: auto; }
+
+  footer {
+    border-top: 1px solid var(--hair); background: var(--surface);
+  }
+  .foot-in { max-width: 1240px; margin-inline: auto; padding-inline: 20px; padding-block: 30px 46px; }
+  footer h3 { font-size: 13px; font-weight: 700; letter-spacing: -.01em; }
+  footer ul { margin: 10px 0 0; padding-left: 18px; color: var(--ink-soft); font-size: 14px; max-width: 78ch; }
+  footer li { margin-bottom: 5px; }
+  footer .sig { margin-top: 22px; font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<header class="mast">
+  <div class="mast-in">
+    <span class="mark">
+      <svg viewBox="0 0 48 48" fill="currentColor" fill-rule="nonzero" aria-hidden="true">
+        <path d="M4 24 A20 20 0 1 1 44 24 A20 20 0 1 1 4 24 Z M29 26 A10 10 0 1 0 9 26 A10 10 0 1 0 29 26 Z M39 17 A4 4 0 1 0 31 17 A4 4 0 1 0 39 17 Z"></path>
+      </svg>
+      PursuitOS
+    </span>
+    <h1>Surface Atlas</h1>
+    <p class="lede">
+      Every room in the demo build, captured at desktop width in light mode, with what each
+      one is for. Built as a visual handoff — one place to review the product's surface area
+      without clicking through it.
+    </p>
+    <div class="stamps">
+      <span class="stamp"><b>36</b> surfaces</span>
+      <span class="stamp"><b>1440×</b> viewport</span>
+      <span class="stamp">light mode</span>
+      <span class="stamp">commit <b>714433b</b></span>
+      <span class="stamp">synthetic data</span>
+      <span class="stamp">captured <b>2026-09-22</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="index" aria-label="Contents">
+    <h4>Contents</h4>
+    <ol id="idx"></ol>
+  </nav>
+
+  <main>
+    <section class="method">
+      <h2>How this was captured</h2>
+      <p>
+        Every surface was rendered from the application itself against the canonical synthetic
+        demo world — the same dataset the demo runs on — then photographed at a viewport sized
+        to each page, so the fixed navigation rail spans the full height of every image rather
+        than stopping partway down.
+      </p>
+      <p>
+        No screen was mocked, retouched, or composed by hand. Where a room is sparse, it is
+        sparse because the dataset has nothing in it yet, and that empty state is what the
+        product shows.
+      </p>
+      <dl>
+        <div><dt>Source</dt><dd>roadmap/pursuitos-vnext @ 714433b</dd></div>
+        <div><dt>Relationship to demo</dt><dd>demo branch + inert flagged work</dd></div>
+        <div><dt>Dataset</dt><dd>3 orgs · 14 companies</dd></div>
+        <div><dt>Open pipeline</dt><dd>$8,040,000 across 11</dd></div>
+        <div><dt>Pursuits</dt><dd>14, all marked DEMO</dd></div>
+        <div><dt>Horizontal overflow</dt><dd>none · 1440 and 390</dd></div>
+      </dl>
+      <div class="caveat">
+        <b>Two things to know before you review.</b> The build carries one unreleased surface
+        behind a feature flag that is switched off here, so these images show the product as the
+        demo serves it today — not the in-progress work. And the sign-in screen is absent: this
+        environment has no identity provider configured, so it renders a setup notice rather than
+        the real form, and a misleading screenshot is worse than none.
+      </div>
+    </section>
+
+    <div id="rooms"></div>
+  </main>
+</div>
+
+<footer>
+  <div class="foot-in">
+    <h3>What this package does not cover</h3>
+    <ul>
+      <li><b>Dark mode</b> — the product ships a full dark theme; it was out of scope for this pass.</li>
+      <li><b>Responsive breakpoints</b> — every capture is 1440px wide. The layouts do reflow to phone width, and nothing scrolled sideways at any width tested.</li>
+      <li><b>Interaction states</b> — hover, focus, loading, error and in-flight states are not shown, with one exception: the Sponsor ⇄ Partner disclosure toggle is captured in both states, because the difference between them is the product's central claim.</li>
+      <li><b>Sign-in</b> and two detail rooms (a campaign, an import batch) — the dataset has no campaigns or import batches, so those routes have no record to render.</li>
+    </ul>
+    <p class="sig">PursuitOS · surface atlas · rendered from source against synthetic data · no customer data appears anywhere in this document</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  const G = {
+    core:        { label: "Today",        hue: "--g-core",        sub: "The room the operator lands in." },
+    ecosystem:   { label: "Ecosystem",    hue: "--g-ecosystem",   sub: "Who can create value together — the partners, people and account overlap the rest of the product reasons over." },
+    outreach:    { label: "Outreach",     hue: "--g-outreach",    sub: "What gets sent, when, and what it produced." },
+    intelligence:{ label: "Intelligence", hue: "--g-intelligence",sub: "Where to pursue revenue and why. Pursuits is the first-class object here; everything else feeds or audits it." },
+    execution:   { label: "Execution",    hue: "--g-execution",   sub: "What happens next, and who owes it." },
+    revenue:     { label: "Revenue",      hue: "--g-revenue",     sub: "What the work created, and whether the targets are met." },
+    platform:    { label: "Platform",     hue: "--g-platform",    sub: "Asking the graph questions, and governing what the agents may do." },
+    admin:       { label: "Admin",        hue: "--g-admin",       sub: "Owner-only configuration and governance." },
+    public:      { label: "Public",       hue: "--g-public",      sub: "The unauthenticated surface." }
+  };
+
+  const R = [
+    ["today","core","Today","/","1440×1628",
+     "The landing room, and the product's thesis in one screen: it opens with decisions, not with a feed.",
+     "Five figures set the frame — open pipeline, weighted pipeline, decisions waiting, conditions, and won revenue over 90 days. Beneath them, <b>Decisions that move revenue</b> ranks what is waiting by commercial materiality rather than by arrival time, each row carrying an inline approve control and a <i>Why is this here?</i> disclosure. <b>Where your systems disagree</b> is the sharper idea: it surfaces contradictions between what the CRM record claims and what engagement actually shows — deals open but untouched for 44 days, opportunities sitting at negotiation while the conversation has been silent for a month.",
+     ["Approve a route inline","See why an item surfaced","Spot stale or contradicted deals"]],
+
+    ["intake","ecosystem","Intake","/intake","1440×1000",
+     "The front door for partner data, with attribution built into the act of receiving it.",
+     "A file lands here and the product answers two questions immediately: what each partner has contributed, and every file received. Contribution is tracked from the moment of upload, which is what later makes settlement between two companies arguable rather than asserted.",
+     ["Upload a partner file","See per-partner contribution","Audit every file received"]],
+
+    ["mapping","ecosystem","Mapping","/mapping","1440×1000",
+     "Where your book and a partner's book overlap — computed without either side handing over a list.",
+     "Per-partner account mapping with the account lists that produced it. This is the primitive the joint-pursuit rooms are built on: you cannot co-sell into an account until both parties can agree, provably, that you are both in it.",
+     ["Compare books with a partner","Inspect account lists","Find shared accounts"]],
+
+    ["contacts","ecosystem","Contacts","/contacts","1440×1000",
+     "People across the ecosystem, held as commercial actors rather than as an address book.",
+     "The list view is deliberately thin. The value is one level down, where a person is shown in the context of the pursuits they sit on.",
+     ["Browse people","Open a person in context"]],
+
+    ["contact-detail","ecosystem","Contact detail","/contacts/:id","1440×1000",
+     "One person, framed by what they can actually move.",
+     "Four sections, in the order a seller would ask them: <b>Reach</b> (can I get to them), <b>Relationship</b> (what is the standing), <b>Pursuits this person sits on</b>, and <b>What has actually happened</b> — the record of real interaction rather than logged intent.",
+     ["Check reachability","See which pursuits they touch","Read the interaction record"]],
+
+    ["partners","ecosystem","Partners","/partners","1440×1000",
+     "The partner roster — the other companies you make revenue with.",
+     "Compact by design: each partner is a door into a much deeper room.",
+     ["Browse partner organizations"]],
+
+    ["partner-detail","ecosystem","Partner detail","/partners/:id","1440×1027",
+     "One partner's entire working relationship on a single surface — nine sections, and the densest room in the Ecosystem group.",
+     "<b>Activation profile</b> and <b>Trust ladder</b> describe what this partner is capable of and how far the relationship has actually been extended. <b>Settled with this partner</b> and <b>Your execution</b> cover money and delivery. <b>Their book</b>, <b>Shared lists</b> and <b>Joint rooms</b> are the intercompany surfaces; <b>Playbook</b> is how you are meant to work together.",
+     ["Read the activation profile","Check the trust ladder","Open a joint room","Review settlement"]],
+
+    ["partner-review","ecosystem","Partner review","/partners/:id/review","1440×1000",
+     "The quarterly-review surface — the version of the relationship you would put in front of the partner.",
+     "<b>Scorecard</b>, <b>Initiatives</b>, <b>Coverage</b> and a <b>Renewal clock</b>. Narrower than the partner detail room on purpose: this one is built to be shown, not to be worked in.",
+     ["Run a QBR","Check coverage","Watch the renewal clock"]],
+
+    ["joint","ecosystem","Joint pursuits","/joint","1440×1000",
+     "The list of rooms shared with another company, with settlement stated up front.",
+     "A joint pursuit is a genuinely shared object rather than a copy of your record sent to a partner. Settlement with the counterparty is named at the top, because who gets credit is the question that makes the room contentious.",
+     ["See shared rooms","Check settlement"]],
+
+    ["joint-detail","ecosystem","Joint pursuit detail","/joint/:id","1440×1177",
+     "The intercompany room — and the surface that makes the disclosure model concrete.",
+     "A <b>Shared ledger</b> both sides can read, a <b>Broker</b>, a <b>Joint playbook</b>, and — the section worth the designer's attention — <b>What TD SYNNEX can see</b>. The product states the counterparty's view explicitly rather than leaving you to infer it from what you chose to share.",
+     ["Read the shared ledger","See exactly what the partner sees","Work the joint playbook"]],
+
+    ["campaigns","outreach","Campaigns","/campaigns","1440×1000",
+     "Two routes into outreach: generate from a motion, or build by hand.",
+     "Shown here in its empty state — the canonical dataset has no campaigns — which is worth reviewing on its own terms. The room does not present a blank table; it presents the two ways to begin.",
+     ["Generate from a motion","Build a campaign by hand"]],
+
+    ["upcoming","outreach","Upcoming","/upcoming","1440×1000",
+     "Everything scheduled to send, before it sends.",
+     "Empty here, and that is the correct and deliberate state: external sending is disarmed in the demo environment, so nothing is ever queued to leave.",
+     ["Review scheduled sends","Cancel before send"]],
+
+    ["analytics","outreach","Analytics","/analytics","1440×1000",
+     "What outreach actually produced.",
+     "Sparse in this dataset because no campaign has run. The room exists so that outreach performance is answered in the same product as the pipeline it is supposed to move.",
+     ["Measure outreach performance"]],
+
+    ["pursuits","intelligence","Pursuits","/pursuits","1440×2304",
+     "The ranked worklist, and the first-class object of the whole product.",
+     "Twelve active pursuits grouped by account, each scored across six named dimensions — <b>Priority, Propensity, Evidence, Timing, Route, Readiness</b> — with the recommended route and the next action on the row. The scoring vocabulary is consistent everywhere it appears, and unknown is rendered as <i>Unknown</i> rather than as zero, which is the distinction most pipeline tools lose.",
+     ["Rank what to work next","Compare pursuits across an account","See the recommended route"]],
+
+    ["pursuit-detail","intelligence","Pursuit detail","/pursuits/:id","1440×3827",
+     "The deepest room in the product — ten panels answering one question: should this pursuit move, and through whom?",
+     "<b>Why now</b> assembles the trigger and its unknowns. <b>Value case</b> holds the economics. <b>Route decision</b> separates what was recommended from what a human selected, and preserves both. <b>Why CDW</b> is the disclosure theatre. Then <b>Pursuit team</b>, <b>Stakeholders</b> (verified ≠ inferred ≠ unverified), <b>Facts behind this</b>, <b>What changed</b>, <b>Outcome &amp; attribution</b>, and <b>Federation</b>.",
+     ["Approve or override a route","Audit the evidence","Check stakeholder coverage","Read the change record"]],
+
+    ["accounts","intelligence","Accounts","/accounts","1440×1000",
+     "The company list — the organizing spine beneath pursuits and contacts.",
+     "Thin by intent; the account record itself is where the intelligence sits.",
+     ["Browse accounts"]],
+
+    ["account-detail","intelligence","Account detail","/accounts/:id","1440×1940",
+     "One company, with the honest gaps shown as prominently as the findings.",
+     "<b>Deal timeline</b>, <b>Meetings</b>, <b>Why now</b>, <b>Evidence</b>, <b>Revenue motion</b> and a full <b>Timeline</b> — plus <b>Data completeness</b>, which is the unusual one. The product states how much it does not know about the account, in the same view that presents what it does.",
+     ["Trace the deal timeline","Audit evidence","See what research is missing"]],
+
+    ["sources","intelligence","Sources","/sources","1440×1000",
+     "Where the intelligence came from.",
+     "The provenance register behind every fact the product asserts. Sparse in the synthetic world, load-bearing in a real one.",
+     ["Trace a fact to its source"]],
+
+    ["provider-health","intelligence","Provider health","/provider-health","1440×1218",
+     "The enrichment supply chain, tiered by cost and selectivity.",
+     "<b>Tier 1 · Identity</b>, <b>Tier 2 · Signal (screen)</b>, <b>Tier 3 · Deep (selective)</b>. The tiering is an economic statement as much as a technical one: cheap identity resolution runs broadly, expensive deep research is spent only where a pursuit justifies it.",
+     ["Check provider status","Understand enrichment cost","Diagnose a data gap"]],
+
+    ["review","intelligence","Review","/review","1440×1000",
+     "The human verification queue — evidence waiting for a person to confirm it.",
+     "Empty in this dataset. It is the mechanism by which an inferred fact becomes a verified one, which is the distinction the scoring model rests on.",
+     ["Verify or reject evidence"]],
+
+    ["trust","intelligence","Trust","/trust","1440×1000",
+     "The trust centre — written for the customer's security officer, not for the seller.",
+     "<b>How it works</b>, <b>How data flows</b>, <b>AI &amp; models</b>, <b>Isolation &amp; controls</b>, <b>Residency &amp; retention</b>. Notable as a product decision: this is shipped as a room inside the application rather than as a PDF a salesperson emails.",
+     ["Answer a security review","Explain data flow","State model usage"]],
+
+    ["motions","execution","Motions","/motions","1440×1000",
+     "Revenue motions — the repeatable commercial hypotheses the product organizes work around.",
+     "A motion groups pursuits that share a thesis (here, <i>Virtualization</i>), so that what is learned on one account can be applied to the others rather than relearned.",
+     ["Browse motions","Open the activation brief"]],
+
+    ["brief","execution","Motion brief","/briefs/:id","1440×1000",
+     "The activation brief — the one artifact a partner seller actually receives.",
+     "<b>Why this account, why now</b>, <b>Evidence behind this motion</b>, <b>Cadence</b>, and a suggested <b>Conversation</b>. Everything upstream in the product exists so that this page can be generated and defended.",
+     ["Hand a partner a brief","Cite the evidence","Follow the cadence"]],
+
+    ["queue","execution","Queue","/queue","1440×1062",
+     "What is owed, and what has just been cleared.",
+     "<b>Overdue</b> leads with a count rather than a list, and <b>Recently resolved</b> closes the loop so the room is not purely a source of guilt.",
+     ["Clear overdue work","Confirm what was resolved"]],
+
+    ["goals","revenue","Goals","/goals","1440×1019",
+     "Targets, and whether the pipeline is on track to meet them.",
+     "<b>Revenue &amp; pipeline targets</b> with open pipeline and won revenue tracked against the year. Targets are objects in the product, not a spreadsheet alongside it.",
+     ["Set a target","Track attainment"]],
+
+    ["goal-detail","revenue","Goal detail","/goals/:id","1440×1031",
+     "One target, decomposed into what is actually carrying it.",
+     "<b>Motions carrying this goal</b> and <b>Contributing partners</b> — the chain from a number on a slide to the specific work and the specific companies expected to produce it.",
+     ["Trace a target to its motions","See which partners carry it"]],
+
+    ["pipeline","revenue","Pipeline","/pipeline","1440×1227",
+     "The commercial roll-up, with two diagnostics most pipeline views omit.",
+     "<b>Open opportunities by stage</b> and <b>Pipeline &amp; revenue roll-up</b> are the familiar halves. <b>Renewal radar</b> and <b>Qualification vs outcome</b> are the interesting ones — the second asks whether the qualification signal actually predicted the result.",
+     ["Read the roll-up","Watch renewals","Test qualification against outcome"]],
+
+    ["insights","revenue","Insights","/insights","1440×2992",
+     "The analysis room — nine sections, and the most intellectually ambitious surface in the product.",
+     "<b>Observed outcomes</b> and <b>Canonical outcomes · attribution</b> sit beside <b>Partner activation vs presence</b> (a partner being on the deal is not the same as a partner doing anything), the <b>Commercial funnel</b>, <b>Conversation outcomes</b>, and <b>What raises an account</b>. Two sections are rarer still: <b>Declared assumptions</b> states what the model is assuming, and <b>Stage probability calibration</b> checks whether the stated probabilities have been right.",
+     ["Attribute outcomes","Test partner activation","Inspect declared assumptions","Check calibration"]],
+
+    ["ask","platform","Ask","/ask","1440×1000",
+     "Natural-language questions answered against the canonical graph.",
+     "The captured query is a fair sample of the intended difficulty: <i>“Show WWT pursuits over $500K renewing in 90 days without a verified economic buyer.”</i> That question spans partner, value, timing and stakeholder coverage at once. Eleven earlier questions are kept, so the room accumulates rather than resetting.",
+     ["Ask across the graph","Reuse an earlier question"]],
+
+    ["skills","platform","Skills","/skills","1440×1000",
+     "What the agents are permitted to do, stated as product surface rather than buried in configuration.",
+     "<b>In force</b> lists the capabilities currently active; <b>Also grounding your agents</b> names what informs them. Making agent permissions a visible room is a governance position, not a convenience.",
+     ["Review agent capabilities","See what grounds the agents"]],
+
+    ["routines","admin","Routines","/routines","1440×1000",
+     "Scheduled automation, owner-only.",
+     "Empty in this dataset. Kept in the atlas because it is part of the owner's navigation and the designer should know the slot exists.",
+     ["Schedule recurring work"]],
+
+    ["admin","admin","Admin","/admin","1440×3175",
+     "Twelve sections of configuration — the second-tallest room in the product.",
+     "<b>Access</b>, <b>Targeting</b>, <b>Ideal customer profile</b>, <b>Suppression list</b>, <b>Partnerships</b>, <b>Invite a partner org</b>, <b>Redeem an invite</b>, <b>Blind overlap</b>, <b>Agent access</b>, <b>Bring your own model</b>, <b>Shared lists</b>, <b>Share a list</b>. The intercompany half — invite, redeem, blind overlap, shared lists — is what makes two separate companies able to use the product together.",
+     ["Invite a partner org","Run a blind overlap","Set the ICP","Bring your own model"]],
+
+    ["ops","admin","Ops","/ops","1440×1000",
+     "Governance operations — what needs an operator's attention right now.",
+     "Reading <i>Needs attention (0)</i> in the demo world, which is the correct resting state and worth seeing as a designed outcome rather than an empty page.",
+     ["Clear governance exceptions"]],
+
+    ["disclosure-sponsor","intelligence","Disclosure · Sponsor view","/pursuits/:id  ▸  Why CDW","1092×377",
+     "The first half of the product's signature moment, captured at 2× because the detail is the point.",
+     "The sponsor sees the full internal rationale for the recommended route. The control names the stake before you touch it — <i>1 confidential figure is never sent to the partner</i> — so the switch verifies a claim already made rather than sending you hunting for a difference.",
+     ["See full internal reasoning"]],
+
+    ["disclosure-partner","intelligence","Disclosure · Partner view","/pursuits/:id  ▸  Why CDW","1092×351",
+     "The same panel, as the partner receives it — and the reason the product can be used by two companies at once.",
+     "The confidential figure is <b>absent from the payload</b>, withheld on the server, not hidden in the browser. Reviewed side by side with the sponsor capture above, this pair is the clearest single statement of what the product is for.",
+     ["Verify what the partner receives"]],
+
+    ["landing","public","Landing","/landing","1440×1912",
+     "The unauthenticated marketing surface.",
+     "Headline: <i>The operating system for revenue between companies.</i> Included because it is the only public room and sets the expectation everything else has to meet.",
+     ["Explain the product publicly"]]
+  ];
+
+  const order = ["core","ecosystem","outreach","intelligence","execution","revenue","platform","admin","public"];
+  const roomsEl = document.getElementById("rooms");
+  const idxEl = document.getElementById("idx");
+  let n = 0;
+
+  for (const key of order) {
+    const items = R.filter(r => r[1] === key);
+    if (!items.length) continue;
+    const g = G[key];
+
+    const sec = document.createElement("section");
+    sec.className = "group";
+    sec.id = "g-" + key;
+    sec.innerHTML =
+      '<div class="group-head"><span class="dot" style="background:var(' + g.hue + ')"></span>' +
+      '<h2>' + g.label + '</h2></div>' +
+      '<p class="gsub">' + g.sub + '</p>';
+
+    const ih = document.createElement("li");
+    ih.innerHTML = '<a href="#g-' + key + '" data-g="' + key + '" style="font-weight:700;color:var(' + g.hue + ')">' + g.label + '</a>';
+    idxEl.appendChild(ih);
+
+    for (const [slug, , name, route, dims, lede, body, does] of items) {
+      n++;
+      const art = document.createElement("article");
+      art.className = "room";
+      art.id = slug;
+      const tall = parseInt(dims.split("×")[1], 10) > 1800;
+      art.innerHTML =
+        '<div class="room-head">' +
+          '<div class="room-top"><h3>' + name + '</h3>' +
+          '<span class="route">' + route + '</span>' +
+          '<span class="dims">' + dims + '</span></div>' +
+          '<p><b>' + lede + '</b></p>' +
+          '<p>' + body + '</p>' +
+          '<div class="does">' + does.map(d => '<span>' + d + '</span>').join("") + '</div>' +
+        '</div>' +
+        '<figure class="shot' + (tall ? " tall" : "") + '" role="button" tabindex="0" ' +
+          'data-src="shots/' + slug + '.png" data-name="' + name + '" data-route="' + route + '" ' +
+          'aria-label="Open ' + name + ' at full size">' +
+          '<img src="shots/' + slug + '.png" alt="' + name + ' screen" loading="lazy" decoding="async">' +
+          '<figcaption>' + dims + ' · click to open full</figcaption>' +
+        '</figure>';
+      sec.appendChild(art);
+
+      const li = document.createElement("li");
+      li.innerHTML = '<a href="#' + slug + '" data-g="' + key + '"><span class="n">' +
+        String(n).padStart(2, "0") + '</span>' + name + '</a>';
+      idxEl.appendChild(li);
+    }
+    roomsEl.appendChild(sec);
+  }
+
+  // Lightbox — full-resolution view, since the gallery frames crop tall pages.
+  let lb = null;
+  function open(src, name, route) {
+    close();
+    lb = document.createElement("div");
+    lb.className = "lb";
+    lb.innerHTML =
+      '<div class="lb-bar"><span class="t"></span><span class="r"></span>' +
+      '<button type="button">Close ✕</button></div>' +
+      '<img alt="">';
+    lb.querySelector(".t").textContent = name;
+    lb.querySelector(".r").textContent = route;
+    const img = lb.querySelector("img");
+    img.src = src; img.alt = name + " screen, full size";
+    lb.querySelector("button").addEventListener("click", close);
+    lb.addEventListener("click", (e) => { if (e.target === lb || e.target === img) close(); });
+    document.body.appendChild(lb);
+    lb.querySelector("button").focus();
+  }
+  function close() { if (lb) { lb.remove(); lb = null; } }
+
+  roomsEl.addEventListener("click", (e) => {
+    const f = e.target.closest(".shot");
+    if (f) open(f.dataset.src, f.dataset.name, f.dataset.route);
+  });
+  roomsEl.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const f = e.target.closest(".shot");
+    if (f) { e.preventDefault(); open(f.dataset.src, f.dataset.name, f.dataset.route); }
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+})();
+</script>

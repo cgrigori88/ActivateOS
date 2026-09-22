@@ -1,0 +1,768 @@
+[
+ {
+  "slug": "today",
+  "path": "/",
+  "label": "Today",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Today",
+  "headings": [
+   "Today",
+   "Decisions that move revenue",
+   "Where your systems disagree",
+   "At a glance",
+   "Also queued",
+   "Top opportunities",
+   "Recent activity"
+  ],
+  "panels": [
+   "Decisions that move revenue",
+   "Where your systems disagree",
+   "Also queued",
+   "Top opportunities",
+   "Recent activity"
+  ],
+  "textLen": 2262,
+  "docHeight": 1628,
+  "overflow": false
+ },
+ {
+  "slug": "intake",
+  "path": "/intake",
+  "label": "Intake",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Intake",
+  "headings": [
+   "Intake",
+   "Upload a file",
+   "What each partner has contributed",
+   "Every file received"
+  ],
+  "panels": [
+   "Upload a file"
+  ],
+  "textLen": 953,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "mapping",
+  "path": "/mapping",
+  "label": "Mapping",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Account mapping",
+  "headings": [
+   "Account mapping",
+   "CDW",
+   "Account lists"
+  ],
+  "panels": [
+   "CDW",
+   "Account lists"
+  ],
+  "textLen": 998,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "contacts",
+  "path": "/contacts",
+  "label": "Contacts",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Contacts",
+  "headings": [
+   "Contacts"
+  ],
+  "panels": [],
+  "textLen": 801,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "contact-detail",
+  "path": "/contacts/17dda88b-908c-4bd2-9216-0d559d877c89",
+  "label": "Contact detail",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Sarah Kim",
+  "headings": [
+   "Sarah Kim",
+   "Reach",
+   "Relationship",
+   "Pursuits this person sits on",
+   "What has actually happened"
+  ],
+  "panels": [
+   "Reach",
+   "Relationship"
+  ],
+  "textLen": 819,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "partners",
+  "path": "/partners",
+  "label": "Partners",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Partners",
+  "headings": [
+   "Partners",
+   "CDW",
+   "WWT"
+  ],
+  "panels": [
+   "CDW",
+   "WWT"
+  ],
+  "textLen": 440,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "partner-detail",
+  "path": "/partners/37c5a0b4-3661-4826-b5e8-ea3600084044",
+  "label": "Partner detail",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "CDW",
+  "headings": [
+   "CDW",
+   "Activation profile",
+   "Settled with this partner",
+   "Your execution",
+   "Initiatives",
+   "Trust ladder",
+   "Their book",
+   "Shared lists",
+   "Joint rooms",
+   "Playbook"
+  ],
+  "panels": [
+   "Initiatives",
+   "Trust ladder",
+   "Their book",
+   "Shared lists",
+   "Joint rooms",
+   "Playbook"
+  ],
+  "textLen": 2090,
+  "docHeight": 1027,
+  "overflow": false
+ },
+ {
+  "slug": "partner-review",
+  "path": "/partners/37c5a0b4-3661-4826-b5e8-ea3600084044/review",
+  "label": "Partner review",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "CDW",
+  "headings": [
+   "CDW",
+   "Scorecard",
+   "Initiatives",
+   "Coverage",
+   "Renewal clock"
+  ],
+  "panels": [
+   "Scorecard",
+   "Initiatives",
+   "Coverage",
+   "Renewal clock"
+  ],
+  "textLen": 1846,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "joint",
+  "path": "/joint",
+  "label": "Joint pursuits",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Joint pursuits",
+  "headings": [
+   "Joint pursuits",
+   "Settlement — with TD SYNNEX (demo)"
+  ],
+  "panels": [
+   "Settlement — with TD SYNNEX (demo)"
+  ],
+  "textLen": 834,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "joint-detail",
+  "path": "/joint/ed8c9f12-c254-4bd3-a116-88aec8782793",
+  "label": "Joint pursuit detail",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Cyberdyne Systems",
+  "headings": [
+   "Cyberdyne Systems",
+   "Shared ledger",
+   "What TD SYNNEX (demo) can see",
+   "Broker",
+   "Joint playbook"
+  ],
+  "panels": [
+   "Shared ledger",
+   "What TD SYNNEX (demo) can see",
+   "Broker",
+   "Joint playbook"
+  ],
+  "textLen": 1115,
+  "docHeight": 1177,
+  "overflow": false
+ },
+ {
+  "slug": "campaigns",
+  "path": "/campaigns",
+  "label": "Campaigns",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Campaigns",
+  "headings": [
+   "Campaigns",
+   "Generate from a motion",
+   "Build by hand"
+  ],
+  "panels": [
+   "Generate from a motion",
+   "Build by hand"
+  ],
+  "textLen": 1544,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "upcoming",
+  "path": "/upcoming",
+  "label": "Upcoming",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Scheduled sends",
+  "headings": [
+   "Scheduled sends"
+  ],
+  "panels": [],
+  "textLen": 329,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "analytics",
+  "path": "/analytics",
+  "label": "Analytics",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Outreach analytics",
+  "headings": [
+   "Outreach analytics"
+  ],
+  "panels": [],
+  "textLen": 522,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "pursuits",
+  "path": "/pursuits",
+  "label": "Pursuits",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Pursuits",
+  "headings": [
+   "Pursuits",
+   "Umbrella Health Systems",
+   "Stark Industries LLC",
+   "Cyberdyne Systems",
+   "Initech Financial (expansion)",
+   "Globex Manufacturing Inc.",
+   "Wayne Enterprises",
+   "Hooli Cloud",
+   "Acme Robotics",
+   "Soylent Foods Co.",
+   "Tyrell Corp",
+   "Initech Financial"
+  ],
+  "panels": [
+   "Umbrella Health Systems",
+   "Stark Industries LLC",
+   "Cyberdyne Systems",
+   "Initech Financial (expansion)",
+   "Globex Manufacturing Inc.",
+   "Wayne Enterprises",
+   "Hooli Cloud",
+   "Acme Robotics",
+   "Soylent Foods Co.",
+   "Tyrell Corp",
+   "Initech Financial"
+  ],
+  "textLen": 2889,
+  "docHeight": 2304,
+  "overflow": false
+ },
+ {
+  "slug": "pursuit-detail",
+  "path": "/pursuits/98b1f890-04ac-4461-adaa-f6379acba39a",
+  "label": "Pursuit detail",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Exit legacy virtualization before renewal",
+  "headings": [
+   "Exit legacy virtualization before renewal",
+   "Why now",
+   "Value case",
+   "Route decision",
+   "Why CDW",
+   "Pursuit team",
+   "Stakeholders",
+   "Facts behind this",
+   "What changed",
+   "Outcome & attribution",
+   "Federation"
+  ],
+  "panels": [
+   "Why now",
+   "Value case",
+   "Route decision",
+   "Why CDW",
+   "Pursuit team",
+   "Stakeholders",
+   "Facts behind this",
+   "What changed",
+   "Outcome & attribution",
+   "Federation"
+  ],
+  "textLen": 7121,
+  "docHeight": 3827,
+  "overflow": false
+ },
+ {
+  "slug": "accounts",
+  "path": "/accounts",
+  "label": "Accounts",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Accounts",
+  "headings": [
+   "Accounts"
+  ],
+  "panels": [],
+  "textLen": 1045,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "account-detail",
+  "path": "/accounts/956d5b87-df3e-4e6b-a2ea-105f73b30e4a",
+  "label": "Account detail",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Globex Manufacturing Inc.",
+  "headings": [
+   "Globex Manufacturing Inc.",
+   "Deal timeline",
+   "Meetings",
+   "Why now",
+   "Data completeness",
+   "Evidence",
+   "Revenue motion",
+   "Timeline"
+  ],
+  "panels": [
+   "Deal timeline",
+   "Meetings",
+   "Why now",
+   "Data completeness",
+   "Evidence",
+   "Revenue motion",
+   "Timeline"
+  ],
+  "textLen": 2021,
+  "docHeight": 1940,
+  "overflow": false
+ },
+ {
+  "slug": "sources",
+  "path": "/sources",
+  "label": "Sources",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Sources",
+  "headings": [
+   "Sources"
+  ],
+  "panels": [],
+  "textLen": 616,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "provider-health",
+  "path": "/provider-health",
+  "label": "Provider health",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Provider health",
+  "headings": [
+   "Provider health",
+   "Tier 1 · Identity",
+   "Tier 2 · Signal (screen)",
+   "Tier 3 · Deep (selective)"
+  ],
+  "panels": [],
+  "textLen": 1719,
+  "docHeight": 1218,
+  "overflow": false
+ },
+ {
+  "slug": "review",
+  "path": "/review",
+  "label": "Review",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Review",
+  "headings": [
+   "Review"
+  ],
+  "panels": [],
+  "textLen": 530,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "trust",
+  "path": "/trust",
+  "label": "Trust",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Trust center",
+  "headings": [
+   "Trust center",
+   "How it works",
+   "How data flows",
+   "AI & models",
+   "Isolation & controls",
+   "Residency & retention"
+  ],
+  "panels": [
+   "How data flows",
+   "AI & models",
+   "Isolation & controls",
+   "Residency & retention"
+  ],
+  "textLen": 2430,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "motions",
+  "path": "/motions",
+  "label": "Motions",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Motions",
+  "headings": [
+   "Motions",
+   "Virtualization"
+  ],
+  "panels": [
+   "Virtualization"
+  ],
+  "textLen": 1193,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "brief",
+  "path": "/briefs/0eda242a-e456-4f93-9941-c1935e35e925",
+  "label": "Motion brief",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Activation brief — Globex Manufacturing Inc.",
+  "headings": [
+   "Activation brief — Globex Manufacturing Inc.",
+   "Why this account, why now",
+   "Evidence behind this motion",
+   "Cadence",
+   "Conversation"
+  ],
+  "panels": [
+   "Why this account, why now",
+   "Evidence behind this motion",
+   "Cadence",
+   "Conversation"
+  ],
+  "textLen": 916,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "queue",
+  "path": "/queue",
+  "label": "Queue",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Queue",
+  "headings": [
+   "Queue",
+   "Overdue4",
+   "Recently resolved"
+  ],
+  "panels": [
+   "Overdue4",
+   "Recently resolved"
+  ],
+  "textLen": 1366,
+  "docHeight": 1062,
+  "overflow": false
+ },
+ {
+  "slug": "goals",
+  "path": "/goals",
+  "label": "Goals",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Goals",
+  "headings": [
+   "Goals",
+   "Revenue & pipeline targets",
+   "2026 · open pipeline",
+   "2026 · won revenue"
+  ],
+  "panels": [
+   "Revenue & pipeline targets"
+  ],
+  "textLen": 1093,
+  "docHeight": 1019,
+  "overflow": false
+ },
+ {
+  "slug": "goal-detail",
+  "path": "/goals/5f946382-d09f-4366-a666-c26d3a598ba4",
+  "label": "Goal detail",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "$5M Virtualization Co-Sell Pipeline — Q4 2026",
+  "headings": [
+   "$5M Virtualization Co-Sell Pipeline — Q4 2026",
+   "Motions carrying this goal",
+   "Contributing partners"
+  ],
+  "panels": [
+   "Motions carrying this goal",
+   "Contributing partners"
+  ],
+  "textLen": 1136,
+  "docHeight": 1031,
+  "overflow": false
+ },
+ {
+  "slug": "pipeline",
+  "path": "/pipeline",
+  "label": "Pipeline",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Pipeline",
+  "headings": [
+   "Pipeline",
+   "Renewal radar",
+   "Qualification vs outcome",
+   "Open opportunities by stage",
+   "Pipeline & revenue roll-up"
+  ],
+  "panels": [
+   "Renewal radar",
+   "Qualification vs outcome",
+   "Open opportunities by stage",
+   "Pipeline & revenue roll-up"
+  ],
+  "textLen": 1728,
+  "docHeight": 1227,
+  "overflow": false
+ },
+ {
+  "slug": "insights",
+  "path": "/insights",
+  "label": "Insights",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Insights",
+  "headings": [
+   "Insights",
+   "Observed outcomes",
+   "Canonical outcomes · attribution",
+   "Partner activation vs presence",
+   "Commercial funnel",
+   "What sat behind the outcomes",
+   "Conversation outcomes",
+   "Declared assumptions",
+   "Stage probability calibration",
+   "What raises an account"
+  ],
+  "panels": [
+   "Canonical outcomes · attribution",
+   "Partner activation vs presence",
+   "Commercial funnel",
+   "What sat behind the outcomes",
+   "Conversation outcomes",
+   "Stage probability calibration"
+  ],
+  "textLen": 5017,
+  "docHeight": 2992,
+  "overflow": false
+ },
+ {
+  "slug": "ask",
+  "path": "/ask",
+  "label": "Ask",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Ask",
+  "headings": [
+   "Ask",
+   "Show WWT pursuits over $500K renewing in 90 days without a verified economic buyer.",
+   "Earlier questions (11)"
+  ],
+  "panels": [
+   "Show WWT pursuits over $500K renewing in 90 days without a verified economic buyer."
+  ],
+  "textLen": 1254,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "skills",
+  "path": "/skills",
+  "label": "Skills",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Skills",
+  "headings": [
+   "Skills",
+   "In force",
+   "Also grounding your agents"
+  ],
+  "panels": [
+   "In force",
+   "Also grounding your agents"
+  ],
+  "textLen": 934,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "routines",
+  "path": "/routines",
+  "label": "Routines",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Routines",
+  "headings": [
+   "Routines"
+  ],
+  "panels": [],
+  "textLen": 978,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "admin",
+  "path": "/admin",
+  "label": "Admin",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Admin",
+  "headings": [
+   "Admin",
+   "Access",
+   "Targeting",
+   "Ideal customer profile",
+   "Suppression list",
+   "Partnerships",
+   "Invite a partner org",
+   "Redeem an invite",
+   "Blind overlap",
+   "Agent access",
+   "Bring your own model",
+   "Shared lists",
+   "Share a list",
+   "Privacy & data-subject rights",
+   "Export a copy · Art. 15/20",
+   "Erase · Art. 17",
+   "Audit log",
+   "AI operations",
+   "Agent workflows · spend, latency, human overrides",
+   "Provider failures · latest",
+   "Recent agent runs"
+  ],
+  "panels": [
+   "Ideal customer profile",
+   "Invite a partner org",
+   "Share a list",
+   "Export a copy · Art. 15/20",
+   "Agent workflows · spend, latency, human overrides",
+   "Provider failures · latest",
+   "Recent agent runs"
+  ],
+  "textLen": 5013,
+  "docHeight": 3175,
+  "overflow": false
+ },
+ {
+  "slug": "ops",
+  "path": "/ops",
+  "label": "Ops",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Governance ops",
+  "headings": [
+   "Governance ops",
+   "Needs attention (0)"
+  ],
+  "panels": [],
+  "textLen": 257,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "login",
+  "path": "/login",
+  "label": "Sign in",
+  "status": 200,
+  "title": "PursuitOS",
+  "h1": "Identity isn't configured",
+  "headings": [
+   "Identity isn't configured"
+  ],
+  "panels": [],
+  "textLen": 410,
+  "docHeight": 1000,
+  "overflow": false
+ },
+ {
+  "slug": "landing",
+  "path": "/landing",
+  "label": "Landing",
+  "status": 200,
+  "title": "PursuitOS — The operating system for revenue between companies",
+  "h1": "The operating system for revenue between companies.",
+  "headings": [
+   "The operating system for revenue between companies.",
+   "Working with partners on revenue you both touch?"
+  ],
+  "panels": [
+   "Working with partners on revenue you both touch?"
+  ],
+  "textLen": 1563,
+  "docHeight": 1912,
+  "overflow": false
+ }
+]
